@@ -32,11 +32,15 @@ def build_brain(*, need_stt: bool = True):
         parts_per_episode=int(env("KUNIBERT_PARTS_PER_EPISODE", "5")),
     )
     stt = (WhisperSTT(env("KUNIBERT_WHISPER_MODEL", "small")) if need_stt else FakeSTT())
+    # Zeitkette: Server (2 × 30 s + STT/TTS ≈ 70 s) < Caddy (80 s) < Pi-Client (90 s).
+    llm_timeout = float(env("KUNIBERT_LLM_TIMEOUT", "30"))
     # Kurze Antworten: schnell. Geschichten: sprachlich stärker, minimale Denkzeit (~13 s).
     llm = OpenAICompatibleLLM(env("KUNIBERT_ANSWER_MODEL", "gpt-5-mini"),
-                              reasoning_effort=env("KUNIBERT_ANSWER_REASONING", "low") or None)
+                              reasoning_effort=env("KUNIBERT_ANSWER_REASONING", "low") or None,
+                              timeout=llm_timeout)
     story_llm = OpenAICompatibleLLM(env("KUNIBERT_STORY_MODEL", "gpt-5"),
-                                    reasoning_effort=env("KUNIBERT_STORY_REASONING", "minimal") or None)
+                                    reasoning_effort=env("KUNIBERT_STORY_REASONING", "minimal") or None,
+                                    timeout=llm_timeout)
     tts = PiperTTS(env("KUNIBERT_PIPER_VOICE", str(HERE / "voices" / "de_DE-thorsten-medium.onnx")))
     return Brain(stt, llm, tts, settings, story_llm=story_llm)
 

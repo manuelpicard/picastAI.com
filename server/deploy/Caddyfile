@@ -1,18 +1,37 @@
-# Caddy holt und erneuert das TLS-Zertifikat automatisch.
-# Voraussetzung: Du kontrollierst die Domain und ein DNS-A/AAAA-Eintrag
-# für api.picast.com zeigt auf diesen Server. Ports 80 und 443 offen.
+# /etc/caddy/Caddyfile – Ritter Kunibert
+#
+# Caddy holt das TLS-Zertifikat automatisch (Let's Encrypt bzw. ZeroSSL) und erneuert es.
+# Voraussetzungen:
+#   1. DNS: A-Eintrag (und ggf. AAAA) api.picast.com -> öffentliche IP dieses Servers
+#   2. Ports 80/tcp und 443/tcp (optional 443/udp für HTTP/3) aus dem Internet erreichbar
+#   3. Der Kunibert-Server läuft lokal auf 127.0.0.1:8000 (systemd-Unit kunibert-server)
+
+# Optional: Kontaktadresse für Zertifikats-Ablaufwarnungen.
+# {
+# 	email du@deine-domain.de
+# }
+
 api.picast.com {
-	request_body {
-		max_size 3MB
-	}
-	# Kunibert lauscht nur lokal; nach außen spricht ausschließlich Caddy.
-	reverse_proxy 127.0.0.1:8000 {
-		transport http {
-			read_timeout 120s
+	# Nur die Geräte-API wird durchgereicht; alles andere bekommt 404.
+	@api path /v1/* /health
+	handle @api {
+		# Aufnahme höchstens 2 MiB plus Formularfelder.
+		request_body {
+			max_size 3MB
+		}
+		reverse_proxy 127.0.0.1:8000 {
+			transport http {
+				# Zeitkette: Server bricht nach ~70 s ab < Caddy 80 s < Pi-Client 90 s.
+				response_header_timeout 80s
+			}
 		}
 	}
-	# Keine Anfrageinhalte protokollieren.
-	log {
-		output discard
+	handle {
+		respond 404
 	}
+
+	# Keine Software-Kennung nach außen.
+	header -Server
+
+	# Bewusst keine log-Direktive: Ohne sie schreibt Caddy keine Zugriffsprotokolle.
 }
