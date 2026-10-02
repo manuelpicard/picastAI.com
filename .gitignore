@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Geheimnisse und Gerätezugänge – niemals committen
+.env
+*.env
+devices.json
+*.tmp
+demo/.token
+
+# Große Modelldateien (werden per Anleitung heruntergeladen)
+server/voices/
+
+# Rohaudio und Demo-Zwischenstände (die fertigen MP3s liegen in hoerproben/)
+*.wav
+demo/out/
+demo/run-geschichte/
+demo/demo-protokoll.json
+
+# Arbeitsnotizen
+NOTIZEN.md

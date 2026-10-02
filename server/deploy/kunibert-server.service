@@ -1,0 +1,25 @@
+[Unit]
+Description=Ritter Kunibert – Server (STT, Erzähler, Stimme)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=kunibert
+Group=kunibert
+WorkingDirectory=/opt/kunibert/server
+EnvironmentFile=/etc/kunibert/kunibert.env
+ExecStart=/opt/kunibert/venv/bin/python -m kunibert_server serve --host 127.0.0.1 --port 8000
+Restart=on-failure
+RestartSec=3
+# Härtung: nur das Datenverzeichnis ist beschreibbar.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/kunibert
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+MemoryMax=6G
+
+[Install]
+WantedBy=multi-user.target

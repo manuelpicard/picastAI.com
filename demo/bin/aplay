@@ -1,0 +1,6 @@
+#!/bin/sh
+# Demo-Ersatz für ALSA-aplay: speichert die WAV-Datei, die der Pi abspielen würde.
+# Aufruf wie das echte aplay: aplay -q [-D gerät] datei.wav
+for last; do :; done
+n=$(ls "$KUNIBERT_DEMO_OUT" 2>/dev/null | grep -c '^[0-9][0-9]-')
+cp "$last" "$KUNIBERT_DEMO_OUT/$(printf '%02d' $((n + 1)))-${KUNIBERT_DEMO_LABEL:-antwort}.wav"
