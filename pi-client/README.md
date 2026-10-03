@@ -30,7 +30,7 @@ python3 -m unittest discover -s tests -v
 
 Die Pins sind standardmäßig BCM **GPIO5 = Sprechtaste**, **GPIO6 = Erzähltaste**, **GPIO17 = Status-LED** und **GPIO22 = Mikrofon-Aus-Schalter**. Taster und Schalter werden jeweils zwischen GPIO und GND angeschlossen; die Software verwendet die internen Pull-ups. Die LED bekommt einen passenden Vorwiderstand. Für das erste Brett bitte nur unter Aufsicht verdrahten und prüfen, dass der Mikrofon-Aus-Schalter die Mikrofonversorgung bzw. den Mikrofonpfad wirklich trennt.
 
-Die LED-Zustände sind: **aus = bereit**, schnelles Blinken = Aufnahme, langsames Blinken = Verarbeitung/Netzwerk, dauerhaft an = Wiedergabe, sehr schnelles Blinken = Fehler. Bei Mikrofon-Aus bleibt sie aus; neue Tastendrücke werden verworfen. Der Zustand ist bewusst eindeutig und nicht als geheimes Zuhörsignal interpretierbar.
+Die LED-Zustände sind: **aus = bereit**, schnelles Blinken = Aufnahme, langsames Blinken = Verarbeitung/Netzwerk, dauerhaft an = Wiedergabe, sehr schnelles Blinken = Fehler. Bei Mikrofon-Aus bleibt sie aus; neue Tastendrücke werden verworfen. Sobald der Schalter wieder freigibt, kehrt das Gerät automatisch zu **bereit** zurück. Der Zustand ist bewusst eindeutig und nicht als geheimes Zuhörsignal interpretierbar.
 
 `kunibert_pi/gpio.py` enthält die Hardware-Abstraktion und `build_real_gpio(...)` für gpiozero. `kunibert_pi/recorder.py` nimmt maximal 20 Sekunden, 16 kHz, mono, 16-bit PCM über `arecord` auf und legt die Datei nur unter `/dev/shm` an. `kunibert_pi/device.py` verbindet Tasten, Aufnahme, API und Wiedergabe; im Fehlerfall kann eine vorab gespeicherte Offline-Ansage abgespielt werden.
 

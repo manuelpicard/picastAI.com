@@ -16,9 +16,11 @@ class FakeButton:
 
 
 class FakeMute:
-    def __init__(self, active=False): self.is_active = active; self.callback = None; self.closed = False
+    def __init__(self, active=False): self.is_active = active; self.callback = None; self.clear_callback = None; self.closed = False
     def when_activated(self, callback): self.callback = callback
+    def when_deactivated(self, callback): self.clear_callback = callback
     def activate(self): self.is_active = True; self.callback()
+    def deactivate(self): self.is_active = False; self.clear_callback()
     def close(self): self.closed = True
 
 
@@ -53,6 +55,11 @@ class GPIOTests(unittest.TestCase):
         self.assertFalse(self.controls.on_speak.called)
         self.assertFalse(self.controls.on_story.called)
         self.assertEqual(self.led.calls[-1], "off")
+
+    def test_unmuting_returns_to_ready(self):
+        self.mute.activate()
+        self.mute.deactivate()
+        self.assertEqual(self.controls.state, DeviceState.READY)
 
     def test_lights_have_distinct_recording_and_processing_patterns(self):
         self.controls.set_state(DeviceState.RECORDING)

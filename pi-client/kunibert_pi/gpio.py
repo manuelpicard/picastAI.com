@@ -31,6 +31,7 @@ class InputLike(Protocol):
     @property
     def is_active(self) -> bool: ...
     def when_activated(self, callback: Callable[[], None]) -> None: ...
+    def when_deactivated(self, callback: Callable[[], None]) -> None: ...
     def close(self) -> None: ...
 
 
@@ -86,6 +87,7 @@ class KunibertGPIO:
         speak_button.when_pressed(self._speak_pressed)
         story_button.when_pressed(self._story_pressed)
         mute_input.when_activated(self._mute_changed)
+        mute_input.when_deactivated(self._mute_cleared)
 
     def _speak_pressed(self) -> None:
         if self.mute_input.is_active or self.state != DeviceState.READY:
@@ -99,6 +101,10 @@ class KunibertGPIO:
 
     def _mute_changed(self) -> None:
         self.set_state(DeviceState.MUTED)
+
+    def _mute_cleared(self) -> None:
+        if self.state == DeviceState.MUTED:
+            self.set_state(DeviceState.READY)
 
     def set_state(self, state: DeviceState) -> None:
         if self.mute_input.is_active and state not in {DeviceState.MUTED, DeviceState.READY}:
@@ -132,6 +138,8 @@ def build_real_gpio(pins: Pins, on_speak: Callable[[], None], on_story: Callable
             self.obj.when_pressed = callback
         def when_activated(self, callback):
             self.obj.when_activated = callback
+        def when_deactivated(self, callback):
+            self.obj.when_deactivated = callback
         @property
         def is_active(self):
             return self.obj.is_active
