@@ -67,6 +67,19 @@ python3 -m kunibert_pi.audio_diag \
 
 Die Diagnose erzeugt nur einen kurzen Testton und legt Aufnahmen unter `/dev/shm` an, wenn dieses Verzeichnis vorhanden ist. Sie sendet nichts an den Kunibert-Server. Bei Problemen bitte die komplette Ausgabe von `audio_diag` sichern, aber keine Aufnahmen oder Tokens teilen.
 
+## LED vor der Audiointegration testen
+
+Die LED kann unabhängig vom Mikrofon und Server geprüft werden:
+
+```bash
+python3 -m kunibert_pi.led_demo --state bereit --seconds 5
+python3 -m kunibert_pi.led_demo --state aufnahme --seconds 5
+python3 -m kunibert_pi.led_demo --state wiedergabe --seconds 5
+python3 -m kunibert_pi.led_demo --cycle
+```
+
+Der Standard ist **BCM GPIO17**; mit `--pin` kann der BCM-Pin geändert werden. `--cycle` zeigt bereit, Aufnahme, Verarbeitung, Wiedergabe, Fehler und Mikrofon-Aus jeweils drei Sekunden. Bei einem einzelnen Zustand ohne `--seconds` läuft das Muster bis `Ctrl-C`. Das Skript schaltet die LED beim Beenden aus.
+
 **Keine produktiven Schlüssel in der Shell-Historie, im Quellcode oder auf einem öffentlich erreichbaren Gerät speichern.** Für einen realen Prototypen ein nur für dieses Gerät gültiges, widerrufbares Token in einer root-lesbaren Konfiguration hinterlegen. Alle externen KI-Anbieter-Schlüssel bleiben serverseitig. Der hier gezeigte `export` ist nur ein lokales Testbeispiel.
 
 Das Programm lädt das Audio in ein privates temporäres Verzeichnis, ruft `aplay` auf und löscht die Datei danach. Es sendet die Eingabe bewusst **nicht automatisch nochmals**, falls die Anfrage scheitert; die Antwort könnte serverseitig bereits erzeugt worden sein. Ton während der Ausgabe zu unterbrechen ist mit `Ctrl-C` möglich. Nach einem Fehler wird ein nicht-null Exit-Code zurückgegeben; der spätere Geräteprozess muss dann eine lokale Offline-Ansage ausgeben.
