@@ -1,5 +1,7 @@
 # Server auf dem Schweizer Host einrichten
 
+Die abhakbare Abnahme- und Betriebscheckliste liegt in [`CHECKLISTE.md`](CHECKLISTE.md).
+
 Diese Anleitung installiert den Ritter-Kunibert-API-Server auf einem Debian-/Ubuntu-System und veröffentlicht ausschließlich die Geräte-API über Caddy. **Der Server ist nicht Teil des Raspberry Pi**: Der Pi bleibt Client.
 
 > **Wichtig:** Dies ist die vorbereitete Anleitung, kein bereits ausgeführtes Deployment auf dem Schweizer Quantencomputer. Vor der Live-Inbetriebnahme müssen dessen Betriebssystem, Architektur, öffentlicher Netzweg, DNS und administrativer Zugriff bestätigt werden. Die bisherige HTTPS-Probe lief nur in der Sandbox mit Caddys lokaler Test-CA.
