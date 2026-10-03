@@ -11,6 +11,7 @@ Ein eigenständiger Browser-Prototyp für Sprache, Kunibert-Geschichten und loka
 - Eigene Erzählerprofile; nur ausdrücklich freigegebene Textbeispiele und Korrekturen wirken als Stilkontext.
 - Gesprächsverlauf, Profile, Beispiele und Feedback bleiben im `localStorage` des jeweiligen Browsers; Export und vollständiges Löschen sind enthalten.
 - Stilpaket-Export/-Import überträgt nur den ausgewählten Profilstil und ausdrücklich freigegebene Beispiele zwischen Browsern. Ein vollständiges Backup enthält zusätzlich lokale Chats und Feedback.
+- Die kurze Projekt- und Papa-Rollen-Erklärung ist als `public/papa.html` direkt teilbar.
 - Die Nachricht und höchstens acht vorherige Gesprächsbeiträge sowie bis zu fünf freigegebene Beispiele werden zur Antwortgenerierung an den Modellserver gesendet. Es gibt keine Speicherung des persönlichen Lernstands auf dem Server.
 
 ## Voraussetzungen
