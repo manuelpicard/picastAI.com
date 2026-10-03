@@ -46,6 +46,27 @@ python3 -m kunibert_pi.gpio_main --audio-input plughw:1,0 --audio-output plughw:
 
 `gpio_main` hält den Prozess offen, bindet die vier Standardpins und beendet sich sauber bei `Ctrl-C` oder SIGTERM. Für eine systemd-Unit sollte der Dienst unter einem eigenen Benutzer laufen, keine Geheimnisse ins Unit-File schreiben und bei Fehlern neu starten. Die reale Aufnahme läuft derzeit bis zur konfigurierten Obergrenze (Standard 20 Sekunden); eine Aufnahme-Stopp-Taste bzw. Push-to-talk-Loslassen ist ein anschließendes Komfort-Upgrade.
 
+## ALSA und `plughw` prüfen
+
+Auf dem echten Pi zuerst beide USB-Geräte einstecken und ausführen:
+
+```bash
+python3 -m kunibert_pi.audio_diag
+```
+
+Das Programm listet `aplay -l`, `arecord -l` und die ausführlichen ALSA-Namen. Danach die angezeigten Gerätenamen testen, zum Beispiel:
+
+```bash
+python3 -m kunibert_pi.audio_diag \
+  --input 'plughw:CARD=Device,DEV=0' \
+  --output 'plughw:CARD=Speaker,DEV=0' \
+  --record-test --play-test
+```
+
+`plughw` ist für den Prototyp die robuste Wahl, weil ALSA Format-/Sampleraten-Konvertierung übernehmen kann; `hw` ist strenger und nützlich, wenn man die Hardwarefähigkeiten exakt testen will. Bevorzugt werden stabile `CARD=...`-Namen statt `plughw:1,0`, weil sich USB-Kartenindizes nach Neustarts ändern können. Wenn der Lautsprecher als Ausgabe- und das Mikrofon als Aufnahmegerät getrennt erscheinen, ist das in Ordnung: `--audio-input` und `--audio-output` dürfen verschiedene ALSA-Geräte sein.
+
+Die Diagnose erzeugt nur einen kurzen Testton und legt Aufnahmen unter `/dev/shm` an, wenn dieses Verzeichnis vorhanden ist. Sie sendet nichts an den Kunibert-Server. Bei Problemen bitte die komplette Ausgabe von `audio_diag` sichern, aber keine Aufnahmen oder Tokens teilen.
+
 **Keine produktiven Schlüssel in der Shell-Historie, im Quellcode oder auf einem öffentlich erreichbaren Gerät speichern.** Für einen realen Prototypen ein nur für dieses Gerät gültiges, widerrufbares Token in einer root-lesbaren Konfiguration hinterlegen. Alle externen KI-Anbieter-Schlüssel bleiben serverseitig. Der hier gezeigte `export` ist nur ein lokales Testbeispiel.
 
 Das Programm lädt das Audio in ein privates temporäres Verzeichnis, ruft `aplay` auf und löscht die Datei danach. Es sendet die Eingabe bewusst **nicht automatisch nochmals**, falls die Anfrage scheitert; die Antwort könnte serverseitig bereits erzeugt worden sein. Ton während der Ausgabe zu unterbrechen ist mit `Ctrl-C` möglich. Nach einem Fehler wird ein nicht-null Exit-Code zurückgegeben; der spätere Geräteprozess muss dann eine lokale Offline-Ansage ausgeben.
