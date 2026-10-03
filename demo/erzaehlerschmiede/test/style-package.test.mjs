@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildStylePackage, mergeStylePackage, parseStylePackage } from '../public/style-package.mjs';
+import { buildStylePackage, mergeStylePackage, parseStylePackage, PAPA_PROFILE_NAME } from '../public/style-package.mjs';
 
 const profile = {
-  id: 'papa-og', name: 'Papa OG', kind: 'kunibert', style: 'Warm, ruhig und mündlich.',
+  id: 'papa-og', name: PAPA_PROFILE_NAME, kind: 'kunibert', style: 'Warm, ruhig und mündlich.',
   references: ['Freigegebener Anfang', 'Freigegebener Schluss'],
   messages: [{ role: 'user', content: 'Private Unterhaltung' }],
   feedback: [{ rating: 'up', text: 'Private Rückmeldung' }],
@@ -19,7 +19,13 @@ test('Stilpaket exportiert Beispiele, aber keine Gespräche oder Rückmeldungen'
 
 test('Import lehnt falsches Format und leere Beispielpakete ab', () => {
   assert.throws(() => parseStylePackage({ format: 'other', version: 1 }), /kein unterstütztes/);
-  assert.throws(() => parseStylePackage({ format: 'erzaehlerschmiede-style-package', version: 1, profile: { name: 'Papa OG', kind: 'kunibert', references: [] } }), /keine freigegebenen/);
+  assert.throws(() => parseStylePackage({ format: 'erzaehlerschmiede-style-package', version: 1, profile: { name: PAPA_PROFILE_NAME, kind: 'kunibert', references: [] } }), /keine freigegebenen/);
+});
+
+test('Import alter Pakete migriert den früheren Papa-OG-Namen', () => {
+  const legacy = buildStylePackage(profile);
+  legacy.profile.name = 'Papa OG';
+  assert.equal(parseStylePackage(legacy).name, PAPA_PROFILE_NAME);
 });
 
 test('Import in vorhandenes Profil ergänzt Beispiele, aber überschreibt den lokalen Stil nicht', () => {

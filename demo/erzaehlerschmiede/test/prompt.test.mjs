@@ -20,7 +20,7 @@ test('normalizeRequest erzwingt sichere Modi und kuratierte Stilbeispiele', () =
   const refs = Array.from({ length: 8 }, (_, i) => `Beispiel ${i}`);
   const cleaned = normalizeRequest({
     mode: 'admin', message: '  Erzähle weiter.  ',
-    narrator: { name: 'Papa OG', style: 'warm', isKunibert: true, references: refs },
+    narrator: { name: 'Papa – Originalerzähler', style: 'warm', isKunibert: true, references: refs },
     history: [{ role: 'assistant', content: 'Vorher.' }, { role: 'tool', content: 'ignorieren' }],
   });
   assert.equal(cleaned.mode, 'chat');
@@ -31,7 +31,7 @@ test('normalizeRequest erzwingt sichere Modi und kuratierte Stilbeispiele', () =
 
 test('Kunibert-Prompt behauptet weder Papas Identität noch eine Originalrekonstruktion', () => {
   const prompt = buildSystemPrompt('story', {
-    name: 'Papa OG', style: 'warm', references: ['Beispieltext'], isKunibert: true,
+    name: 'Papa – Originalerzähler', style: 'warm', references: ['Beispieltext'], isKunibert: true,
   });
   assert.match(prompt, /niemals Papa/);
   assert.match(prompt, /authentische Erzählweise einer realen Person zu rekonstruieren/);

@@ -7,7 +7,7 @@ Ein eigenständiger Browser-Prototyp für Sprache, Kunibert-Geschichten und loka
 - Sprach-Eingabe per Klick über die Web Speech API; die erkannte Transkription bleibt vor dem Absenden bearbeitbar.
 - Antwort wird über die lokale Browser-Sprachausgabe vorgelesen; keine Papa-Stimmenkopie.
 - Plaudern, Geschichtenerzählen und geführte Erzählerschmiede.
-- Auswählbares „Papa OG“-Startprofil mit Kunibert-Welt und vorhandenem Projekt-Stilrahmen. **Das Repository enthält keine Papa-Dialoge; das Startprofil ist nicht aus echten Interaktionen mit Papa trainiert und rekonstruiert seinen Originalstil nicht.**
+- Auswählbares „Papa – Originalerzähler“-Startprofil mit Kunibert-Welt und vorhandenem Projekt-Stilrahmen. **Das Repository enthält keine Papa-Dialoge; das Startprofil ist nicht aus echten Interaktionen mit Papa trainiert und rekonstruiert seinen Originalstil nicht.**
 - Eigene Erzählerprofile; nur ausdrücklich freigegebene Textbeispiele und Korrekturen wirken als Stilkontext.
 - Gesprächsverlauf, Profile, Beispiele und Feedback bleiben im `localStorage` des jeweiligen Browsers; Export und vollständiges Löschen sind enthalten.
 - Stilpaket-Export/-Import überträgt nur den ausgewählten Profilstil und ausdrücklich freigegebene Beispiele zwischen Browsern. Ein vollständiges Backup enthält zusätzlich lokale Chats und Feedback.

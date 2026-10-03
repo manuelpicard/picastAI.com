@@ -2,6 +2,7 @@ const MAX_NAME = 60;
 const MAX_STYLE = 700;
 const MAX_REFERENCES = 5;
 const MAX_REFERENCE_CHARS = 700;
+export const PAPA_PROFILE_NAME = 'Papa – Originalerzähler';
 
 function clean(value, maxLength) {
   return String(value ?? '').replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '').trim().slice(0, maxLength);
@@ -32,9 +33,12 @@ export function parseStylePackage(raw) {
   }
   const incoming = raw.profile;
   if (!incoming || typeof incoming !== 'object') throw new Error('Im Stilpaket fehlt das Erzählerprofil.');
-  const name = clean(incoming.name, MAX_NAME);
-  if (!name) throw new Error('Das Stilpaket enthält keinen Profilnamen.');
+  const originalName = clean(incoming.name, MAX_NAME);
+  if (!originalName) throw new Error('Das Stilpaket enthält keinen Profilnamen.');
   if (!['personal', 'kunibert'].includes(incoming.kind)) throw new Error('Der Profiltyp im Stilpaket ist ungültig.');
+  const name = incoming.kind === 'kunibert' && originalName.toLocaleLowerCase() === 'papa og'
+    ? PAPA_PROFILE_NAME
+    : originalName;
   if (!Array.isArray(incoming.references)) throw new Error('Das Stilpaket enthält keine gültige Beispiel-Liste.');
   const references = incoming.references.slice(-MAX_REFERENCES).map((text) => clean(text, MAX_REFERENCE_CHARS)).filter(Boolean);
   if (!references.length) throw new Error('Das Stilpaket enthält keine freigegebenen Textbeispiele.');

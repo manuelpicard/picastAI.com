@@ -1,3 +1,4 @@
+import { buildStylePackage, mergeStylePackage, parseStylePackage, PAPA_PROFILE_NAME } from './style-package.mjs';
 const STORAGE_KEY = 'ritter-kunibert-erzaehlerschmiede-v1';
 const TOKEN_KEY = 'ritter-kunibert-demo-token';
 const DEFAULT_DATA = {
@@ -5,7 +6,7 @@ const DEFAULT_DATA = {
   mode: 'chat',
   profiles: [
     {
-      id: 'papa-og', name: 'Papa OG', kind: 'kunibert',
+      id: 'papa-og', name: PAPA_PROFILE_NAME, kind: 'kunibert',
       style: 'Mündlich, ruhig und warm. Kurze, klare Sätze; sinnliche Bilder; ein wenig verschmitzt. Spannung entsteht durch Rätsel und Klugheit, nicht durch Härte. Vertraute Stationen dürfen wiederkehren, aber jede Geschichte erhält kleine neue Begebenheiten.',
       references: [], feedback: [], messages: [],
     },
@@ -36,13 +37,16 @@ let token = sessionStorage.getItem(TOKEN_KEY) || '';
 let listening = false;
 let activeRecognition = null;
 let toastTimer;
-import { buildStylePackage, mergeStylePackage, parseStylePackage } from './style-package.mjs';
 
 function cloneDefaults() { return JSON.parse(JSON.stringify(DEFAULT_DATA)); }
 function readData() {
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
-    if (saved && Array.isArray(saved.profiles) && saved.profiles.length) return saved;
+    if (saved && Array.isArray(saved.profiles) && saved.profiles.length) {
+      const papa = saved.profiles.find((profile) => profile.id === 'papa-og');
+      if (papa?.name === 'Papa OG') papa.name = PAPA_PROFILE_NAME;
+      return saved;
+    }
   } catch { /* beschädigter lokaler Stand wird durch Startprofile ersetzt */ }
   return cloneDefaults();
 }
