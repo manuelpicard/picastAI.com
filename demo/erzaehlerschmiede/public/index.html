@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f2efe8">
+  <meta name="description" content="Ein Sprach- und Schreibatelier für eigene Erzählerprofile und neue Kunibert-Geschichten.">
+  <title>Erzählerschmiede — Geschichten, die nach dir klingen</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <div class="access-gate" id="accessGate" aria-hidden="false">
+    <form class="gate-card" id="accessForm">
+      <div class="brand-mark small-mark" aria-hidden="true"><span>✳</span></div>
+      <p class="eyebrow">PRIVATE VORSCHAU</p>
+      <h1>Die Werkstatt wartet auf dich.</h1>
+      <p class="muted">Gib den Vorschau-Code ein, den du mit dem Link erhalten hast. Der Code gilt nur für diese laufende Demo.</p>
+      <label for="accessCode">Vorschau-Code</label>
+      <input id="accessCode" name="token" type="password" autocomplete="current-password" required>
+      <button class="button button-primary full-width" type="submit">Werkstatt öffnen <span aria-hidden="true">↗</span></button>
+      <p class="form-error" id="gateError" role="alert"></p>
+    </form>
+  </div>
+
+  <div class="app-shell" id="appShell" inert>
+    <aside class="sidebar">
+      <div class="brand-lockup">
+        <div class="brand-mark" aria-hidden="true"><span>✳</span></div>
+        <div><p class="eyebrow">ERZÄHLATELIER</p><strong>Erzählerschmiede</strong></div>
+      </div>
+      <div class="side-section">
+        <div class="section-label-row"><span class="eyebrow">DEINE ERZÄHLER</span><button class="icon-button" id="newProfileButton" type="button" aria-label="Neuen Erzähler anlegen" title="Neuen Erzähler anlegen">＋</button></div>
+        <div class="profile-list" id="profileList"></div>
+      </div>
+      <div class="sidebar-bottom">
+        <div class="local-note"><span class="status-dot"></span><div><strong>Deine Werkstatt</strong><span>Profile bleiben auf diesem Gerät.</span></div></div>
+        <button class="text-button" id="manageDataButton" type="button">Daten &amp; Privatsphäre <span>↗</span></button>
+      </div>
+    </aside>
+
+    <main class="main-area">
+      <header class="topbar">
+        <div class="breadcrumbs"><span>WERKSTATT</span><span class="crumb-separator">/</span><strong id="activeProfileName">Papa OG</strong></div>
+        <div class="topbar-right"><span class="model-chip"><span class="sparkle">✦</span> gpt-5-mini</span><span class="local-pill"><span class="status-dot"></span> lokal gespeichert</span></div>
+      </header>
+
+      <div class="workspace">
+        <section class="conversation-column">
+          <div class="page-intro">
+            <p class="eyebrow" id="modeEyebrow">DIE ERZÄHLERSTIMME AUSWÄHLEN</p>
+            <h1 id="pageTitle">Geschichten bekommen<br><em>eine eigene Stimme.</em></h1>
+            <p class="intro-copy" id="pageDescription">Wähle einen Erzähler, sprich oder schreibe los. Mit jedem freigegebenen Beispiel wird sein Stil genauer.</p>
+          </div>
+
+          <div class="mode-switch" role="tablist" aria-label="Modus auswählen">
+            <button class="mode-tab active" data-mode="chat" role="tab" aria-selected="true" type="button"><span>01</span> Plaudern</button>
+            <button class="mode-tab" data-mode="story" role="tab" aria-selected="false" type="button"><span>02</span> Erzählen</button>
+            <button class="mode-tab" data-mode="forge" role="tab" aria-selected="false" type="button"><span>03</span> Schmieden</button>
+          </div>
+
+          <div class="prompt-strip" id="promptStrip" aria-label="Erzählideen">
+            <button class="prompt-chip" type="button" data-prompt="Erzähl mir den Anfang einer neuen Kunibert-Geschichte.">Eine neue Geschichte</button>
+            <button class="prompt-chip" type="button" data-prompt="Kunibert hörte in der Nacht ein leises Klopfen am Fenster. Erzähl weiter.">Leises Klopfen</button>
+            <button class="prompt-chip" type="button" data-prompt="Was macht eine Geschichte für dich gemütlich und spannend zugleich?">Stil entdecken</button>
+          </div>
+
+          <div class="conversation" id="conversation" aria-live="polite" aria-label="Gesprächsverlauf"></div>
+          <div class="typing-indicator" id="typingIndicator" hidden><span></span><span></span><span></span><small>Die Feder setzt an …</small></div>
+
+          <div class="composer-wrap">
+            <div class="composer" id="composer">
+              <label class="sr-only" for="messageInput">Deine Nachricht</label>
+              <textarea id="messageInput" rows="1" maxlength="1600" placeholder="Was soll die Geschichte erleben?"></textarea>
+              <div class="composer-actions">
+                <div class="composer-tools">
+                  <button class="icon-button mic-button" id="micButton" type="button" aria-label="Spracheingabe starten" title="Spracheingabe starten"><span class="mic-glyph">◉</span></button>
+                  <span class="mic-hint" id="micHint">Zum Sprechen antippen</span>
+                </div>
+                <button class="button button-primary send-button" id="sendButton" type="button">Senden <span aria-hidden="true">↑</span></button>
+              </div>
+            </div>
+            <div class="privacy-line"><span class="privacy-icon">◌</span> Mikrofon nur nach Klick · Audio wird nicht gespeichert · Texte gehen zur Antwortgenerierung an das Modell.</div>
+          </div>
+          <div class="speech-controls"><button class="text-button" id="stopSpeechButton" type="button" hidden>Vorlesen stoppen</button><span id="voiceStatus" aria-live="polite"></span></div>
+        </section>
+
+        <aside class="right-rail">
+          <article class="profile-card" id="profileCard">
+            <div class="card-topline"><span class="eyebrow">AUSGEWÄHLTER ERZÄHLER</span><span class="card-orbit" aria-hidden="true">✳</span></div>
+            <div class="avatar avatar-papa" id="profileAvatar" aria-hidden="true">P</div>
+            <h2 id="cardProfileName">Papa OG</h2>
+            <p class="profile-status" id="profileStatus">Startprofil · noch ohne echte Papa-Dialoge</p>
+            <p class="profile-copy" id="profileCardCopy">Ein warmes Kunibert-Grundprofil aus den vorhandenen Projekt-Prompts. Es behauptet nicht, Papas Originalstil zu rekonstruieren.</p>
+            <div class="training-meter"><div class="meter-label"><span>Freigegebene Beispiele</span><strong id="exampleCount">0</strong></div><div class="meter-track"><span id="meterFill"></span></div></div>
+            <div class="example-list" id="exampleList" aria-label="Freigegebene Stilbeispiele"></div>
+            <button class="button button-secondary full-width" id="trainProfileButton" type="button">Stil weiterentwickeln <span aria-hidden="true">↗</span></button>
+          </article>
+
+          <article class="mini-card workshop-card" id="workshopCard">
+            <div class="mini-icon">✎</div><div><p class="eyebrow">IN DER SCHMIEDE</p><strong id="workshopNudge">Was macht Papas Geschichten unverwechselbar?</strong><p>Fragen beantworten, Beispiele freigeben, Stil formen.</p></div>
+          </article>
+
+          <article class="note-card" id="sourceNote">
+            <span class="note-mark">“</span>
+            <p>„Vertraute Motive. Neue Geschichten. Keine nachgesprochene Stimme.“</p>
+            <span class="note-caption">DAS PRINZIP DER SCHMIEDE</span>
+          </article>
+        </aside>
+      </div>
+    </main>
+  </div>
+
+  <dialog class="modal" id="profileDialog">
+    <form method="dialog" class="modal-card" id="profileForm">
+      <button class="modal-close icon-button" value="cancel" aria-label="Schließen">×</button>
+      <p class="eyebrow">NEUE STIMME</p><h2>Wie soll dein Erzähler heißen?</h2>
+      <label for="profileNameInput">Name</label><input id="profileNameInput" maxlength="48" placeholder="Zum Beispiel: Mooslicht" required>
+      <label for="profileStyleInput">Was ist ihm wichtig?</label><textarea id="profileStyleInput" maxlength="700" rows="4" placeholder="Ruhig, bildhaft, mit einem kleinen Schmunzeln …"></textarea>
+      <div class="modal-actions"><button class="button button-secondary" value="cancel">Abbrechen</button><button class="button button-primary" id="createProfileSubmit" value="default">Erzähler anlegen</button></div>
+    </form>
+  </dialog>
+
+  <dialog class="modal" id="dataDialog">
+    <form method="dialog" class="modal-card data-modal">
+      <button class="modal-close icon-button" value="cancel" aria-label="Schließen">×</button>
+      <p class="eyebrow">DEINE DATEN</p><h2>Deine Werkstatt bleibt deine.</h2>
+      <p class="muted">Erzählerprofile, freigegebene Textbeispiele, Feedback und der lokale Gesprächsverlauf werden in diesem Browser gespeichert. Für Antworten werden deine aktuelle Nachricht, ausgewählte Stilbeispiele und ein kurzer Gesprächskontext an den Modellserver geschickt; dort wird nichts als Trainingsdatensatz abgelegt.</p>
+      <div class="data-actions"><button class="button button-secondary" id="exportButton" type="button">Daten exportieren</button><button class="button button-danger" id="clearDataButton" type="button">Alle lokalen Daten löschen</button></div>
+      <p class="tiny-note">Spracherkennung kann je nach Browser dessen Online-Dienst nutzen. Die App speichert keine Audiodatei und klont keine Stimme.</p>
+    </form>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>
