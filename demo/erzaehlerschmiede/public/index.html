@@ -7,7 +7,7 @@
   <meta name="description" content="Ein Sprach- und Schreibatelier für eigene Erzählerprofile und neue Kunibert-Geschichten.">
   <title>Erzählerschmiede — Geschichten, die nach dir klingen</title>
   <link rel="stylesheet" href="/styles.css">
-  <script src="/app.js" defer></script>
+  <script type="module" src="/app.js"></script>
 </head>
 <body>
   <div class="access-gate" id="accessGate" aria-hidden="false">
@@ -126,7 +126,10 @@
       <button class="modal-close icon-button" value="cancel" aria-label="Schließen">×</button>
       <p class="eyebrow">DEINE DATEN</p><h2>Deine Werkstatt bleibt deine.</h2>
       <p class="muted">Erzählerprofile, freigegebene Textbeispiele, Feedback und der lokale Gesprächsverlauf werden in diesem Browser gespeichert. Für Antworten werden deine aktuelle Nachricht, ausgewählte Stilbeispiele und ein kurzer Gesprächskontext an den Modellserver geschickt; dort wird nichts als Trainingsdatensatz abgelegt.</p>
-      <div class="data-actions"><button class="button button-secondary" id="exportButton" type="button">Daten exportieren</button><button class="button button-danger" id="clearDataButton" type="button">Alle lokalen Daten löschen</button></div>
+      <p class="muted transfer-note">Für Papa OG: Ein Stilpaket enthält nur freigegebene Beispiele und den Stilrahmen – keine privaten Gespräche oder Rückmeldungen. So kannst du es von seinem Browser in deinen importieren.</p>
+      <div class="data-actions"><button class="button button-secondary" id="exportStyleButton" type="button">Stilpaket exportieren</button><button class="button button-secondary" id="importStyleButton" type="button">Stilpaket importieren</button></div>
+      <input id="stylePackageFile" type="file" accept=".json,application/json" hidden>
+      <div class="data-actions"><button class="button button-secondary" id="exportButton" type="button">Vollständiges Backup</button><button class="button button-danger" id="clearDataButton" type="button">Alle lokalen Daten löschen</button></div>
       <p class="tiny-note">Spracherkennung kann je nach Browser dessen Online-Dienst nutzen. Die App speichert keine Audiodatei und klont keine Stimme.</p>
     </form>
   </dialog>

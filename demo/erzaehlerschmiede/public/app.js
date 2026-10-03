@@ -28,6 +28,7 @@ const ui = {
   pageDescription: $('#pageDescription'), workshopNudge: $('#workshopNudge'), promptStrip: $('#promptStrip'),
   profileDialog: $('#profileDialog'), profileForm: $('#profileForm'), profileNameInput: $('#profileNameInput'),
   profileStyleInput: $('#profileStyleInput'), dataDialog: $('#dataDialog'), toast: $('#toast'),
+  exportStyleButton: $('#exportStyleButton'), importStyleButton: $('#importStyleButton'), stylePackageFile: $('#stylePackageFile'),
 };
 let data = readData();
 let activeMode = data.mode || 'chat';
@@ -35,6 +36,7 @@ let token = sessionStorage.getItem(TOKEN_KEY) || '';
 let listening = false;
 let activeRecognition = null;
 let toastTimer;
+import { buildStylePackage, mergeStylePackage, parseStylePackage } from './style-package.mjs';
 
 function cloneDefaults() { return JSON.parse(JSON.stringify(DEFAULT_DATA)); }
 function readData() {
@@ -315,9 +317,42 @@ function createProfile() {
   data.profiles.push(profile); data.currentProfileId = profile.id; activeMode = 'forge';
   saveData(); ui.profileDialog.close(); ui.profileForm.reset(); render(); showToast(`${name} ist angelegt.`);
 }
+function downloadJson(value, filename) {
+  const blob = new Blob([JSON.stringify(value, null, 2)], { type: 'application/json' });
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement('a'); link.href = objectUrl; link.download = filename; link.click();
+  setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+}
 function exportData() {
-  const blob = new Blob([JSON.stringify({ exportedAt: new Date().toISOString(), ...data }, null, 2)], { type: 'application/json' });
-  const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = 'erzaehlerschmiede-daten.json'; link.click(); URL.revokeObjectURL(link.href);
+  downloadJson({ exportedAt: new Date().toISOString(), ...data }, 'erzaehlerschmiede-backup.json');
+  showToast('Vollständiges Backup heruntergeladen. Es enthält auch Chats und Feedback.');
+}
+function exportStyle() {
+  try {
+    downloadJson(buildStylePackage(currentProfile()), 'erzaehlerschmiede-stilpaket.json');
+    showToast('Stilpaket heruntergeladen — nur freigegebene Beispiele, keine Chats.');
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+async function importStyle(file) {
+  if (!file) return;
+  try {
+    if (file.size > 64 * 1024) throw new Error('Das Stilpaket ist größer als 64 KB.');
+    const packageProfile = parseStylePackage(JSON.parse(await file.text()));
+    const existing = data.profiles.some((profile) => profile.kind === packageProfile.kind && profile.name.trim().toLocaleLowerCase() === packageProfile.name.toLocaleLowerCase());
+    const details = existing
+      ? 'Nur neue Stilbeispiele werden ergänzt; dein lokaler Stil, Chat und Feedback bleiben erhalten.'
+      : 'Ein neues Profil wird angelegt; Gespräche und Feedback werden nicht importiert.';
+    if (!window.confirm(`Stilpaket „${packageProfile.name}“ mit ${packageProfile.references.length} freigegebenen Beispielen importieren?\n\n${details}`)) return;
+    const result = mergeStylePackage(data, packageProfile);
+    data.currentProfileId = result.profile.id; activeMode = 'forge'; saveData(); render();
+    showToast(result.added ? `${result.added} Stilbeispiele ${result.created ? 'importiert' : 'ergänzt'}.` : 'Es waren keine neuen Stilbeispiele enthalten.');
+  } catch (error) {
+    showToast(error.message || 'Das Stilpaket konnte nicht importiert werden.');
+  } finally {
+    ui.stylePackageFile.value = '';
+  }
 }
 function clearLocalData() {
   if (!window.confirm('Alle lokalen Erzählerprofile, Beispiele, Rückmeldungen und Gesprächsverläufe auf diesem Gerät löschen?')) return;
@@ -346,5 +381,8 @@ $('#trainProfileButton').addEventListener('click', () => { activeMode = 'forge';
 $('#workshopCard').addEventListener('click', () => { activeMode = 'forge'; saveData(); renderMode(); renderConversation(); ui.input.focus(); });
 $('#manageDataButton').addEventListener('click', () => ui.dataDialog.showModal());
 $('#exportButton').addEventListener('click', exportData);
+ui.exportStyleButton.addEventListener('click', exportStyle);
+ui.importStyleButton.addEventListener('click', () => ui.stylePackageFile.click());
+ui.stylePackageFile.addEventListener('change', () => importStyle(ui.stylePackageFile.files?.[0]));
 $('#clearDataButton').addEventListener('click', clearLocalData);
 verifySession();

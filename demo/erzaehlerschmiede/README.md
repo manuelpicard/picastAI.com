@@ -10,6 +10,7 @@ Ein eigenständiger Browser-Prototyp für Sprache, Kunibert-Geschichten und loka
 - Auswählbares „Papa OG“-Startprofil mit Kunibert-Welt und vorhandenem Projekt-Stilrahmen. **Das Repository enthält keine Papa-Dialoge; das Startprofil ist nicht aus echten Interaktionen mit Papa trainiert und rekonstruiert seinen Originalstil nicht.**
 - Eigene Erzählerprofile; nur ausdrücklich freigegebene Textbeispiele und Korrekturen wirken als Stilkontext.
 - Gesprächsverlauf, Profile, Beispiele und Feedback bleiben im `localStorage` des jeweiligen Browsers; Export und vollständiges Löschen sind enthalten.
+- Stilpaket-Export/-Import überträgt nur den ausgewählten Profilstil und ausdrücklich freigegebene Beispiele zwischen Browsern. Ein vollständiges Backup enthält zusätzlich lokale Chats und Feedback.
 - Die Nachricht und höchstens acht vorherige Gesprächsbeiträge sowie bis zu fünf freigegebene Beispiele werden zur Antwortgenerierung an den Modellserver gesendet. Es gibt keine Speicherung des persönlichen Lernstands auf dem Server.
 
 ## Voraussetzungen
@@ -35,7 +36,7 @@ node server.mjs
 ## Datenschutz und Grenzen
 
 - Audio wird von der App nicht aufgezeichnet oder gespeichert. Die browserabhängige Spracherkennung kann Audio an den jeweiligen Browserdienst senden; alternativ kann die Eingabe getippt werden.
-- Text, den du absendest, geht für die Antwort an den Modellserver. Profile und Lernstände werden nicht mitgesendet oder serverseitig abgelegt; der ausgewählte Stil und die für eine Antwort benötigten Beispiele werden als Prompt-Kontext übertragen.
+- Text, den du absendest, geht für die Antwort an den Modellserver. Profile und Lernstände werden nicht mitgesendet oder serverseitig abgelegt; der ausgewählte Stil und die für eine Antwort benötigten Beispiele werden als Prompt-Kontext übertragen. Der Stilpaket-Transfer erfolgt lokal über eine Datei und sendet nichts an den Server.
 - Stilübernahme beruht auf freigegebenen Textbeispielen als Prompt-Kontext, **nicht auf Fine-Tuning**. Nutzer müssen Papa-Beispiele ausdrücklich freigeben.
 - Der Bot ist nicht Papa, behauptet keine authentische Rekonstruktion und imitiert keine echte menschliche Stimme.
 - Der Prototyp ist noch kein fertiges, unbeaufsichtigt nutzbares Kinderprodukt.
