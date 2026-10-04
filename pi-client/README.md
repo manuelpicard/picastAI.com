@@ -38,6 +38,20 @@ python3 -m kunibert_pi.api_send \
 
 Der Client sendet `multipart/form-data` an `POST /v1/turn`, authentifiziert mit Geräte-Token und Geräte-ID, lädt anschließend genau einmal `GET /v1/turn/{turn_id}/audio` und validiert die WAV-Antwort. Der API-Client folgt keinen Redirects und schreibt keine Transkripte oder Tokens in die Ausgabe. Für `geschichte` und `weiter` kann `--wav` entfallen; für `frage` ist sie zwingend erforderlich.
 
+## Vollständiger End-to-End-Test auf dem Pi
+
+Wenn LED, Taster, Mikrofon und Lautsprecher angeschlossen sind und der FastAPI-Server läuft, kann der gesamte Weg überwacht getestet werden:
+
+```bash
+python3 -m kunibert_pi.e2e_test --online \
+  --input 'plughw:CARD=Device,DEV=0' \
+  --output 'plughw:CARD=Speaker,DEV=0'
+```
+
+`--online` ist absichtlich zwingend: Dabei wird echte Kinder-/Testaudio an den konfigurierten Server gesendet. Vor dem Start prüft das Skript `arecord`, `aplay`, Gerätezugang und `GET /health`. Danach gilt: **GPIO5** = Aufnahme einer Frage, **GPIO6** = Geschichte ohne Aufnahme, **GPIO22** = Mikrofon-Aus, **GPIO17** = LED. Die Antwort wird geladen, im RAM validiert und abgespielt; der Geschichtenstand liegt standardmäßig nur in `/dev/shm`.
+
+Der Test macht keine automatischen Wiederholungen. Bei Fehlern wird der Zustand lokal zurückgesetzt und das Skript bleibt für den nächsten beaufsichtigten Tastendruck bereit. Mit `Ctrl-C` werden GPIO und LED sauber geschlossen. Das ist ein Entwickler-/Hardwaretest und noch kein unbeaufsichtigter Kinderbetrieb.
+
 `--state-file` hält den kleinen Geschichtenstand (Teil, Kurzfassung, offene Fäden) zwischen zwei Aufrufen fest. Er wird erst nach erfolgreichem Audioabruf geschrieben, damit kein Teil übersprungen wird. Datei-Rechte `0600`. Empfohlen ist `/dev/shm`: liegt im Arbeitsspeicher und ist nach einem Neustart weg. Für `--mode frage` ist `--wav` Pflicht, für `geschichte` und `weiter` optional.
 
 ## GPIO-Version (Durchstich 3)

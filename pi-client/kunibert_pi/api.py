@@ -132,6 +132,19 @@ class KunibertAPI:
             raise ApiError("Server lieferte ungültiges Audio") from exc
         return body
 
+    def check_health(self) -> bool:
+        """Check the configured server without sending child audio."""
+        body, mime = self._request("/health", max_bytes=4096, timeout=10)
+        if mime != "application/json":
+            raise ApiError("Healthcheck lieferte kein JSON")
+        try:
+            result = json.loads(body)
+        except (TypeError, ValueError, UnicodeDecodeError) as exc:
+            raise ApiError("Ungültige Healthcheck-Antwort") from exc
+        if not isinstance(result, dict) or result.get("status") != "ok":
+            raise ApiError("Server ist nicht bereit")
+        return True
+
 
 def validate_wav(data: bytes, *, max_seconds: float, input_audio: bool) -> None:
     import io

@@ -85,6 +85,17 @@ class ClientTests(unittest.TestCase):
                 self.api.fetch_audio(Turn("valid", "frage", {}))
             self.assertNotIn("sensitive transcript", str(ctx.exception))
 
+    def test_healthcheck_accepts_only_status_ok(self):
+        with patch.object(self.api.opener, "open", return_value=FakeResponse(
+                b'{"status":"ok"}', "application/json")):
+            self.assertTrue(self.api.check_health())
+
+    def test_healthcheck_rejects_not_ready_server(self):
+        with patch.object(self.api.opener, "open", return_value=FakeResponse(
+                b'{"status":"starting"}', "application/json")):
+            with self.assertRaises(ApiError):
+                self.api.check_health()
+
     def test_playback_invokes_aplay_and_removes_temp_file(self):
         proc = Mock()
         proc.wait.return_value = 0
