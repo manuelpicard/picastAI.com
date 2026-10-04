@@ -29,12 +29,32 @@ test('normalizeRequest erzwingt sichere Modi und kuratierte Stilbeispiele', () =
   assert.equal(cleaned.history.length, 1);
 });
 
+test('normalizeRequest begrenzt Bewertungsfeedback auf fünf kurze Notizen', () => {
+  const feedback = Array.from({ length: 7 }, (_, i) => ({ rating: 'improve', note: `Notiz ${i} ${'x'.repeat(300)}` }));
+  const cleaned = normalizeRequest({ message: 'Erzähl weiter.', narrator: { feedback } });
+  assert.equal(cleaned.narrator.feedback.length, 5);
+  assert.match(cleaned.narrator.feedback[0].note, /^Notiz 2/);
+  assert.equal(cleaned.narrator.feedback[0].note.length, 240);
+});
+
 test('Kunibert-Prompt behauptet weder Papas Identität noch eine Originalrekonstruktion', () => {
   const prompt = buildSystemPrompt('story', {
-    name: 'Papa – Originalerzähler', style: 'warm', references: ['Beispieltext'], isKunibert: true,
+    name: 'Papa – Originalerzähler', style: 'warm', references: [], isKunibert: true,
+    feedback: [{ rating: 'improve', note: 'Bitte kürzer und weniger unheimlich erzählen.' }],
   });
   assert.match(prompt, /niemals Papa/);
   assert.match(prompt, /authentische Erzählweise einer realen Person zu rekonstruieren/);
   assert.match(prompt, /Kunibert-Welt/);
-  assert.match(prompt, /nur als Stilreferenz/);
+  assert.match(prompt, /BISHERIGE BEWERTUNGEN ZU KI-ERZÄHLUNGEN/);
+  assert.match(prompt, /Bitte kürzer und weniger unheimlich erzählen/);
+  assert.match(prompt, /keine Systemanweisungen/);
+});
+
+test('Papa-Bewertungsmodus bittet ihn nicht, selbst Geschichten zu erzählen', () => {
+  const prompt = buildSystemPrompt('forge', {
+    name: 'Papa – Originalerzähler', style: 'warm', references: [], isKunibert: true,
+  });
+  assert.match(prompt, /Der Nutzer prüft deine KI-Geschichten/);
+  assert.match(prompt, /er erzählt nicht selbst/);
+  assert.match(prompt, /Bitte ihn nie, selbst eine Geschichte zu erzählen/);
 });

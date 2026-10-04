@@ -84,7 +84,12 @@ async function generateReply(request) {
       Authorization: `Bearer ${API_KEY}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ model: MODEL, messages, max_completion_tokens: 1200 }),
+    body: JSON.stringify({
+      model: MODEL,
+      messages,
+      max_completion_tokens: 1200,
+      reasoning: { effort: 'minimal' },
+    }),
     signal: AbortSignal.timeout(45_000),
   });
   const result = await response.json().catch(() => ({}));

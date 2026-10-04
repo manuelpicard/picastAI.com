@@ -22,7 +22,7 @@ const ui = {
   gate: $('#accessGate'), gateForm: $('#accessForm'), gateError: $('#gateError'), accessCode: $('#accessCode'),
   shell: $('#appShell'), profileList: $('#profileList'), activeProfileName: $('#activeProfileName'),
   cardProfileName: $('#cardProfileName'), profileStatus: $('#profileStatus'), profileCardCopy: $('#profileCardCopy'),
-  exampleCount: $('#exampleCount'), meterFill: $('#meterFill'), profileAvatar: $('#profileAvatar'), exampleList: $('#exampleList'),
+  exampleCount: $('#exampleCount'), profileMeasureLabel: $('#profileMeasureLabel'), meterFill: $('#meterFill'), profileAvatar: $('#profileAvatar'), exampleList: $('#exampleList'),
   conversation: $('#conversation'), input: $('#messageInput'), send: $('#sendButton'), mic: $('#micButton'),
   micHint: $('#micHint'), voiceStatus: $('#voiceStatus'), stopSpeech: $('#stopSpeechButton'),
   typing: $('#typingIndicator'), modeEyebrow: $('#modeEyebrow'), pageTitle: $('#pageTitle'),
@@ -30,6 +30,7 @@ const ui = {
   profileDialog: $('#profileDialog'), profileForm: $('#profileForm'), profileNameInput: $('#profileNameInput'),
   profileStyleInput: $('#profileStyleInput'), dataDialog: $('#dataDialog'), toast: $('#toast'),
   exportStyleButton: $('#exportStyleButton'), importStyleButton: $('#importStyleButton'), stylePackageFile: $('#stylePackageFile'),
+  stylePackageActions: $('#stylePackageActions'), feedbackActions: $('#feedbackActions'), exportFeedbackButton: $('#exportFeedbackButton'),
 };
 let data = readData();
 let activeMode = data.mode || 'chat';
@@ -107,7 +108,9 @@ function renderProfileList() {
     const title = document.createElement('strong');
     title.textContent = profile.name;
     const sub = document.createElement('small');
-    sub.textContent = profile.kind === 'kunibert' ? 'Kunibert · Startprofil' : `${profile.references.length} Stilbeispiele`;
+    sub.textContent = profile.kind === 'kunibert'
+      ? `Kunibert · ${Array.isArray(profile.feedback) ? profile.feedback.length : 0} Rückmeldungen`
+      : `${profile.references.length} Stilbeispiele`;
     text.append(title, sub); button.append(avatar, text);
     button.addEventListener('click', () => {
       data.currentProfileId = profile.id;
@@ -119,57 +122,83 @@ function renderProfileList() {
 function renderProfileCard() {
   const profile = currentProfile();
   const isPapa = profile.kind === 'kunibert';
+  const feedback = Array.isArray(profile.feedback) ? profile.feedback : [];
+  const references = Array.isArray(profile.references) ? profile.references : [];
+  const records = isPapa ? feedback : references;
   ui.activeProfileName.textContent = profile.name;
   ui.cardProfileName.textContent = profile.name;
   ui.profileAvatar.textContent = profile.name.trim().slice(0, 1).toUpperCase() || 'E';
   ui.profileAvatar.classList.toggle('personal', !isPapa);
   ui.profileStatus.textContent = isPapa
-    ? (profile.references.length ? `Stilprofil · ${profile.references.length} freigegebene Beispiele` : 'Startprofil · noch ohne echte Papa-Dialoge')
-    : (profile.references.length ? `Persönliches Profil · ${profile.references.length} Stilbeispiele` : 'Persönliches Startprofil');
+    ? (feedback.length ? `Erzählprofil · ${feedback.length} Rückmeldungen von Papa` : 'Startprofil · bereit für Papas Bewertungen')
+    : (references.length ? `Persönliches Profil · ${references.length} Stilbeispiele` : 'Persönliches Startprofil');
   ui.profileCardCopy.textContent = isPapa
-    ? 'Ein warmes Kunibert-Grundprofil aus den vorhandenen Projekt-Prompts. Es behauptet nicht, Papas Originalstil zu rekonstruieren.'
+    ? 'Papa bewertet die KI-Erzählungen. Seine kurzen Rückmeldungen helfen bei künftigen Geschichten; er muss selbst nichts erzählen.'
     : 'Deine eigenen Stilwünsche und freigegebenen Beispiele formen diesen Erzähler – lokal in diesem Browser.';
-  ui.exampleCount.textContent = String(profile.references.length);
-  ui.meterFill.style.width = `${Math.min(100, profile.references.length * 12)}%`;
+  ui.profileMeasureLabel.textContent = isPapa ? 'Rückmeldungen von Papa' : 'Freigegebene Beispiele';
+  ui.exampleList.setAttribute('aria-label', isPapa ? 'Papas Rückmeldungen' : 'Freigegebene Stilbeispiele');
+  ui.exampleCount.textContent = String(records.length);
+  ui.meterFill.style.width = `${Math.min(100, records.length * 12)}%`;
   ui.exampleList.replaceChildren();
-  profile.references.forEach((reference, index) => {
+  const offset = Math.max(0, records.length - 5);
+  records.slice(-5).forEach((record, index) => {
+    const summary = isPapa
+      ? (record.note || record.correction || (record.rating === 'up' ? 'Als gelungen bewertet' : 'Verbesserungshinweis'))
+      : record;
     const row = document.createElement('div'); row.className = 'example-row';
-    const text = document.createElement('span'); text.textContent = reference.length > 64 ? `${reference.slice(0, 64)}…` : reference;
+    const text = document.createElement('span'); text.textContent = summary.length > 64 ? `${summary.slice(0, 64)}…` : summary;
     const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'example-remove'; remove.textContent = '×';
-    remove.setAttribute('aria-label', `Beispiel ${index + 1} entfernen`);
-    remove.addEventListener('click', () => { profile.references.splice(index, 1); saveData(); render(); showToast('Stilbeispiel entfernt.'); });
+    remove.setAttribute('aria-label', `${isPapa ? 'Rückmeldung' : 'Beispiel'} ${offset + index + 1} entfernen`);
+    remove.addEventListener('click', () => {
+      records.splice(offset + index, 1); saveData(); render();
+      showToast(isPapa ? 'Rückmeldung entfernt.' : 'Stilbeispiel entfernt.');
+    });
     row.append(text, remove); ui.exampleList.append(row);
   });
-  ui.workshopNudge.textContent = isPapa ? 'Was macht Papas Geschichten unverwechselbar?' : `Was soll ${profile.name} besonders gut können?`;
+  ui.workshopNudge.textContent = isPapa ? 'Hör eine KI-Geschichte an und bewerte sie.' : `Was soll ${profile.name} besonders gut können?`;
+  ui.stylePackageActions.hidden = isPapa;
+  ui.feedbackActions.hidden = !isPapa;
+  ui.exportFeedbackButton.disabled = feedback.length === 0;
 }
 function renderMode() {
+  const isPapa = currentProfile().kind === 'kunibert';
   document.querySelectorAll('.mode-tab').forEach((button) => {
     const selected = button.dataset.mode === activeMode;
     button.classList.toggle('active', selected);
     button.setAttribute('aria-selected', String(selected));
+    const label = Array.from(button.childNodes).find((node) => node.nodeType === Node.TEXT_NODE);
+    if (label) label.textContent = isPapa
+      ? ({ chat: ' Testen', story: ' Erzählen', forge: ' Bewerten' }[button.dataset.mode])
+      : ({ chat: ' Plaudern', story: ' Erzählen', forge: ' Schmieden' }[button.dataset.mode]);
   });
   const copy = {
     chat: { eyebrow: 'DIE ERZÄHLERSTIMME AUSWÄHLEN', title: 'Geschichten bekommen<br><em>eine eigene Stimme.</em>', description: 'Wähle einen Erzähler, sprich oder schreibe los. Mit jedem freigegebenen Beispiel wird sein Stil genauer.', placeholder: 'Was soll die Geschichte erleben?' },
     story: { eyebrow: 'EINE GESCHICHTE BEGINNT', title: 'Ein Faden aus Worten.<br><em>Und du mittendrin.</em>', description: 'Gib den ersten Einfall vor. Dein Erzähler spinnt ihn weiter – und du lenkst die Geschichte mit.', placeholder: 'Wo soll Kuniberts Weg diesmal hinführen?' },
     forge: { eyebrow: 'DIE ERZÄHLERSCHMIEDE', title: 'Stil entsteht im<br><em>gemeinsamen Erzählen.</em>', description: 'Stelle Fragen, gib Textbeispiele frei und forme einen Erzähler. Nichts wird ohne deine Zustimmung zum Stilbeispiel.', placeholder: 'Erzähl, was an einer guten Geschichte hängenbleiben soll …' },
   }[activeMode];
+  if (isPapa) Object.assign(copy, {
+    chat: { eyebrow: 'KI-GESCHICHTEN BEWERTEN', title: 'Lies die Geschichte.<br><em>Bewerte die KI.</em>', description: 'Lass dir eine Kunibert-Geschichte erzählen. Sag der KI, was gelungen ist und was sie beim nächsten Mal anders machen soll.', placeholder: 'Bitte erzähle eine Kunibert-Geschichte zur Bewertung.' },
+    story: { eyebrow: 'KUNIBERT ERZÄHLT', title: 'Die KI erzählt.<br><em>Du gibst Feedback.</em>', description: 'Wähle eine Erzählidee oder bitte um eine Geschichte. Danach kannst du sie als gelungen markieren oder eine Rückmeldung geben.', placeholder: 'Erzähl eine neue Kunibert-Geschichte, die ich bewerten kann.' },
+    forge: { eyebrow: 'PAPAS RÜCKMELDUNG', title: 'Du prüfst.<br><em>Die KI erzählt.</em>', description: 'Lass eine Geschichte erzählen oder hör dir eine an. Sag anschließend, was gelungen ist und was die KI nächstes Mal anders machen soll. Du musst keine eigenen Geschichten oder Textbeispiele beisteuern.', placeholder: 'Was hat dir gefallen? Was sollte die KI ändern?' },
+  }[activeMode]);
   ui.modeEyebrow.textContent = copy.eyebrow;
   ui.pageTitle.innerHTML = copy.title;
   ui.pageDescription.textContent = copy.description;
   ui.input.placeholder = copy.placeholder;
-  ui.promptStrip.hidden = activeMode === 'chat';
+  ui.promptStrip.hidden = activeMode === 'chat' && !isPapa;
   if (activeMode === 'forge') {
     const prompts = currentProfile().kind === 'kunibert'
-      ? ['Wie begann Papa eine Kunibert-Geschichte?', 'Wie machte er Spannung, ohne Angst zu machen?', 'Welche Sätze oder Bilder sind typisch für ihn?']
+      ? ['Erzähl eine neue Kunibert-Geschichte zur Bewertung.', 'Bitte künftig kürzere Geschichten.', 'Mehr Humor, weniger Spannung.']
       : ['Welche Stimmung soll dein Erzähler tragen?', 'Wie soll er mit Spannung umgehen?', 'Wie soll sich ein gutes Ende anfühlen?'];
     ui.promptStrip.replaceChildren(...prompts.map((prompt) => {
       const button = document.createElement('button'); button.className = 'prompt-chip'; button.type = 'button'; button.dataset.prompt = prompt; button.textContent = prompt; return button;
     }));
   }
   if (activeMode === 'story') {
-    ui.promptStrip.replaceChildren(...[
-      'Ein neuer Morgen im Dachzimmer', 'Ein Hinweis der Hexe', 'Kunibert und ein verschwundener Gegenstand',
-    ].map((prompt) => {
+    const prompts = isPapa
+      ? ['Erzähl eine Kunibert-Geschichte mit einem Rätsel.', 'Erzähl eine kurze, gemütliche Geschichte.', 'Erzähl eine spannende, aber nicht unheimliche Geschichte.']
+      : ['Ein neuer Morgen im Dachzimmer', 'Ein Hinweis der Hexe', 'Kunibert und ein verschwundener Gegenstand'];
+    ui.promptStrip.replaceChildren(...prompts.map((prompt) => {
       const button = document.createElement('button'); button.className = 'prompt-chip'; button.type = 'button'; button.dataset.prompt = prompt; button.textContent = prompt; return button;
     }));
   }
@@ -182,10 +211,15 @@ function renderConversation() {
     const empty = document.createElement('div'); empty.className = 'empty-state';
     const inner = document.createElement('div');
     const mark = document.createElement('div'); mark.className = 'empty-mark'; mark.textContent = '✳';
-    const title = document.createElement('strong'); title.textContent = activeMode === 'forge' ? 'Hier beginnt das gemeinsame Lernen.' : 'Ein leeres Blatt wartet.';
-    const description = document.createElement('p'); description.textContent = activeMode === 'forge'
-      ? 'Sprich oder schreibe. Wenn ein Satz wirklich den Stil trifft, gib ihn ausdrücklich frei.'
-      : 'Wähle eine Idee, stelle eine Frage oder drücke das Mikrofon.';
+    const isPapa = profile.kind === 'kunibert';
+    const title = document.createElement('strong'); title.textContent = isPapa
+      ? (activeMode === 'forge' ? 'Dein Urteil zählt.' : 'Lass die KI erzählen.')
+      : (activeMode === 'forge' ? 'Hier beginnt das gemeinsame Lernen.' : 'Ein leeres Blatt wartet.');
+    const description = document.createElement('p'); description.textContent = isPapa
+      ? 'Wähle eine Erzählidee oder bitte die KI um eine Geschichte. Danach kannst du bewerten, was gelungen ist oder anders werden soll.'
+      : activeMode === 'forge'
+        ? 'Sprich oder schreibe. Wenn ein Satz wirklich den Stil trifft, gib ihn ausdrücklich frei.'
+        : 'Wähle eine Idee, stelle eine Frage oder drücke das Mikrofon.';
     inner.append(mark, title, description); empty.append(inner); ui.conversation.append(empty); return;
   }
   for (const message of messages.slice(-40)) {
@@ -198,16 +232,18 @@ function renderConversation() {
     if (message.role === 'assistant') {
       const tools = document.createElement('div'); tools.className = 'message-tools';
       const speak = document.createElement('button'); speak.type = 'button'; speak.textContent = 'Vorlesen'; speak.addEventListener('click', () => speakText(message.content));
-      const like = document.createElement('button'); like.type = 'button'; like.textContent = 'Gefällt mir'; like.addEventListener('click', () => {
-        profile.feedback.push({ rating: 'up', text: message.content, createdAt: new Date().toISOString() }); saveData(); showToast('Feedback lokal gespeichert.');
+      const like = document.createElement('button'); like.type = 'button'; like.textContent = 'Gut gelungen'; like.addEventListener('click', () => {
+        profile.feedback ||= [];
+        profile.feedback.push({ rating: 'up', note: 'Diese Geschichte war gelungen.', createdAt: new Date().toISOString() });
+        profile.feedback = profile.feedback.slice(-40); saveData(); render(); showToast('Bewertung gespeichert und für künftige Antworten vorgemerkt.');
       });
-      const improve = document.createElement('button'); improve.type = 'button'; improve.textContent = 'Verbessern'; improve.addEventListener('click', () => showFeedbackForm(wrap, profile, message));
+      const improve = document.createElement('button'); improve.type = 'button'; improve.textContent = 'Feedback geben'; improve.addEventListener('click', () => showFeedbackForm(wrap, profile, message));
       tools.append(speak, like, improve); wrap.append(tools);
     }
-    if (message.role === 'user' && activeMode === 'forge') {
+    if (message.role === 'user' && activeMode === 'forge' && profile.kind !== 'kunibert') {
       const tools = document.createElement('div'); tools.className = 'message-tools';
       const approve = document.createElement('button'); approve.type = 'button';
-      approve.textContent = message.approved ? '✓ Als Stilbeispiel freigegeben' : (profile.kind === 'kunibert' ? 'Als Papa-Textbeispiel freigeben' : 'Als Stilbeispiel freigeben');
+      approve.textContent = message.approved ? '✓ Als Stilbeispiel freigegeben' : 'Als Stilbeispiel freigeben';
       approve.disabled = Boolean(message.approved);
       approve.addEventListener('click', () => {
         profile.references.push(message.content.slice(0, 700)); profile.references = profile.references.slice(-5);
@@ -221,18 +257,28 @@ function renderConversation() {
 }
 function showFeedbackForm(wrap, profile, assistantMessage) {
   if (wrap.querySelector('.feedback-form')) return;
+  const isPapa = profile.kind === 'kunibert';
   const form = document.createElement('form'); form.className = 'feedback-form';
-  const textarea = document.createElement('textarea'); textarea.rows = 3; textarea.maxLength = 700; textarea.placeholder = 'Wie hätte die Antwort besser klingen sollen?';
+  const textarea = document.createElement('textarea'); textarea.rows = 3; textarea.maxLength = 700;
+  textarea.placeholder = isPapa ? 'Was hat dir gefallen? Was soll die KI künftig anders machen?' : 'Wie hätte die Antwort besser klingen sollen?';
   const label = document.createElement('label'); const check = document.createElement('input'); check.type = 'checkbox';
   label.append(check, document.createTextNode('Korrektur als Stilbeispiel freigeben'));
   const save = document.createElement('button'); save.type = 'submit'; save.textContent = 'Feedback speichern';
-  form.append(textarea, label, save);
+  form.append(textarea);
+  if (!isPapa) form.append(label);
+  form.append(save);
   form.addEventListener('submit', (event) => {
     event.preventDefault();
     const correction = textarea.value.trim();
-    profile.feedback.push({ rating: 'improve', original: assistantMessage.content, correction, createdAt: new Date().toISOString() });
-    if (check.checked && correction) profile.references = [...profile.references, correction.slice(0, 700)].slice(-5);
-    saveData(); render(); showToast(check.checked && correction ? 'Feedback und Stilbeispiel lokal gespeichert.' : 'Feedback lokal gespeichert.');
+    if (!correction) { showToast('Schreib eine kurze Rückmeldung.'); return; }
+    profile.feedback ||= [];
+    profile.feedback.push(isPapa
+      ? { rating: 'improve', note: correction.slice(0, 700), createdAt: new Date().toISOString() }
+      : { rating: 'improve', original: assistantMessage.content, correction: correction.slice(0, 700), createdAt: new Date().toISOString() });
+    profile.feedback = profile.feedback.slice(-40);
+    if (!isPapa && check.checked) profile.references = [...profile.references, correction.slice(0, 700)].slice(-5);
+    saveData(); render();
+    showToast(isPapa ? 'Rückmeldung gespeichert und für künftige Geschichten vorgemerkt.' : (check.checked ? 'Feedback und Stilbeispiel lokal gespeichert.' : 'Feedback lokal gespeichert.'));
   });
   wrap.append(form); textarea.focus();
 }
@@ -261,7 +307,11 @@ async function sendMessage(explicitMessage) {
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({
         message, mode: activeMode, history,
-        narrator: { name: profile.name, kind: profile.kind, isKunibert: profile.kind === 'kunibert', style: profile.style, references: profile.references },
+        narrator: {
+          name: profile.name, kind: profile.kind, isKunibert: profile.kind === 'kunibert', style: profile.style,
+          references: profile.kind === 'kunibert' ? [] : profile.references,
+          feedback: profile.feedback || [],
+        },
       }),
     });
     const result = await response.json().catch(() => ({}));
@@ -331,6 +381,20 @@ function exportData() {
   downloadJson({ exportedAt: new Date().toISOString(), ...data }, 'erzaehlerschmiede-backup.json');
   showToast('Vollständiges Backup heruntergeladen. Es enthält auch Chats und Feedback.');
 }
+function exportPapaFeedback() {
+  const profile = data.profiles.find((item) => item.id === 'papa-og');
+  const feedback = (profile?.feedback || []).map((item) => ({
+    rating: item.rating === 'up' ? 'up' : 'improve',
+    note: String(item.note || item.correction || (item.rating === 'up' ? 'Als gelungen bewertet.' : 'Verbesserungshinweis.')).trim().slice(0, 240),
+    createdAt: item.createdAt || null,
+  }));
+  if (!feedback.length) { showToast('Es gibt noch keine Rückmeldungen zum Exportieren.'); return; }
+  downloadJson({
+    format: 'ritter-kunibert-papa-feedback', version: 1,
+    exportedAt: new Date().toISOString(), profile: profile.name, feedback,
+  }, 'ritter-kunibert-papa-feedback.json');
+  showToast('Feedback exportiert — ohne Chats oder KI-Geschichten.');
+}
 function exportStyle() {
   try {
     downloadJson(buildStylePackage(currentProfile()), 'erzaehlerschmiede-stilpaket.json');
@@ -385,6 +449,7 @@ $('#trainProfileButton').addEventListener('click', () => { activeMode = 'forge';
 $('#workshopCard').addEventListener('click', () => { activeMode = 'forge'; saveData(); renderMode(); renderConversation(); ui.input.focus(); });
 $('#manageDataButton').addEventListener('click', () => ui.dataDialog.showModal());
 $('#exportButton').addEventListener('click', exportData);
+ui.exportFeedbackButton.addEventListener('click', exportPapaFeedback);
 ui.exportStyleButton.addEventListener('click', exportStyle);
 ui.importStyleButton.addEventListener('click', () => ui.stylePackageFile.click());
 ui.stylePackageFile.addEventListener('change', () => importStyle(ui.stylePackageFile.files?.[0]));
