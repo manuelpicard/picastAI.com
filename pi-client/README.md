@@ -24,6 +24,34 @@ python3 -m kunibert_pi --mode weiter     --state-file /dev/shm/kunibert.json    
 python3 -m unittest discover -s tests -v
 ```
 
+Für einen reinen API-Test ohne Lautsprecher kann die Aufnahme gesendet und die WAV-Antwort gespeichert werden:
+
+```bash
+export KUNIBERT_API_BASE='http://127.0.0.1:8000'
+export KUNIBERT_DEVICE_ID='prototype-1'
+export KUNIBERT_DEVICE_TOKEN='…'
+python3 -m kunibert_pi.api_send \
+  --wav frage.wav \
+  --mode frage \
+  --output /dev/shm/kunibert-antwort.wav
+```
+
+Der Client sendet `multipart/form-data` an `POST /v1/turn`, authentifiziert mit Geräte-Token und Geräte-ID, lädt anschließend genau einmal `GET /v1/turn/{turn_id}/audio` und validiert die WAV-Antwort. Der API-Client folgt keinen Redirects und schreibt keine Transkripte oder Tokens in die Ausgabe. Für `geschichte` und `weiter` kann `--wav` entfallen; für `frage` ist sie zwingend erforderlich.
+
+## Vollständiger End-to-End-Test auf dem Pi
+
+Wenn LED, Taster, Mikrofon und Lautsprecher angeschlossen sind und der FastAPI-Server läuft, kann der gesamte Weg überwacht getestet werden:
+
+```bash
+python3 -m kunibert_pi.e2e_test --online \
+  --input 'plughw:CARD=Device,DEV=0' \
+  --output 'plughw:CARD=Speaker,DEV=0'
+```
+
+`--online` ist absichtlich zwingend: Dabei wird echte Kinder-/Testaudio an den konfigurierten Server gesendet. Vor dem Start prüft das Skript `arecord`, `aplay`, Gerätezugang und `GET /health`. Danach gilt: **GPIO5** = Aufnahme einer Frage, **GPIO6** = Geschichte ohne Aufnahme, **GPIO22** = Mikrofon-Aus, **GPIO17** = LED. Die Antwort wird geladen, im RAM validiert und abgespielt; der Geschichtenstand liegt standardmäßig nur in `/dev/shm`.
+
+Der Test macht keine automatischen Wiederholungen. Bei Fehlern wird der Zustand lokal zurückgesetzt und das Skript bleibt für den nächsten beaufsichtigten Tastendruck bereit. Mit `Ctrl-C` werden GPIO und LED sauber geschlossen. Das ist ein Entwickler-/Hardwaretest und noch kein unbeaufsichtigter Kinderbetrieb.
+
 `--state-file` hält den kleinen Geschichtenstand (Teil, Kurzfassung, offene Fäden) zwischen zwei Aufrufen fest. Er wird erst nach erfolgreichem Audioabruf geschrieben, damit kein Teil übersprungen wird. Datei-Rechte `0600`. Empfohlen ist `/dev/shm`: liegt im Arbeitsspeicher und ist nach einem Neustart weg. Für `--mode frage` ist `--wav` Pflicht, für `geschichte` und `weiter` optional.
 
 ## GPIO-Version (Durchstich 3)
@@ -77,6 +105,20 @@ python3 -m kunibert_pi.led_demo --state aufnahme --seconds 5
 python3 -m kunibert_pi.led_demo --state wiedergabe --seconds 5
 python3 -m kunibert_pi.led_demo --cycle
 ```
+
+## Aufnahmeknopf und LED gemeinsam testen
+
+Für einen lokalen Hardwaretest ohne Server:
+
+```bash
+python3 -m kunibert_pi.button_led_demo \
+  --button-pin 5 \
+  --led-pin 17 \
+  --input 'plughw:CARD=Device,DEV=0' \
+  --seconds 5
+```
+
+Ein Druck auf **GPIO5** startet eine lokale Aufnahme. Die LED blinkt schnell während der Aufnahme und geht danach wieder auf bereit. Bei fehlendem oder fehlerhaftem Mikrofon blinkt sie sehr schnell als Fehler und kehrt anschließend ebenfalls in den Bereitschaftszustand zurück. Dieser Test ruft den Server nicht auf und speichert keine Aufnahme dauerhaft; er ist nur für die Prüfung von Taste, LED und Mikrofonpfad gedacht.
 
 Der Standard ist **BCM GPIO17**; mit `--pin` kann der BCM-Pin geändert werden. `--cycle` zeigt bereit, Aufnahme, Verarbeitung, Wiedergabe, Fehler und Mikrofon-Aus jeweils drei Sekunden. Bei einem einzelnen Zustand ohne `--seconds` läuft das Muster bis `Ctrl-C`. Das Skript schaltet die LED beim Beenden aus.
 
