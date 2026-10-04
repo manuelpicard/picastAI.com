@@ -79,9 +79,9 @@ Gerät sperren: `python3 -m kunibert_server revoke-device prototype-1` (greift s
 | `KUNIBERT_DEVICES_FILE` | `devices.json` | Geräteliste (nur Token-Hashes) |
 | `KUNIBERT_DIAGNOSTIC_TEXT` | `0` | `1` gibt den Antworttext im JSON mit zurück, nur zur Fehlersuche |
 
-## Betrieb unter der eigenen Domain
+## Betrieb unter picast.com
 
-`deploy/` enthält eine Caddy-Konfiguration (automatisches HTTPS, 3-MB-Grenze, keine Zugriffsprotokolle), eine gehärtete systemd-Unit und eine Beispiel-`.env`. Voraussetzung ist, dass du die Domain wirklich kontrollierst. **picast.com zeigt derzeit nur eine Verkaufsseite des Domainhändlers.** Dann setzt du einen DNS-Eintrag `api.picast.com` auf den Server, kopierst den Code nach `/opt/kunibert`, legst die `.env` unter `/etc/kunibert/` ab und startest `systemctl enable --now kunibert-server caddy`.
+`deploy/` enthält eine Caddy-Konfiguration (automatisches HTTPS, 3-MB-Grenze, keine Zugriffsprotokolle), eine gehärtete systemd-Unit und eine Beispiel-`.env`. Die kanonische Geräte-API soll unter `api.picast.com` laufen; Elternoberfläche und Kuration gehören zur picast.com-Plattform. Voraussetzung ist, dass DNS und Serverzugriff für picast.com eingerichtet sind. Dann setzt du einen DNS-Eintrag `api.picast.com` auf den Server, kopierst den Code nach `/opt/kunibert`, legst die `.env` unter `/etc/kunibert/` ab und startest `systemctl enable --now kunibert-server caddy`. `picast.de` ist für die Gerätekommunikation nicht erforderlich und soll höchstens defensiv weiterleiten.
 
 ## Tests
 

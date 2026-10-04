@@ -10,6 +10,5 @@ Ein bildschirmloses Zuhör- und Erzählgerät: Ein Kind drückt die **Sprechtast
 | `hoerproben/` | **neu:** komplette Kunibert-Folge (7:45 min) und Fragerunde als MP3, alles zum Mitlesen | echte Ausgabe, nicht nachbearbeitet |
 | `demo/` | Skript für den Live-Durchlauf (Client → Server → gespeichertes Abspiel-Audio) | – |
 
-**Schnellstart:** `server/README.md` (Server einrichten, Gerät anlegen) und danach `pi-client/README.md`.
-
-**Was als Nächstes fehlt:** reale Verdrahtung und Test auf einem Raspberry Pi, fachliche Prüfung der Sicherheitstexte und der Betrieb unter einer Domain, die du kontrollierst. `picast.com` zeigt derzeit nur eine Verkaufsseite.
+**Produktplattform:** `picast.com` ist die Hauptdomain. Spracheingabe, Kuration, Erzähl-Engine und Eltern-Bereich sollen dort als kontrollierte Dienste zusammenlaufen; der Raspberry Pi bleibt ein bildschirmlosem, authentisiertem Client. `picast.de` wird höchstens defensiv als deutsche Weiterleitungsdomain geprüft.
+**Was als Nächstes fehlt:** ein picast.com-Vertikalschnitt mit Geräteaufnahme/-widerruf, Eltern-Bereich, Einwilligungs- und Datenschutzfluss, anschließend die reale Verdrahtung und der Test auf einem Raspberry Pi. Die Sicherheits- und Kurationstexte müssen fachlich geprüft werden.
