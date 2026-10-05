@@ -13,15 +13,10 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-node@v4
         with:
-          python-version: "3.11"
-      # Nur das Nötige: Whisper, Piper und das Sprachmodell werden in den Tests durch Fakes ersetzt.
-      - name: Abhängigkeiten
-        run: pip install fastapi "uvicorn[standard]" python-multipart numpy httpx
-      - name: Pi-Client
-        working-directory: pi-client
-        run: python -m unittest discover -s tests -v
-      - name: Server (inkl. Ende-zu-Ende mit dem Pi-Client)
-        working-directory: server
-        run: python -m unittest discover -s tests -v
+          node-version: "22"
+      - name: Install dependencies
+        run: npm ci || npm install
+      - name: Build & Typecheck
+        run: npm run build
