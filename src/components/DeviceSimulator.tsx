@@ -11,7 +11,18 @@ import {
   ShieldAlert,
   ArrowRight,
   Info,
+  Battery,
+  BatteryCharging,
+  BatteryFull,
+  BatteryMedium,
+  BatteryLow,
+  BatteryWarning,
+  Zap,
+  Plug,
+  Wifi,
+  WifiOff,
 } from 'lucide-react';
+import { WifiSettings } from '../types/network.js';
 
 export interface DeviceSimulatorProps {
   storyState: any;
@@ -19,6 +30,9 @@ export interface DeviceSimulatorProps {
   deviceId: string;
   deviceToken: string;
   onLogTurn: (turn: any) => void;
+  wifiSettings?: WifiSettings;
+  onNavigateToNetworkSettings?: () => void;
+  volume?: number;
 }
 
 type LedState = 'bereit' | 'aufnahme' | 'verarbeitung' | 'wiedergabe' | 'fehler' | 'mic_off';
@@ -29,6 +43,9 @@ export const DeviceSimulator: React.FC<DeviceSimulatorProps> = ({
   deviceId,
   deviceToken,
   onLogTurn,
+  wifiSettings,
+  onNavigateToNetworkSettings,
+  volume = 75,
 }) => {
   const [ledState, setLedState] = useState<LedState>('bereit');
   const [micHardwareOff, setMicHardwareOff] = useState<boolean>(false);
@@ -40,9 +57,35 @@ export const DeviceSimulator: React.FC<DeviceSimulatorProps> = ({
   const [customWish, setCustomWish] = useState<string>('mit einem Einhorn');
   const [voicePlaybackEnabled, setVoicePlaybackEnabled] = useState<boolean>(true);
 
+  // Hardware Akku & Ladestatus Simulation
+  const [batteryLevel, setBatteryLevel] = useState<number>(84);
+  const [isCharging, setIsCharging] = useState<boolean>(true);
+
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
+
+  // Dynamische Akku-Simulation: Laden bzw. Entladen je nach Betriebsmodus
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setBatteryLevel((prev) => {
+        if (isCharging) {
+          if (prev >= 100) return 100;
+          return Math.min(100, prev + 1);
+        } else {
+          // Entlädt schneller bei aktiver Aufnahme oder Audio-Wiedergabe
+          const isPowerActive = ledState === 'aufnahme' || ledState === 'wiedergabe';
+          const drainChance = isPowerActive ? 0.6 : 0.2;
+          if (Math.random() < drainChance) {
+            return Math.max(5, prev - 1);
+          }
+          return prev;
+        }
+      });
+    }, 2500);
+
+    return () => clearInterval(timer);
+  }, [isCharging, ledState]);
 
   // Update LED when mic hardware switch toggles
   useEffect(() => {
@@ -66,6 +109,13 @@ export const DeviceSimulator: React.FC<DeviceSimulatorProps> = ({
     };
   }, []);
 
+  // Synchronisiere Lautstärke mit HTML5 Audio-Element
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.volume = Math.max(0, Math.min(1, volume / 100));
+    }
+  }, [volume]);
+
   const speakText = (text: string, onEnd?: () => void) => {
     if (!voicePlaybackEnabled || !('speechSynthesis' in window)) {
       if (onEnd) onEnd();
@@ -77,6 +127,7 @@ export const DeviceSimulator: React.FC<DeviceSimulatorProps> = ({
     utterance.lang = 'de-DE';
     utterance.rate = 0.95; // Ruhiges Vorlesen für Kinder
     utterance.pitch = 0.95;
+    utterance.volume = Math.max(0, Math.min(1, volume / 100)); // Gesteuert über den Lautstärkeregler im Header
 
     // Pick German voice if available
     const voices = window.speechSynthesis.getVoices();
@@ -98,10 +149,36 @@ export const DeviceSimulator: React.FC<DeviceSimulatorProps> = ({
   };
 
   const executeTurn = async (mode: 'frage' | 'geschichte' | 'weiter', text: string, audioBlob?: Blob) => {
+    // 1. Physischer Mikrofon-Schalter Check
     if (micHardwareOff && mode === 'frage') {
       setLedState('fehler');
       setStatusMessage('Mikrofon ist ausgeschaltet! Bitte Schalter umlegen.');
       setTimeout(() => setLedState(micHardwareOff ? 'mic_off' : 'bereit'), 2000);
+      return;
+    }
+
+    // 2. WLAN-Konnektivitäts-Check (Simuliert Hardware-Netzwerkfehler)
+    if (wifiSettings && (!wifiSettings.enabled || !wifiSettings.connected)) {
+      setLedState('fehler');
+      const reasonLabel =
+        wifiSettings.status === 'auth_failed'
+          ? 'WLAN-Authentifizierungsfehler (Falsches Passwort)'
+          : wifiSettings.status === 'no_signal'
+          ? `Kein Signal zu «${wifiSettings.ssid}»`
+          : 'WLAN-Modul deaktiviert';
+
+      setStatusMessage(`Netzwerkfehler: ${reasonLabel}`);
+      const offlineNotice =
+        'Oh, ich kann gerade keine Verbindung zum Server herstellen. ' +
+        'Bitte prüfe mit deinen Eltern das WLAN im Eltern-Bereich.';
+      setCurrentSpeech(offlineNotice);
+
+      speakText(offlineNotice, () => {
+        setTimeout(() => {
+          setLedState('bereit');
+          setStatusMessage('Bereit (Offline)');
+        }, 3000);
+      });
       return;
     }
 
@@ -272,67 +349,229 @@ export const DeviceSimulator: React.FC<DeviceSimulatorProps> = ({
           </div>
         </div>
 
-        {/* Hardware Mic Mute Switch (GPIO 22) */}
-        <div className="flex items-center space-x-3 bg-stone-950 px-3 py-2 rounded-xl border border-stone-800">
-          <span className="text-xs font-medium text-stone-400">Mikrofon-Schalter (GPIO 22):</span>
+        {/* Hardware Controls & Power Bar */}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Hardware USB-C Power / Charger Toggle */}
           <button
-            onClick={() => setMicHardwareOff(!micHardwareOff)}
-            className={`px-3 py-1 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-colors ${
-              micHardwareOff
-                ? 'bg-rose-950 text-rose-300 border border-rose-800'
-                : 'bg-emerald-950 text-emerald-300 border border-emerald-800'
+            onClick={() => setIsCharging(!isCharging)}
+            className={`px-3 py-1.5 text-xs font-semibold rounded-xl flex items-center gap-1.5 transition-colors border ${
+              isCharging
+                ? 'bg-amber-950 text-amber-300 border-amber-800 hover:bg-amber-900/60'
+                : 'bg-stone-950 text-stone-400 border-stone-800 hover:text-stone-200'
             }`}
+            title="USB-C Ladekabel anstecken / trennen"
           >
-            {micHardwareOff ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
-            {micHardwareOff ? 'Mikrofon AUS' : 'Mikrofon AKTIV'}
+            {isCharging ? <Zap className="w-3.5 h-3.5 text-amber-400 animate-pulse" /> : <Plug className="w-3.5 h-3.5" />}
+            <span>{isCharging ? 'USB-C Netzteil (Lädt)' : 'Akku-Modus'}</span>
           </button>
+
+          {/* Hardware Mic Mute Switch (GPIO 22) */}
+          <div className="flex items-center space-x-2 bg-stone-950 px-3 py-1.5 rounded-xl border border-stone-800">
+            <span className="text-xs font-medium text-stone-400 hidden sm:inline">Mikrofon (GPIO 22):</span>
+            <button
+              onClick={() => setMicHardwareOff(!micHardwareOff)}
+              className={`px-2.5 py-0.5 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-colors ${
+                micHardwareOff
+                  ? 'bg-rose-950 text-rose-300 border border-rose-800'
+                  : 'bg-emerald-950 text-emerald-300 border border-emerald-800'
+              }`}
+            >
+              {micHardwareOff ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
+              {micHardwareOff ? 'Mikrofon AUS' : 'Mikrofon AKTIV'}
+            </button>
+          </div>
         </div>
       </div>
 
       {/* Main Physical Enclosure Simulator */}
       <div className="bg-gradient-to-b from-stone-800 to-stone-850 p-6 rounded-2xl border-2 border-stone-700 shadow-inner max-w-2xl mx-auto">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
           <span className="text-xs tracking-wider uppercase font-semibold text-stone-400">
             Hardware-Frontblende (Original BCM Pins)
           </span>
 
-          {/* LED Indicator (GPIO 17) */}
-          <div className="flex items-center space-x-2 bg-stone-900/90 px-3 py-1.5 rounded-full border border-stone-700">
-            <span className="text-xs text-stone-400">Status-LED (GPIO 17):</span>
+          <div className="flex items-center flex-wrap gap-2.5">
+            {/* Dynamic Battery & Charging State Indicator with Animated Progress Bar */}
             <div
-              className={`w-3.5 h-3.5 rounded-full border transition-all duration-300 ${
-                ledState === 'aufnahme'
-                  ? 'bg-red-500 border-red-300 animate-led-fast shadow-[0_0_10px_#ef4444]'
-                  : ledState === 'verarbeitung'
-                  ? 'bg-amber-400 border-amber-200 animate-led-slow shadow-[0_0_12px_#f59e0b]'
-                  : ledState === 'wiedergabe'
-                  ? 'bg-emerald-400 border-emerald-200 animate-led-steady shadow-[0_0_12px_#10b981]'
-                  : ledState === 'fehler'
-                  ? 'bg-rose-600 border-rose-300 animate-led-error'
-                  : 'bg-stone-700 border-stone-600'
+              onClick={() => setIsCharging(!isCharging)}
+              className="flex items-center space-x-2 bg-stone-900/90 hover:bg-stone-900 px-3 py-1.5 rounded-full border border-stone-700 cursor-pointer transition select-none group shadow-sm"
+              title="Klicken, um USB-C Ladekabel anzustecken oder zu trennen"
+            >
+              <div className="flex items-center space-x-1">
+                {isCharging ? (
+                  <Zap className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
+                ) : batteryLevel <= 20 ? (
+                  <BatteryLow className="w-3.5 h-3.5 text-rose-400 animate-pulse" />
+                ) : batteryLevel <= 60 ? (
+                  <BatteryMedium className="w-3.5 h-3.5 text-amber-400" />
+                ) : (
+                  <BatteryFull className="w-3.5 h-3.5 text-emerald-400" />
+                )}
+                <span className="text-xs font-mono font-bold text-stone-200">
+                  {batteryLevel}%
+                </span>
+              </div>
+
+              {/* Animated Progress Bar simulating Hardware Battery Gauge */}
+              <div className="w-16 h-2.5 bg-stone-950 rounded-full border border-stone-700/80 p-0.5 overflow-hidden relative shadow-inner">
+                <div
+                  className={`h-full rounded-full transition-all duration-700 ease-out relative overflow-hidden ${
+                    batteryLevel > 50
+                      ? 'bg-gradient-to-r from-emerald-600 to-emerald-400 shadow-[0_0_8px_#10b981]'
+                      : batteryLevel > 20
+                      ? 'bg-gradient-to-r from-amber-600 to-amber-400 shadow-[0_0_8px_#f59e0b]'
+                      : 'bg-gradient-to-r from-rose-600 to-rose-400 shadow-[0_0_8px_#ef4444]'
+                  }`}
+                  style={{ width: `${Math.max(8, batteryLevel)}%` }}
+                >
+                  {/* Animated shimmer effect when charging */}
+                  {isCharging && (
+                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/50 to-transparent animate-battery-shimmer" />
+                  )}
+                </div>
+              </div>
+
+              {/* Charging State Badge */}
+              <span
+                className={`text-[10px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wider ${
+                  isCharging
+                    ? 'bg-amber-950 text-amber-300 border border-amber-800'
+                    : batteryLevel <= 20
+                    ? 'bg-rose-950 text-rose-300 border border-rose-800'
+                    : 'bg-stone-800 text-stone-400'
+                }`}
+              >
+                {isCharging ? 'Lädt' : 'Akku'}
+              </span>
+            </div>
+
+            {/* Dynamic WiFi Status Badge */}
+            <div
+              onClick={onNavigateToNetworkSettings}
+              className={`flex items-center space-x-1.5 px-2.5 py-1.5 rounded-full border text-xs cursor-pointer select-none transition ${
+                !wifiSettings || wifiSettings.connected
+                  ? 'bg-stone-900/90 text-stone-300 border-stone-700 hover:border-emerald-600'
+                  : 'bg-rose-950/70 text-rose-300 border-rose-800 animate-pulse'
               }`}
-            />
-            <span className="text-xs font-mono font-medium text-stone-300 capitalize">{ledState}</span>
+              title={
+                !wifiSettings || wifiSettings.connected
+                  ? `WLAN: ${wifiSettings?.ssid || 'Verbunden'} (Klicken für Einstellungen)`
+                  : `WLAN-Fehler: ${wifiSettings?.lastError || 'Getrennt'} (Klicken für Einstellungen)`
+              }
+            >
+              {!wifiSettings || wifiSettings.connected ? (
+                <Wifi className="w-3.5 h-3.5 text-emerald-400" />
+              ) : (
+                <WifiOff className="w-3.5 h-3.5 text-rose-400" />
+              )}
+              <span className="text-[11px] font-mono hidden sm:inline">
+                {!wifiSettings || wifiSettings.connected ? (wifiSettings?.ssid || 'WLAN') : 'Offline'}
+              </span>
+            </div>
+
+            {/* LED Indicator (GPIO 17) */}
+            <div className="flex items-center space-x-2 bg-stone-900/90 px-3 py-1.5 rounded-full border border-stone-700">
+              <span className="text-xs text-stone-400">Status-LED:</span>
+              <div
+                className={`w-3.5 h-3.5 rounded-full border transition-all duration-300 ${
+                  ledState === 'aufnahme'
+                    ? 'bg-red-500 border-red-300 animate-led-fast shadow-[0_0_10px_#ef4444]'
+                    : ledState === 'verarbeitung'
+                    ? 'bg-amber-400 border-amber-200 animate-led-slow shadow-[0_0_12px_#f59e0b]'
+                    : ledState === 'wiedergabe'
+                    ? 'bg-emerald-400 border-emerald-200 animate-led-steady shadow-[0_0_12px_#10b981]'
+                    : ledState === 'fehler'
+                    ? 'bg-rose-600 border-rose-300 animate-led-error'
+                    : 'bg-stone-700 border-stone-600'
+                }`}
+              />
+              <span className="text-xs font-mono font-medium text-stone-300 capitalize">{ledState}</span>
+            </div>
           </div>
         </div>
 
-        {/* Speaker Mesh Grille */}
-        <div className="h-28 bg-stone-900 rounded-xl border border-stone-700/80 p-4 mb-6 flex flex-col items-center justify-center relative overflow-hidden">
-          <div className="grid grid-cols-12 gap-2 opacity-30 pointer-events-none">
+        {/* Offline / Connectivity Error Warning Banner */}
+        {wifiSettings && !wifiSettings.connected && (
+          <div className="mb-4 p-3 bg-rose-950/40 border border-rose-800 rounded-xl flex flex-wrap items-center justify-between gap-2 text-xs text-rose-200 animate-fade-in">
+            <div className="flex items-center space-x-2">
+              <WifiOff className="w-4 h-4 text-rose-400 shrink-0" />
+              <span>
+                <strong>WLAN getrennt ({wifiSettings.status}):</strong> {wifiSettings.lastError || 'Keine Internetverbindung zum Server'}
+              </span>
+            </div>
+            {onNavigateToNetworkSettings && (
+              <button
+                onClick={onNavigateToNetworkSettings}
+                className="px-2.5 py-1 bg-rose-900/80 hover:bg-rose-800 text-rose-100 rounded text-[11px] font-semibold transition cursor-pointer"
+              >
+                Im Eltern-Bereich konfigurieren →
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Speaker Mesh Grille with Real-Time Audio Waveform Visualizer */}
+        <div className="h-32 bg-stone-900 rounded-xl border border-stone-700/80 p-4 mb-6 flex flex-col items-center justify-center relative overflow-hidden shadow-inner">
+          {/* Subtle acoustic speaker dot pattern */}
+          <div className="grid grid-cols-12 gap-2 opacity-20 pointer-events-none absolute inset-4">
             {Array.from({ length: 48 }).map((_, i) => (
               <div key={i} className="w-1.5 h-1.5 rounded-full bg-stone-500" />
             ))}
           </div>
-          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+
+          {/* Real-Time Audio Waveform Visualizer */}
+          <div className="absolute inset-x-4 inset-y-3 flex items-center justify-center pointer-events-none">
             {ledState === 'wiedergabe' ? (
-              <div className="flex items-center space-x-1.5 text-amber-400 animate-pulse">
-                <Volume2 className="w-6 h-6 animate-bounce" />
-                <span className="text-sm font-semibold tracking-wide">Kunibert spricht...</span>
+              <div className="w-full flex items-center justify-center space-x-1 sm:space-x-1.5 h-20 px-2">
+                {[25, 45, 68, 92, 50, 98, 76, 54, 88, 100, 82, 94, 62, 85, 48, 90, 58, 80, 40, 24].map((baseHeight, i) => {
+                  const animClass =
+                    i % 4 === 0
+                      ? 'animate-wave-1'
+                      : i % 4 === 1
+                      ? 'animate-wave-2'
+                      : i % 4 === 2
+                      ? 'animate-wave-3'
+                      : 'animate-wave-4';
+
+                  // Amplitude scales with persistent header volume (0 to 100%)
+                  const effectiveVol = volume > 0 ? volume / 100 : 0;
+                  const barHeight = effectiveVol > 0 ? Math.max(5, Math.round(baseHeight * effectiveVol * 0.68)) : 3;
+
+                  return (
+                    <div
+                      key={i}
+                      className={`w-1.5 sm:w-2 rounded-full bg-gradient-to-t from-amber-600 via-amber-400 to-amber-200 transition-all duration-150 ${
+                        effectiveVol > 0 ? `${animClass} shadow-[0_0_10px_#f59e0b]` : 'opacity-25'
+                      }`}
+                      style={{
+                        height: `${barHeight}px`,
+                        opacity: effectiveVol > 0 ? 0.95 : 0.2,
+                      }}
+                    />
+                  );
+                })}
+              </div>
+            ) : null}
+          </div>
+
+          {/* Foreground Speaker Status Label */}
+          <div className="relative z-10 flex flex-col items-center justify-center pointer-events-none text-center">
+            {ledState === 'wiedergabe' ? (
+              <div className="flex items-center space-x-2 bg-stone-950/85 px-3 py-1.5 rounded-full border border-amber-600/70 text-amber-300 shadow-lg backdrop-blur-sm">
+                <Volume2 className="w-4 h-4 text-amber-400 animate-bounce" />
+                <span className="text-xs font-bold tracking-wide">
+                  Kunibert spricht... • {volume}% Lautstärke
+                </span>
               </div>
             ) : ledState === 'verarbeitung' ? (
-              <span className="text-xs text-amber-400/90 font-medium">Server generiert Turn...</span>
+              <span className="text-xs text-amber-400/90 font-medium bg-stone-950/80 px-3 py-1 rounded-full border border-amber-800">
+                Server generiert Audio...
+              </span>
             ) : (
-              <span className="text-xs text-stone-500 font-medium">Lautsprecher bereit</span>
+              <div className="flex items-center space-x-1.5 text-stone-500 text-xs bg-stone-950/40 px-2.5 py-1 rounded-full border border-stone-800">
+                <Volume2 className="w-3.5 h-3.5 opacity-60" />
+                <span>Lautsprecher bereit (Pegel: {volume}%)</span>
+              </div>
             )}
           </div>
         </div>
@@ -394,12 +633,32 @@ export const DeviceSimulator: React.FC<DeviceSimulatorProps> = ({
         </div>
 
         {/* Status Display Bar */}
-        <div className="bg-stone-950 px-4 py-2.5 rounded-lg border border-stone-800 flex items-center justify-between text-xs">
-          <span className="text-stone-400 font-mono">Status: {statusMessage}</span>
+        <div className="bg-stone-950 px-4 py-2.5 rounded-lg border border-stone-800 flex flex-wrap items-center justify-between gap-2 text-xs">
           <div className="flex items-center space-x-2">
+            <span className="text-stone-400 font-mono">Status: {statusMessage}</span>
+          </div>
+          <div className="flex items-center space-x-3">
+            {/* Battery readout & fast charging toggle */}
+            <button
+              onClick={() => setIsCharging(!isCharging)}
+              className="text-stone-400 hover:text-amber-300 flex items-center gap-1.5 transition select-none"
+              title="Klicken, um Ladekabel an- oder abzustecken"
+            >
+              {isCharging ? (
+                <Zap className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
+              ) : batteryLevel <= 20 ? (
+                <BatteryLow className="w-3.5 h-3.5 text-rose-400" />
+              ) : (
+                <BatteryMedium className="w-3.5 h-3.5 text-emerald-400" />
+              )}
+              <span className="font-mono text-[11px] text-stone-300">
+                {batteryLevel}% {isCharging ? '(Lädt)' : '(Akku)'}
+              </span>
+            </button>
+
             <button
               onClick={() => setVoicePlaybackEnabled(!voicePlaybackEnabled)}
-              className="text-stone-400 hover:text-amber-300 flex items-center gap-1"
+              className="text-stone-400 hover:text-amber-300 flex items-center gap-1 transition"
               title="Browser-Vorlesestimme umschalten"
             >
               {voicePlaybackEnabled ? <Volume2 className="w-3.5 h-3.5 text-emerald-400" /> : <VolumeX className="w-3.5 h-3.5 text-stone-500" />}

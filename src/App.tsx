@@ -16,6 +16,9 @@ import { SafetyDemo } from './components/SafetyDemo';
 import { ParentDashboard } from './components/ParentDashboard';
 import { HoerprobenPlayer } from './components/HoerprobenPlayer';
 import { ArchitectureViewer } from './components/ArchitectureViewer';
+import { ChapterProgressMap } from './components/ChapterProgressMap.js';
+import { WifiSettings } from './types/network.js';
+import { Volume2, Volume1, VolumeX } from 'lucide-react';
 
 export function App() {
   const [activeTab, setActiveTab] = useState<'simulator' | 'safety' | 'hoerproben' | 'parents' | 'architecture'>('simulator');
@@ -35,6 +38,43 @@ export function App() {
   const [activeDeviceToken, setActiveDeviceToken] = useState<string>('sim-web-token-xyz-123');
   const [serverHealthy, setServerHealthy] = useState<boolean | null>(null);
   const [turnLogs, setTurnLogs] = useState<any[]>([]);
+
+  // Persistenter Lautstärkeregler (0 bis 100%)
+  const [volume, setVolume] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem('kunibert_volume');
+      return saved !== null ? Math.max(0, Math.min(100, Number(saved))) : 75;
+    } catch {
+      return 75;
+    }
+  });
+  const [prevVolume, setPrevVolume] = useState<number>(75);
+
+  const handleVolumeChange = (newVal: number) => {
+    setVolume(newVal);
+    try {
+      localStorage.setItem('kunibert_volume', String(newVal));
+    } catch {}
+  };
+
+  const toggleMute = () => {
+    if (volume > 0) {
+      setPrevVolume(volume);
+      handleVolumeChange(0);
+    } else {
+      handleVolumeChange(prevVolume > 0 ? prevVolume : 75);
+    }
+  };
+
+  // Globale WLAN-Netzwerk-Einstellungen zur Fehler-Simulation
+  const [wifiSettings, setWifiSettings] = useState<WifiSettings>({
+    enabled: true,
+    ssid: 'Heimnetzwerk-Kunibert',
+    password: 'sicheres-wlan-passwort-2026',
+    connected: true,
+    status: 'connected',
+    signalStrength: 92,
+  });
 
   // Check server health
   useEffect(() => {
@@ -85,11 +125,56 @@ export function App() {
           </div>
 
           {/* Right Status Badges */}
-          <div className="flex items-center space-x-3 text-xs">
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            {/* Persistent Volume Slider in Header */}
+            <div className="flex items-center space-x-2 bg-stone-950 px-3 py-1.5 rounded-full border border-stone-800 select-none">
+              <button
+                onClick={toggleMute}
+                className="text-stone-400 hover:text-amber-400 transition cursor-pointer"
+                title={volume === 0 ? 'Ton einschalten' : 'Stummschalten'}
+              >
+                {volume === 0 ? (
+                  <VolumeX className="w-4 h-4 text-rose-400" />
+                ) : volume < 50 ? (
+                  <Volume1 className="w-4 h-4 text-amber-400" />
+                ) : (
+                  <Volume2 className="w-4 h-4 text-amber-400" />
+                )}
+              </button>
+              <input
+                type="range"
+                min="0"
+                max="100"
+                value={volume}
+                onChange={(e) => handleVolumeChange(Number(e.target.value))}
+                className="w-14 sm:w-20 h-1.5 bg-stone-800 rounded-lg appearance-none cursor-pointer accent-amber-500"
+                title={`Lautstärke: ${volume}%`}
+              />
+              <span className="font-mono text-[11px] text-stone-300 w-8 text-right">
+                {volume}%
+              </span>
+            </div>
+
+            {/* WiFi Connection Indicator Badge */}
+            <button
+              onClick={() => setActiveTab('parents')}
+              className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-full border transition cursor-pointer select-none ${
+                wifiSettings.connected
+                  ? 'bg-stone-950 hover:bg-stone-900 border-stone-800'
+                  : 'bg-rose-950/80 hover:bg-rose-900 border-rose-800 text-rose-200 animate-pulse'
+              }`}
+              title="WLAN-Status (Klicken für Netzwerk-Einstellungen im Eltern-Bereich)"
+            >
+              <span className={`w-2 h-2 rounded-full ${wifiSettings.connected ? 'bg-emerald-400' : 'bg-rose-400'}`} />
+              <span className="font-mono text-[11px]">
+                {wifiSettings.connected ? wifiSettings.ssid : 'WLAN getrennt'}
+              </span>
+            </button>
+
             <div className="flex items-center space-x-1.5 bg-stone-950 px-3 py-1.5 rounded-full border border-stone-800">
               <span className={`w-2 h-2 rounded-full ${serverHealthy ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'}`} />
               <span className="text-stone-300 font-mono text-[11px]">
-                {serverHealthy ? 'API Online (:3000)' : 'API Verbindungsaufbau...'}
+                {serverHealthy ? 'API Online (:3000)' : 'API offline'}
               </span>
             </div>
 
@@ -175,7 +260,13 @@ export function App() {
                 deviceId={activeDeviceId}
                 deviceToken={activeDeviceToken}
                 onLogTurn={handleLogTurn}
+                wifiSettings={wifiSettings}
+                onNavigateToNetworkSettings={() => setActiveTab('parents')}
+                volume={volume}
               />
+
+              {/* Visual Chapter Progress Map / Chart */}
+              <ChapterProgressMap storyState={storyState} />
             </div>
             <div className="space-y-6">
               <StoryInspector
@@ -234,6 +325,8 @@ export function App() {
                 setActiveDeviceId(id);
                 setActiveDeviceToken(tok);
               }}
+              wifiSettings={wifiSettings}
+              onUpdateWifiSettings={setWifiSettings}
             />
           </div>
         )}

@@ -43,3 +43,47 @@
 .animate-led-error {
   animation: led-blink-error 0.15s infinite ease-in-out;
 }
+
+@keyframes battery-charge-shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(200%); }
+}
+
+.animate-battery-shimmer {
+  animation: battery-charge-shimmer 1.8s infinite linear;
+}
+
+/* Audio Waveform Equalizer Animations */
+@keyframes wave-bounce-1 {
+  0%, 100% { transform: scaleY(0.18); }
+  50% { transform: scaleY(1); }
+}
+@keyframes wave-bounce-2 {
+  0%, 100% { transform: scaleY(0.35); }
+  50% { transform: scaleY(0.85); }
+}
+@keyframes wave-bounce-3 {
+  0%, 100% { transform: scaleY(0.15); }
+  50% { transform: scaleY(0.95); }
+}
+@keyframes wave-bounce-4 {
+  0%, 100% { transform: scaleY(0.25); }
+  50% { transform: scaleY(0.75); }
+}
+
+.animate-wave-1 {
+  animation: wave-bounce-1 0.75s ease-in-out infinite;
+  transform-origin: bottom;
+}
+.animate-wave-2 {
+  animation: wave-bounce-2 0.55s ease-in-out infinite 0.12s;
+  transform-origin: bottom;
+}
+.animate-wave-3 {
+  animation: wave-bounce-3 0.88s ease-in-out infinite 0.25s;
+  transform-origin: bottom;
+}
+.animate-wave-4 {
+  animation: wave-bounce-4 0.62s ease-in-out infinite 0.18s;
+  transform-origin: bottom;
+}

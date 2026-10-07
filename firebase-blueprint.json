@@ -1,0 +1,64 @@
+{
+  "entities": {
+    "Device": {
+      "title": "Device",
+      "description": "Registered Kunibert audio device",
+      "type": "object",
+      "properties": {
+        "deviceId": { "type": "string", "description": "Unique device identifier" },
+        "name": { "type": "string", "description": "Friendly display name" },
+        "created": { "type": "number", "description": "Creation timestamp in seconds" },
+        "revoked": { "type": "boolean", "description": "Whether the device access is revoked" },
+        "tokenSha256": { "type": "string", "description": "SHA-256 hash of the device token" },
+        "ownerId": { "type": "string", "description": "User UID who owns this device" }
+      },
+      "required": ["deviceId", "name", "created", "revoked", "tokenSha256"]
+    },
+    "StorySession": {
+      "title": "StorySession",
+      "description": "Story progression state for Kunibert tales",
+      "type": "object",
+      "properties": {
+        "deviceId": { "type": "string", "description": "Associated device ID" },
+        "episode": { "type": "number", "description": "Episode counter" },
+        "part": { "type": "number", "description": "Current part in episode" },
+        "target": { "type": "number", "description": "Target parts in episode" },
+        "seed": { "type": "string", "description": "Initial mood or setting seed" },
+        "summary": { "type": "string", "description": "Summary of story events" },
+        "threads": { "type": "string", "description": "Open story threads" },
+        "hook": { "type": "string", "description": "Next continuation hook" },
+        "done": { "type": "boolean", "description": "Whether episode is finished" },
+        "updatedAt": { "type": "number", "description": "Timestamp of last update" }
+      },
+      "required": ["deviceId", "episode", "part", "target", "done"]
+    },
+    "TurnLog": {
+      "title": "TurnLog",
+      "description": "Log entry of interaction turn without sensitive private recordings",
+      "type": "object",
+      "properties": {
+        "turnId": { "type": "string", "description": "Turn identifier" },
+        "deviceId": { "type": "string", "description": "Device that requested the turn" },
+        "mode": { "type": "string", "enum": ["frage", "geschichte", "weiter"], "description": "Turn mode" },
+        "kind": { "type": "string", "description": "Result kind" },
+        "text": { "type": "string", "description": "Spoken diagnostic text" },
+        "timestamp": { "type": "number", "description": "Epoch timestamp in milliseconds" }
+      },
+      "required": ["turnId", "deviceId", "mode", "kind", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/devices/{deviceId}": {
+      "schema": "Device",
+      "description": "Collection of registered Kunibert devices"
+    },
+    "/devices/{deviceId}/sessions/{sessionId}": {
+      "schema": "StorySession",
+      "description": "Ephemeral story progression session per device"
+    },
+    "/devices/{deviceId}/turns/{turnId}": {
+      "schema": "TurnLog",
+      "description": "Activity turn logs per device"
+    }
+  }
+}

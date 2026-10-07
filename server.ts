@@ -7,22 +7,29 @@ import { fileURLToPath } from 'url';
 import { DeviceRegistry, RateLimiter, AudioStore } from './server-api/devices.js';
 import { Brain, StoryState } from './server-api/brain.js';
 import { AudioError, decodeWavHeader } from './server-api/audio.js';
+import { config, getSafeConfigSummary } from './server-api/config.js';
+import {
+  saveDeviceToFirestore,
+  revokeDeviceInFirestore,
+  saveTurnToFirestore,
+  saveStorySessionToFirestore,
+} from './server-api/firestore-service.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const PORT = Number(process.env.PORT) || 3000;
-const HOST = '0.0.0.0';
+const PORT = config.port;
+const HOST = config.host;
 
 // In-Memory Dienste
 const registry = new DeviceRegistry();
 const limiter = new RateLimiter(
-  Number(process.env.KUNIBERT_RATE_LIMIT) || 30,
-  600
+  config.rateLimitMaxTurns,
+  config.rateLimitWindowSeconds
 );
 const store = new AudioStore(
-  Number(process.env.KUNIBERT_AUDIO_TTL) || 120
+  config.audioTtlSeconds
 );
 const brain = new Brain();
 
@@ -125,9 +132,24 @@ app.post(
         turn_id: turnId,
         kind: turnResult.kind,
         story_state: turnResult.story_state,
-        text: turnResult.speech, // Für Web-Simulator & Diagnose
         fixed: turnResult.fixed || null,
       };
+      if (config.diagnosticText) {
+        responseBody.text = turnResult.speech;
+      }
+
+      // Asynchron in Firestore persistieren
+      saveTurnToFirestore(deviceId, {
+        turnId,
+        mode,
+        kind: turnResult.kind,
+        text: turnResult.speech,
+        timestamp: Date.now(),
+      }).catch(() => {});
+
+      if (turnResult.story_state) {
+        saveStorySessionToFirestore(deviceId, turnResult.story_state).catch(() => {});
+      }
 
       return res.json(responseBody);
     } catch (err: any) {
@@ -180,6 +202,13 @@ app.post('/api/devices', (req: Request, res: Response): any => {
   }
   try {
     const created = registry.add(deviceId, name);
+    saveDeviceToFirestore({
+      deviceId: created.deviceId,
+      name: name || deviceId,
+      created: Math.floor(Date.now() / 1000),
+      revoked: false,
+      tokenSha256: '',
+    }).catch(() => {});
     return res.json(created);
   } catch (err: any) {
     return res.status(400).json({ error: err.message });
@@ -187,8 +216,14 @@ app.post('/api/devices', (req: Request, res: Response): any => {
 });
 
 app.post('/api/devices/:id/revoke', (req: Request, res: Response): any => {
-  const success = registry.revoke(String(req.params.id));
+  const devId = String(req.params.id);
+  const success = registry.revoke(devId);
+  revokeDeviceInFirestore(devId).catch(() => {});
   return res.json({ success });
+});
+
+app.get('/api/config', (_req: Request, res: Response) => {
+  res.json(getSafeConfigSummary(config));
 });
 
 app.get('/api/status', (req: Request, res: Response) => {
@@ -196,7 +231,8 @@ app.get('/api/status', (req: Request, res: Response) => {
   res.json({
     rateLimit: limiter.getStatus(deviceId),
     audioStoreItems: store.count,
-    geminiConfigured: Boolean(process.env.GEMINI_API_KEY),
+    geminiConfigured: Boolean(config.geminiApiKey),
+    config: getSafeConfigSummary(config),
   });
 });
 

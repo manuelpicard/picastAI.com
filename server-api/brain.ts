@@ -14,6 +14,7 @@ import {
   UNCLEAR_RESPONSE_DE,
 } from './safety.js';
 import { generateMelodyWav, generateToneWav } from './audio.js';
+import { config } from './config.js';
 
 export interface StoryState {
   v: number;
@@ -41,7 +42,7 @@ export function cleanState(raw: any): StoryState {
       v: 1,
       ep: 1,
       part: 0,
-      target: 5,
+      target: config.partsPerEpisode,
       seed: '',
       summary: '',
       threads: '',
@@ -51,7 +52,7 @@ export function cleanState(raw: any): StoryState {
   }
   const ep = Number(raw.ep) || 1;
   const part = Number(raw.part) || 0;
-  const target = Math.max(3, Math.min(12, Number(raw.target) || 5));
+  const target = Math.max(3, Math.min(12, Number(raw.target) || config.partsPerEpisode));
   return {
     v: 1,
     ep: Math.max(1, Math.min(10000, ep)),
@@ -78,12 +79,15 @@ export function trimWords(text: string, maxWords: number): string {
 }
 
 export class Brain {
-  private age = 'sechs bis zehn';
-  private partsPerEpisode = 5;
+  private age = config.ageBracket;
+  private partsPerEpisode = config.partsPerEpisode;
+  private storyMinWords = config.storyMinWords;
+  private storyMaxWords = config.storyMaxWords;
+  private answerMaxWords = config.answerMaxWords;
   private geminiClient: GoogleGenAI | null = null;
 
   constructor() {
-    const apiKey = process.env.GEMINI_API_KEY;
+    const apiKey = config.geminiApiKey;
     if (apiKey) {
       try {
         this.geminiClient = new GoogleGenAI({});
@@ -468,13 +472,14 @@ export class Brain {
   }
 
   private synthesizeWav(text: string, kind: string): Buffer {
+    const rate = config.audioSampleRate;
     // Generiert ein sanftes akustisches Bestätigungssignal / Glockenklang
     if (kind === 'hinweis') {
-      return generateMelodyWav([523.25, 440], [0.3, 0.4]); // C5 -> A4 (sanftes Melodie-Signal)
+      return generateMelodyWav([523.25, 440], [0.3, 0.4], rate); // C5 -> A4 (sanftes Melodie-Signal)
     }
     if (kind === 'geschichte') {
-      return generateMelodyWav([440, 554.37, 659.25], [0.25, 0.25, 0.5]); // A4 -> C#5 -> E5 (Erzähl-Fanfare)
+      return generateMelodyWav([440, 554.37, 659.25], [0.25, 0.25, 0.5], rate); // A4 -> C#5 -> E5 (Erzähl-Fanfare)
     }
-    return generateToneWav(523.25, 0.6); // C5 Glockenton
+    return generateToneWav(523.25, 0.6, rate); // C5 Glockenton
   }
 }

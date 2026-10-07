@@ -1,4 +1,5 @@
 // Deterministische Sicherheitsweiche nach den Kunibert-Schutzvorgaben
+import { config } from './config.js';
 
 const PATTERNS: RegExp[] = [
   /\bich (will|möchte|mag) (nicht mehr leben|sterben|tot sein)/i,
@@ -30,13 +31,18 @@ export function screen(transcript: string): boolean {
   return PATTERNS.some((pattern) => pattern.test(normalized));
 }
 
-export const SAFETY_RESPONSE_DE =
-  'Danke, dass du mir das sagst. Das klingt wichtig, und du bist damit nicht allein. ' +
-  'Bitte sag es jetzt gleich einem Erwachsenen, dem du vertraust, zum Beispiel jemandem aus deiner Familie, ' +
-  'einer Lehrerin, einem Lehrer oder einer Nachbarin. ' +
-  'Wenn jemand verletzt ist oder in Gefahr, dann ruf sofort die Eins Eins Zwei an. ' +
-  'Du kannst auch bei der Nummer gegen Kummer anrufen: Eins Eins Sechs, Eins Eins Eins. ' +
-  'Das kostet nichts, und dort hört dir jemand zu, von Montag bis Samstag am Nachmittag.';
+export function getSafetyResponse(): string {
+  return (
+    'Danke, dass du mir das sagst. Das klingt wichtig, und du bist damit nicht allein. ' +
+    'Bitte sag es jetzt gleich einem Erwachsenen, dem du vertraust, zum Beispiel jemandem aus deiner Familie, ' +
+    'einer Lehrerin, einem Lehrer oder einer Nachbarin. ' +
+    `Wenn jemand verletzt ist oder in Gefahr, dann ruf sofort die ${config.emergencyNumberPrimary} an. ` +
+    `Du kannst auch bei der Nummer gegen Kummer anrufen: ${config.emergencyNumberKummer}. ` +
+    'Das kostet nichts, und dort hört dir jemand zu, von Montag bis Samstag am Nachmittag.'
+  );
+}
+
+export const SAFETY_RESPONSE_DE = getSafetyResponse();
 
 export const UNCLEAR_RESPONSE_DE =
   'Das habe ich leider nicht richtig verstanden. ' +

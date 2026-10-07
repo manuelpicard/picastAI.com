@@ -1,12 +1,38 @@
 import React, { useState, useEffect } from 'react';
-import { Key, ShieldCheck, Plus, Trash2, RefreshCw, AlertCircle, Copy, Check } from 'lucide-react';
+import {
+  Key,
+  ShieldCheck,
+  Plus,
+  Trash2,
+  RefreshCw,
+  AlertCircle,
+  Copy,
+  Check,
+  Wifi,
+  WifiOff,
+  Lock,
+  Eye,
+  EyeOff,
+  AlertTriangle,
+  Signal,
+  CheckCircle2,
+  Sliders,
+} from 'lucide-react';
+import { WifiSettings } from '../types/network.js';
 
 export interface ParentDashboardProps {
   currentDeviceId: string;
   onSelectDevice: (deviceId: string, token: string) => void;
+  wifiSettings: WifiSettings;
+  onUpdateWifiSettings: (settings: WifiSettings) => void;
 }
 
-export const ParentDashboard: React.FC<ParentDashboardProps> = ({ currentDeviceId, onSelectDevice }) => {
+export const ParentDashboard: React.FC<ParentDashboardProps> = ({
+  currentDeviceId,
+  onSelectDevice,
+  wifiSettings,
+  onUpdateWifiSettings,
+}) => {
   const [devices, setDevices] = useState<any[]>([]);
   const [newDeviceId, setNewDeviceId] = useState('');
   const [newDeviceName, setNewDeviceName] = useState('');
@@ -14,6 +40,19 @@ export const ParentDashboard: React.FC<ParentDashboardProps> = ({ currentDeviceI
   const [statusMetrics, setStatusMetrics] = useState<any>(null);
   const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  // WLAN Formular Zustand
+  const [ssidInput, setSsidInput] = useState(wifiSettings.ssid);
+  const [passwordInput, setPasswordInput] = useState(wifiSettings.password);
+  const [showPassword, setShowPassword] = useState(false);
+  const [testingWifi, setTestingWifi] = useState(false);
+  const [wifiNotice, setWifiNotice] = useState<string | null>(null);
+
+  // Synchronisiere Inputs bei Änderungen von außen
+  useEffect(() => {
+    setSsidInput(wifiSettings.ssid);
+    setPasswordInput(wifiSettings.password);
+  }, [wifiSettings.ssid, wifiSettings.password]);
 
   const fetchDevices = async () => {
     try {
@@ -95,6 +134,132 @@ export const ParentDashboard: React.FC<ParentDashboardProps> = ({ currentDeviceI
     setTimeout(() => setCopied(false), 2000);
   };
 
+  // WLAN Einstellungen speichern & Verbindung simulieren
+  const handleApplyWifi = (e: React.FormEvent) => {
+    e.preventDefault();
+    setTestingWifi(true);
+    setWifiNotice(null);
+
+    setTimeout(() => {
+      setTestingWifi(false);
+      // Validierung: Wenn Passwort falsch oder zu kurz ist, Fehlerfall simulieren
+      const isWrongPass = passwordInput.toLowerCase().includes('falsch') || passwordInput.length < 8;
+      const isWrongSsid = ssidInput.toLowerCase().includes('offline') || ssidInput.toLowerCase().includes('kein');
+
+      if (!wifiSettings.enabled) {
+        onUpdateWifiSettings({
+          ...wifiSettings,
+          ssid: ssidInput,
+          password: passwordInput,
+          connected: false,
+          status: 'disabled',
+          lastError: 'WLAN ist am Schalter deaktiviert',
+        });
+        setWifiNotice('WLAN-Daten gespeichert, aber WLAN ist derzeit ausgeschaltet.');
+      } else if (isWrongPass) {
+        onUpdateWifiSettings({
+          ...wifiSettings,
+          ssid: ssidInput,
+          password: passwordInput,
+          connected: false,
+          status: 'auth_failed',
+          lastError: 'Authentifizierung fehlgeschlagen: Ungültiger WPA2/WPA3 Pre-Shared Key (Passwort falsch)',
+        });
+        setWifiNotice('Verbindungsfehler: Passwort wurde vom WLAN-Router abgelehnt!');
+      } else if (isWrongSsid) {
+        onUpdateWifiSettings({
+          ...wifiSettings,
+          ssid: ssidInput,
+          password: passwordInput,
+          connected: false,
+          status: 'no_signal',
+          lastError: 'Kein Access Point gefunden: SSID antwortet nicht auf Probe Requests',
+        });
+        setWifiNotice('Verbindungsfehler: Das angegebene WLAN wurde nicht gefunden.');
+      } else {
+        onUpdateWifiSettings({
+          ...wifiSettings,
+          ssid: ssidInput,
+          password: passwordInput,
+          connected: true,
+          status: 'connected',
+          signalStrength: 88,
+          lastError: undefined,
+        });
+        setWifiNotice(`Erfolgreich mit «${ssidInput}» verbunden! Internetzugang aktiv.`);
+      }
+    }, 800);
+  };
+
+  const handleToggleWifiMaster = () => {
+    const nextEnabled = !wifiSettings.enabled;
+    onUpdateWifiSettings({
+      ...wifiSettings,
+      enabled: nextEnabled,
+      connected: nextEnabled && wifiSettings.status === 'connected',
+      status: nextEnabled ? 'connected' : 'disabled',
+      lastError: nextEnabled ? undefined : 'WLAN per Eltern-Schalter deaktiviert',
+    });
+  };
+
+  const applyPreset = (type: 'valid' | 'wrong_pass' | 'no_signal' | 'offline') => {
+    if (type === 'valid') {
+      const valid = {
+        enabled: true,
+        ssid: 'Heimnetzwerk-Kunibert',
+        password: 'sicheres-wlan-passwort-2026',
+        connected: true,
+        status: 'connected' as const,
+        signalStrength: 92,
+        lastError: undefined,
+      };
+      setSsidInput(valid.ssid);
+      setPasswordInput(valid.password);
+      onUpdateWifiSettings(valid);
+      setWifiNotice('Preset angewendet: Gültiges Heim-WLAN verbunden.');
+    } else if (type === 'wrong_pass') {
+      const wrong = {
+        enabled: true,
+        ssid: 'Heimnetzwerk-Kunibert',
+        password: 'falsches-passwort-xyz',
+        connected: false,
+        status: 'auth_failed' as const,
+        signalStrength: 75,
+        lastError: 'Authentifizierungsfehler (4-Way Handshake fehlgeschlagen: Falscher WPA-Key)',
+      };
+      setSsidInput(wrong.ssid);
+      setPasswordInput(wrong.password);
+      onUpdateWifiSettings(wrong);
+      setWifiNotice('Preset angewendet: Falsches Passwort simuliert! Teste jetzt den Geräte-Simulator.');
+    } else if (type === 'no_signal') {
+      const noSignal = {
+        enabled: true,
+        ssid: 'Garten-WLAN-Weit-Weg',
+        password: 'passwort12345678',
+        connected: false,
+        status: 'no_signal' as const,
+        signalStrength: 0,
+        lastError: 'Beacon Timeout: Signal zu schwach oder SSID außer Reichweite',
+      };
+      setSsidInput(noSignal.ssid);
+      setPasswordInput(noSignal.password);
+      onUpdateWifiSettings(noSignal);
+      setWifiNotice('Preset angewendet: Außer Reichweite simuliert.');
+    } else if (type === 'offline') {
+      const off = {
+        enabled: false,
+        ssid: wifiSettings.ssid,
+        password: wifiSettings.password,
+        connected: false,
+        status: 'disabled' as const,
+        signalStrength: 0,
+        lastError: 'WLAN-Modul deaktiviert (Flugmodus / Offline)',
+      };
+      onUpdateWifiSettings(off);
+      setWifiNotice('Preset angewendet: WLAN komplett ausgeschaltet.');
+    }
+  };
+
   return (
     <div className="bg-stone-900 border border-stone-800 rounded-2xl p-6 shadow-xl space-y-6">
       <div className="flex items-center justify-between border-b border-stone-800 pb-4">
@@ -104,7 +269,7 @@ export const ParentDashboard: React.FC<ParentDashboardProps> = ({ currentDeviceI
           </div>
           <div>
             <h3 className="text-lg font-bold text-stone-100">Eltern- &amp; Geräteverwaltung (picast.com)</h3>
-            <p className="text-xs text-stone-400">Sichere Geräteauthentifizierung, Token-Widerruf und Datenschutz-Garantien</p>
+            <p className="text-xs text-stone-400">Geräteauthentifizierung, WLAN-Netzwerk-Steuerung und Datenschutz-Garantien</p>
           </div>
         </div>
         <button
@@ -140,6 +305,194 @@ export const ParentDashboard: React.FC<ParentDashboardProps> = ({ currentDeviceI
               ? `${statusMetrics.rateLimit.remaining} von ${statusMetrics.rateLimit.max} Anfragen in 10 Min verfügbar.`
               : 'Schutz vor Überlastung aktiv.'}
           </p>
+        </div>
+      </div>
+
+      {/* ------------------------------------------------------------ */}
+      {/* Netzwerk-Einstellungen (WLAN / WiFi Steuerung) */}
+      {/* ------------------------------------------------------------ */}
+      <div className="bg-stone-950 p-5 rounded-xl border border-stone-800 space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-stone-850 pb-3">
+          <div className="flex items-center space-x-2.5">
+            <div className={`p-2 rounded-lg border ${
+              wifiSettings.connected
+                ? 'bg-emerald-950/60 border-emerald-800 text-emerald-400'
+                : 'bg-rose-950/60 border-rose-800 text-rose-400'
+            }`}>
+              {wifiSettings.connected ? <Wifi className="w-5 h-5" /> : <WifiOff className="w-5 h-5 animate-pulse" />}
+            </div>
+            <div>
+              <h4 className="text-sm font-bold text-stone-100 flex items-center gap-2">
+                Netzwerk-Einstellungen (WLAN / WiFi)
+                <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono uppercase tracking-wider ${
+                  wifiSettings.connected
+                    ? 'bg-emerald-950 text-emerald-300 border border-emerald-800'
+                    : wifiSettings.status === 'auth_failed'
+                    ? 'bg-rose-950 text-rose-300 border border-rose-800'
+                    : 'bg-amber-950 text-amber-300 border border-amber-800'
+                }`}>
+                  {wifiSettings.connected ? 'Online' : 'Offline / Fehler'}
+                </span>
+              </h4>
+              <p className="text-xs text-stone-400">
+                Simuliere WLAN-Zugangsdaten (SSID/Passwort), um das Fehlerverhalten des Audio-Geräts zu testen.
+              </p>
+            </div>
+          </div>
+
+          {/* Master WLAN Toggle Switch */}
+          <div className="flex items-center space-x-2 bg-stone-900 px-3 py-1.5 rounded-xl border border-stone-800">
+            <span className="text-xs font-medium text-stone-400">WLAN-Modul:</span>
+            <button
+              onClick={handleToggleWifiMaster}
+              className={`px-3 py-1 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer ${
+                wifiSettings.enabled
+                  ? 'bg-emerald-950 text-emerald-300 border border-emerald-800'
+                  : 'bg-stone-800 text-stone-400 border border-stone-700'
+              }`}
+            >
+              {wifiSettings.enabled ? <Wifi className="w-3.5 h-3.5" /> : <WifiOff className="w-3.5 h-3.5" />}
+              {wifiSettings.enabled ? 'Aktiviert' : 'Deaktiviert'}
+            </button>
+          </div>
+        </div>
+
+        {/* Current Connection Status Box */}
+        <div className={`p-3.5 rounded-xl border flex items-start gap-3 text-xs ${
+          wifiSettings.connected
+            ? 'bg-emerald-950/20 border-emerald-800/60 text-emerald-200'
+            : 'bg-rose-950/20 border-rose-800/60 text-rose-200'
+        }`}>
+          {wifiSettings.connected ? (
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+          ) : (
+            <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+          )}
+          <div className="space-y-0.5">
+            <p className="font-semibold">
+              {wifiSettings.connected
+                ? `Verbunden mit «${wifiSettings.ssid}» (Signal: ${wifiSettings.signalStrength || 90}%)`
+                : wifiSettings.status === 'auth_failed'
+                ? `Verbindungsfehler bei «${wifiSettings.ssid}»: Falsches WLAN-Passwort`
+                : wifiSettings.status === 'no_signal'
+                ? `WLAN «${wifiSettings.ssid}» nicht gefunden (Außer Reichweite)`
+                : 'WLAN-Verbindung ist deaktiviert'}
+            </p>
+            {wifiSettings.lastError && (
+              <p className="text-[11px] font-mono opacity-80">{wifiSettings.lastError}</p>
+            )}
+            {!wifiSettings.connected && (
+              <p className="text-[11px] text-amber-300/90 pt-1">
+                💡 <em>Im Geräte-Simulator blinkt jetzt die rote Fehler-LED und der Pi spielt die kindgerechte Offline-Ansage ab.</em>
+              </p>
+            )}
+          </div>
+        </div>
+
+        {/* Edit Credentials Form */}
+        <form onSubmit={handleApplyWifi} className="space-y-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+            <div>
+              <label className="block text-stone-300 font-semibold mb-1 flex items-center gap-1.5">
+                <Wifi className="w-3.5 h-3.5 text-amber-400" />
+                WLAN-Name (SSID):
+              </label>
+              <input
+                type="text"
+                value={ssidInput}
+                onChange={(e) => setSsidInput(e.target.value)}
+                placeholder="z. B. Heimnetzwerk-FRITZBox"
+                className="w-full bg-stone-900 border border-stone-700 rounded-lg px-3 py-2 text-stone-100 focus:outline-none focus:border-amber-500 font-mono text-xs"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-stone-300 font-semibold mb-1 flex items-center gap-1.5">
+                <Lock className="w-3.5 h-3.5 text-amber-400" />
+                WLAN-Passwort (WPA2/WPA3 Key):
+              </label>
+              <div className="relative">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  value={passwordInput}
+                  onChange={(e) => setPasswordInput(e.target.value)}
+                  placeholder="Mindestens 8 Zeichen..."
+                  className="w-full bg-stone-900 border border-stone-700 rounded-lg px-3 py-2 pr-9 text-stone-100 focus:outline-none focus:border-amber-500 font-mono text-xs"
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-2.5 top-2.5 text-stone-400 hover:text-stone-200 transition"
+                  title={showPassword ? 'Verbergen' : 'Anzeigen'}
+                >
+                  {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+            <button
+              type="submit"
+              disabled={testingWifi}
+              className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${testingWifi ? 'animate-spin' : ''}`} />
+              {testingWifi ? 'WLAN wird getestet...' : 'WLAN-Zugangsdaten anwenden'}
+            </button>
+
+            {wifiNotice && (
+              <span className="text-xs text-amber-300 italic animate-fade-in font-medium">
+                {wifiNotice}
+              </span>
+            )}
+          </div>
+        </form>
+
+        {/* Quick Testing Presets for Connectivity Error Simulation */}
+        <div className="pt-3 border-t border-stone-850">
+          <span className="text-[11px] font-semibold text-stone-400 uppercase tracking-wide block mb-2">
+            Schnell-Szenarien für Fehler-Simulation im Gerät:
+          </span>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <button
+              type="button"
+              onClick={() => applyPreset('valid')}
+              className="p-2 text-left bg-stone-900 hover:bg-emerald-950/40 border border-stone-800 hover:border-emerald-700 rounded-lg text-xs transition cursor-pointer"
+            >
+              <span className="font-semibold text-emerald-400 block text-[11px]">🟢 Gültig (Online)</span>
+              <span className="text-[10px] text-stone-400">Normalbetrieb mit Internet</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => applyPreset('wrong_pass')}
+              className="p-2 text-left bg-stone-900 hover:bg-rose-950/40 border border-stone-800 hover:border-rose-700 rounded-lg text-xs transition cursor-pointer"
+            >
+              <span className="font-semibold text-rose-400 block text-[11px]">🔴 Falsches Passwort</span>
+              <span className="text-[10px] text-stone-400">Handshake-Fehler simulieren</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => applyPreset('no_signal')}
+              className="p-2 text-left bg-stone-900 hover:bg-amber-950/40 border border-stone-800 hover:border-amber-700 rounded-lg text-xs transition cursor-pointer"
+            >
+              <span className="font-semibold text-amber-400 block text-[11px]">🟡 Kein Signal</span>
+              <span className="text-[10px] text-stone-400">SSID außer Reichweite</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => applyPreset('offline')}
+              className="p-2 text-left bg-stone-900 hover:bg-stone-800 border border-stone-800 hover:border-stone-700 rounded-lg text-xs transition cursor-pointer"
+            >
+              <span className="font-semibold text-stone-300 block text-[11px]">⚫ WLAN Aus</span>
+              <span className="text-[10px] text-stone-400">Flugmodus / Offline-Test</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -208,7 +561,7 @@ export const ParentDashboard: React.FC<ParentDashboardProps> = ({ currentDeviceI
                 {!dev.revoked && (
                   <button
                     onClick={() => handleRevokeDevice(dev.deviceId)}
-                    className="p-1.5 text-stone-400 hover:text-rose-400 hover:bg-stone-800 rounded transition"
+                    className="p-1.5 text-stone-400 hover:text-rose-400 hover:bg-stone-800 rounded transition cursor-pointer"
                     title="Zugang widerrufen"
                   >
                     <Trash2 className="w-4 h-4" />
@@ -244,13 +597,91 @@ export const ParentDashboard: React.FC<ParentDashboardProps> = ({ currentDeviceI
           <button
             type="submit"
             disabled={loading}
-            className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition disabled:opacity-50"
+            className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition disabled:opacity-50 cursor-pointer"
           >
             <Plus className="w-4 h-4" />
             Gerät hinzufügen
           </button>
         </form>
       </div>
+
+      {/* Environmental Variables & Server Configuration Inspector */}
+      {statusMetrics?.config && (
+        <div className="pt-4 border-t border-stone-800">
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="text-xs font-semibold uppercase tracking-wider text-stone-300 flex items-center gap-1.5">
+              <span>Aktive Umgebungsvariablen (Environmental Variables)</span>
+            </h4>
+            <span className="text-[11px] font-mono text-amber-400 bg-amber-950/60 px-2 py-0.5 rounded border border-amber-800">
+              .env / kunibert.env
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs">
+            <div className="bg-stone-950 p-3 rounded-xl border border-stone-800 space-y-1">
+              <span className="font-mono text-stone-400 text-[11px]">KUNIBERT_AGE</span>
+              <p className="font-bold text-stone-200">{statusMetrics.config.ageBracket}</p>
+              <p className="text-stone-500 text-[10px]">Alterszielgruppe für Sprachkomplexität</p>
+            </div>
+
+            <div className="bg-stone-950 p-3 rounded-xl border border-stone-800 space-y-1">
+              <span className="font-mono text-stone-400 text-[11px]">KUNIBERT_PARTS_PER_EPISODE</span>
+              <p className="font-bold text-stone-200">{statusMetrics.config.partsPerEpisode} Kapitel pro Folge</p>
+              <p className="text-stone-500 text-[10px]">Start → Mitte → List → Finale</p>
+            </div>
+
+            <div className="bg-stone-950 p-3 rounded-xl border border-stone-800 space-y-1">
+              <span className="font-mono text-stone-400 text-[11px]">KUNIBERT_RATE_LIMIT</span>
+              <p className="font-bold text-stone-200">{statusMetrics.config.rateLimit}</p>
+              <p className="text-stone-500 text-[10px]">Kinderschutz vor Dauerüberflutung</p>
+            </div>
+
+            <div className="bg-stone-950 p-3 rounded-xl border border-stone-800 space-y-1">
+              <span className="font-mono text-stone-400 text-[11px]">KUNIBERT_AUDIO_TTL</span>
+              <p className="font-bold text-stone-200">{statusMetrics.config.audioTtlSeconds}</p>
+              <p className="text-stone-500 text-[10px]">WAV nach 1x Abruf sofort vernichtet</p>
+            </div>
+
+            <div className="bg-stone-950 p-3 rounded-xl border border-stone-800 space-y-1">
+              <span className="font-mono text-stone-400 text-[11px]">KUNIBERT_AUDIO_SAMPLE_RATE</span>
+              <p className="font-bold text-stone-200">{statusMetrics.config.audioSampleRate}</p>
+              <p className="text-stone-500 text-[10px]">Pi-Hardware Standard 16 kHz Mono</p>
+            </div>
+
+            <div className="bg-stone-950 p-3 rounded-xl border border-stone-800 space-y-1">
+              <span className="font-mono text-stone-400 text-[11px]">KUNIBERT_EMERGENCY_NUMBERS</span>
+              <p className="font-bold text-rose-300">112 &amp; Nummer gegen Kummer</p>
+              <p className="text-stone-500 text-[10px]">
+                {statusMetrics.config.emergencyNumberPrimary} / {statusMetrics.config.emergencyNumberKummer}
+              </p>
+            </div>
+
+            <div className="bg-stone-950 p-3 rounded-xl border border-stone-800 space-y-1">
+              <span className="font-mono text-stone-400 text-[11px]">GEMINI_API_KEY</span>
+              <p className="font-bold text-stone-200">
+                {statusMetrics.config.hasGeminiKey ? (
+                  <span className="text-emerald-400">Konfiguriert (Server-seitig)</span>
+                ) : (
+                  <span className="text-stone-400">Offline-Erzählmotor aktiv</span>
+                )}
+              </p>
+              <p className="text-stone-500 text-[10px]">Schlüssel verlässt nie den Server</p>
+            </div>
+
+            <div className="bg-stone-950 p-3 rounded-xl border border-stone-800 space-y-1">
+              <span className="font-mono text-stone-400 text-[11px]">KUNIBERT_DIAGNOSTIC_TEXT</span>
+              <p className="font-bold text-stone-200">{statusMetrics.config.diagnosticText ? 'Aktiv (1)' : 'Inaktiv (0)'}</p>
+              <p className="text-stone-500 text-[10px]">Antworttext für Web-Simulator &amp; Logs</p>
+            </div>
+
+            <div className="bg-stone-950 p-3 rounded-xl border border-stone-800 space-y-1">
+              <span className="font-mono text-stone-400 text-[11px]">PORT &amp; HOST</span>
+              <p className="font-bold text-stone-200">{statusMetrics.config.host}:{statusMetrics.config.port}</p>
+              <p className="text-stone-500 text-[10px]">HTTP-Schnittstelle für Pi-Client</p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
