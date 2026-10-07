@@ -9,6 +9,7 @@ Ein bildschirmloses Zuhör- und Erzählgerät: Ein Kind drückt die **Sprechtast
 | `server/` | **neu:** Server hinter der API mit Whisper, Sicherheitsweiche, Erzählmotor, Antwortmodell und Piper-Stimme | 21 Tests, echter Durchlauf mit dem Pi-Client |
 | `hoerproben/` | **neu:** komplette Kunibert-Folge (7:45 min) und Fragerunde als MP3, alles zum Mitlesen | echte Ausgabe, nicht nachbearbeitet |
 | `demo/` | Skript für den Live-Durchlauf (Client → Server → gespeichertes Abspiel-Audio) | – |
+| `firmware/arduino-giga/` | Arduino-GIGA-Firmware, Connectivity-Test, Verdrahtung und WLAN-Logger | Prototyp 0.3 |
 
-**Produktplattform:** `picast.com` ist die Hauptdomain. Spracheingabe, Kuration, Erzähl-Engine und Eltern-Bereich sollen dort als kontrollierte Dienste zusammenlaufen; der Raspberry Pi bleibt ein bildschirmlosem, authentisiertem Client. `picast.de` wird höchstens defensiv als deutsche Weiterleitungsdomain geprüft.
-**Was als Nächstes fehlt:** ein picast.com-Vertikalschnitt mit Geräteaufnahme/-widerruf, Eltern-Bereich, Einwilligungs- und Datenschutzfluss, anschließend die reale Verdrahtung und der Test auf einem Raspberry Pi. Die Sicherheits- und Kurationstexte müssen fachlich geprüft werden.
+**Produktplattform:** `picastAI.com` ist die kommerzielle Plattform. Spracheingabe, Kuration, Erzähl-Engine und Eltern-Bereich sollen dort als kontrollierte Dienste zusammenlaufen; `manualAI.org` ist als Non-Profit-Struktur vorgesehen. Der Arduino GIGA beziehungsweise Raspberry Pi bleibt ein bildschirm- und authentisierter Client. `picast.de` wird höchstens defensiv als deutsche Weiterleitungsdomain geprüft.
+**Was als Nächstes fehlt:** ein picastAI.com-Vertikalschnitt mit Geräteaufnahme/-widerruf, Eltern-Bereich, Einwilligungs- und Datenschutzfluss, anschließend die reale Verdrahtung und der Test auf dem Arduino-GIGA- und Raspberry-Pi-Prototyp. Die Sicherheits- und Kurationstexte müssen fachlich geprüft werden.
