@@ -12,9 +12,23 @@ export class DeviceRegistry {
   private devices: Map<string, DeviceEntry> = new Map();
 
   constructor() {
-    // Standard-Testgerät vorladen, damit Prototyp-Tests und Simulator sofort klappen
-    this.addDeviceWithRawToken('prototype-1', 'test-token-kunibert-2026', 'Raspberry Pi Prototyp #1');
+    // Entwicklungsgeräte bleiben für den Simulator verfügbar. Für den GIGA-
+    // Prototyp kann ein eigener Token über Umgebungsvariablen provisioniert
+    // werden; echte Tokens stehen nicht im Quellcode.
+    if (process.env.NODE_ENV !== 'production') {
+      this.addDeviceWithRawToken('prototype-1', 'test-token-kunibert-2026', 'Raspberry Pi Prototyp #1');
+    }
     this.addDeviceWithRawToken('simulator-web', 'sim-web-token-xyz-123', 'Web Client Simulator');
+
+    const configuredDeviceId = process.env.PICASTAI_DEVICE_ID || process.env.KUNIBERT_DEVICE_ID;
+    const configuredToken = process.env.PICASTAI_DEVICE_TOKEN || process.env.KUNIBERT_DEVICE_TOKEN;
+    if (configuredDeviceId && configuredToken) {
+      this.addDeviceWithRawToken(
+        configuredDeviceId,
+        configuredToken,
+        process.env.PICASTAI_DEVICE_NAME || 'picastAI GIGA-Prototyp'
+      );
+    }
   }
 
   private hashToken(token: string): string {

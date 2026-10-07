@@ -32,6 +32,7 @@ const store = new AudioStore(
   config.audioTtlSeconds
 );
 const brain = new Brain();
+const deviceStoryStates = new Map<string, StoryState>();
 
 // Multer für WAV Uploads (max 2 MB)
 const upload = multer({
@@ -68,6 +69,164 @@ function authenticate(req: Request): string {
 // GET /health
 app.get('/health', (_req: Request, res: Response) => {
   res.json({ status: 'ok', name: 'Ritter Kunibert API', time: Date.now() });
+});
+
+function deviceAudioUrl(req: Request, turnId: string): string {
+  return `${req.protocol}://${req.get('host')}/v1/device/audio/${encodeURIComponent(turnId)}`;
+}
+
+function deviceResponse(
+  req: Request,
+  deviceId: string,
+  result: Awaited<ReturnType<Brain['handle']>>,
+  type: 'answer' | 'kunibert_story'
+): { body: Record<string, unknown>; turnId: string } {
+  const wav = result.wav || Buffer.alloc(0);
+  const turnId = store.put(deviceId, wav);
+  const body: Record<string, unknown> = {
+    type,
+    audio_url: deviceAudioUrl(req, turnId),
+    session_end: Boolean(result.story_state?.done),
+  };
+  if (config.diagnosticText) body.text = result.speech;
+  return { body, turnId };
+}
+
+function normalizeDeviceLocale(value: unknown): string {
+  const locale = String(value || 'de-DE').trim();
+  return locale === 'de-DE' ? locale : 'de-DE';
+}
+
+function normalizeAgeBand(value: unknown): string {
+  const ageBand = String(value || '6-10').trim();
+  return /^(6-10|6–10)$/.test(ageBand) ? '6-10' : '6-10';
+}
+
+function rememberDeviceStoryState(deviceId: string, state: StoryState): void {
+  // Nur der kleine Story-State bleibt im RAM; Audio und Diagnosetexte werden
+  // nicht zusätzlich in dieser Session-Map gespeichert.
+  deviceStoryStates.set(deviceId, state);
+}
+
+function recordDeviceTurn(
+  deviceId: string,
+  mode: string,
+  result: Awaited<ReturnType<Brain['handle']>>,
+  turnId: string
+): void {
+  saveTurnToFirestore(deviceId, {
+    turnId,
+    mode,
+    kind: result.kind,
+    text: result.speech,
+    timestamp: Date.now(),
+  }).catch(() => {});
+  saveStorySessionToFirestore(deviceId, result.story_state).catch(() => {});
+}
+
+// ------------------------------------------------------------
+// picastAI.com Geräte-Schnittstelle für Arduino GIGA / Pi-Prototyp
+// ------------------------------------------------------------
+
+app.post(
+  '/v1/device/question',
+  upload.single('audio'),
+  async (req: Request, res: Response): Promise<any> => {
+    let deviceId: string;
+    try {
+      deviceId = authenticate(req);
+    } catch {
+      return res.status(401).json({ error: 'unauthorized' });
+    }
+
+    if (!limiter.allow(deviceId)) {
+      return res.status(429).json({ error: 'rate_limited' });
+    }
+    if (!req.file) {
+      return res.status(400).json({ error: 'audio_required' });
+    }
+
+    try {
+      const header = decodeWavHeader(req.file.buffer);
+      if (header.channels !== 1 || header.bitsPerSample !== 16 || header.sampleRate !== config.audioSampleRate) {
+        return res.status(400).json({ error: 'unsupported_audio_format' });
+      }
+
+      // Eine echte STT-Anbindung wird als nächster Provider-Schritt ergänzt.
+      // Der Prototyp akzeptiert deshalb optional ein diagnostisches transcript-
+      // Feld und nutzt sonst einen neutralen Fallback statt eine Antwort zu
+      // erfinden, die den Audioinhalt behauptet zu kennen.
+      const transcript = typeof req.body.transcript === 'string'
+        ? req.body.transcript.slice(0, 1000)
+        : '';
+      const state = deviceStoryStates.get(deviceId) || {};
+      const result = await brain.handle('frage', transcript, state);
+      rememberDeviceStoryState(deviceId, result.story_state);
+      const response = deviceResponse(req, deviceId, result, 'answer');
+      recordDeviceTurn(deviceId, 'frage', result, response.turnId);
+      return res.json(response.body);
+    } catch (err) {
+      console.error('Error in /v1/device/question:', err);
+      return res.status(400).json({ error: 'bad_audio' });
+    }
+  }
+);
+
+app.post(
+  '/v1/device/kunibert-story',
+  async (req: Request, res: Response): Promise<any> => {
+    let deviceId: string;
+    try {
+      deviceId = authenticate(req);
+    } catch {
+      return res.status(401).json({ error: 'unauthorized' });
+    }
+
+    if (!limiter.allow(deviceId)) {
+      return res.status(429).json({ error: 'rate_limited' });
+    }
+
+    const locale = normalizeDeviceLocale(req.body?.locale);
+    const ageBand = normalizeAgeBand(req.body?.age_band);
+    const requestedLength = String(req.body?.length || 'short');
+    if (requestedLength !== 'short') {
+      return res.status(400).json({ error: 'unsupported_length' });
+    }
+
+    try {
+      const state = deviceStoryStates.get(deviceId) || {};
+      const wish = `${locale} ${ageBand}`;
+      const result = await brain.handle('geschichte', wish, state);
+      rememberDeviceStoryState(deviceId, result.story_state);
+      const response = deviceResponse(req, deviceId, result, 'kunibert_story');
+      recordDeviceTurn(deviceId, 'geschichte', result, response.turnId);
+      return res.json(response.body);
+    } catch (err) {
+      console.error('Error in /v1/device/kunibert-story:', err);
+      return res.status(500).json({ error: 'internal_error' });
+    }
+  }
+);
+
+app.get('/v1/device/audio/:turn_id', (req: Request, res: Response): any => {
+  let deviceId: string;
+  try {
+    deviceId = authenticate(req);
+  } catch {
+    return res.status(401).json({ error: 'unauthorized' });
+  }
+
+  const turnId = String(req.params.turn_id);
+  const wav = store.take(deviceId, turnId);
+  if (!wav || wav.length === 0) {
+    return res.status(404).json({ error: 'not_found' });
+  }
+  res.set({
+    'Content-Type': 'audio/wav',
+    'Content-Length': wav.length.toString(),
+    'Cache-Control': 'no-store',
+  });
+  return res.send(wav);
 });
 
 // POST /v1/turn
