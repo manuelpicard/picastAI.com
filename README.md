@@ -1,4 +1,4 @@
-# Ritter Kunibert – Projektstand
+# picastAI.com — Ritter Kunibert als erstes Produkt
 
 Ein bildschirmloses Zuhör- und Erzählgerät: Ein Kind drückt die **Sprechtaste** und stellt eine Frage, oder es drückt die **Erzähltaste** und hört eine neue Geschichte von Ritter Kunibert, im Geist der Geschichten, die ein Vater sich einmal ausgedacht hat.
 

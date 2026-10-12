@@ -1,6 +1,6 @@
 # Repository-Organisation: picastAI.com
 
-Dieses Repository ist der zentrale Produktbereich von **picastAI.com**. **Ritter Kunibert** ist das erste Produkt.
+Dieses Repository `picastAI.com` ist der zentrale Produktbereich von **picastAI.com**. **Ritter Kunibert** ist das erste Produkt.
 
 ## Bereiche
 
