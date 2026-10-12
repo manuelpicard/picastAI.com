@@ -12,9 +12,9 @@ Dieses Repository `picastAI.com` ist der zentrale Produktbereich von **picastAI.
 
 ## Zugehörige Repositories
 
-- [`server`](https://github.com/makopipokam/server) — separates picastAI-/picast-Hosting- und Infrastruktur-Repository für Deployment, DNS und Lightsail-Notizen.
-- [`manualai.org`](https://github.com/makopipokam/manualai.org) — App-Plattform und allgemeine Apps.
-- [`Satya`](https://github.com/makopipokam/Satya) — Crypto-/Celo-/MiniPay-Projekte.
+- [`server`](https://github.com/manuelpicard/server) — separates picastAI-/picast-Hosting- und Infrastruktur-Repository für Deployment, DNS und Lightsail-Notizen.
+- [`manualai.org`](https://github.com/manuelpicard/manualai.org) — App-Plattform und allgemeine Apps.
+- [`Satya`](https://github.com/manuelpicard/Satya) — Crypto-/Celo-/MiniPay-Projekte.
 
 ## Produktregel
 
