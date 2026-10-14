@@ -395,7 +395,7 @@ export const DeviceSimulator: React.FC<DeviceSimulatorProps> = ({
             <div
               onClick={() => setIsCharging(!isCharging)}
               className="flex items-center space-x-2 bg-stone-900/90 hover:bg-stone-900 px-3 py-1.5 rounded-full border border-stone-700 cursor-pointer transition select-none group shadow-sm"
-              title="Klicken, um USB-C Ladekabel anzustecken oder zu trennen"
+              title="Klicken, um zwischen 5V USB-C Netzteilbetrieb (Prototyp) und Akkubetrieb umzuschalten"
             >
               <div className="flex items-center space-x-1">
                 {isCharging ? (
@@ -408,7 +408,7 @@ export const DeviceSimulator: React.FC<DeviceSimulatorProps> = ({
                   <BatteryFull className="w-3.5 h-3.5 text-emerald-400" />
                 )}
                 <span className="text-xs font-mono font-bold text-stone-200">
-                  {batteryLevel}%
+                  {isCharging ? '5V' : `${batteryLevel}%`}
                 </span>
               </div>
 
@@ -422,7 +422,7 @@ export const DeviceSimulator: React.FC<DeviceSimulatorProps> = ({
                       ? 'bg-gradient-to-r from-amber-600 to-amber-400 shadow-[0_0_8px_#f59e0b]'
                       : 'bg-gradient-to-r from-rose-600 to-rose-400 shadow-[0_0_8px_#ef4444]'
                   }`}
-                  style={{ width: `${Math.max(8, batteryLevel)}%` }}
+                  style={{ width: `${Math.max(8, isCharging ? 100 : batteryLevel)}%` }}
                 >
                   {/* Animated shimmer effect when charging */}
                   {isCharging && (
@@ -441,7 +441,7 @@ export const DeviceSimulator: React.FC<DeviceSimulatorProps> = ({
                     : 'bg-stone-800 text-stone-400'
                 }`}
               >
-                {isCharging ? 'Lädt' : 'Akku'}
+                {isCharging ? 'Netzteil (5V)' : 'Akku'}
               </span>
             </div>
 
@@ -469,7 +469,7 @@ export const DeviceSimulator: React.FC<DeviceSimulatorProps> = ({
               </span>
             </div>
 
-            {/* LED Indicator (GPIO 17) */}
+            {/* LED Indicator (GPIO 23) */}
             <div className="flex items-center space-x-2 bg-stone-900/90 px-3 py-1.5 rounded-full border border-stone-700">
               <span className="text-xs text-stone-400">Status-LED:</span>
               <div
@@ -578,10 +578,10 @@ export const DeviceSimulator: React.FC<DeviceSimulatorProps> = ({
 
         {/* Hardware Push-Buttons */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-          {/* Sprechtaste (GPIO 5) */}
+          {/* Sprechtaste (GPIO 17) */}
           <div className="flex flex-col items-center p-5 bg-stone-900/60 rounded-xl border border-stone-700/70 hover:border-amber-600/40 transition">
             <div className="text-center mb-3">
-              <span className="text-xs font-bold uppercase tracking-wider text-rose-400">GPIO 5</span>
+              <span className="text-xs font-bold uppercase tracking-wider text-rose-400">GPIO 17</span>
               <h3 className="text-base font-semibold text-stone-200">Sprechtaste</h3>
               <p className="text-xs text-stone-400">Gedrückt halten &amp; Frage stellen</p>
             </div>
@@ -607,10 +607,10 @@ export const DeviceSimulator: React.FC<DeviceSimulatorProps> = ({
             </button>
           </div>
 
-          {/* Erzähltaste (GPIO 6) */}
+          {/* Erzähltaste (GPIO 27) */}
           <div className="flex flex-col items-center p-5 bg-stone-900/60 rounded-xl border border-stone-700/70 hover:border-amber-600/40 transition">
             <div className="text-center mb-3">
-              <span className="text-xs font-bold uppercase tracking-wider text-amber-400">GPIO 6</span>
+              <span className="text-xs font-bold uppercase tracking-wider text-amber-400">GPIO 27</span>
               <h3 className="text-base font-semibold text-stone-200">Erzähltaste</h3>
               <p className="text-xs text-stone-400">
                 {isStoryOngoing

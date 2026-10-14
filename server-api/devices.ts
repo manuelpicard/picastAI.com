@@ -12,7 +12,7 @@ export class DeviceRegistry {
   private devices: Map<string, DeviceEntry> = new Map();
 
   constructor() {
-    // Entwicklungsgeräte bleiben für den Simulator verfügbar. Für den GIGA-
+    // Entwicklungsgeräte bleiben für den Simulator verfügbar. Für den Pi Zero 2 W-
     // Prototyp kann ein eigener Token über Umgebungsvariablen provisioniert
     // werden; echte Tokens stehen nicht im Quellcode.
     if (process.env.NODE_ENV !== 'production') {
@@ -26,7 +26,7 @@ export class DeviceRegistry {
       this.addDeviceWithRawToken(
         configuredDeviceId,
         configuredToken,
-        process.env.PICASTAI_DEVICE_NAME || 'picastAI GIGA-Prototyp'
+        process.env.PICASTAI_DEVICE_NAME || 'picastAI Pi Zero 2 W Prototyp'
       );
     }
   }

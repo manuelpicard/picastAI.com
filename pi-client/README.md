@@ -40,32 +40,6 @@ sudo bash pi-client/install_raspberry_pi.sh \
   --audio-card 'hw:wm8960soundcard,0'
 ```
 
-## WebSocket-Reconnect für den Gerätestream
-
-Der HTTP-Audiopfad bleibt der Standard- und Fallbackpfad. Der optionale WebSocket-Transport kann für den neuen Gerätestream aktiviert werden:
-
-```ini
-KUNIBERT_WS_ENABLED=1
-PICASTAI_WS_URL=wss://picastAI.com/v1/device/stream
-KUNIBERT_WS_RECONNECT_BASE=1
-KUNIBERT_WS_RECONNECT_MAX=30
-KUNIBERT_WS_RECONNECT_JITTER=0.5
-KUNIBERT_WS_PING_INTERVAL=20
-```
-
-Der Client behandelt die Backend-Close-Codes so:
-
-| Code | Verhalten |
-|---:|---|
-| `1012` | automatischer Reconnect mit Backoff und Jitter |
-| `1013` | späterer Reconnect mit Backoff und Jitter, z. B. bei Backpressure |
-| `1000` | sauberer Abschluss, kein Reconnect |
-| `1003` | ungültiges Protokoll, kein Reconnect |
-| `1008` | Authentifizierungs-/Policy-Fehler, kein Reconnect |
-| kein Code | Netzwerkabbruch, automatischer Reconnect |
-
-Die Verzögerung wächst nach dem Muster `1, 2, 4, 8 …` Sekunden, ist auf 30 Sekunden begrenzt und erhält bis zu 0,5 Sekunden positiven Zufalls-Jitter. Nach einer stabilen Verbindung von mindestens 30 Sekunden wird der Backoff zurückgesetzt. Ein Stream-Fehler blockiert weder Taster noch HTTP-WAV-Wiedergabe.
-
 Das Skript installiert bewusst **keine ungeprüften Drittanbieter-HAT-Treiber**. WM8960- und ReSpeaker-Treiber hängen von HAT-Modell, Raspberry-Pi-OS-Version und Kernel ab. Sie müssen vorab passend zum konkreten System installiert werden. Ohne `--audio-card` bleibt die vorhandene ALSA-Default-Konfiguration unverändert.
 
 Der Dienst wird aktiviert, aber standardmäßig nicht gestartet, damit zuerst Mikrofon, Lautsprecher und HAT geprüft werden:
@@ -135,8 +109,6 @@ PICASTAI_DEVICE_ID=prototype-001
 PICASTAI_DEVICE_TOKEN=NICHT_IN_GIT_EINTRAGEN
 KUNIBERT_CACHE_DIR=/var/lib/kunibert/audio
 KUNIBERT_SAMPLE_RATE=16000
-KUNIBERT_WS_ENABLED=0
-PICASTAI_WS_URL=wss://picastAI.com/v1/device/stream
 KUNIBERT_MAX_RECORD_SECONDS=15
 KUNIBERT_REQUEST_TIMEOUT=30
 KUNIBERT_RETRY_COUNT=2

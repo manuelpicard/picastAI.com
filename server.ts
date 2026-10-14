@@ -1,5 +1,4 @@
 import express, { Request, Response, NextFunction } from 'express';
-import { createServer } from 'node:http';
 import cors from 'cors';
 import multer from 'multer';
 import path from 'path';
@@ -9,7 +8,6 @@ import { DeviceRegistry, RateLimiter, AudioStore } from './server-api/devices.js
 import { Brain, StoryState } from './server-api/brain.js';
 import { AudioError, decodeWavHeader } from './server-api/audio.js';
 import { config, getSafeConfigSummary } from './server-api/config.js';
-import { DeviceStreamServer } from './server-api/device-stream.js';
 import {
   saveDeviceToFirestore,
   revokeDeviceInFirestore,
@@ -127,7 +125,7 @@ function recordDeviceTurn(
 }
 
 // ------------------------------------------------------------
-// picastAI.com Geräte-Schnittstelle für Arduino GIGA / Pi-Prototyp
+// picastAI.com Geräte-Schnittstelle für Raspberry Pi Zero 2 W Prototyp
 // ------------------------------------------------------------
 
 app.post(
@@ -419,30 +417,8 @@ async function startServer() {
     });
   }
 
-  const httpServer = createServer(app);
-  const deviceStream = new DeviceStreamServer(httpServer, {
-    path: '/v1/device/stream',
-    verifyDevice: (deviceId, token) => registry.verify(deviceId, token),
-  });
-
-  httpServer.on('error', (err) => {
-    console.error('HTTP-Serverfehler:', err);
-  });
-
-  const shutdown = (signal: string) => {
-    console.log(`Beende Server nach ${signal}; schließe ${deviceStream.clientCount} Stream(s) …`);
-    deviceStream.closeForRestart('service_restart');
-    httpServer.close((error) => {
-      if (error) console.error('Fehler beim Schließen des HTTP-Servers:', error);
-      process.exit(error ? 1 : 0);
-    });
-  };
-  process.once('SIGTERM', () => shutdown('SIGTERM'));
-  process.once('SIGINT', () => shutdown('SIGINT'));
-
-  httpServer.listen(PORT, HOST, () => {
+  app.listen(PORT, HOST, () => {
     console.log(`🏰 Ritter Kunibert Server läuft auf http://${HOST}:${PORT}`);
-    console.log(`WebSocket-Gerätestream: ws://${HOST}:${PORT}/v1/device/stream`);
   });
 }
 

@@ -1,0 +1,6 @@
+{
+  "summary": "Aktualisierung des Architekturplans: Festlegung auf reinen 5V USB-C Netzteilbetrieb für die erste Prototypenphase des Raspberry Pi Zero 2 W. Mobiler LiPo-Akkubetrieb (PiSugar 3 / Waveshare Zero UPS) bleibt als saubere V2-Roadmap dokumentiert.",
+  "updatedAt": "2026-10-14T05:42:59.551180711Z",
+  "requestFeedback": true,
+  "userFacing": true
+}
