@@ -77,6 +77,59 @@ Die Story-Session wird für die Gerät-ID flüchtig im RAM gehalten. Die Antwort
 
 Erfordert wieder dieselben `Authorization`- und `X-Device-ID`-Header. Die WAV-Datei wird aus dem flüchtigen AudioStore geliefert und danach einmalig gelöscht. Die URL läuft ab, sobald die konfigurierte TTL erreicht ist.
 
+## WebSocket-Gerätestream
+
+Der Node-Server stellt zusätzlich `WS /v1/device/stream` bereit. Der Stream ist für spätere Audio- und TTS-Chunk-Übertragung vorgesehen; die stabilen HTTP-Turn-Endpunkte bleiben der Fallback für den aktuellen Pi-Client.
+
+Verbindung mit denselben Authentifizierungsdaten:
+
+```text
+ws(s)://<host>/v1/device/stream
+Authorization: Bearer <device-token>
+X-Device-ID: prototype-001
+```
+
+Nach erfolgreichem Upgrade sendet der Server:
+
+```json
+{
+  "type": "stream.ready",
+  "protocol": 1,
+  "connection_id": "…",
+  "device_id": "prototype-001",
+  "heartbeat_interval_ms": 30000
+}
+```
+
+Anwendungsping:
+
+```json
+{"type":"ping","request_id":"r-123"}
+```
+
+Antwort:
+
+```json
+{"type":"pong","request_id":"r-123","timestamp":1720000000000}
+```
+
+Binäre Nachrichten sind auf 64 KiB pro Chunk begrenzt. Der Server bestätigt sie mit:
+
+```json
+{"type":"stream.ack","bytes":4096}
+```
+
+### Fehlerbehandlung und Reconnect
+
+- WebSocket-Ping/Pong-Heartbeat alle 30 Sekunden; ausgefallene Verbindungen werden serverseitig terminiert.
+- Maximal 512 KiB nicht gesendete Daten pro Verbindung; bei Backpressure wird die Verbindung mit `1013` geschlossen.
+- Authentifizierungsfehler werden mit `1008` geschlossen.
+- Ungültige Nachrichten werden mit `1003` geschlossen.
+- Vor einem kontrollierten Backend-Neustart werden Verbindungen mit `1012` und dem Grund `service_restart` geschlossen.
+- Ein Gerät darf nur eine aktive Stream-Verbindung besitzen; eine neuere Verbindung ersetzt die ältere mit `1013`.
+- Der Client soll nach `1012`, `1013` oder einem unerwarteten Netzwerkabbruch exponentiell neu verbinden, zum Beispiel nach 1, 2, 4, 8 und maximal 30 Sekunden, mit Zufalls-Jitter.
+- Bei `1008` oder `1003` darf nicht automatisch in einer Endlosschleife neu verbunden werden; zuerst muss die Konfiguration oder das Protokoll korrigiert werden.
+
 ## Konfiguration
 
 In `.env` oder der vom Prozess geladenen Umgebung:
