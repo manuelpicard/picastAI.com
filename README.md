@@ -8,6 +8,7 @@ Ein bildschirmloses Zuhör- und Erzählgerät: Ein Kind drückt die **Sprechtast
 | `docs/ai-context/` | Gesprächsarchiv und historische Produktbeschreibung als Kontext für künftige KI-Sitzungen | Kontextarchiv 2026-10-02 bis 2026-10-14 |
 | `pi-client/` | Raspberry-Pi-Client: GPIO-Tasten, begrenzte Aufnahme, Antwort holen und abspielen | erweitert: Zustandsautomat, LED-Signale, Mikrofon-Aus, ALSA-Diagnose, Hardware-Mocks; Tests |
 | `server/` | **neu:** Server hinter der API mit Whisper, Sicherheitsweiche, Erzählmotor, Antwortmodell und Piper-Stimme | 21 Tests, echter Durchlauf mit dem Pi-Client |
+| `pi-client/` | Raspberry-Pi-Zero-2-W-Client mit Zustandsautomat, GPIO-Tastern, Audioaufnahme/-wiedergabe und picastAI-API | Prototyp implementiert |
 | `hoerproben/` | **neu:** komplette Kunibert-Folge (7:45 min) und Fragerunde als MP3, alles zum Mitlesen | echte Ausgabe, nicht nachbearbeitet |
 | `demo/` | Skript für den Live-Durchlauf (Client → Server → gespeichertes Abspiel-Audio) | – |
 | `firmware/arduino-giga/` | Arduino-GIGA-Firmware, Connectivity-Test, Verdrahtung und WLAN-Logger | Prototyp 0.3 |
