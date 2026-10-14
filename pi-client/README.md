@@ -2,6 +2,55 @@
 
 Der Client ist für einen **Raspberry Pi Zero 2 W** mit Audio-HAT, Mikrofon, aktivem Lautsprecher, zwei Tastern, Status-LED und Mikrofon-Aus-Schalter ausgelegt.
 
+## Automatische Installation auf frischem Raspberry Pi OS
+
+Das Skript `install_raspberry_pi.sh` installiert die Python-Laufzeit, GPIO-/Audio-Abhängigkeiten, ALSA-Grundpakete, ein Dienstkonto, eine geschützte Umgebungsdatei und einen systemd-Service. Es ist idempotent und kann nach einem abgebrochenen Lauf erneut ausgeführt werden.
+
+Auf dem Pi nach dem Kopieren oder Klonen des Repositories:
+
+```bash
+sudo bash pi-client/install_raspberry_pi.sh \
+  --device-id pi-zero-001 \
+  --api-token 'TOKEN_AUS_SECRET_MANAGER'
+```
+
+Für automatisierte Provisionierung ohne Eingabeaufforderung `--non-interactive` verwenden. Ohne `--api-token` wird dann absichtlich nur eine leere Konfiguration geschrieben:
+
+```bash
+sudo bash pi-client/install_raspberry_pi.sh \
+  --non-interactive \
+  --device-id pi-zero-001 \
+  --api-token "$PICASTAI_DEVICE_TOKEN"
+```
+
+Vor einer echten Installation kann die Auflösung der Quelle und Optionen geprüft werden:
+
+```bash
+sudo bash pi-client/install_raspberry_pi.sh --dry-run --non-interactive
+```
+
+Für einen WM8960-HAT kann die erkannte ALSA-Karte explizit gesetzt werden:
+
+```bash
+aplay -l
+arecord -l
+sudo bash pi-client/install_raspberry_pi.sh \
+  --device-id pi-zero-001 \
+  --api-token 'TOKEN_AUS_SECRET_MANAGER' \
+  --audio-card 'hw:wm8960soundcard,0'
+```
+
+Das Skript installiert bewusst **keine ungeprüften Drittanbieter-HAT-Treiber**. WM8960- und ReSpeaker-Treiber hängen von HAT-Modell, Raspberry-Pi-OS-Version und Kernel ab. Sie müssen vorab passend zum konkreten System installiert werden. Ohne `--audio-card` bleibt die vorhandene ALSA-Default-Konfiguration unverändert.
+
+Der Dienst wird aktiviert, aber standardmäßig nicht gestartet, damit zuerst Mikrofon, Lautsprecher und HAT geprüft werden:
+
+```bash
+sudo systemctl start kunibert.service
+journalctl -u kunibert.service -f
+```
+
+Die geheime Konfiguration liegt danach in `/etc/kunibert/kunibert.env` und wird nicht in Git gespeichert.
+
 ## Zustandsautomat
 
 ```text
