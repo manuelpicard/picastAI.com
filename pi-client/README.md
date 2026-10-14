@@ -192,6 +192,44 @@ aplay /tmp/mic.wav
 
 Wenn die HAT-Treiber nicht geladen sind, muss zuerst die Dokumentation des konkreten WM8960- oder ReSpeaker-HATs befolgt werden. Der Client setzt ein funktionierendes ALSA-/PortAudio-Gerät voraus.
 
+### Direkter ALSA-Test ohne Python-Client
+
+Mit `test_alsa_audio.sh` lassen sich HAT, Mikrofon und Lautsprecher unabhängig vom Kunibert-Client prüfen:
+
+```bash
+chmod +x pi-client/test_alsa_audio.sh
+bash pi-client/test_alsa_audio.sh --mode list
+bash pi-client/test_alsa_audio.sh --mode all --duration 3
+```
+
+Der vollständige Test führt aus:
+
+1. Auflistung der ALSA-Geräte mit `aplay -l`, `arecord -l`, `aplay -L` und `arecord -L`
+2. Mikrofonaufnahme mit 16 kHz, mono, 16 Bit
+3. Wiedergabe eines 440-Hz-Testtons
+
+Für eine Aufnahme mit anschließender Wiedergabe:
+
+```bash
+bash pi-client/test_alsa_audio.sh \
+  --mode roundtrip \
+  --capture-device default \
+  --playback-device default \
+  --duration 5 \
+  --keep
+```
+
+Mit einer expliziten WM8960-Karte:
+
+```bash
+bash pi-client/test_alsa_audio.sh \
+  --mode roundtrip \
+  --capture-device 'hw:wm8960soundcard,0' \
+  --playback-device 'hw:wm8960soundcard,0'
+```
+
+`default` ist zu bevorzugen, wenn `/etc/asound.conf` durch das Installationsskript konfiguriert wurde. Das Skript löscht seine Testdateien standardmäßig aus `/tmp`; mit `--keep` bleiben sie zur weiteren Untersuchung erhalten.
+
 ## Designgrenzen
 
 - Die Aufnahme wird nur im RAM gehalten, bis die API-Anfrage abgeschlossen ist.
