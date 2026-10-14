@@ -19,6 +19,7 @@ import io
 import json
 import logging
 import os
+import random
 import secrets
 import signal
 import sys
@@ -72,6 +73,12 @@ class ClientConfig:
     status_led_gpio: int = 23
     poll_interval_seconds: float = 0.04
     cache_dir: Path = Path("/var/lib/kunibert/audio")
+    ws_enabled: bool = False
+    ws_url: str = ""
+    ws_reconnect_base_seconds: float = 1.0
+    ws_reconnect_max_seconds: float = 30.0
+    ws_reconnect_jitter_seconds: float = 0.5
+    ws_ping_interval_seconds: float = 20.0
     dry_run: bool = False
 
     @classmethod
@@ -88,8 +95,20 @@ class ClientConfig:
             except ValueError:
                 return default
 
+        def boolean(name: str, default: bool) -> bool:
+            value = os.getenv(name)
+            if value is None:
+                return default
+            return value.strip().lower() in {"1", "true", "yes", "on"}
+
+        api_base_url = os.getenv("PICASTAI_API_BASE_URL", "https://picastAI.com").rstrip("/")
+        configured_ws_url = os.getenv("PICASTAI_WS_URL", "").strip()
+        if not configured_ws_url:
+            configured_ws_url = api_base_url.replace("https://", "wss://", 1).replace("http://", "ws://", 1)
+            configured_ws_url = f"{configured_ws_url}/v1/device/stream"
+
         return cls(
-            api_base_url=os.getenv("PICASTAI_API_BASE_URL", "https://picastAI.com").rstrip("/"),
+            api_base_url=api_base_url,
             device_id=os.getenv("PICASTAI_DEVICE_ID", "prototype-001"),
             device_token=os.getenv("PICASTAI_DEVICE_TOKEN", ""),
             locale=os.getenv("KUNIBERT_LOCALE", "de-DE"),
@@ -107,6 +126,12 @@ class ClientConfig:
             mic_off_gpio=integer("KUNIBERT_MIC_OFF_GPIO", 22),
             status_led_gpio=integer("KUNIBERT_STATUS_LED_GPIO", 23),
             cache_dir=Path(os.getenv("KUNIBERT_CACHE_DIR", "/var/lib/kunibert/audio")),
+            ws_enabled=boolean("KUNIBERT_WS_ENABLED", False),
+            ws_url=configured_ws_url,
+            ws_reconnect_base_seconds=number("KUNIBERT_WS_RECONNECT_BASE", 1.0),
+            ws_reconnect_max_seconds=number("KUNIBERT_WS_RECONNECT_MAX", 30.0),
+            ws_reconnect_jitter_seconds=number("KUNIBERT_WS_RECONNECT_JITTER", 0.5),
+            ws_ping_interval_seconds=number("KUNIBERT_WS_PING_INTERVAL", 20.0),
             dry_run=dry_run,
         )
 
@@ -120,6 +145,165 @@ class ApiError(RuntimeError):
         super().__init__(message)
         self.status = status
         self.retryable = retryable
+
+
+class WebSocketReconnectPolicy:
+    """Exponential backoff with bounded random jitter for device streams."""
+
+    RETRYABLE_CLOSE_CODES = frozenset({1012, 1013})
+    NON_RETRYABLE_CLOSE_CODES = frozenset({1000, 1003, 1008})
+
+    def __init__(self, base_seconds: float = 1.0, max_seconds: float = 30.0, jitter_seconds: float = 0.5):
+        self.base_seconds = max(0.1, base_seconds)
+        self.max_seconds = max(self.base_seconds, max_seconds)
+        self.jitter_seconds = max(0.0, jitter_seconds)
+
+    def delay(self, attempt: int, random_value: Optional[float] = None) -> float:
+        """Return delay for a 1-based retry attempt, including positive jitter."""
+        exponential = min(self.max_seconds, self.base_seconds * (2 ** max(0, attempt - 1)))
+        jitter = (random_value if random_value is not None else random.random()) * self.jitter_seconds
+        return min(self.max_seconds, exponential + max(0.0, jitter))
+
+    def should_reconnect(self, close_code: Optional[int], had_error: bool = False) -> bool:
+        if close_code in self.NON_RETRYABLE_CLOSE_CODES:
+            return False
+        if close_code in self.RETRYABLE_CLOSE_CODES:
+            return True
+        # A missing close code is the normal websocket-client representation of
+        # a network drop. Unexpected errors are retryable unless the server sent
+        # an explicit policy/protocol rejection above.
+        return had_error or close_code is None
+
+
+class ReconnectingDeviceStream:
+    """Optional WebSocket transport with 1012/1013-aware reconnect handling.
+
+    The HTTP question/story path remains authoritative. This transport is kept
+    separate so a stream outage cannot block button handling or WAV playback.
+    """
+
+    def __init__(self, config: ClientConfig):
+        self.config = config
+        self.policy = WebSocketReconnectPolicy(
+            config.ws_reconnect_base_seconds,
+            config.ws_reconnect_max_seconds,
+            config.ws_reconnect_jitter_seconds,
+        )
+        self._stop = threading.Event()
+        self._thread: Optional[threading.Thread] = None
+        self._socket = None
+        self._lock = threading.Lock()
+        self._attempt = 0
+        self._close_code: Optional[int] = None
+        self._had_error = False
+        self._connected_at = 0.0
+
+    def start(self) -> None:
+        if self._thread and self._thread.is_alive():
+            return
+        self._stop.clear()
+        self._thread = threading.Thread(target=self._run, name="kunibert-ws", daemon=True)
+        self._thread.start()
+
+    def stop(self) -> None:
+        self._stop.set()
+        with self._lock:
+            socket = self._socket
+        if socket is not None:
+            try:
+                socket.close(status=1000, reason="client_shutdown")
+            except Exception:
+                pass
+        if self._thread:
+            self._thread.join(timeout=2.0)
+
+    def _run(self) -> None:
+        try:
+            import websocket
+        except ImportError:
+            LOG.warning("WebSocket deaktiviert: websocket-client fehlt (pip install websocket-client)")
+            return
+
+        while not self._stop.is_set():
+            self._close_code = None
+            self._had_error = False
+            opened_at = 0.0
+
+            def on_open(socket):
+                nonlocal opened_at
+                opened_at = time.monotonic()
+                self._connected_at = opened_at
+                with self._lock:
+                    self._socket = socket
+                LOG.info("WebSocket verbunden: %s", self.config.ws_url)
+
+            def on_message(_socket, message):
+                try:
+                    payload = json.loads(message if isinstance(message, str) else message.decode("utf-8"))
+                    message_type = payload.get("type")
+                    if message_type == "stream.ready":
+                        LOG.info("WebSocket stream.ready (connection_id=%s)", payload.get("connection_id", "?"))
+                    elif message_type == "stream.error":
+                        LOG.warning("WebSocket-Serverfehler: %s", payload.get("error", "unbekannt"))
+                    elif message_type == "pong":
+                        LOG.debug("WebSocket application pong empfangen")
+                    else:
+                        LOG.debug("WebSocket-Nachricht ignoriert: %s", message_type)
+                except (UnicodeDecodeError, json.JSONDecodeError, AttributeError) as exc:
+                    LOG.warning("Ungültige WebSocket-Nachricht: %s", exc)
+
+            def on_error(_socket, error):
+                self._had_error = True
+                LOG.warning("WebSocket-Fehler: %s", error)
+
+            def on_close(_socket, close_code, close_reason):
+                self._close_code = close_code
+                LOG.info("WebSocket geschlossen: code=%s reason=%s", close_code, close_reason or "-")
+
+            try:
+                socket_app = websocket.WebSocketApp(
+                    self.config.ws_url,
+                    header=[
+                        f"Authorization: Bearer {self.config.device_token}",
+                        f"X-Device-ID: {self.config.device_id}",
+                        "User-Agent: ritter-kunibert-pi/0.1",
+                    ],
+                    on_open=on_open,
+                    on_message=on_message,
+                    on_error=on_error,
+                    on_close=on_close,
+                )
+                with self._lock:
+                    self._socket = socket_app
+                socket_app.run_forever(
+                    ping_interval=max(5.0, self.config.ws_ping_interval_seconds),
+                    ping_timeout=max(3.0, min(10.0, self.config.ws_ping_interval_seconds / 2)),
+                )
+            except Exception as exc:
+                self._had_error = True
+                LOG.warning("WebSocket-Verbindungsversuch fehlgeschlagen: %s", exc)
+            finally:
+                with self._lock:
+                    self._socket = None
+
+            if self._stop.is_set():
+                break
+            stable_connection = opened_at and time.monotonic() - opened_at >= 30.0
+            if stable_connection:
+                self._attempt = 0
+            if not self.policy.should_reconnect(self._close_code, self._had_error):
+                LOG.error("WebSocket wird nicht automatisch neu verbunden (close_code=%s)", self._close_code)
+                break
+            self._attempt += 1
+            delay = self.policy.delay(self._attempt)
+            LOG.warning(
+                "WebSocket reconnect in %.2fs (Versuch %d, close_code=%s)",
+                delay,
+                self._attempt,
+                self._close_code,
+            )
+            if self._stop.wait(delay):
+                break
 
 
 class AudioInput(Protocol):
@@ -464,6 +648,7 @@ class KunibertClient:
     stop_requested: bool = False
     last_error: Optional[str] = None
     state_history: list[ClientState] = field(default_factory=list)
+    stream: Optional[ReconnectingDeviceStream] = None
 
     def transition(self, new_state: ClientState) -> None:
         allowed = {
@@ -505,6 +690,8 @@ class KunibertClient:
             if not self.config.dry_run and not self.api.health():
                 raise ApiError("picastAI Health-Endpunkt nicht erreichbar", retryable=True)
             self.transition(ClientState.MIC_OFF if self.buttons.mic_off else ClientState.READY)
+            if self.stream is not None:
+                self.stream.start()
             LOG.info("Kunibert bereit. Sprechtaste gedrückt halten oder Erzähltaste drücken.")
             while not self.stop_requested:
                 self.step()
@@ -580,6 +767,8 @@ class KunibertClient:
             return False
 
     def shutdown(self) -> None:
+        if self.stream is not None:
+            self.stream.stop()
         if self.state != ClientState.SHUTDOWN:
             try:
                 self.transition(ClientState.SHUTDOWN)
@@ -604,7 +793,10 @@ def build_client(config: ClientConfig) -> KunibertClient:
         audio_in = audio
         audio_out = audio
         led = GpioStatusLed(config)
-    return KunibertClient(config, PicastApi(config), audio_in, audio_out, buttons, led)
+    stream = None
+    if config.ws_enabled and not config.dry_run:
+        stream = ReconnectingDeviceStream(config)
+    return KunibertClient(config, PicastApi(config), audio_in, audio_out, buttons, led, stream=stream)
 
 
 def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:

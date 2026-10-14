@@ -147,7 +147,7 @@ if [[ ! -x "$VENV_DIR/bin/python" ]]; then
   python3 -m venv --system-site-packages "$VENV_DIR"
 fi
 "$VENV_DIR/bin/python" -m pip install --upgrade pip
-"$VENV_DIR/bin/python" -m pip install --upgrade sounddevice
+"$VENV_DIR/bin/python" -m pip install --upgrade sounddevice websocket-client
 chown -R "$APP_USER:$APP_GROUP" "$INSTALL_DIR"
 
 log "Konfiguriere ALSA und PortAudio …"
@@ -181,6 +181,11 @@ else
 fi
 
 log "Schreibe geschützte Konfiguration …"
+case "$API_BASE_URL" in
+  https://*) WS_URL="wss://${API_BASE_URL#https://}" ;;
+  http://*) WS_URL="ws://${API_BASE_URL#http://}" ;;
+  *) WS_URL="$API_BASE_URL" ;;
+esac
 cat > "$CONFIG_FILE" <<EOF
 # /etc/kunibert/kunibert.env – automatisch erzeugt; Secrets nicht committen.
 PICASTAI_API_BASE_URL=$(printf '%q' "$API_BASE_URL")
@@ -194,6 +199,12 @@ KUNIBERT_MIN_RECORD_SECONDS=0.35
 KUNIBERT_REQUEST_TIMEOUT=30
 KUNIBERT_RETRY_COUNT=2
 KUNIBERT_RETRY_BACKOFF=1.5
+KUNIBERT_WS_ENABLED=0
+PICASTAI_WS_URL=$(printf '%q' "${WS_URL}/v1/device/stream")
+KUNIBERT_WS_RECONNECT_BASE=1
+KUNIBERT_WS_RECONNECT_MAX=30
+KUNIBERT_WS_RECONNECT_JITTER=0.5
+KUNIBERT_WS_PING_INTERVAL=20
 KUNIBERT_LOCALE=de-DE
 KUNIBERT_AGE_BAND=6-10
 KUNIBERT_SPEECH_BUTTON_GPIO=17

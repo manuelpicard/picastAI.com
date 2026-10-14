@@ -11,6 +11,7 @@ from kunibert_client import (
     DryRunLed,
     KunibertClient,
     PicastApi,
+    WebSocketReconnectPolicy,
     encode_wav,
     multipart_form,
 )
@@ -90,6 +91,22 @@ class KunibertClientTests(unittest.TestCase):
         config = ClientConfig(api_base_url="http://127.0.0.1:1", device_token="", dry_run=False)
         with self.assertRaises(ApiError):
             PicastApi(config)
+
+    def test_websocket_retryable_close_codes(self):
+        policy = WebSocketReconnectPolicy(base_seconds=1, max_seconds=30, jitter_seconds=0.5)
+        self.assertTrue(policy.should_reconnect(1012))
+        self.assertTrue(policy.should_reconnect(1013))
+        self.assertTrue(policy.should_reconnect(None))
+        self.assertFalse(policy.should_reconnect(1000))
+        self.assertFalse(policy.should_reconnect(1003))
+        self.assertFalse(policy.should_reconnect(1008))
+
+    def test_websocket_backoff_is_bounded_and_has_jitter(self):
+        policy = WebSocketReconnectPolicy(base_seconds=1, max_seconds=30, jitter_seconds=0.5)
+        self.assertEqual(policy.delay(1, random_value=0), 1)
+        self.assertEqual(policy.delay(2, random_value=0), 2)
+        self.assertEqual(policy.delay(3, random_value=1), 4.5)
+        self.assertLessEqual(policy.delay(20, random_value=1), 30)
 
 
 if __name__ == "__main__":
