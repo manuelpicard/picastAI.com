@@ -8,6 +8,7 @@ import { DeviceRegistry, RateLimiter, AudioStore } from './server-api/devices.js
 import { Brain, StoryState } from './server-api/brain.js';
 import { AudioError, decodeWavHeader } from './server-api/audio.js';
 import { config, getSafeConfigSummary } from './server-api/config.js';
+import { VoicePipeline, VoiceProviderError } from './server-api/voice.js';
 import {
   saveDeviceToFirestore,
   revokeDeviceInFirestore,
@@ -32,6 +33,7 @@ const store = new AudioStore(
   config.audioTtlSeconds
 );
 const brain = new Brain();
+const voice = new VoicePipeline(config);
 const deviceStoryStates = new Map<string, StoryState>();
 
 // Multer für WAV Uploads (max 2 MB)
@@ -124,6 +126,21 @@ function recordDeviceTurn(
   saveStorySessionToFirestore(deviceId, result.story_state).catch(() => {});
 }
 
+async function transcribeOrEmpty(wav: Buffer): Promise<string> {
+  if (!voice.sttConfigured) return '';
+  return voice.transcribe(wav);
+}
+
+async function synthesizeIfConfigured(result: Awaited<ReturnType<Brain['handle']>>): Promise<typeof result> {
+  if (!voice.ttsConfigured || !result.speech) return result;
+  try {
+    result.wav = await voice.synthesize(result.speech);
+  } catch (error) {
+    console.warn('TTS fehlgeschlagen, verwende Fallback-Audio:', error);
+  }
+  return result;
+}
+
 // ------------------------------------------------------------
 // picastAI.com Geräte-Schnittstelle für Raspberry Pi Zero 2 W Prototyp
 // ------------------------------------------------------------
@@ -152,21 +169,21 @@ app.post(
         return res.status(400).json({ error: 'unsupported_audio_format' });
       }
 
-      // Eine echte STT-Anbindung wird als nächster Provider-Schritt ergänzt.
-      // Der Prototyp akzeptiert deshalb optional ein diagnostisches transcript-
-      // Feld und nutzt sonst einen neutralen Fallback statt eine Antwort zu
-      // erfinden, die den Audioinhalt behauptet zu kennen.
-      const transcript = typeof req.body.transcript === 'string'
+      let transcript = typeof req.body.transcript === 'string'
         ? req.body.transcript.slice(0, 1000)
         : '';
+      if (!transcript) transcript = await transcribeOrEmpty(req.file.buffer);
       const state = deviceStoryStates.get(deviceId) || {};
-      const result = await brain.handle('frage', transcript, state);
+      const result = await synthesizeIfConfigured(await brain.handle('frage', transcript, state));
       rememberDeviceStoryState(deviceId, result.story_state);
       const response = deviceResponse(req, deviceId, result, 'answer');
       recordDeviceTurn(deviceId, 'frage', result, response.turnId);
       return res.json(response.body);
     } catch (err) {
       console.error('Error in /v1/device/question:', err);
+      if (err instanceof VoiceProviderError) {
+        return res.status(err.retryable ? 503 : 502).json({ error: 'voice_provider_failed', retryable: err.retryable });
+      }
       return res.status(400).json({ error: 'bad_audio' });
     }
   }
@@ -196,13 +213,16 @@ app.post(
     try {
       const state = deviceStoryStates.get(deviceId) || {};
       const wish = `${locale} ${ageBand}`;
-      const result = await brain.handle('geschichte', wish, state);
+      const result = await synthesizeIfConfigured(await brain.handle('geschichte', wish, state));
       rememberDeviceStoryState(deviceId, result.story_state);
       const response = deviceResponse(req, deviceId, result, 'kunibert_story');
       recordDeviceTurn(deviceId, 'geschichte', result, response.turnId);
       return res.json(response.body);
     } catch (err) {
       console.error('Error in /v1/device/kunibert-story:', err);
+      if (err instanceof VoiceProviderError) {
+        return res.status(err.retryable ? 503 : 502).json({ error: 'voice_provider_failed', retryable: err.retryable });
+      }
       return res.status(500).json({ error: 'internal_error' });
     }
   }
@@ -272,8 +292,7 @@ app.post(
       } else if (req.file) {
         try {
           const header = decodeWavHeader(req.file.buffer);
-          // Wenn echte Audiodaten hochgeladen wurden, nutzen wir Begleittext oder Standard
-          transcript = req.body.transcript || 'Frage von Ritter Kunibert Kind';
+          transcript = req.body.transcript || await transcribeOrEmpty(req.file.buffer) || 'Frage von Ritter Kunibert Kind';
         } catch (wavErr) {
           if (mode === 'frage') {
             return res.status(400).json({ error: 'bad_audio' });
@@ -283,7 +302,7 @@ app.post(
         return res.status(400).json({ error: 'audio_required' });
       }
 
-      const turnResult = await brain.handle(mode, transcript, state);
+      const turnResult = await synthesizeIfConfigured(await brain.handle(mode, transcript, state));
       const wav = turnResult.wav || Buffer.alloc(0);
       const turnId = store.put(deviceId, wav);
 
@@ -313,6 +332,9 @@ app.post(
       return res.json(responseBody);
     } catch (err: any) {
       console.error('Error in /v1/turn:', err);
+      if (err instanceof VoiceProviderError) {
+        return res.status(err.retryable ? 503 : 502).json({ error: 'voice_provider_failed', retryable: err.retryable });
+      }
       return res.status(500).json({ error: 'internal_error', detail: err.message });
     }
   }

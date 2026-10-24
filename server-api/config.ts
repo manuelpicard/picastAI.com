@@ -8,6 +8,12 @@ export interface KunibertConfig {
   // KI & Sprachmodelle
   geminiApiKey: string | null;
   openaiApiKey: string | null;
+  openaiBaseUrl: string;
+  voiceProvider: 'openai' | 'none';
+  sttModel: string;
+  ttsModel: string;
+  ttsVoice: string;
+  voiceTimeoutMs: number;
 
   // Erzähl- & Pädagogik-Parameter
   ageBracket: string;
@@ -44,6 +50,12 @@ export function loadConfig(): KunibertConfig {
 
     geminiApiKey: process.env.GEMINI_API_KEY ? process.env.GEMINI_API_KEY.trim() : null,
     openaiApiKey: process.env.OPENAI_API_KEY ? process.env.OPENAI_API_KEY.trim() : null,
+    openaiBaseUrl: (process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1').replace(/\/$/, ''),
+    voiceProvider: (process.env.PICASTAI_VOICE_PROVIDER || (process.env.OPENAI_API_KEY ? 'openai' : 'none')) === 'openai' ? 'openai' : 'none',
+    sttModel: process.env.PICASTAI_STT_MODEL || 'whisper-1',
+    ttsModel: process.env.PICASTAI_TTS_MODEL || 'tts-1',
+    ttsVoice: process.env.PICASTAI_TTS_VOICE || 'alloy',
+    voiceTimeoutMs: Math.min(120_000, Math.max(3_000, parseNum(process.env.PICASTAI_VOICE_TIMEOUT_MS, 45_000))),
 
     ageBracket: process.env.KUNIBERT_AGE || 'sechs bis zehn',
     partsPerEpisode: Math.min(12, Math.max(3, parseNum(process.env.KUNIBERT_PARTS_PER_EPISODE, 5))),
@@ -73,6 +85,10 @@ export function getSafeConfigSummary(config: KunibertConfig) {
     host: config.host,
     hasGeminiKey: Boolean(config.geminiApiKey),
     hasOpenAiKey: Boolean(config.openaiApiKey),
+    voiceProvider: config.voiceProvider,
+    sttModel: config.sttModel,
+    ttsModel: config.ttsModel,
+    ttsVoice: config.ttsVoice,
     ageBracket: config.ageBracket,
     partsPerEpisode: config.partsPerEpisode,
     storyWordRange: `${config.storyMinWords}–${config.storyMaxWords} Wörter`,

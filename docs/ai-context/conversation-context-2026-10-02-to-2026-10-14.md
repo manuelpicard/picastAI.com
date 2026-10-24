@@ -210,7 +210,7 @@ Zukünftige KI soll die Eigentumsaussage nicht als verifiziert durch Dritte dars
 - [`server-api/prompts.ts`](../../server-api/prompts.ts) – implementierte Erzähl- und Antwortprompts (sofern dieser Pfad in der aktuellen Repo-Version existiert).
 - [`Produktentwurf-Ritter-Kunibert-2026-10-02.md`](Produktentwurf-Ritter-Kunibert-2026-10-02.md) – vollständige historische Fassung der Produktbeschreibung.
 - `docs/Ritter Kunibert und der Drache am Berg.md` – erste Geschichte nach Erinnerungen, nicht als Originaltranskript behandeln.
-- `docs/picastAI-GIGA-API.md` und `firmware/arduino-giga/` – neuere Hardware-/API-Arbeit im aktuellen Repository.
+- `docs/picastAI-Pi-API.md` und `firmware/arduino-giga/` – neuere Hardware-/API-Arbeit im aktuellen Repository.
 
 ## Hinweise für zukünftige KI-Sitzungen
 

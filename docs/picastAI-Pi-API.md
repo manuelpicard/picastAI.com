@@ -1,6 +1,6 @@
-# picastAI.com Geräte-Gegenstelle für Arduino GIGA
+# picastAI.com Geräte-Gegenstelle für Raspberry Pi
 
-Die Node.js-Gegenstelle stellt die Prototyp-API für Arduino GIGA und Raspberry-Pi-Geräte bereit.
+Die Node.js-Gegenstelle stellt die Prototyp-API für den Raspberry-Pi-Client bereit.
 
 ## Endpunkte
 
@@ -32,9 +32,9 @@ Formularfelder:
 - `locale`: derzeit `de-DE`
 - `age_band`: derzeit `6-10`
 - `session_id`: temporäre Gerätekennung
-- `transcript`: optionales Diagnosefeld für den Prototyp
+- `transcript`: optionales Diagnosefeld für lokale Tests; fehlt es, nutzt der Server den konfigurierten STT-Provider
 
-Die aktuelle Gegenstelle validiert das WAV-Format. Eine echte Speech-to-Text-Provider-Anbindung ist bewusst als separater nächster Schritt gehalten. Ohne `transcript` antwortet der Erzählmotor mit seiner sicheren „nicht verstanden“-Ansage, statt den Inhalt der Audiodatei zu erfinden.
+Die Gegenstelle validiert das WAV-Format. Wenn `OPENAI_API_KEY` und `PICASTAI_VOICE_PROVIDER=openai` gesetzt sind, wird die Aufnahme serverseitig über den OpenAI-kompatiblen STT-Endpunkt transkribiert. Der Transcript-Text wird anschließend durch die Sicherheitsweiche und den Erzählmotor verarbeitet.
 
 Beispielantwort:
 
@@ -86,11 +86,17 @@ PORT=3000
 HOST=0.0.0.0
 PICASTAI_DEVICE_ID=prototype-001
 PICASTAI_DEVICE_TOKEN=ein-langer-nicht-oeffentlicher-token
-PICASTAI_DEVICE_NAME=picastAI GIGA-Prototyp
+PICASTAI_DEVICE_NAME=picastAI Raspberry-Pi-Prototyp
 KUNIBERT_DIAGNOSTIC_TEXT=0
+OPENAI_BASE_URL=https://api.openai.com/v1
+PICASTAI_VOICE_PROVIDER=openai
+PICASTAI_STT_MODEL=whisper-1
+PICASTAI_TTS_MODEL=tts-1
+PICASTAI_TTS_VOICE=alloy
+PICASTAI_VOICE_TIMEOUT_MS=45000
 ```
 
-Die Token-Datei beziehungsweise Prozessumgebung darf nur für den Serverdienst lesbar sein. Nicht in Git, Arduino-Quellcode-Repositories, Screenshots oder Logs eintragen.
+Die Token-Datei beziehungsweise Prozessumgebung darf nur für den Serverdienst lesbar sein. Nicht in Git, Screenshots oder Logs eintragen.
 
 Für eine Produktionsumgebung sollte der Token nicht als einzelne globale Umgebungsvariable, sondern über einen Secret-Manager provisioniert werden. Die Registry ist im aktuellen Prototyp flüchtig; ein Serverneustart entfernt die in-memory Geräte.
 
@@ -120,7 +126,7 @@ curl -fsS -X POST http://127.0.0.1:3000/v1/device/kunibert-story \
   -d '{"locale":"de-DE","age_band":"6-10","length":"short","session_id":"curl-test"}'
 ```
 
-Die `audio_url` aus der Antwort mit denselben Authentifizierungsheadern abrufen. Da der AudioStore einmalig ausliefert, den Audioabruf nicht mehrfach wiederholen.
+Die `audio_url` aus der Antwort mit denselben Authentifizierungsheadern abrufen. Da der AudioStore einmalig ausliefert, den Audioabruf nicht mehrfach wiederholen. Mit konfiguriertem TTS-Provider enthält die WAV-Antwort echte Sprachsynthese; ohne Provider wird für lokale Tests das deterministische Fallback-Signal ausgeliefert.
 
 ## Sicherheitsgrenzen des Prototyps
 
@@ -130,4 +136,4 @@ Die `audio_url` aus der Antwort mit denselben Authentifizierungsheadern abrufen.
 - Geräte- und Story-State sind im aktuellen Prozessspeicher, nicht hochverfügbar.
 - CORS ist für die bestehende Web-Demo offen und muss vor einer öffentlichen Produktion eingeschränkt werden.
 - HTTPS muss durch Reverse Proxy oder TLS-fähige Node-Konfiguration bereitgestellt werden.
-- Die Anfrage-Audio-STT-Anbindung fehlt noch; der nächste Schritt ist ein serverseitiger, datensparsamer STT-Provider mit Timeout und Fehlerfall.
+- STT-/TTS-Audio wird nur zur Laufzeit an den konfigurierten Provider übertragen; Aufbewahrung und Anbieter-Datenfluss müssen vor Kinderbetrieb rechtlich und organisatorisch geprüft werden.
