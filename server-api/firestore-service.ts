@@ -40,31 +40,4 @@ export async function revokeDeviceInFirestore(deviceId: string): Promise<void> {
   }
 }
 
-export async function saveTurnToFirestore(deviceId: string, turn: {
-  turnId: string;
-  mode: string;
-  kind: string;
-  text?: string;
-  timestamp: number;
-}): Promise<void> {
-  if (!firestore) return;
-  try {
-    await firestore.collection('devices').doc(deviceId).collection('turns').doc(turn.turnId).set(turn);
-  } catch (err) {
-    console.warn(`Firestore save turn error:`, err);
-  }
-}
-
-export async function saveStorySessionToFirestore(deviceId: string, state: any): Promise<void> {
-  if (!firestore) return;
-  try {
-    await firestore.collection('devices').doc(deviceId).collection('sessions').doc('active').set({
-      ...state,
-      updatedAt: Date.now(),
-    });
-  } catch (err) {
-    console.warn(`Firestore save session error:`, err);
-  }
-}
-
 export { firestore };

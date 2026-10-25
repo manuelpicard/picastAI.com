@@ -47,7 +47,7 @@ Beispielantwort:
 }
 ```
 
-`text` wird nur ausgegeben, wenn `KUNIBERT_DIAGNOSTIC_TEXT` nicht `0` ist.
+`text` wird standardmäßig nicht ausgegeben. Es erscheint nur außerhalb von `NODE_ENV=production`, wenn `KUNIBERT_DIAGNOSTIC_TEXT=1` ausdrücklich gesetzt ist.
 
 ### `POST /v1/device/kunibert-story`
 
@@ -62,7 +62,7 @@ Authentifizierung wie oben, JSON-Body:
 }
 ```
 
-Die Story-Session wird für die Gerät-ID flüchtig im RAM gehalten. Die Antwort enthält eine kurzlebige Audio-URL:
+Die Story-Session wird für die Gerät-ID ausschließlich flüchtig im RAM gehalten. Turntexte und Storyzustände werden von den Geräte- und Turn-Endpunkten nicht in Firestore gespeichert. Nach einem Serverneustart beginnt die Story-Session neu. Die Antwort enthält eine kurzlebige Audio-URL:
 
 ```json
 {
@@ -84,6 +84,8 @@ In `.env` oder der vom Prozess geladenen Umgebung:
 ```ini
 PORT=3000
 HOST=0.0.0.0
+PICASTAI_ADMIN_TOKEN=<mindestens-32-zufaellige-Zeichen>
+PICASTAI_CORS_ORIGINS=https://dein-exakter-frontend-host.example
 PICASTAI_DEVICE_ID=prototype-001
 PICASTAI_DEVICE_TOKEN=ein-langer-nicht-oeffentlicher-token
 PICASTAI_DEVICE_NAME=picastAI Raspberry-Pi-Prototyp
@@ -97,6 +99,12 @@ PICASTAI_VOICE_TIMEOUT_MS=45000
 ```
 
 Die Token-Datei beziehungsweise Prozessumgebung darf nur für den Serverdienst lesbar sein. Nicht in Git, Screenshots oder Logs eintragen.
+
+`PICASTAI_ADMIN_TOKEN` schützt `GET/POST /api/devices`, `POST /api/devices/:id/revoke` sowie `GET /api/config` und `GET /api/status` per `Authorization: Bearer <admin-token>`. Fehlt das Token oder ist es kürzer als 32 Zeichen, antworten diese Routen geschlossen mit HTTP 503. Ein falsches oder fehlendes Token ergibt HTTP 401. Das Dashboard hält das eingegebene Token nur im Tab-Speicher; es muss ausschließlich über HTTPS verwendet werden.
+
+`PICASTAI_CORS_ORIGINS` enthält eine kommagetrennte Liste exakter Browser-Origin-Werte, zum Beispiel `https://kunibert.example,https://www.kunibert.example`. Leer bedeutet: keine Cross-Origin-Freigabe; Same-Origin-Aufrufe und Pi-/Server-zu-Server-Aufrufe benötigen keine CORS-Freigabe. Keine Wildcards für Produktionszugriffe eintragen.
+
+Die Datei `firestore.rules` verweigert direkte Zugriffe aller Firebase-Clients. Das Server-Admin-SDK umgeht Firestore-Regeln; serverseitige API-Routen müssen deshalb separat authentifiziert sein.
 
 Für eine Produktionsumgebung sollte der Token nicht als einzelne globale Umgebungsvariable, sondern über einen Secret-Manager provisioniert werden. Die Registry ist im aktuellen Prototyp flüchtig; ein Serverneustart entfernt die in-memory Geräte.
 
@@ -134,6 +142,8 @@ Die `audio_url` aus der Antwort mit denselben Authentifizierungsheadern abrufen.
 - Audio nur im flüchtigen RAM, TTL standardmäßig 120 Sekunden.
 - Audio-URL benötigt erneut Geräteauthentifizierung.
 - Geräte- und Story-State sind im aktuellen Prozessspeicher, nicht hochverfügbar.
-- CORS ist für die bestehende Web-Demo offen und muss vor einer öffentlichen Produktion eingeschränkt werden.
+- Geräteverwaltung, Status und sichere Konfigurationsübersicht benötigen ein starkes Admin-Bearer-Token.
+- CORS akzeptiert nur exakt konfigurierte Browser-Ursprünge; ohne Allowlist gibt es keine Cross-Origin-Freigabe.
+- Firestore-Regeln verweigern direkte Clientzugriffe; serverseitige Admin-SDK-Zugriffe sind hiervon nicht erfasst.
 - HTTPS muss durch Reverse Proxy oder TLS-fähige Node-Konfiguration bereitgestellt werden.
 - STT-/TTS-Audio wird nur zur Laufzeit an den konfigurierten Provider übertragen; Aufbewahrung und Anbieter-Datenfluss müssen vor Kinderbetrieb rechtlich und organisatorisch geprüft werden.

@@ -8,12 +8,11 @@ import { DeviceRegistry, RateLimiter, AudioStore } from './server-api/devices.js
 import { Brain, StoryState } from './server-api/brain.js';
 import { AudioError, decodeWavHeader } from './server-api/audio.js';
 import { config, getSafeConfigSummary } from './server-api/config.js';
+import { isAdminTokenConfigured, verifyAdminAuthorization } from './server-api/admin-auth.js';
 import { VoicePipeline, VoiceProviderError } from './server-api/voice.js';
 import {
   saveDeviceToFirestore,
   revokeDeviceInFirestore,
-  saveTurnToFirestore,
-  saveStorySessionToFirestore,
 } from './server-api/firestore-service.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -44,7 +43,13 @@ const upload = multer({
   storage: multer.memoryStorage(),
 });
 
-app.use(cors());
+const corsOrigins = (process.env.PICASTAI_CORS_ORIGINS || '')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+app.use(cors({
+  origin: (origin, callback) => callback(null, Boolean(origin && corsOrigins.includes(origin))),
+}));
 app.use(express.json());
 
 // Audio-Hörproben statisch bereitstellen
@@ -66,6 +71,18 @@ function authenticate(req: Request): string {
     throw new Error('unauthorized');
   }
   return deviceId;
+}
+
+function requireAdminAuth(req: Request, res: Response, next: NextFunction): void {
+  if (!isAdminTokenConfigured(config.adminToken)) {
+    res.status(503).json({ error: 'admin_auth_not_configured' });
+    return;
+  }
+  if (!verifyAdminAuthorization(req.headers.authorization, config.adminToken)) {
+    res.status(401).json({ error: 'unauthorized' });
+    return;
+  }
+  next();
 }
 
 // GET /health
@@ -108,22 +125,6 @@ function rememberDeviceStoryState(deviceId: string, state: StoryState): void {
   // Nur der kleine Story-State bleibt im RAM; Audio und Diagnosetexte werden
   // nicht zusätzlich in dieser Session-Map gespeichert.
   deviceStoryStates.set(deviceId, state);
-}
-
-function recordDeviceTurn(
-  deviceId: string,
-  mode: string,
-  result: Awaited<ReturnType<Brain['handle']>>,
-  turnId: string
-): void {
-  saveTurnToFirestore(deviceId, {
-    turnId,
-    mode,
-    kind: result.kind,
-    text: result.speech,
-    timestamp: Date.now(),
-  }).catch(() => {});
-  saveStorySessionToFirestore(deviceId, result.story_state).catch(() => {});
 }
 
 async function transcribeOrEmpty(wav: Buffer): Promise<string> {
@@ -177,7 +178,6 @@ app.post(
       const result = await synthesizeIfConfigured(await brain.handle('frage', transcript, state));
       rememberDeviceStoryState(deviceId, result.story_state);
       const response = deviceResponse(req, deviceId, result, 'answer');
-      recordDeviceTurn(deviceId, 'frage', result, response.turnId);
       return res.json(response.body);
     } catch (err) {
       console.error('Error in /v1/device/question:', err);
@@ -216,7 +216,6 @@ app.post(
       const result = await synthesizeIfConfigured(await brain.handle('geschichte', wish, state));
       rememberDeviceStoryState(deviceId, result.story_state);
       const response = deviceResponse(req, deviceId, result, 'kunibert_story');
-      recordDeviceTurn(deviceId, 'geschichte', result, response.turnId);
       return res.json(response.body);
     } catch (err) {
       console.error('Error in /v1/device/kunibert-story:', err);
@@ -316,19 +315,6 @@ app.post(
         responseBody.text = turnResult.speech;
       }
 
-      // Asynchron in Firestore persistieren
-      saveTurnToFirestore(deviceId, {
-        turnId,
-        mode,
-        kind: turnResult.kind,
-        text: turnResult.speech,
-        timestamp: Date.now(),
-      }).catch(() => {});
-
-      if (turnResult.story_state) {
-        saveStorySessionToFirestore(deviceId, turnResult.story_state).catch(() => {});
-      }
-
       return res.json(responseBody);
     } catch (err: any) {
       console.error('Error in /v1/turn:', err);
@@ -372,11 +358,11 @@ app.get('/v1/turn/:turn_id/audio', (req: Request, res: Response): any => {
 // Dashboard & Simulator Verwaltungs-APIs
 // ------------------------------------------------------------
 
-app.get('/api/devices', (_req: Request, res: Response) => {
+app.get('/api/devices', requireAdminAuth, (_req: Request, res: Response) => {
   res.json({ devices: registry.list() });
 });
 
-app.post('/api/devices', (req: Request, res: Response): any => {
+app.post('/api/devices', requireAdminAuth, (req: Request, res: Response): any => {
   const { deviceId, name } = req.body;
   if (!deviceId) {
     return res.status(400).json({ error: 'deviceId required' });
@@ -396,18 +382,18 @@ app.post('/api/devices', (req: Request, res: Response): any => {
   }
 });
 
-app.post('/api/devices/:id/revoke', (req: Request, res: Response): any => {
+app.post('/api/devices/:id/revoke', requireAdminAuth, (req: Request, res: Response): any => {
   const devId = String(req.params.id);
   const success = registry.revoke(devId);
   revokeDeviceInFirestore(devId).catch(() => {});
   return res.json({ success });
 });
 
-app.get('/api/config', (_req: Request, res: Response) => {
+app.get('/api/config', requireAdminAuth, (_req: Request, res: Response) => {
   res.json(getSafeConfigSummary(config));
 });
 
-app.get('/api/status', (req: Request, res: Response) => {
+app.get('/api/status', requireAdminAuth, (req: Request, res: Response) => {
   const deviceId = (req.query.device as string) || 'simulator-web';
   res.json({
     rateLimit: limiter.getStatus(deviceId),

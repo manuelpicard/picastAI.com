@@ -4,6 +4,7 @@ export interface KunibertConfig {
   // Server-Netzwerk
   port: number;
   host: string;
+  adminToken: string | null;
 
   // KI & Sprachmodelle
   geminiApiKey: string | null;
@@ -37,6 +38,12 @@ export interface KunibertConfig {
   devicesFilePath: string;
 }
 
+export function isDiagnosticTextEnabled(
+  env: { NODE_ENV?: string; KUNIBERT_DIAGNOSTIC_TEXT?: string } = process.env
+): boolean {
+  return env.NODE_ENV !== 'production' && env.KUNIBERT_DIAGNOSTIC_TEXT?.trim() === '1';
+}
+
 export function loadConfig(): KunibertConfig {
   const parseNum = (val: string | undefined, fallback: number): number => {
     if (!val) return fallback;
@@ -47,6 +54,7 @@ export function loadConfig(): KunibertConfig {
   return {
     port: parseNum(process.env.PORT, 3000),
     host: process.env.HOST || '0.0.0.0',
+    adminToken: process.env.PICASTAI_ADMIN_TOKEN?.trim() || null,
 
     geminiApiKey: process.env.GEMINI_API_KEY ? process.env.GEMINI_API_KEY.trim() : null,
     openaiApiKey: process.env.OPENAI_API_KEY ? process.env.OPENAI_API_KEY.trim() : null,
@@ -71,7 +79,7 @@ export function loadConfig(): KunibertConfig {
     rateLimitMaxTurns: parseNum(process.env.KUNIBERT_RATE_LIMIT, 30),
     rateLimitWindowSeconds: parseNum(process.env.KUNIBERT_RATE_LIMIT_WINDOW, 600),
 
-    diagnosticText: process.env.KUNIBERT_DIAGNOSTIC_TEXT !== '0',
+    diagnosticText: isDiagnosticTextEnabled(),
     devicesFilePath: process.env.KUNIBERT_DEVICES_FILE || './devices.json',
   };
 }

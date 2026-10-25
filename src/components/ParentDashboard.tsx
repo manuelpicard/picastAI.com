@@ -40,6 +40,9 @@ export const ParentDashboard: React.FC<ParentDashboardProps> = ({
   const [statusMetrics, setStatusMetrics] = useState<any>(null);
   const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [adminToken, setAdminToken] = useState('');
+  const [adminAccessState, setAdminAccessState] = useState<'locked' | 'checking' | 'unlocked' | 'error' | 'unconfigured'>('locked');
+  const [adminError, setAdminError] = useState('');
 
   // WLAN Formular Zustand
   const [ssidInput, setSsidInput] = useState(wifiSettings.ssid);
@@ -54,21 +57,41 @@ export const ParentDashboard: React.FC<ParentDashboardProps> = ({
     setPasswordInput(wifiSettings.password);
   }, [wifiSettings.ssid, wifiSettings.password]);
 
-  const fetchDevices = async () => {
+  const fetchDevices = async (token = adminToken): Promise<boolean> => {
+    if (!token) return false;
     try {
-      const res = await fetch('/api/devices');
+      const res = await fetch('/api/devices', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       if (res.ok) {
         const data = await res.json();
         setDevices(data.devices || []);
+        setAdminAccessState('unlocked');
+        setAdminError('');
+        return true;
+      }
+      setDevices([]);
+      if (res.status === 503) {
+        setAdminAccessState('unconfigured');
+        setAdminError('Auf dem Server ist kein ausreichend langes Admin-Token konfiguriert.');
+      } else {
+        setAdminAccessState('error');
+        setAdminError('Admin-Token ungültig oder Zugriff verweigert.');
       }
     } catch (err) {
       console.warn('Fehler beim Laden der Geräte:', err);
+      setAdminAccessState('error');
+      setAdminError('Server nicht erreichbar.');
     }
+    return false;
   };
 
-  const fetchStatus = async () => {
+  const fetchStatus = async (token = adminToken) => {
+    if (!token) return;
     try {
-      const res = await fetch(`/api/status?device=${currentDeviceId}`);
+      const res = await fetch(`/api/status?device=${encodeURIComponent(currentDeviceId)}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       if (res.ok) {
         const data = await res.json();
         setStatusMetrics(data);
@@ -79,11 +102,30 @@ export const ParentDashboard: React.FC<ParentDashboardProps> = ({
   };
 
   useEffect(() => {
+    if (adminAccessState !== 'unlocked') return;
     fetchDevices();
     fetchStatus();
     const interval = setInterval(fetchStatus, 8000);
     return () => clearInterval(interval);
-  }, [currentDeviceId]);
+  }, [currentDeviceId, adminAccessState]);
+
+  const handleAdminLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!adminToken) return;
+    setAdminAccessState('checking');
+    setAdminError('');
+    const authorized = await fetchDevices(adminToken);
+    if (authorized) await fetchStatus(adminToken);
+  };
+
+  const handleAdminLogout = () => {
+    setAdminToken('');
+    setAdminAccessState('locked');
+    setAdminError('');
+    setDevices([]);
+    setStatusMetrics(null);
+    setLastCreatedToken(null);
+  };
 
   const handleCreateDevice = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -93,7 +135,7 @@ export const ParentDashboard: React.FC<ParentDashboardProps> = ({
     try {
       const res = await fetch('/api/devices', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` },
         body: JSON.stringify({ deviceId: newDeviceId, name: newDeviceName }),
       });
 
@@ -119,7 +161,10 @@ export const ParentDashboard: React.FC<ParentDashboardProps> = ({
       return;
     }
     try {
-      const res = await fetch(`/api/devices/${id}/revoke`, { method: 'POST' });
+      const res = await fetch(`/api/devices/${encodeURIComponent(id)}/revoke`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${adminToken}` },
+      });
       if (res.ok) {
         fetchDevices();
       }
@@ -306,6 +351,44 @@ export const ParentDashboard: React.FC<ParentDashboardProps> = ({
               : 'Schutz vor Überlastung aktiv.'}
           </p>
         </div>
+      </div>
+
+      <div className="bg-stone-950 p-4 rounded-xl border border-stone-800 space-y-2">
+        <form onSubmit={handleAdminLogin} className="flex flex-col sm:flex-row gap-2">
+          <label htmlFor="admin-token" className="sr-only">Server-Admin-Token</label>
+          <input
+            id="admin-token"
+            type="password"
+            value={adminToken}
+            onChange={(e) => setAdminToken(e.target.value)}
+            placeholder="Server-Admin-Token"
+            autoComplete="off"
+            spellCheck={false}
+            disabled={adminAccessState === 'unlocked'}
+            className="flex-1 bg-stone-900 border border-stone-700 rounded-lg px-3 py-2 text-xs text-stone-100 focus:outline-none focus:border-amber-500 font-mono"
+          />
+          <button
+            type="submit"
+            disabled={!adminToken || adminAccessState === 'checking' || adminAccessState === 'unlocked'}
+            className="px-4 py-2 bg-amber-700 hover:bg-amber-600 text-white rounded-lg text-xs font-semibold disabled:opacity-50"
+          >
+            {adminAccessState === 'checking' ? 'Prüfe …' : 'Adminzugang prüfen'}
+          </button>
+          {adminAccessState === 'unlocked' && (
+            <button
+              type="button"
+              onClick={handleAdminLogout}
+              className="px-4 py-2 bg-stone-800 hover:bg-stone-700 text-stone-200 rounded-lg text-xs font-semibold"
+            >
+              Abmelden
+            </button>
+          )}
+        </form>
+        <p className={`text-[11px] ${adminAccessState === 'unlocked' ? 'text-emerald-400' : adminError ? 'text-rose-300' : 'text-stone-500'}`}>
+          {adminAccessState === 'unlocked'
+            ? 'Verwaltung freigeschaltet. Das Token bleibt nur im Speicher dieses Tabs.'
+            : adminError || 'Geräteverwaltung ist gesperrt, bis ein gültiges Server-Admin-Token eingegeben wurde.'}
+        </p>
       </div>
 
       {/* ------------------------------------------------------------ */}
@@ -523,6 +606,7 @@ export const ParentDashboard: React.FC<ParentDashboardProps> = ({
       )}
 
       {/* Registered Devices List */}
+      {adminAccessState === 'unlocked' ? (
       <div>
         <h4 className="text-xs font-semibold uppercase tracking-wider text-stone-300 mb-3">
           Registrierte Geräte
@@ -572,8 +656,14 @@ export const ParentDashboard: React.FC<ParentDashboardProps> = ({
           ))}
         </div>
       </div>
+      ) : (
+        <div className="p-4 bg-stone-950 rounded-xl border border-stone-800 text-xs text-stone-400">
+          Geräteliste und Verwaltung werden erst nach erfolgreicher Admin-Authentifizierung geladen.
+        </div>
+      )}
 
       {/* Add New Device Form */}
+      {adminAccessState === 'unlocked' && (
       <div className="pt-4 border-t border-stone-800">
         <h4 className="text-xs font-semibold uppercase tracking-wider text-stone-300 mb-3">
           Neues Gerät registrieren
@@ -604,6 +694,7 @@ export const ParentDashboard: React.FC<ParentDashboardProps> = ({
           </button>
         </form>
       </div>
+      )}
 
       {/* Environmental Variables & Server Configuration Inspector */}
       {statusMetrics?.config && (
