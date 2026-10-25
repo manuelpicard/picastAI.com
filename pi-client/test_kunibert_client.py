@@ -1,6 +1,7 @@
 import io
 import unittest
 import wave
+from unittest.mock import patch
 
 from kunibert_client import (
     ApiError,
@@ -10,6 +11,7 @@ from kunibert_client import (
     DryRunButtons,
     DryRunLed,
     GpioStatusLed,
+    HardwareError,
     KunibertClient,
     PicastApi,
     encode_wav,
@@ -55,6 +57,19 @@ class MicOffDuringRecordingAudio:
         # Simuliert, dass der Audioadapter beim Umschalten noch einen letzten
         # bereits gepufferten Block zurückliefert. Der Client muss ihn verwerfen.
         return self.wav_bytes
+
+
+class DisconnectDuringRecordingAudio:
+    def __init__(self, buttons, switch_mic_off):
+        self.buttons = buttons
+        self.switch_mic_off = switch_mic_off
+        self.continued_before_disconnect = False
+
+    def record_while_pressed(self, should_continue, max_seconds):
+        self.continued_before_disconnect = should_continue()
+        if self.switch_mic_off:
+            self.buttons.mic_off = True
+        raise HardwareError("USB-Audiointerface während Aufnahme getrennt")
 
 
 class CaptureAudioOutput:
@@ -123,6 +138,48 @@ class KunibertClientTests(unittest.TestCase):
         self.assertEqual(output.played, [], "nach Abbruch darf keine Audioantwort abgespielt werden")
         self.assertEqual(client.state, ClientState.MIC_OFF)
         self.assertEqual(led.modes[-1], "mic_off")
+
+    def test_usb_disconnect_during_recording_with_mic_off_enters_mic_off(self):
+        config = self.config()
+        buttons = PressedButtons(speech=True)
+        audio = DisconnectDuringRecordingAudio(buttons, switch_mic_off=True)
+        api = FakeApi()
+        output = CaptureAudioOutput()
+        led = CaptureLed()
+        client = KunibertClient(config, api, audio, output, buttons, led)
+        client.transition(ClientState.WIFI_CONNECTING)
+        client.transition(ClientState.READY)
+
+        client.handle_question()
+
+        self.assertTrue(audio.continued_before_disconnect)
+        self.assertEqual(client.state, ClientState.MIC_OFF)
+        self.assertEqual(api.questions, 0)
+        self.assertEqual(output.played, [])
+        self.assertEqual(led.modes[-1], "mic_off")
+
+    def test_unexpected_usb_disconnect_during_recording_recovers_to_ready(self):
+        config = self.config()
+        buttons = PressedButtons(speech=True)
+        audio = DisconnectDuringRecordingAudio(buttons, switch_mic_off=False)
+        api = FakeApi()
+        output = CaptureAudioOutput()
+        led = CaptureLed()
+        client = KunibertClient(config, api, audio, output, buttons, led)
+        client.transition(ClientState.WIFI_CONNECTING)
+        client.transition(ClientState.READY)
+
+        with patch("kunibert_client.time.sleep") as sleep:
+            client.handle_question()
+
+        self.assertTrue(audio.continued_before_disconnect)
+        self.assertEqual(client.state, ClientState.READY)
+        self.assertIn(ClientState.ERROR, client.state_history)
+        self.assertIsNotNone(client.last_error)
+        self.assertEqual(api.questions, 0)
+        self.assertEqual(output.played, [])
+        self.assertEqual(led.modes[-1], "ready")
+        sleep.assert_called_once_with(1.0)
 
     def test_led_modes_have_distinct_patterns(self):
         recording = GpioStatusLed.pattern_for_mode("recording")

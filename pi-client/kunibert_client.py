@@ -546,10 +546,18 @@ class KunibertClient:
 
     def handle_question(self) -> None:
         self.transition(ClientState.RECORDING)
-        wav_bytes = self.audio_in.record_while_pressed(
-            lambda: self.buttons.speech_pressed and not self.buttons.mic_off,
-            self.config.max_record_seconds,
-        )
+        try:
+            wav_bytes = self.audio_in.record_while_pressed(
+                lambda: self.buttons.speech_pressed and not self.buttons.mic_off,
+                self.config.max_record_seconds,
+            )
+        except HardwareError as exc:
+            if self.buttons.mic_off:
+                LOG.info("Mikrofon-Aus während der Aufnahme; Audiogerät getrennt, Anfrage verworfen")
+                self.transition(ClientState.MIC_OFF)
+                return
+            self.handle_error(exc)
+            return
         if self.buttons.mic_off:
             # Der Adapter kann nach dem Schalterwechsel noch einen bereits
             # gepufferten Block zurückgeben. Die gesamte Aufnahme verwerfen.
