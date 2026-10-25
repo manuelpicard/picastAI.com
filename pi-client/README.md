@@ -93,12 +93,27 @@ Die GPIO-Nummern sind BCM-Nummern und können über Umgebungsvariablen geändert
 | Zustand | Signal |
 |---|---|
 | Bereit | Dauerlicht |
-| Aufnahme | schnelles Blinken (180 ms an/aus) |
-| Verarbeitung/Wiedergabe | langsames Blinken (700 ms an/aus) |
-| Fehler | sehr schnelles Blinken (80 ms an/aus) |
-| Mikrofon ausgeschaltet | zwei kurze Blitze, dann Pause |
+| Aufnahme | schnelles Blinken (180 ms an, 180 ms aus) |
+| Verarbeitung/Wiedergabe | langsames Blinken (700 ms an, 700 ms aus) |
+| Fehler | sehr schnelles Blinken (80 ms an, 80 ms aus) |
+| Mikrofon ausgeschaltet | zwei kurze Blitze (je 80 ms), dann Pause |
 
-Der Mikrofon-Aus-Sense-Eingang ist nur eine Erkennung. Für einen echten Datenschutz-Schalter muss die Mikrofonversorgung zusätzlich physisch über einen DPST-/DPDT-Schalter getrennt werden.
+Die LED signalisiert den Softwarezustand; sie beweist nicht, dass die Mikrofonversorgung elektrisch getrennt ist. Die Muster sind für eine einzelne, aktive-high angeschlossene LED vorgesehen.
+
+### Mikrofon-Aus-Schalter
+
+BCM GPIO 22 ist ein active-low **Sense-Eingang** mit `INPUT_PULLUP`: In der OFF-Stellung zieht ein Schaltkontakt den Eingang nach GND; in der ON-Stellung bleibt der Eingang durch den internen Pull-up high. Der Eingang dient nur der Erkennung und darf nicht mit der Versorgung des Mikrofons verbunden werden.
+
+Der Softwareablauf bei OFF ist:
+
+1. Im Bereitschaftszustand startet keine neue Aufnahme und keine Geräteaktion.
+2. Wird OFF während einer Aufnahme betätigt, liefert die Aufnahmebedingung sofort „nicht weiter aufnehmen“. Der Audiostream endet spätestens nach dem gerade laufenden Audio-Block.
+3. Ein möglicherweise noch vom Audioadapter zurückgegebener letzter Puffer wird vollständig verworfen. Er wird weder als WAV weiterverarbeitet noch hochgeladen; eine Serverantwort wird nicht abgespielt. Der Client wechselt in `MIC_OFF` und zeigt das Doppelblitz-Muster.
+4. Wird der Schalter wieder auf ON gestellt, kehrt der Client in den Zustand `READY` zurück; die LED leuchtet dauerhaft.
+
+**Wichtig für den Hardwareaufbau:** GPIO 22 allein schaltet ein Mikrofon nicht elektrisch ab. Für einen echten Datenschutz-Schalter muss ein separater Schaltkontakt die Mikrofonversorgung bzw. den passenden Mikrofonpfad des konkreten Audio-HATs/USB-Geräts physisch unterbrechen; ein weiterer Kontakt kann GPIO 22 nach GND ziehen. Die geeignete Schaltung hängt vom ausgewählten Audiointerface ab und muss anhand dessen Dokumentation geplant und am Gerät geprüft werden. Keine 5-V-Signale an den GPIO legen. Vor dem Softwaretest die elektrische Abschaltung separat prüfen und danach mit `arecord -l` sowie einer Testaufnahme kontrollieren, dass OFF tatsächlich keine Aufnahme zulässt.
+
+Die softwareseitige Abbruch- und Verwerfungslogik ist mit `python3 -m unittest -v` testbar; der Unit-Test ersetzt keine Prüfung der tatsächlichen elektrischen Abschaltung am Pi.
 
 ## Installation auf Raspberry Pi OS Lite
 
