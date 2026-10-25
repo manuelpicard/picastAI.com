@@ -88,6 +88,16 @@ Die GPIO-Nummern sind BCM-Nummern und können über Umgebungsvariablen geändert
 | Mikrofon-Aus-Sense | 22 | Schalter nach GND, `INPUT_PULLUP` |
 | Status-LED | 23 | LED über Vorwiderstand nach GND |
 
+### Status-LED
+
+| Zustand | Signal |
+|---|---|
+| Bereit | Dauerlicht |
+| Aufnahme | schnelles Blinken (180 ms an/aus) |
+| Verarbeitung/Wiedergabe | langsames Blinken (700 ms an/aus) |
+| Fehler | sehr schnelles Blinken (80 ms an/aus) |
+| Mikrofon ausgeschaltet | zwei kurze Blitze, dann Pause |
+
 Der Mikrofon-Aus-Sense-Eingang ist nur eine Erkennung. Für einen echten Datenschutz-Schalter muss die Mikrofonversorgung zusätzlich physisch über einen DPST-/DPDT-Schalter getrennt werden.
 
 ## Installation auf Raspberry Pi OS Lite

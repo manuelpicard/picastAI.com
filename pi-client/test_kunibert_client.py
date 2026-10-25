@@ -9,6 +9,7 @@ from kunibert_client import (
     DryRunAudio,
     DryRunButtons,
     DryRunLed,
+    GpioStatusLed,
     KunibertClient,
     PicastApi,
     encode_wav,
@@ -40,6 +41,38 @@ class PressedButtons(DryRunButtons):
         self.mic_off = mic_off
 
 
+class MicOffDuringRecordingAudio:
+    def __init__(self, buttons, wav_bytes):
+        self.buttons = buttons
+        self.wav_bytes = wav_bytes
+        self.continued_before_switch = False
+        self.continued_after_switch = True
+
+    def record_while_pressed(self, should_continue, max_seconds):
+        self.continued_before_switch = should_continue()
+        self.buttons.mic_off = True
+        self.continued_after_switch = should_continue()
+        # Simuliert, dass der Audioadapter beim Umschalten noch einen letzten
+        # bereits gepufferten Block zurückliefert. Der Client muss ihn verwerfen.
+        return self.wav_bytes
+
+
+class CaptureAudioOutput:
+    def __init__(self):
+        self.played = []
+
+    def play_wav(self, wav_bytes):
+        self.played.append(wav_bytes)
+
+
+class CaptureLed:
+    def __init__(self):
+        self.modes = []
+
+    def set(self, mode):
+        self.modes.append(mode)
+
+
 class KunibertClientTests(unittest.TestCase):
     def config(self):
         return ClientConfig(dry_run=True, min_record_seconds=0.1)
@@ -67,6 +100,43 @@ class KunibertClientTests(unittest.TestCase):
         client.step()
         self.assertEqual(client.state, ClientState.MIC_OFF)
         self.assertEqual(client.api.stories, 0)
+
+    def test_mic_off_during_recording_aborts_and_discards_audio(self):
+        config = self.config()
+        buttons = PressedButtons(speech=True)
+        audio = MicOffDuringRecordingAudio(
+            buttons,
+            encode_wav(b"\x00\x00" * 8000, config.sample_rate, config.channels, config.sample_width),
+        )
+        api = FakeApi()
+        output = CaptureAudioOutput()
+        led = CaptureLed()
+        client = KunibertClient(config, api, audio, output, buttons, led)
+        client.transition(ClientState.WIFI_CONNECTING)
+        client.transition(ClientState.READY)
+
+        client.handle_question()
+
+        self.assertTrue(audio.continued_before_switch)
+        self.assertFalse(audio.continued_after_switch)
+        self.assertEqual(api.questions, 0, "bei Mikrofon-Aus darf kein Audiopuffer hochgeladen werden")
+        self.assertEqual(output.played, [], "nach Abbruch darf keine Audioantwort abgespielt werden")
+        self.assertEqual(client.state, ClientState.MIC_OFF)
+        self.assertEqual(led.modes[-1], "mic_off")
+
+    def test_led_modes_have_distinct_patterns(self):
+        recording = GpioStatusLed.pattern_for_mode("recording")
+        busy = GpioStatusLed.pattern_for_mode("busy")
+        error = GpioStatusLed.pattern_for_mode("error")
+        mic_off = GpioStatusLed.pattern_for_mode("mic_off")
+
+        self.assertTrue(recording)
+        self.assertTrue(busy)
+        self.assertTrue(error)
+        self.assertTrue(mic_off)
+        self.assertEqual(len({recording, busy, error, mic_off}), 4)
+        self.assertEqual(sum(1 for is_on, _ in mic_off if is_on), 2)
+        self.assertEqual(GpioStatusLed.pattern_for_mode("ready"), ())
 
     def test_multipart_contains_audio_and_fields(self):
         payload, content_type = multipart_form(

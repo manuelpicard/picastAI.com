@@ -177,6 +177,13 @@ class GpioButtons:
 class GpioStatusLed:
     """One LED, active-high. Modes: off, ready, recording, busy, error, mic_off."""
 
+    _PATTERNS: dict[str, tuple[tuple[bool, float], ...]] = {
+        "recording": ((True, 0.18), (False, 0.18)),
+        "busy": ((True, 0.7), (False, 0.7)),
+        "error": ((True, 0.08), (False, 0.08)),
+        "mic_off": ((True, 0.08), (False, 0.12), (True, 0.08), (False, 1.2)),
+    }
+
     def __init__(self, config: ClientConfig):
         try:
             from gpiozero import LED
@@ -197,28 +204,29 @@ class GpioStatusLed:
         if mode == "ready":
             self._led.on()
             return
-        if mode == "recording":
-            self._led.on()
-            return
-        if mode == "mic_off":
-            self._led.on()
-            return
-        if mode == "error":
-            self._blink(0.15)
-            return
-        if mode == "busy":
-            self._blink(0.6)
-            return
-        self._led.off()
+        pattern = self.pattern_for_mode(mode)
+        if pattern:
+            self._blink(pattern)
+        else:
+            self._led.off()
 
-    def _blink(self, period: float) -> None:
+    @classmethod
+    def pattern_for_mode(cls, mode: str) -> tuple[tuple[bool, float], ...]:
+        return cls._PATTERNS.get(mode, ())
+
+    def _blink(self, pattern: tuple[tuple[bool, float], ...]) -> None:
         self._stop = threading.Event()
         stop = self._stop
+        self._led.off()
 
         def worker() -> None:
             while not stop.is_set():
-                self._led.toggle()
-                stop.wait(period)
+                for is_on, duration in pattern:
+                    if stop.is_set():
+                        break
+                    self._led.on() if is_on else self._led.off()
+                    if stop.wait(duration):
+                        break
             self._led.off()
 
         self._thread = threading.Thread(target=worker, name="kunibert-led", daemon=True)
@@ -470,7 +478,7 @@ class KunibertClient:
             ClientState.BOOT: {ClientState.WIFI_CONNECTING, ClientState.MIC_OFF, ClientState.SHUTDOWN},
             ClientState.WIFI_CONNECTING: {ClientState.READY, ClientState.ERROR, ClientState.MIC_OFF, ClientState.SHUTDOWN},
             ClientState.READY: {ClientState.RECORDING, ClientState.REQUESTING_STORY, ClientState.MIC_OFF, ClientState.ERROR, ClientState.SHUTDOWN},
-            ClientState.RECORDING: {ClientState.UPLOADING, ClientState.READY, ClientState.ERROR, ClientState.SHUTDOWN},
+            ClientState.RECORDING: {ClientState.UPLOADING, ClientState.READY, ClientState.MIC_OFF, ClientState.ERROR, ClientState.SHUTDOWN},
             ClientState.UPLOADING: {ClientState.PLAYING, ClientState.READY, ClientState.ERROR, ClientState.SHUTDOWN},
             ClientState.REQUESTING_STORY: {ClientState.PLAYING, ClientState.READY, ClientState.ERROR, ClientState.SHUTDOWN},
             ClientState.PLAYING: {ClientState.READY, ClientState.MIC_OFF, ClientState.ERROR, ClientState.SHUTDOWN},
@@ -538,7 +546,17 @@ class KunibertClient:
 
     def handle_question(self) -> None:
         self.transition(ClientState.RECORDING)
-        wav_bytes = self.audio_in.record_while_pressed(lambda: self.buttons.speech_pressed, self.config.max_record_seconds)
+        wav_bytes = self.audio_in.record_while_pressed(
+            lambda: self.buttons.speech_pressed and not self.buttons.mic_off,
+            self.config.max_record_seconds,
+        )
+        if self.buttons.mic_off:
+            # Der Adapter kann nach dem Schalterwechsel noch einen bereits
+            # gepufferten Block zurückgeben. Die gesamte Aufnahme verwerfen.
+            wav_bytes = b""
+            LOG.info("Mikrofon während der Aufnahme ausgeschaltet; Audio verworfen")
+            self.transition(ClientState.MIC_OFF)
+            return
         if not self._has_audio(wav_bytes):
             LOG.info("Aufnahme zu kurz; keine Anfrage gesendet")
             self.transition(ClientState.READY)
