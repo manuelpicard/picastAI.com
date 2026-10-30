@@ -31,6 +31,11 @@ export function screen(transcript: string): boolean {
   return PATTERNS.some((pattern) => pattern.test(normalized));
 }
 
+// Protokolliert nur Zeitpunkt und Auslöser, niemals Text oder Audio.
+export function logSafetyEvent(source: string): void {
+  console.warn(`[safety] ${new Date().toISOString()} source=${source}`);
+}
+
 export function getSafetyResponse(): string {
   return (
     'Danke, dass du mir das sagst. Das klingt wichtig, und du bist damit nicht allein. ' +

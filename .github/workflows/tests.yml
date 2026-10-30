@@ -20,3 +20,5 @@ jobs:
         run: npm ci || npm install
       - name: Build & Typecheck
         run: npm run build
+      - name: Tests
+        run: npm test

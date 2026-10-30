@@ -9,6 +9,7 @@ import {
 } from './prompts.js';
 import {
   ERROR_RESPONSE_DE,
+  logSafetyEvent,
   SAFETY_RESPONSE_DE,
   screen,
   UNCLEAR_RESPONSE_DE,
@@ -107,6 +108,7 @@ export class Brain {
 
     // 1. Deterministische Sicherheitsweiche
     if (transcript && screen(transcript)) {
+      logSafetyEvent('input');
       return {
         kind: 'hinweis',
         speech: SAFETY_RESPONSE_DE,
@@ -179,6 +181,7 @@ export class Brain {
 
         const parsed = JSON.parse(response.text || '{}');
         if (parsed.category === 'sicherheit') {
+          logSafetyEvent('model_classification');
           return {
             kind: 'hinweis',
             speech: SAFETY_RESPONSE_DE,
@@ -325,6 +328,16 @@ export class Brain {
 
         const parsed = JSON.parse(response.text || '{}');
         const text = trimWords(parsed.text || '', 280);
+        if (screen(text)) {
+          logSafetyEvent('story_output');
+          return {
+            kind: 'hinweis',
+            speech: SAFETY_RESPONSE_DE,
+            story_state: state,
+            fixed: 'sicherheit',
+            wav: this.synthesizeWav(SAFETY_RESPONSE_DE, 'hinweis'),
+          };
+        }
         const done = Boolean(parsed.episode_finished) || phase === 'finale';
         const updatedState: StoryState = {
           ...current,
