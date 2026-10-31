@@ -12,13 +12,13 @@ export class DeviceRegistry {
   private devices: Map<string, DeviceEntry> = new Map();
 
   constructor() {
-    // Entwicklungsgeräte bleiben für den Simulator verfügbar. Für den Pi Zero 2 W-
-    // Prototyp kann ein eigener Token über Umgebungsvariablen provisioniert
-    // werden; echte Tokens stehen nicht im Quellcode.
+    // Entwicklungsgeräte mit bekannten Tokens gibt es nur außerhalb von
+    // Produktion. Für den Pi Zero 2 W-Prototyp wird ein eigener Token über
+    // Umgebungsvariablen provisioniert; echte Tokens stehen nicht im Quellcode.
     if (process.env.NODE_ENV !== 'production') {
       this.addDeviceWithRawToken('prototype-1', 'test-token-kunibert-2026', 'Raspberry Pi Prototyp #1');
+      this.addDeviceWithRawToken('simulator-web', 'sim-web-token-xyz-123', 'Web Client Simulator');
     }
-    this.addDeviceWithRawToken('simulator-web', 'sim-web-token-xyz-123', 'Web Client Simulator');
 
     const configuredDeviceId = process.env.PICASTAI_DEVICE_ID || process.env.KUNIBERT_DEVICE_ID;
     const configuredToken = process.env.PICASTAI_DEVICE_TOKEN || process.env.KUNIBERT_DEVICE_TOKEN;
