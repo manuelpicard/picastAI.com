@@ -134,11 +134,11 @@ async function transcribeOrEmpty(wav: Buffer): Promise<string> {
 
 async function synthesizeIfConfigured(result: Awaited<ReturnType<Brain['handle']>>): Promise<typeof result> {
   if (!voice.ttsConfigured || !result.speech) return result;
-  try {
-    result.wav = await voice.synthesize(result.speech);
-  } catch (error) {
-    console.warn('TTS fehlgeschlagen, verwende Fallback-Audio:', error);
-  }
+  // Kein stiller Fallback: Schlägt die Sprachsynthese fehl, fliegt ein
+  // VoiceProviderError (HTTP 503 bzw. 502 durch die Routen). So wird der
+  // Pi-Client zum Wiederholen veranlasst, und der Story-State rückt nicht vor,
+  // weil er erst nach erfolgreicher Synthese gespeichert wird.
+  result.wav = await voice.synthesize(result.speech);
   return result;
 }
 
