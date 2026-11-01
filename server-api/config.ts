@@ -36,6 +36,9 @@ export interface KunibertConfig {
   // Diagnose & Protokollierung
   diagnosticText: boolean;
   devicesFilePath: string;
+
+  // Geräteliste: 'memory' (flüchtig, Standard) oder 'firestore' (dauerhaft)
+  deviceStore: 'memory' | 'firestore';
 }
 
 export function isDiagnosticTextEnabled(
@@ -81,6 +84,7 @@ export function loadConfig(): KunibertConfig {
 
     diagnosticText: isDiagnosticTextEnabled(),
     devicesFilePath: process.env.KUNIBERT_DEVICES_FILE || './devices.json',
+    deviceStore: process.env.PICASTAI_DEVICE_STORE?.trim() === 'firestore' ? 'firestore' : 'memory',
   };
 }
 
@@ -107,6 +111,7 @@ export function getSafeConfigSummary(config: KunibertConfig) {
     audioSampleRate: `${config.audioSampleRate} Hz (16-bit PCM)`,
     rateLimit: `${config.rateLimitMaxTurns} Turns pro ${Math.round(config.rateLimitWindowSeconds / 60)} Minuten`,
     diagnosticText: config.diagnosticText,
+    deviceStore: config.deviceStore,
   };
 }
 
