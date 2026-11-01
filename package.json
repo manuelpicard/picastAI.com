@@ -8,7 +8,7 @@
     "build": "tsc && vite build",
     "start": "tsx server.ts",
     "lint": "tsc --noEmit",
-    "test": "node --import tsx --test server-api/config.test.ts server-api/admin-auth.test.ts"
+    "test": "node --import tsx --test server-api/config.test.ts server-api/admin-auth.test.ts server-api/safety.test.ts server-api/devices.test.ts"
   },
   "dependencies": {
     "@google/genai": "latest",
