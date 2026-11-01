@@ -8,17 +8,31 @@ export interface DeviceEntry {
   name?: string;
 }
 
+/** Dauerhafte Ablage der Geräteliste (z. B. Firestore). Ohne Store bleibt die Registry flüchtig. */
+export interface DeviceStore {
+  loadAll(): Promise<DeviceEntry[]>;
+  save(entry: DeviceEntry): Promise<void>;
+  markRevoked(deviceId: string): Promise<void>;
+}
+
+export class DeviceStoreError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'DeviceStoreError';
+  }
+}
+
 export class DeviceRegistry {
   private devices: Map<string, DeviceEntry> = new Map();
 
-  constructor() {
-    // Entwicklungsgeräte bleiben für den Simulator verfügbar. Für den Pi Zero 2 W-
-    // Prototyp kann ein eigener Token über Umgebungsvariablen provisioniert
-    // werden; echte Tokens stehen nicht im Quellcode.
+  constructor(private readonly store: DeviceStore | null = null) {
+    // Entwicklungsgeräte mit bekannten Tokens gibt es nur außerhalb von
+    // Produktion. Für den Pi Zero 2 W-Prototyp wird ein eigener Token über
+    // Umgebungsvariablen provisioniert; echte Tokens stehen nicht im Quellcode.
     if (process.env.NODE_ENV !== 'production') {
       this.addDeviceWithRawToken('prototype-1', 'test-token-kunibert-2026', 'Raspberry Pi Prototyp #1');
+      this.addDeviceWithRawToken('simulator-web', 'sim-web-token-xyz-123', 'Web Client Simulator');
     }
-    this.addDeviceWithRawToken('simulator-web', 'sim-web-token-xyz-123', 'Web Client Simulator');
 
     const configuredDeviceId = process.env.PICASTAI_DEVICE_ID || process.env.KUNIBERT_DEVICE_ID;
     const configuredToken = process.env.PICASTAI_DEVICE_TOKEN || process.env.KUNIBERT_DEVICE_TOKEN;
@@ -65,6 +79,61 @@ export class DeviceRegistry {
     if (!entry) return false;
     entry.revoked = true;
     return true;
+  }
+
+  /**
+   * Lädt persistierte Geräte beim Start. Bereits im Code oder per Umgebung
+   * provisionierte Geräte behalten ihren Token; ein gespeicherter Widerruf
+   * gilt aber auch für sie (Widerruf ist dauerhaft). Einträge ohne Token-Hash
+   * (z. B. reine Widerrufsvermerke) können sich nicht authentifizieren.
+   */
+  public async loadFromStore(): Promise<number> {
+    if (!this.store) return 0;
+    const entries = await this.store.loadAll();
+    for (const entry of entries) {
+      if (!entry.deviceId) continue;
+      const existing = this.devices.get(entry.deviceId);
+      if (existing) {
+        if (entry.revoked) existing.revoked = true;
+        continue;
+      }
+      if (!entry.tokenSha256) continue;
+      this.devices.set(entry.deviceId, { ...entry });
+    }
+    return entries.length;
+  }
+
+  /** Neues Gerät anlegen und dauerhaft speichern; bei Speicherfehler wird zurückgerollt. */
+  public async register(deviceId: string, name?: string): Promise<{ deviceId: string; token: string }> {
+    const previous = this.devices.get(deviceId);
+    const created = this.add(deviceId, name);
+    if (this.store) {
+      try {
+        await this.store.save(this.devices.get(deviceId)!);
+      } catch (err) {
+        if (previous) this.devices.set(deviceId, previous);
+        else this.devices.delete(deviceId);
+        throw new DeviceStoreError(`Gerät konnte nicht gespeichert werden: ${(err as Error)?.message || 'unbekannt'}`);
+      }
+    }
+    return created;
+  }
+
+  /**
+   * Gerät widerrufen. Der Widerruf wirkt sofort im Speicher und bleibt auch
+   * bestehen, wenn die Ablage nicht erreichbar ist (fail-safe); `persisted`
+   * sagt, ob er dauerhaft gespeichert werden konnte.
+   */
+  public async revokeAndPersist(deviceId: string): Promise<{ success: boolean; persisted: boolean }> {
+    const success = this.revoke(deviceId);
+    if (!success || !this.store) return { success, persisted: false };
+    try {
+      await this.store.markRevoked(deviceId);
+      return { success, persisted: true };
+    } catch (err) {
+      console.warn(`Widerruf von ${deviceId} konnte nicht dauerhaft gespeichert werden:`, err);
+      return { success, persisted: false };
+    }
   }
 
   public list(): Array<{ deviceId: string; created: number; revoked: boolean; name?: string }> {

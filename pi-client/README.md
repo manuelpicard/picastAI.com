@@ -88,6 +88,10 @@ Die GPIO-Nummern sind BCM-Nummern und können über Umgebungsvariablen geändert
 | Mikrofon-Aus-Sense | 22 | Schalter nach GND, `INPUT_PULLUP` |
 | Status-LED | 23 | LED über Vorwiderstand nach GND |
 
+### Tastenentprellung
+
+Der Client konfiguriert `gpiozero.Button` für die Sprechtaste, Erzähltaste und den MIC-OFF-Sense-Eingang mit `bounce_time=0.05` (50 ms). Damit werden kurze Kontaktpreller softwareseitig gefiltert. Das kann die Erkennung eines Zustandswechsels um bis zu etwa 50 ms verzögern; die physische Mikrofonabschaltung muss deshalb direkt im Mikrofonpfad wirken und darf nicht allein von der GPIO-Erkennung abhängen.
+
 ### Status-LED
 
 | Zustand | Signal |
@@ -259,7 +263,7 @@ bash pi-client/test_alsa_audio.sh \
 
 - Die Aufnahme wird nur im RAM gehalten, bis die API-Anfrage abgeschlossen ist.
 - Die heruntergeladene Antwort wird nicht dauerhaft gespeichert.
-- Audio-URLs werden auf denselben API-Host begrenzt; externe Redirect-Ziele werden abgelehnt.
+- Audio-URLs müssen denselben Origin (Schema, Host und Port) wie die API verwenden; HTTP-Downgrades werden abgelehnt. HTTP-Redirects werden nicht verfolgt.
 - HTTP 400, 401, 413, 415 und 429 werden nicht automatisch wiederholt.
 - Temporäre Netzwerk- und Serverfehler werden begrenzt wiederholt.
 - Bei Server-/Audiofehlern bleibt der Client nicht in einer Endlosschleife, sondern wechselt kurz nach `ERROR` zurück nach `READY`.

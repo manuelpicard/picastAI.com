@@ -9,16 +9,27 @@ import {
   Activity,
   History,
   CheckCircle,
+  Volume2,
+  Volume1,
+  VolumeX,
 } from 'lucide-react';
 import { DeviceSimulator } from './components/DeviceSimulator';
 import { StoryInspector } from './components/StoryInspector';
-import { SafetyDemo } from './components/SafetyDemo';
-import { ParentDashboard } from './components/ParentDashboard';
-import { HoerprobenPlayer } from './components/HoerprobenPlayer';
-import { ArchitectureViewer } from './components/ArchitectureViewer';
 import { ChapterProgressMap } from './components/ChapterProgressMap.js';
 import { WifiSettings } from './types/network.js';
-import { Volume2, Volume1, VolumeX } from 'lucide-react';
+
+const SafetyDemo = React.lazy(() =>
+  import('./components/SafetyDemo').then((module) => ({ default: module.SafetyDemo })),
+);
+const ParentDashboard = React.lazy(() =>
+  import('./components/ParentDashboard').then((module) => ({ default: module.ParentDashboard })),
+);
+const HoerprobenPlayer = React.lazy(() =>
+  import('./components/HoerprobenPlayer').then((module) => ({ default: module.HoerprobenPlayer })),
+);
+const ArchitectureViewer = React.lazy(() =>
+  import('./components/ArchitectureViewer').then((module) => ({ default: module.ArchitectureViewer })),
+);
 
 export function App() {
   const [activeTab, setActiveTab] = useState<'simulator' | 'safety' | 'hoerproben' | 'parents' | 'architecture'>('simulator');
@@ -251,6 +262,13 @@ export function App() {
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-6xl w-full mx-auto px-4 py-6">
+        <React.Suspense
+          fallback={
+            <div className="min-h-[30vh] flex items-center justify-center text-sm text-stone-400" role="status" aria-live="polite">
+              Bereich wird geladen …
+            </div>
+          }
+        >
         {activeTab === 'simulator' && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2 space-y-6">
@@ -336,6 +354,7 @@ export function App() {
             <ArchitectureViewer />
           </div>
         )}
+        </React.Suspense>
       </main>
 
       {/* Footer */}

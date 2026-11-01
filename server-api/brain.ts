@@ -11,6 +11,7 @@ import {
   ERROR_RESPONSE_DE,
   SAFETY_RESPONSE_DE,
   screen,
+  screenOutput,
   UNCLEAR_RESPONSE_DE,
 } from './safety.js';
 import { generateMelodyWav, generateToneWav } from './audio.js';
@@ -195,6 +196,10 @@ export class Brain {
         }
         if (parsed.category === 'frage' && parsed.speech) {
           const speech = trimWords(parsed.speech, 100);
+          // Ausgabe-Check: bei Treffer greift der Fallback unten (catch-Pfad).
+          if (screenOutput(speech, 'answer')) {
+            throw new Error('Antwort des Sprachmodells durch Ausgabe-Check abgelehnt');
+          }
           return {
             kind: 'frage',
             speech,
@@ -325,6 +330,10 @@ export class Brain {
 
         const parsed = JSON.parse(response.text || '{}');
         const text = trimWords(parsed.text || '', 280);
+        // Ausgabe-Check: bei Treffer greift der Fallback unten (catch-Pfad).
+        if (!text || screenOutput(text, 'story')) {
+          throw new Error('Geschichte des Sprachmodells durch Ausgabe-Check abgelehnt');
+        }
         const done = Boolean(parsed.episode_finished) || phase === 'finale';
         const updatedState: StoryState = {
           ...current,

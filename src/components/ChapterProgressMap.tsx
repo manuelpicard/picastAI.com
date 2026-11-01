@@ -1,14 +1,5 @@
 import React from 'react';
 import {
-  ResponsiveContainer,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  Tooltip,
-  Cell,
-} from 'recharts';
-import {
   Home,
   Compass,
   Trees,
@@ -185,12 +176,12 @@ export const ChapterProgressMap: React.FC<ChapterProgressMapProps> = ({ storySta
         </div>
       </div>
 
-      {/* Recharts Bar Chart Visualizing Chapter Completion */}
+      {/* Native CSS bars avoid loading a charting library for this small visualization. */}
       <div className="bg-stone-950 p-3.5 rounded-xl border border-stone-800 space-y-2">
         <div className="flex items-center justify-between text-xs text-stone-400">
           <span className="font-semibold text-stone-300 flex items-center gap-1.5">
             <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-            Kapitel-Statusanzeige (Recharts)
+            Kapitel-Statusanzeige
           </span>
           <span className="text-[11px] font-mono text-stone-400">
             {isDone ? 'Folge abgeschlossen 🎉' : currentPart === 0 ? 'Noch nicht begonnen' : `Kapitel ${currentPart} aktiv`}
@@ -198,32 +189,28 @@ export const ChapterProgressMap: React.FC<ChapterProgressMapProps> = ({ storySta
         </div>
 
         <div className="h-28 w-full">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={chartData} margin={{ top: 8, right: 10, left: -25, bottom: 0 }}>
-              <XAxis dataKey="name" tick={{ fill: '#a8a29e', fontSize: 10 }} axisLine={{ stroke: '#44403c' }} />
-              <YAxis domain={[0, 100]} tick={{ fill: '#78716c', fontSize: 9 }} unit="%" axisLine={{ stroke: '#44403c' }} />
-              <Tooltip
-                content={({ active, payload }) => {
-                  if (active && payload && payload.length) {
-                    const item = payload[0].payload;
-                    return (
-                      <div className="bg-stone-900 border border-stone-700 p-2 rounded shadow-lg text-xs">
-                        <p className="font-bold text-amber-300">{item.fullName}</p>
-                        <p className="text-stone-300">Phase: {item.phase}</p>
-                        <p className="text-stone-400">Status: {item.status} ({item.progress}%)</p>
-                      </div>
-                    );
-                  }
-                  return null;
-                }}
-              />
-              <Bar dataKey="progress" radius={[4, 4, 0, 0]}>
-                {chartData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={entry.color} />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
+          <div className="flex h-full items-end justify-around gap-3" role="list" aria-label="Fortschritt je Kapitel">
+            {chartData.map((entry) => (
+              <div
+                key={entry.name}
+                className="flex h-full min-w-0 flex-1 flex-col items-center justify-end gap-1"
+                role="listitem"
+                aria-label={`${entry.fullName}: ${entry.status} (${entry.progress}%)`}
+                title={`${entry.fullName} · Phase: ${entry.phase} · ${entry.status} (${entry.progress}%)`}
+              >
+                <span className="text-[9px] font-mono text-stone-500">{entry.progress}%</span>
+                <div className="flex h-16 w-full max-w-12 items-end overflow-hidden rounded-t bg-stone-800">
+                  {entry.progress > 0 && (
+                    <div
+                      className="w-full rounded-t transition-all"
+                      style={{ height: `${entry.progress}%`, backgroundColor: entry.color }}
+                    />
+                  )}
+                </div>
+                <span className="w-full truncate text-center text-[9px] text-stone-500">{entry.name}</span>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </div>

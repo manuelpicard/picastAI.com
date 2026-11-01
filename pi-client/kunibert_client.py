@@ -32,7 +32,7 @@ from pathlib import Path
 from typing import Any, Callable, Optional, Protocol
 from urllib.parse import urljoin, urlparse
 from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 LOG = logging.getLogger("kunibert")
 
@@ -120,6 +120,13 @@ class ApiError(RuntimeError):
         super().__init__(message)
         self.status = status
         self.retryable = retryable
+
+
+class NoRedirectHandler(HTTPRedirectHandler):
+    """Reject redirects so authenticated requests cannot leave their origin."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
 
 
 class AudioInput(Protocol):
@@ -323,6 +330,8 @@ def validate_wav(wav_bytes: bytes, config: ClientConfig) -> None:
                 raise ApiError("Unerwartete WAV-Bittiefe")
             if wav.getframerate() != config.sample_rate:
                 raise ApiError("Unerwartete WAV-Abtastrate")
+            if wav.getnframes() <= 0:
+                raise ApiError("WAV enthält keine Audiodaten")
     except wave.Error as exc:
         raise ApiError("Ungültige WAV-Antwort") from exc
 
@@ -382,8 +391,8 @@ class PicastApi:
             raise ApiError("API-Antwort enthält keine audio_url")
         parsed_base = urlparse(self.config.api_base_url)
         parsed_audio = urlparse(urljoin(self.config.api_base_url + "/", audio_url))
-        if parsed_audio.scheme not in {"http", "https"} or parsed_audio.netloc != parsed_base.netloc:
-            raise ApiError("audio_url verweist auf einen nicht erlaubten Host")
+        if parsed_audio.scheme != parsed_base.scheme or parsed_audio.netloc != parsed_base.netloc:
+            raise ApiError("audio_url verweist nicht auf denselben Origin wie die API")
         status, headers, data = self._request_absolute("GET", parsed_audio.geturl(), None, self._headers)
         if status != 200 or not data:
             raise ApiError(f"Audioabruf fehlgeschlagen (HTTP {status})", status=status, retryable=status >= 500)
@@ -429,7 +438,8 @@ class PicastApi:
     def _request_absolute(self, method: str, url: str, body: Optional[bytes], headers: dict[str, str]) -> tuple[int, dict[str, str], bytes]:
         request = Request(url, data=body, headers=headers, method=method)
         try:
-            with urlopen(request, timeout=self.config.request_timeout_seconds) as response:
+            opener = build_opener(NoRedirectHandler())
+            with opener.open(request, timeout=self.config.request_timeout_seconds) as response:
                 return response.status, dict(response.headers.items()), response.read()
         except TimeoutError:
             raise
@@ -548,15 +558,24 @@ class KunibertClient:
         self.transition(ClientState.RECORDING)
         try:
             wav_bytes = self.audio_in.record_while_pressed(
-                lambda: self.buttons.speech_pressed and not self.buttons.mic_off,
+                lambda: self.buttons.speech_pressed and not self.buttons.mic_off and not self.stop_requested,
                 self.config.max_record_seconds,
             )
         except HardwareError as exc:
+            if self.stop_requested:
+                LOG.info("Shutdown während der Aufnahme; Audiopuffer verworfen")
+                self.transition(ClientState.SHUTDOWN)
+                return
             if self.buttons.mic_off:
                 LOG.info("Mikrofon-Aus während der Aufnahme; Audiogerät getrennt, Anfrage verworfen")
                 self.transition(ClientState.MIC_OFF)
                 return
             self.handle_error(exc)
+            return
+        if self.stop_requested:
+            wav_bytes = b""
+            LOG.info("Shutdown während der Aufnahme; Audiopuffer verworfen")
+            self.transition(ClientState.SHUTDOWN)
             return
         if self.buttons.mic_off:
             # Der Adapter kann nach dem Schalterwechsel noch einen bereits
