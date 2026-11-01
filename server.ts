@@ -4,16 +4,13 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import { DeviceRegistry, RateLimiter, AudioStore } from './server-api/devices.js';
+import { DeviceRegistry, DeviceStoreError, RateLimiter, AudioStore } from './server-api/devices.js';
 import { Brain, StoryState } from './server-api/brain.js';
 import { AudioError, decodeWavHeader } from './server-api/audio.js';
 import { config, getSafeConfigSummary } from './server-api/config.js';
 import { isAdminTokenConfigured, verifyAdminAuthorization } from './server-api/admin-auth.js';
 import { VoicePipeline, VoiceProviderError } from './server-api/voice.js';
-import {
-  saveDeviceToFirestore,
-  revokeDeviceInFirestore,
-} from './server-api/firestore-service.js';
+import { FirestoreDeviceStore } from './server-api/firestore-service.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -22,8 +19,11 @@ const app = express();
 const PORT = config.port;
 const HOST = config.host;
 
-// In-Memory Dienste
-const registry = new DeviceRegistry();
+// Geräteliste: flüchtig im RAM (Standard) oder dauerhaft in Firestore
+// (PICASTAI_DEVICE_STORE=firestore). Rate-Limit, Audio und Story-State bleiben flüchtig.
+const registry = new DeviceRegistry(
+  config.deviceStore === 'firestore' ? new FirestoreDeviceStore() : null
+);
 const limiter = new RateLimiter(
   config.rateLimitMaxTurns,
   config.rateLimitWindowSeconds
@@ -362,31 +362,25 @@ app.get('/api/devices', requireAdminAuth, (_req: Request, res: Response) => {
   res.json({ devices: registry.list() });
 });
 
-app.post('/api/devices', requireAdminAuth, (req: Request, res: Response): any => {
+app.post('/api/devices', requireAdminAuth, async (req: Request, res: Response): Promise<any> => {
   const { deviceId, name } = req.body;
   if (!deviceId) {
     return res.status(400).json({ error: 'deviceId required' });
   }
   try {
-    const created = registry.add(deviceId, name);
-    saveDeviceToFirestore({
-      deviceId: created.deviceId,
-      name: name || deviceId,
-      created: Math.floor(Date.now() / 1000),
-      revoked: false,
-      tokenSha256: '',
-    }).catch(() => {});
-    return res.json(created);
+    return res.json(await registry.register(deviceId, name));
   } catch (err: any) {
+    if (err instanceof DeviceStoreError) {
+      console.error('Geräte-Store nicht erreichbar:', err);
+      return res.status(503).json({ error: 'device_store_unavailable' });
+    }
     return res.status(400).json({ error: err.message });
   }
 });
 
-app.post('/api/devices/:id/revoke', requireAdminAuth, (req: Request, res: Response): any => {
-  const devId = String(req.params.id);
-  const success = registry.revoke(devId);
-  revokeDeviceInFirestore(devId).catch(() => {});
-  return res.json({ success });
+app.post('/api/devices/:id/revoke', requireAdminAuth, async (req: Request, res: Response): Promise<any> => {
+  const { success, persisted } = await registry.revokeAndPersist(String(req.params.id));
+  return res.json({ success, persisted });
 });
 
 app.get('/api/config', requireAdminAuth, (_req: Request, res: Response) => {
@@ -409,6 +403,13 @@ app.get('/api/status', requireAdminAuth, (req: Request, res: Response) => {
 
 async function startServer() {
   const isProd = process.env.NODE_ENV === 'production';
+
+  // Fail-closed: Ist ein dauerhafter Store konfiguriert, aber nicht lesbar,
+  // starten wir nicht. Sonst wären widerrufene Geräte wieder gültig.
+  if (config.deviceStore === 'firestore') {
+    const count = await registry.loadFromStore();
+    console.log(`Geräteliste aus Firestore geladen (${count} Einträge).`);
+  }
 
   if (!isProd) {
     const { createServer: createViteServer } = await import('vite');

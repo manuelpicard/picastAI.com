@@ -106,7 +106,13 @@ Die Token-Datei beziehungsweise Prozessumgebung darf nur für den Serverdienst l
 
 Die Datei `firestore.rules` verweigert direkte Zugriffe aller Firebase-Clients. Das Server-Admin-SDK umgeht Firestore-Regeln; serverseitige API-Routen müssen deshalb separat authentifiziert sein.
 
-Für eine Produktionsumgebung sollte der Token nicht als einzelne globale Umgebungsvariable, sondern über einen Secret-Manager provisioniert werden. Die Registry ist im aktuellen Prototyp flüchtig; ein Serverneustart entfernt die in-memory Geräte.
+Für eine Produktionsumgebung sollte der Token nicht als einzelne globale Umgebungsvariable, sondern über einen Secret-Manager provisioniert werden. Standardmäßig ist die Geräteregistry flüchtig; ein Serverneustart entfernt die über das Dashboard angelegten Geräte. Mit `PICASTAI_DEVICE_STORE=firestore` wird sie dauerhaft in der Firestore-Collection `devices` geführt (nur der SHA-256-Hash des Tokens, nie der Token selbst):
+
+- Beim Start lädt der Server die Geräteliste. Ist Firestore dann nicht erreichbar, startet er nicht (fail-closed), damit widerrufene Geräte nicht wieder gültig werden.
+- `POST /api/devices` speichert das Gerät, bevor es den Token ausgibt; schlägt das Speichern fehl, antwortet die API mit `503 {"error":"device_store_unavailable"}` und legt nichts an.
+- `POST /api/devices/:id/revoke` wirkt sofort im Speicher und antwortet mit `{"success":true,"persisted":true|false}`. Bei `persisted:false` war Firestore nicht erreichbar; der Widerruf gilt bis zum nächsten Neustart und sollte dann wiederholt werden.
+- Ein gespeicherter Widerruf gilt auch für per Umgebung provisionierte Geräte. Soll ein widerrufenes Gerät wieder zugelassen werden, ist eine neue Geräte-ID oder das Löschen des Firestore-Dokuments nötig.
+- Das Admin-SDK benötigt Zugangsdaten (z. B. Application Default Credentials) mit Schreib-/Leserecht auf Firestore.
 
 ## Lokaler Test
 
@@ -141,7 +147,7 @@ Die `audio_url` aus der Antwort mit denselben Authentifizierungsheadern abrufen.
 - Rate-Limit pro Gerät: standardmäßig 30 Anfragen pro 10 Minuten.
 - Audio nur im flüchtigen RAM, TTL standardmäßig 120 Sekunden.
 - Audio-URL benötigt erneut Geräteauthentifizierung.
-- Geräte- und Story-State sind im aktuellen Prozessspeicher, nicht hochverfügbar.
+- Story-State, Rate-Limit und Audio sind im Prozessspeicher, nicht hochverfügbar. Die Geräteliste ist es nur ohne `PICASTAI_DEVICE_STORE=firestore`.
 - Geräteverwaltung, Status und sichere Konfigurationsübersicht benötigen ein starkes Admin-Bearer-Token.
 - CORS akzeptiert nur exakt konfigurierte Browser-Ursprünge; ohne Allowlist gibt es keine Cross-Origin-Freigabe.
 - Firestore-Regeln verweigern direkte Clientzugriffe; serverseitige Admin-SDK-Zugriffe sind hiervon nicht erfasst.
