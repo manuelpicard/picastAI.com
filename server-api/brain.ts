@@ -1,4 +1,4 @@
-import { GoogleGenAI, Type } from '@google/genai';
+import { createLlmProvider, type JsonSchema, type LlmProvider } from './llm.js';
 import {
   ANSWER_SYSTEM,
   EPISODE_CLOSING,
@@ -79,23 +79,40 @@ export function trimWords(text: string, maxWords: number): string {
   return end > cut.length / 2 ? cut.slice(0, end + 1) : cut + ' ...';
 }
 
+export const QUESTION_SCHEMA: JsonSchema = {
+  type: 'object',
+  properties: {
+    category: { type: 'string', enum: ['frage', 'geschichte', 'weiter', 'sicherheit', 'unklar'] },
+    speech: { type: 'string' },
+  },
+  required: ['category', 'speech'],
+};
+
+export const STORY_SCHEMA: JsonSchema = {
+  type: 'object',
+  properties: {
+    text: { type: 'string' },
+    summary: { type: 'string' },
+    open_threads: { type: 'string' },
+    next_hook: { type: 'string' },
+    episode_finished: { type: 'boolean' },
+  },
+  required: ['text', 'summary', 'open_threads', 'next_hook', 'episode_finished'],
+};
+
 export class Brain {
   private age = config.ageBracket;
   private partsPerEpisode = config.partsPerEpisode;
   private storyMinWords = config.storyMinWords;
   private storyMaxWords = config.storyMaxWords;
   private answerMaxWords = config.answerMaxWords;
-  private geminiClient: GoogleGenAI | null = null;
 
-  constructor() {
-    const apiKey = config.geminiApiKey;
-    if (apiKey) {
-      try {
-        this.geminiClient = new GoogleGenAI({});
-      } catch (err) {
-        console.warn('Gemini Client konnte nicht initialisiert werden:', err);
-      }
-    }
+  /** Ohne Anbieter (kein Key) greifen die festen Fallback-Texte. */
+  constructor(private readonly llm: LlmProvider | null = createLlmProvider(config)) {}
+
+  /** Für Statusanzeige und Logs, z. B. "gemini:gemini-3.8-flash". */
+  public get llmName(): string {
+    return this.llm ? `${this.llm.name}:${this.llm.model}` : 'none';
   }
 
   public async handle(
@@ -152,33 +169,18 @@ export class Brain {
       };
     }
 
-    // Wenn Gemini vorhanden ist, befragen
-    if (this.geminiClient) {
+    // Wenn ein Sprachmodell konfiguriert ist, befragen
+    if (this.llm) {
       try {
         const systemPrompt = ANSWER_SYSTEM(this.age, 80);
         const userPrompt = `Läuft gerade eine Kunibert-Geschichte: ${storyActive(state) ? 'ja' : 'nein'}\nErkannte Äußerung des Kindes: «${transcript}»`;
 
-        const response = await this.geminiClient.models.generateContent({
-          model: 'gemini-2.5-flash',
-          contents: userPrompt,
-          config: {
-            systemInstruction: systemPrompt,
-            responseMimeType: 'application/json',
-            responseSchema: {
-              type: Type.OBJECT,
-              properties: {
-                category: {
-                  type: Type.STRING,
-                  enum: ['frage', 'geschichte', 'weiter', 'sicherheit', 'unklar'],
-                },
-                speech: { type: Type.STRING },
-              },
-              required: ['category', 'speech'],
-            },
-          },
-        });
-
-        const parsed = JSON.parse(response.text || '{}');
+        const parsed = await this.llm.generateJson({
+          system: systemPrompt,
+          user: userPrompt,
+          schemaName: 'kunibert_antwort',
+          schema: QUESTION_SCHEMA,
+        }) as { category?: string; speech?: string };
         if (parsed.category === 'sicherheit') {
           return {
             kind: 'hinweis',
@@ -207,8 +209,8 @@ export class Brain {
             wav: this.synthesizeWav(speech, 'frage'),
           };
         }
-      } catch (geminiErr) {
-        console.warn('Gemini question call failed, using fallback:', geminiErr);
+      } catch (llmErr) {
+        console.warn(`LLM-Antwort (${this.llmName}) fehlgeschlagen, verwende Fallback:`, llmErr);
       }
     }
 
@@ -293,7 +295,7 @@ export class Brain {
     else if (part >= target) phase = 'finale';
     else if (part === target - 1) phase = 'trick';
 
-    if (this.geminiClient) {
+    if (this.llm) {
       try {
         const systemPrompt = STORYTELLER_SYSTEM(this.age);
         const partLabel =
@@ -308,28 +310,14 @@ export class Brain {
 
         const userPrompt = `Erzähle jetzt ${partLabel}.\nLänge: 170 bis 230 Wörter.\n${PHASE_HINTS[phase]}\n${continuity}\n${wishLine}\nAntworte strikt im JSON-Format.`;
 
-        const response = await this.geminiClient.models.generateContent({
-          model: 'gemini-2.5-flash',
-          contents: userPrompt,
-          config: {
-            systemInstruction: systemPrompt,
-            responseMimeType: 'application/json',
-            responseSchema: {
-              type: Type.OBJECT,
-              properties: {
-                text: { type: Type.STRING },
-                summary: { type: Type.STRING },
-                open_threads: { type: Type.STRING },
-                next_hook: { type: Type.STRING },
-                episode_finished: { type: Type.BOOLEAN },
-              },
-              required: ['text', 'summary', 'open_threads', 'next_hook', 'episode_finished'],
-            },
-          },
-        });
-
-        const parsed = JSON.parse(response.text || '{}');
-        const text = trimWords(parsed.text || '', 280);
+        const parsed = await this.llm.generateJson({
+          system: systemPrompt,
+          user: userPrompt,
+          schemaName: 'kunibert_geschichte',
+          schema: STORY_SCHEMA,
+          maxOutputTokens: 1500,
+        }) as { text?: string; summary?: string; open_threads?: string; next_hook?: string; episode_finished?: boolean };
+        const text = trimWords(String(parsed.text || ''), 280);
         // Ausgabe-Check: bei Treffer greift der Fallback unten (catch-Pfad).
         if (!text || screenOutput(text, 'story')) {
           throw new Error('Geschichte des Sprachmodells durch Ausgabe-Check abgelehnt');
@@ -354,7 +342,7 @@ export class Brain {
           wav: this.synthesizeWav(fullSpeech, 'geschichte'),
         };
       } catch (err) {
-        console.warn('Gemini story generation failed, using rich fallback:', err);
+        console.warn(`LLM-Geschichte (${this.llmName}) fehlgeschlagen, verwende Fallback:`, err);
       }
     }
 

@@ -393,6 +393,7 @@ app.get('/api/status', requireAdminAuth, (req: Request, res: Response) => {
     rateLimit: limiter.getStatus(deviceId),
     audioStoreItems: store.count,
     geminiConfigured: Boolean(config.geminiApiKey),
+    llm: brain.llmName,
     config: getSafeConfigSummary(config),
   });
 });
