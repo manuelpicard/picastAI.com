@@ -305,6 +305,15 @@ describe('picastAI-API (echter Server)', () => {
     assert.equal(((await last.json()) as { session_end: boolean }).session_end, true, 'Teil 5 muss das Ende sein');
   });
 
+  it('ungültig kodierter Pfad bleibt ein 400 als JSON, kein 500 und kein Fehlerprotokoll', async () => {
+    const device = await registerDevice();
+    const logged = output.length;
+    const res = await fetch(`${base}/v1/device/audio/%zz`, { headers: deviceHeaders(device.id, device.token) });
+    assert.equal(res.status, 400);
+    assert.equal(((await res.json()) as { error: string }).error, 'bad_request');
+    assert.ok(!output.slice(logged).includes('Unbehandelter Fehler'), output.slice(logged));
+  });
+
   it('Admin-Routen verlangen das Admin-Token; kaputtes JSON ergibt 400', async () => {
     const without = await fetch(`${base}/api/devices`);
     assert.equal(without.status, 401);

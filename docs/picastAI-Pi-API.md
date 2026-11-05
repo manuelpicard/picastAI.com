@@ -83,7 +83,7 @@ Erfordert wieder dieselben `Authorization`- und `X-Device-ID`-Header. Die WAV-Da
 
 | Status | Body | Bedeutung für den Client |
 | --- | --- | --- |
-| 400 | `bad_audio`, `unsupported_audio_format`, `audio_required`, `bad_upload`, `bad_json`, `unsupported_length` | Anfrage fehlerhaft, nicht wiederholen |
+| 400 | `bad_audio`, `unsupported_audio_format`, `audio_required`, `bad_upload`, `bad_json`, `unsupported_length`, `bad_request` (z. B. ungültig kodierter Pfad) | Anfrage fehlerhaft, nicht wiederholen |
 | 401 | `unauthorized` | Gerät unbekannt, widerrufen oder Token falsch |
 | 413 | `audio_too_large`, `payload_too_large` | Aufnahme über 2 MB, nicht wiederholen |
 | 429 | `rate_limited` | Rate-Limit pro Gerät erreicht |
@@ -95,7 +95,7 @@ Erfordert wieder dieselben `Authorization`- und `X-Device-ID`-Header. Die WAV-Da
 
 Terminiert ein Reverse Proxy (nginx, Caddy, Cloud Run) das HTTPS, sieht der Node-Server nur `http` und den Host des Proxys. Die `audio_url` in der Antwort würde dann mit `http://` oder einem internen Host beginnen, und der Pi-Client lehnt sie ab, weil Schema und Host nicht zu seiner API-Adresse passen. Zwei Wege:
 
-- **`PICASTAI_PUBLIC_BASE_URL=https://kunibert.example`** (empfohlen): Der Server baut die `audio_url` aus diesem Ursprung, unabhängig von Headern.
+- **`PICASTAI_PUBLIC_BASE_URL=https://kunibert.example`** (empfohlen): Der Server baut die `audio_url` aus diesem Ursprung, unabhängig von Headern. Pfad, Query und Zugangsdaten sind nicht erlaubt; Schreibweise und Port übernimmt der Server, wie sie dort stehen. Der Pi-Client vergleicht Schema, Host (ohne Beachtung der Groß-/Kleinschreibung) und effektiven Port, sodass `https://picastAI.com` und `https://picastai.com:443` als derselbe Ursprung gelten.
 - **`PICASTAI_TRUST_PROXY=1`** (Anzahl der Proxy-Hops, oder `true`/`loopback`): Der Server glaubt `X-Forwarded-Proto`. Der Proxy muss dann den Host-Header mit durchreichen (nginx: `proxy_set_header Host $host;`).
 
 Für den echten Betrieb außerdem `NODE_ENV=production` setzen (und vorher `npm run build` ausführen). Ohne diese Einstellung sind Entwicklungsgeräte mit bekannten Tokens aktiv; der Server warnt beim Start.

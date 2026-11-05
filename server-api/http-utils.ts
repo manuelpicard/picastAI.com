@@ -29,18 +29,22 @@ export function parseTrustProxy(value: string | undefined | null): TrustProxySet
  * PICASTAI_PUBLIC_BASE_URL: der Ursprung, unter dem Geräte den Server erreichen
  * (z. B. https://kunibert.example). Daraus baut der Server die audio_url. Das ist
  * die robusteste Einstellung hinter einem Proxy, der den Host-Header umschreibt.
- * Pfad, Query und Fragment werden verworfen; ungültige Werte ergeben null.
+ * Pfad, Query und Fragment werden verworfen; ungültige Werte und Zugangsdaten in
+ * der Adresse ergeben null. Schreibweise des Hosts und Port bleiben, wie der
+ * Betreiber sie getippt hat (new URL().origin würde "picastAI.com" kleinschreiben).
  */
 export function normalizePublicBaseUrl(value: string | undefined | null): string | null {
   const text = (value ?? '').trim();
   if (!text) return null;
+  const typed = /^(https?):\/\/([^/?#\\]+)/i.exec(text);
+  if (!typed) return null;
   try {
     const url = new URL(text);
-    if (url.protocol !== 'https:' && url.protocol !== 'http:') return null;
-    return url.origin;
+    if (url.username || url.password || !url.hostname) return null;
   } catch {
     return null;
   }
+  return `${typed[1].toLowerCase()}://${typed[2]}`;
 }
 
 /**

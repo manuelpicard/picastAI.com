@@ -431,6 +431,13 @@ app.use((err: any, _req: Request, res: Response, next: NextFunction): any => {
   if (err?.type === 'entity.parse.failed') {
     return res.status(400).json({ error: 'bad_json' });
   }
+  // Fehler von Express und Middleware mit eigenem Clientstatus (zum Beispiel ein
+  // ungültig kodierter Pfad wie /v1/device/audio/%zz, URIError mit Status 400)
+  // bleiben 4xx. Als 500 würde der Pi-Client sie wiederholen.
+  const status = Number(err?.status ?? err?.statusCode);
+  if (Number.isInteger(status) && status >= 400 && status < 500) {
+    return res.status(status).json({ error: 'bad_request' });
+  }
   console.error('Unbehandelter Fehler:', err);
   return res.status(500).json({ error: 'internal_error' });
 });

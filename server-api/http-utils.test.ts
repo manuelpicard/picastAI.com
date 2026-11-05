@@ -28,12 +28,30 @@ test('normalizePublicBaseUrl: nur http(s)-Ursprung, ohne Pfad und Schrägstrich'
   assert.equal(normalizePublicBaseUrl('http://192.168.1.20:3000'), 'http://192.168.1.20:3000');
 });
 
+test('normalizePublicBaseUrl: Schreibweise des Hosts und Port bleiben wie getippt', () => {
+  // Der Pi-Standard lautet https://picastAI.com; ein kleingeschriebener Host
+  // würde dort als anderer Origin gelten.
+  assert.equal(normalizePublicBaseUrl('https://picastAI.com'), 'https://picastAI.com');
+  assert.equal(normalizePublicBaseUrl('https://picastAI.com/'), 'https://picastAI.com');
+  assert.equal(normalizePublicBaseUrl('HTTPS://Kunibert.Example/pfad'), 'https://Kunibert.Example');
+  assert.equal(normalizePublicBaseUrl('https://kunibert.example:443'), 'https://kunibert.example:443');
+  assert.equal(normalizePublicBaseUrl('http://[::1]:3000/x'), 'http://[::1]:3000');
+});
+
 test('normalizePublicBaseUrl: leer oder ungültig ergibt null', () => {
   assert.equal(normalizePublicBaseUrl(undefined), null);
   assert.equal(normalizePublicBaseUrl(''), null);
   assert.equal(normalizePublicBaseUrl('kunibert.example'), null);
   assert.equal(normalizePublicBaseUrl('ftp://kunibert.example'), null);
   assert.equal(normalizePublicBaseUrl('javascript:alert(1)'), null);
+  assert.equal(normalizePublicBaseUrl('https://'), null);
+  assert.equal(normalizePublicBaseUrl('https://kunibert .example'), null);
+  assert.equal(normalizePublicBaseUrl('https://kunibert.example:abc'), null);
+});
+
+test('normalizePublicBaseUrl: Zugangsdaten in der Adresse werden abgelehnt', () => {
+  assert.equal(normalizePublicBaseUrl('https://nutzer:geheim@kunibert.example'), null);
+  assert.equal(normalizePublicBaseUrl('https://nutzer@kunibert.example'), null);
 });
 
 test('buildAudioUrl: festes Public-Base-URL hat Vorrang vor der Anfrage', () => {

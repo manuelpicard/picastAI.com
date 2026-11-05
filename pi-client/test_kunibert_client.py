@@ -20,6 +20,7 @@ from kunibert_client import (
     PicastApi,
     encode_wav,
     multipart_form,
+    same_origin,
     validate_wav,
 )
 
@@ -384,6 +385,56 @@ class KunibertClientTests(unittest.TestCase):
                     with self.assertRaises(ApiError):
                         api._download_audio({"audio_url": audio_url})
                     request.assert_not_called()
+
+    def test_download_audio_ignores_host_case_and_default_port(self):
+        # Der Pi-Standard "https://picastAI.com" hat Großbuchstaben; ein Server, der
+        # den Host kleinschreibt oder :443 anhängt, bleibt derselbe Origin.
+        config = ClientConfig(api_base_url="https://picastAI.com", device_token="device-test-token")
+        api = PicastApi(config)
+        audio = encode_wav(b"\x00\x00" * 200, config.sample_rate, config.channels, config.sample_width)
+
+        for audio_url in (
+            "https://picastai.com/v1/device/audio/x",
+            "https://PICASTAI.COM:443/v1/device/audio/x",
+            "HTTPS://picastAI.com/v1/device/audio/x",
+        ):
+            with self.subTest(audio_url=audio_url):
+                with patch.object(
+                    api,
+                    "_request_absolute",
+                    return_value=(200, {"Content-Type": "audio/wav"}, audio),
+                ) as request:
+                    self.assertEqual(api._download_audio({"audio_url": audio_url}), audio)
+                request.assert_called_once()
+
+    def test_download_audio_rejects_other_port_userinfo_and_lookalike_hosts(self):
+        config = ClientConfig(api_base_url="https://picastAI.com", device_token="device-test-token")
+        api = PicastApi(config)
+        for audio_url in (
+            "https://picastai.com:8443/v1/device/audio/x",
+            "https://user:pw@picastai.com/v1/device/audio/x",
+            "https://picastai.com.attacker.invalid/v1/device/audio/x",
+            "https://attacker.invalid/https://picastai.com/",
+            "https://picastai.com:notaport/v1/device/audio/x",
+            "https://[picastai.com/v1/device/audio/x",
+            "ftp://picastai.com/v1/device/audio/x",
+        ):
+            with self.subTest(audio_url=audio_url):
+                with patch.object(api, "_request_absolute") as request:
+                    with self.assertRaises(ApiError):
+                        api._download_audio({"audio_url": audio_url})
+                    request.assert_not_called()
+
+    def test_same_origin_compares_scheme_host_and_effective_port(self):
+        self.assertTrue(same_origin("https://picastAI.com/a", "https://picastai.com"))
+        self.assertTrue(same_origin("https://picastai.com:443/a", "https://picastai.com"))
+        self.assertTrue(same_origin("http://192.168.1.20:3000/a", "http://192.168.1.20:3000"))
+        self.assertFalse(same_origin("http://picastai.com", "https://picastai.com"))
+        self.assertFalse(same_origin("https://picastai.com:444", "https://picastai.com"))
+        self.assertFalse(same_origin("https://a.example", "https://b.example"))
+        self.assertFalse(same_origin("https://u@picastai.com", "https://picastai.com"))
+        self.assertFalse(same_origin("", ""))
+        self.assertFalse(same_origin("kein-url", "kein-url"))
 
     def test_request_absolute_uses_handler_that_rejects_redirects(self):
         config = ClientConfig(api_base_url="https://picastAI.com", device_token="device-test-token")
