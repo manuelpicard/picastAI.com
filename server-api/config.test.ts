@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { isDiagnosticTextEnabled, normalizeServiceUrl, voiceConfigWarnings } from './config.js';
+import { isDiagnosticTextEnabled, llmConfigWarnings, normalizeServiceUrl, voiceConfigWarnings } from './config.js';
 
 test('diagnosticText is opt-in and disabled in production', async (t) => {
   await t.test('is disabled when the flag is missing', () => {
@@ -68,4 +68,19 @@ test('voiceConfigWarnings: eine ungültige Adresse wird gemeldet', () => {
   const warnings = voiceConfigWarnings({ sttUrl: 'kein-url', ttsUrl: null });
   assert.equal(warnings.length, 1);
   assert.match(warnings[0], /keine gültige URL/);
+});
+
+test('llmConfigWarnings: warnt vor Gemini-Einstellungen, die nicht mehr wirken', () => {
+  assert.deepEqual(llmConfigWarnings({}), []);
+  assert.deepEqual(llmConfigWarnings({ PICASTAI_LLM_PROVIDER: 'anthropic' }), []);
+
+  const provider = llmConfigWarnings({ PICASTAI_LLM_PROVIDER: 'gemini' });
+  assert.equal(provider.length, 1);
+  assert.match(provider[0], /PICASTAI_LLM_PROVIDER=gemini.*nicht mehr unterstützt/);
+
+  const leftovers = llmConfigWarnings({ GEMINI_API_KEY: 'g' });
+  assert.equal(leftovers.length, 1);
+  assert.match(leftovers[0], /GEMINI_API_KEY.*nicht mehr gelesen/);
+
+  assert.equal(llmConfigWarnings({ PICASTAI_LLM_PROVIDER: 'gemini', GEMINI_API_KEY: 'g' }).length, 2);
 });

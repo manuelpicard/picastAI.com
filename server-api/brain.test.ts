@@ -7,7 +7,7 @@ import { SAFETY_RESPONSE_DE, UNCLEAR_RESPONSE_DE } from './safety.js';
 
 /** Fake-Anbieter: liefert vorbereitete Antworten oder wirft vorbereitete Fehler. */
 class FakeLlm implements LlmProvider {
-  readonly name = 'gemini' as const;
+  readonly name = 'anthropic' as const;
   readonly model = 'fake';
   calls: LlmJsonRequest[] = [];
   constructor(private responses: Array<Record<string, unknown> | Error>) {}
@@ -141,7 +141,7 @@ test('Ohne Anbieter: Fallbacks funktionieren und llmName ist "none"', async () =
 });
 
 test('llmName nennt Anbieter und Modell', () => {
-  assert.equal(new Brain(new FakeLlm([])).llmName, 'gemini:fake');
+  assert.equal(new Brain(new FakeLlm([])).llmName, 'anthropic:fake');
 });
 
 test('Finale: letzter Teil beendet die Folge und hängt den Folgenabschluss an', async () => {

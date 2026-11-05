@@ -1,9 +1,9 @@
 // Vergleich von Sprachmodellen mit denselben Kinder-Prompts, durch die echte
 // Brain-Kette (Sicherheitsweiche -> Modell -> Ausgabe-Check -> Fallback).
 //
-//   GEMINI_API_KEY=... ANTHROPIC_API_KEY=... npm run eval:llm
+//   ANTHROPIC_API_KEY=... npm run eval:llm
 //
-// Kandidaten (optional): EVAL_MODELS="gemini:gemini-3.8-flash,anthropic:claude-sonnet-5-5"
+// Kandidaten (optional): EVAL_MODELS="anthropic:claude-sonnet-5-5,anthropic:claude-haiku-5-5"
 // Standard: je ein Kandidat pro vorhandenem Key mit dem konfigurierten Modell.
 // Ergebnis in eval-out/<Zeitstempel>/: summary.md (Messwerte), blind.md
 // (Texte ohne Modellnamen zum Bewerten), key.json (Zuordnung), results.json.
@@ -15,7 +15,7 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { Brain } from './brain.js';
 import { config } from './config.js';
-import { AnthropicProvider, GeminiProvider, type LlmJsonRequest, type LlmProvider } from './llm.js';
+import { AnthropicProvider, type LlmJsonRequest, type LlmProvider } from './llm.js';
 import { screenOutput } from './safety.js';
 
 export interface EvalPrompt {
@@ -158,27 +158,21 @@ function parseCandidates(): LlmProvider[] {
     .split(',')
     .map((item) => item.trim())
     .filter(Boolean);
-  const geminiKey = config.geminiApiKey;
   const anthropicKey = config.anthropicApiKey;
 
   const fromSpec = (spec: string): LlmProvider => {
     const [provider, ...rest] = spec.split(':');
     const model = rest.join(':');
     if (!model) throw new Error(`EVAL_MODELS: "${spec}" hat kein Modell (Format anbieter:modell)`);
-    if (provider === 'gemini') {
-      if (!geminiKey) throw new Error('GEMINI_API_KEY fehlt für ' + spec);
-      return new GeminiProvider({ apiKey: geminiKey, model, timeoutMs: config.llmTimeoutMs });
-    }
     if (provider === 'anthropic') {
       if (!anthropicKey) throw new Error('ANTHROPIC_API_KEY fehlt für ' + spec);
       return new AnthropicProvider({ apiKey: anthropicKey, model, baseUrl: config.anthropicBaseUrl, timeoutMs: config.llmTimeoutMs });
     }
-    throw new Error(`EVAL_MODELS: unbekannter Anbieter "${provider}" (gemini oder anthropic)`);
+    throw new Error(`EVAL_MODELS: unbekannter Anbieter "${provider}" (nur anthropic)`);
   };
 
   if (specs.length) return specs.map(fromSpec);
   const defaults: LlmProvider[] = [];
-  if (geminiKey) defaults.push(new GeminiProvider({ apiKey: geminiKey, model: config.geminiModel, timeoutMs: config.llmTimeoutMs }));
   if (anthropicKey) {
     defaults.push(
       new AnthropicProvider({ apiKey: anthropicKey, model: config.anthropicModel, baseUrl: config.anthropicBaseUrl, timeoutMs: config.llmTimeoutMs })
@@ -244,7 +238,7 @@ export async function runEval(): Promise<void> {
   const prompts: EvalPrompt[] = JSON.parse(fs.readFileSync(path.join(here, 'eval-prompts.json'), 'utf8'));
   const candidates = parseCandidates();
   if (!candidates.length) {
-    console.error('Kein Kandidat: GEMINI_API_KEY und/oder ANTHROPIC_API_KEY setzen (oder EVAL_MODELS angeben).');
+    console.error('Kein Kandidat: ANTHROPIC_API_KEY setzen (oder EVAL_MODELS angeben).');
     process.exit(1);
   }
 

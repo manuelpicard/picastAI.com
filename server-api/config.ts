@@ -12,10 +12,8 @@ export interface KunibertConfig {
   trustProxy: TrustProxySetting;
 
   // KI & Sprachmodelle
-  llmProvider: 'gemini' | 'anthropic' | 'none';
+  llmProvider: 'anthropic' | 'none';
   llmTimeoutMs: number;
-  geminiApiKey: string | null;
-  geminiModel: string;
   anthropicApiKey: string | null;
   anthropicModel: string;
   anthropicBaseUrl: string;
@@ -68,19 +66,34 @@ export function isDiagnosticTextEnabled(
 }
 
 /**
- * Wahl des Sprachmodell-Anbieters. Ausdrücklich per PICASTAI_LLM_PROVIDER
- * (gemini | anthropic | none), sonst automatisch Anthropic, wenn ein Key da ist.
- * Gemini wird nie automatisch gewählt: Googles Bedingungen schließen Anwendungen
- * aus, die sich an unter 18-Jährige richten.
+ * Wahl des Sprachmodell-Anbieters: PICASTAI_LLM_PROVIDER=anthropic | none, ohne Angabe
+ * Anthropic, wenn ein Key da ist. Gemini gibt es nicht mehr: Googles Bedingungen schließen
+ * Anwendungen aus, die sich an unter 18-Jährige richten. Ein ausdrückliches "gemini" ergibt
+ * "none" (feste Erzähltexte) statt eines stillen Wechsels des Anbieters; llmConfigWarnings
+ * meldet es beim Start.
  */
 export function resolveLlmProvider(
-  // GEMINI_API_KEY steht nur im Typ, damit die Regel testbar ist: er löst nie eine Wahl aus.
-  env: { PICASTAI_LLM_PROVIDER?: string; GEMINI_API_KEY?: string; ANTHROPIC_API_KEY?: string } = process.env
-): 'gemini' | 'anthropic' | 'none' {
+  env: { PICASTAI_LLM_PROVIDER?: string; ANTHROPIC_API_KEY?: string } = process.env
+): 'anthropic' | 'none' {
   const requested = env.PICASTAI_LLM_PROVIDER?.trim().toLowerCase();
-  if (requested === 'gemini' || requested === 'anthropic' || requested === 'none') return requested;
+  if (requested === 'anthropic' || requested === 'none') return requested;
+  if (requested === 'gemini') return 'none';
   if (env.ANTHROPIC_API_KEY?.trim()) return 'anthropic';
   return 'none';
+}
+
+/** Warnung beim Start, wenn noch Gemini-Einstellungen vorhanden sind (sie wirken nicht mehr). */
+export function llmConfigWarnings(
+  env: { PICASTAI_LLM_PROVIDER?: string; GEMINI_API_KEY?: string; PICASTAI_GEMINI_MODEL?: string } = process.env
+): string[] {
+  const warnings: string[] = [];
+  if (env.PICASTAI_LLM_PROVIDER?.trim().toLowerCase() === 'gemini') {
+    warnings.push('Sprachmodell: PICASTAI_LLM_PROVIDER=gemini wird nicht mehr unterstützt (Gemini ist für Kinderprodukte nicht zulässig). Es greifen die festen Erzähltexte; auf anthropic umstellen.');
+  }
+  if (env.GEMINI_API_KEY?.trim() || env.PICASTAI_GEMINI_MODEL?.trim()) {
+    warnings.push('GEMINI_API_KEY und PICASTAI_GEMINI_MODEL werden nicht mehr gelesen und können aus der Umgebung entfernt werden.');
+  }
+  return warnings;
 }
 
 /** Adresse eines Sprachdienstes: ohne Leerzeichen und ohne abschließenden Schrägstrich; leer = nicht gesetzt. */
@@ -148,8 +161,6 @@ export function loadConfig(): KunibertConfig {
 
     llmProvider: resolveLlmProvider(),
     llmTimeoutMs: Math.min(120_000, Math.max(3_000, parseNum(process.env.PICASTAI_LLM_TIMEOUT_MS, 30_000))),
-    geminiApiKey: process.env.GEMINI_API_KEY ? process.env.GEMINI_API_KEY.trim() : null,
-    geminiModel: process.env.PICASTAI_GEMINI_MODEL?.trim() || 'gemini-3.8-flash',
     anthropicApiKey: process.env.ANTHROPIC_API_KEY?.trim() || null,
     anthropicModel: process.env.PICASTAI_ANTHROPIC_MODEL?.trim() || 'claude-sonnet-5-5',
     anthropicBaseUrl: (process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com').replace(/\/$/, ''),
@@ -191,14 +202,9 @@ export function getSafeConfigSummary(config: KunibertConfig) {
     host: config.host,
     publicBaseUrl: config.publicBaseUrl,
     trustProxy: String(config.trustProxy),
-    hasGeminiKey: Boolean(config.geminiApiKey),
     hasAnthropicKey: Boolean(config.anthropicApiKey),
     llmProvider: config.llmProvider,
-    llmModel: config.llmProvider === 'gemini'
-      ? config.geminiModel
-      : config.llmProvider === 'anthropic'
-        ? config.anthropicModel
-        : null,
+    llmModel: config.llmProvider === 'anthropic' ? config.anthropicModel : null,
     // Nur der Rechnername, nie Pfad, Zugangsdaten oder Schlüssel.
     sttHost: config.sttUrl ? hostnameOf(config.sttUrl) : null,
     ttsHost: config.ttsUrl ? hostnameOf(config.ttsUrl) : null,

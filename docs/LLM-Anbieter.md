@@ -1,15 +1,14 @@
 # Sprachmodell-Anbieter (Antworten und Geschichten)
 
-Der Server erzeugt Antworten und Kunibert-Geschichten über einen austauschbaren Anbieter (`server-api/llm.ts`). Für den Kinderbetrieb vorgesehen ist **Claude (Anthropic)**. **Gemini** ist im Code noch wählbar, aber für Produkte für unter 18-Jährige laut Googles Bedingungen nicht zulässig (siehe Datenschutz unten). Sprache-zu-Text und Text-zu-Sprache sind davon getrennt (siehe Abschnitt „Sprachdienste“ unten und `docs/picastAI-Pi-API.md`).
+Der Server erzeugt Antworten und Kunibert-Geschichten über einen austauschbaren Anbieter (`server-api/llm.ts`). Derzeit gibt es **Claude (Anthropic)**. **Gemini wurde entfernt:** Googles Bedingungen für die Gemini-API verbieten Anwendungen, die sich an unter 18-Jährige richten oder wahrscheinlich von ihnen genutzt werden (Stand 5.11.2026, rechtlich prüfen lassen). Sprache-zu-Text und Text-zu-Sprache sind davon getrennt (siehe Abschnitt „Sprachdienste“ unten und `docs/picastAI-Pi-API.md`).
 
 ## Auswahl
 
 | Variable | Bedeutung |
 | --- | --- |
-| `PICASTAI_LLM_PROVIDER` | `anthropic`, `gemini` oder `none`. Ohne Angabe wählt der Server Anthropic, wenn `ANTHROPIC_API_KEY` gesetzt ist. Gemini wird nie automatisch gewählt, nur durch ausdrückliches `PICASTAI_LLM_PROVIDER=gemini`. |
-| `GEMINI_API_KEY`, `PICASTAI_GEMINI_MODEL` | Standardmodell `gemini-3.8-flash` (Google empfiehlt für neue Projekte `gemini-3.5-flash-lite` oder `gemini-3.8-flash`; das frühere `gemini-2.5-flash` ist für neue Nutzer eingeschränkt). |
+| `PICASTAI_LLM_PROVIDER` | `anthropic` oder `none`. Ohne Angabe wählt der Server Anthropic, wenn `ANTHROPIC_API_KEY` gesetzt ist. Ein altes `gemini` schaltet das Sprachmodell ab (feste Erzähltexte) und der Server warnt beim Start. |
 | `ANTHROPIC_API_KEY`, `PICASTAI_ANTHROPIC_MODEL` | Standardmodell `claude-sonnet-5-5`. Für kürzere Wartezeit und geringere Kosten ist `claude-haiku-5-5` eine Option. |
-| `PICASTAI_LLM_TIMEOUT_MS` | Zeitlimit pro Aufruf, für Gemini und Anthropic (Standard 30000). |
+| `PICASTAI_LLM_TIMEOUT_MS` | Zeitlimit pro Aufruf (Standard 30000). |
 
 Schlägt ein Aufruf fehl oder verwirft der Ausgabe-Check den Text, spricht der feste Fallback. Das Dashboard und `GET /api/status` zeigen den aktiven Anbieter und das Modell.
 
@@ -18,9 +17,9 @@ Schlägt ein Aufruf fehl oder verwirft der Ausgabe-Check den Text, spricht der f
 Die Modelle unterscheiden sich in deutscher Erzählsprache, Kanon-Treue, Einstufung von Sicherheitsfällen und Wartezeit. Das lässt sich nicht aus Preislisten ablesen. Deshalb gibt es ein Vergleichsskript:
 
 ```bash
-GEMINI_API_KEY=... ANTHROPIC_API_KEY=... npm run eval:llm
+ANTHROPIC_API_KEY=... npm run eval:llm
 # eigene Kandidaten:
-EVAL_MODELS="gemini:gemini-3.8-flash,gemini:gemini-3.5-flash-lite,anthropic:claude-sonnet-5-5,anthropic:claude-haiku-5-5" npm run eval:llm
+EVAL_MODELS="anthropic:claude-sonnet-5-5,anthropic:claude-haiku-5-5" npm run eval:llm
 ```
 
 Es schickt 30 Kinder-Prompts (Wissensfragen, Gefühle, Ablehnungen, Namens-Köder, Geschichten mit Wünschen, Sicherheitsfälle; `server-api/eval-prompts.json`) durch die echte Kette aus Sicherheitsweiche, Modell und Ausgabe-Check. Ergebnis in `eval-out/<Zeitstempel>/`:
@@ -38,7 +37,6 @@ Hinweise:
 ## Datenschutz
 
 - Nur bezahlte API-Zugänge mit Auftragsverarbeitungsvertrag verwenden.
-- **Gemini ist für Kinderbetrieb ausgeschlossen:** Googles Bedingungen für die Gemini-API verbieten Anwendungen, die sich an unter 18-Jährige richten oder wahrscheinlich von ihnen genutzt werden (Stand 5.11.2026, rechtlich prüfen lassen). Die Auswahl bleibt nur für Tests mit Erwachsenen.
 - Anthropic erlaubt Produkte für Minderjährige mit Schutzmaßnahmen (u. a. Kennzeichnung als KI, Inhaltsfilter, Altersprüfung) und verarbeitet in den USA; Aufbewahrung und Rechtsgrundlage vor dem Kinderbetrieb prüfen.
 - Jeder Anbieter ist ein weiterer Empfänger von Kindertext. Anbieter, Region und Aufbewahrung vor dem Kinderbetrieb rechtlich prüfen.
 

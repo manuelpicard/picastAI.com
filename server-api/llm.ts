@@ -1,6 +1,6 @@
-// Austauschbare Sprachmodell-Anbieter für Antworten und Geschichten.
-// Beide Aufrufstellen in brain.ts fragen strukturiertes JSON an; die Anbieter
-// unterscheiden sich nur darin, wie sie dieses JSON erzwingen.
+// Sprachmodell-Anbieter für Antworten und Geschichten (derzeit Anthropic/Claude).
+// Beide Aufrufstellen in brain.ts fragen strukturiertes JSON an; die Schicht bleibt
+// austauschbar, damit ein anderer zulässiger Anbieter ohne Umbau von brain.ts möglich ist.
 import type { KunibertConfig } from './config.js';
 
 /** Schema in Standard-JSON-Schema-Schreibweise (Kleinbuchstaben-Typen). */
@@ -23,7 +23,7 @@ export interface LlmJsonRequest {
 }
 
 export interface LlmProvider {
-  readonly name: 'gemini' | 'anthropic';
+  readonly name: 'anthropic';
   readonly model: string;
   generateJson(request: LlmJsonRequest): Promise<Record<string, unknown>>;
 }
@@ -33,21 +33,6 @@ export class LlmError extends Error {
     super(message);
     this.name = 'LlmError';
   }
-}
-
-/** Das Gemini-API erwartet Typnamen in Großbuchstaben (OBJECT, STRING, ...). */
-export function toGeminiSchema(schema: JsonSchema): Record<string, unknown> {
-  const out: Record<string, unknown> = { type: schema.type.toUpperCase() };
-  if (schema.description) out.description = schema.description;
-  if (schema.enum) out.enum = schema.enum;
-  if (schema.required) out.required = schema.required;
-  if (schema.properties) {
-    out.properties = Object.fromEntries(
-      Object.entries(schema.properties).map(([key, value]) => [key, toGeminiSchema(value)])
-    );
-  }
-  if (schema.items) out.items = toGeminiSchema(schema.items);
-  return out;
 }
 
 /** Parst eine Modellantwort, die ein JSON-Objekt sein muss (auch in Codeblöcken). */
@@ -65,80 +50,6 @@ export function parseJsonObject(text: string | undefined | null, source: string)
     throw new LlmError(`${source}: Antwort ist kein JSON-Objekt`);
   }
   return parsed as Record<string, unknown>;
-}
-
-// ---------------------------------------------------------------------------
-// Gemini
-// ---------------------------------------------------------------------------
-
-/** Der kleine Ausschnitt des @google/genai-Clients, den wir brauchen. */
-export interface GeminiLikeClient {
-  models: {
-    generateContent(args: {
-      model: string;
-      contents: string;
-      config: Record<string, unknown>;
-    }): Promise<{ text?: string }>;
-  };
-}
-
-export class GeminiProvider implements LlmProvider {
-  readonly name = 'gemini' as const;
-  readonly model: string;
-  /** Obergrenze pro Aufruf (PICASTAI_LLM_TIMEOUT_MS); danach greift in brain.ts der Fallback-Text. */
-  readonly timeoutMs: number;
-  private client: GeminiLikeClient | null;
-
-  constructor(
-    private readonly options: { apiKey: string; model: string; timeoutMs?: number; client?: GeminiLikeClient }
-  ) {
-    this.model = options.model;
-    this.timeoutMs = options.timeoutMs ?? 30_000;
-    this.client = options.client ?? null;
-  }
-
-  private async getClient(): Promise<GeminiLikeClient> {
-    if (!this.client) {
-      // Erst beim ersten Aufruf laden: ohne Gemini-Nutzung wird das SDK nie gebraucht.
-      const { GoogleGenAI } = await import('@google/genai');
-      this.client = new GoogleGenAI({ apiKey: this.options.apiKey }) as unknown as GeminiLikeClient;
-    }
-    return this.client;
-  }
-
-  async generateJson(request: LlmJsonRequest): Promise<Record<string, unknown>> {
-    const client = await this.getClient();
-    // Ohne eigene Grenze wartet eine hängende Anfrage unbegrenzt; der Pi bricht
-    // dann ab und wiederholt die ganze Kette. Das Signal bricht die Anfrage im
-    // SDK ab, das Rennen garantiert die Grenze auch ohne SDK-Unterstützung.
-    const controller = new AbortController();
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const timeout = new Promise<never>((_resolve, reject) => {
-      timer = setTimeout(() => {
-        controller.abort();
-        reject(new LlmError('Gemini: Zeitüberschreitung'));
-      }, this.timeoutMs);
-    });
-    try {
-      const response = await Promise.race([
-        client.models.generateContent({
-          model: this.model,
-          contents: request.user,
-          config: {
-            systemInstruction: request.system,
-            responseMimeType: 'application/json',
-            responseSchema: toGeminiSchema(request.schema),
-            abortSignal: controller.signal,
-            ...(request.maxOutputTokens ? { maxOutputTokens: request.maxOutputTokens } : {}),
-          },
-        }),
-        timeout,
-      ]);
-      return parseJsonObject(response.text, 'Gemini');
-    } finally {
-      clearTimeout(timer);
-    }
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -220,17 +131,12 @@ export function createLlmProvider(
   cfg: Pick<
     KunibertConfig,
     | 'llmProvider'
-    | 'geminiApiKey'
-    | 'geminiModel'
     | 'anthropicApiKey'
     | 'anthropicModel'
     | 'anthropicBaseUrl'
     | 'llmTimeoutMs'
   >
 ): LlmProvider | null {
-  if (cfg.llmProvider === 'gemini' && cfg.geminiApiKey) {
-    return new GeminiProvider({ apiKey: cfg.geminiApiKey, model: cfg.geminiModel, timeoutMs: cfg.llmTimeoutMs });
-  }
   if (cfg.llmProvider === 'anthropic' && cfg.anthropicApiKey) {
     return new AnthropicProvider({
       apiKey: cfg.anthropicApiKey,
