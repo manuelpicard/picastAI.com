@@ -750,8 +750,7 @@ export const ParentDashboard: React.FC<ParentDashboardProps> = ({
             <div className="bg-stone-950 p-3 rounded-xl border border-stone-800 space-y-1">
               <span className="font-mono text-stone-400 text-[11px]">PICASTAI_LLM_PROVIDER</span>
               <p className="font-bold text-stone-200">
-                {(statusMetrics.config.llmProvider === 'gemini' && statusMetrics.config.hasGeminiKey) ||
-                (statusMetrics.config.llmProvider === 'anthropic' && statusMetrics.config.hasAnthropicKey) ? (
+                {statusMetrics.config.llmProvider === 'anthropic' && statusMetrics.config.hasAnthropicKey ? (
                   <span className="text-emerald-400">
                     {statusMetrics.config.llmProvider}: {statusMetrics.config.llmModel}
                   </span>

@@ -32,9 +32,9 @@ Formularfelder:
 - `locale`: derzeit `de-DE`
 - `age_band`: derzeit `6-10`
 - `session_id`: temporäre Gerätekennung
-- `transcript`: optionales Diagnosefeld für lokale Tests; fehlt es, nutzt der Server den konfigurierten STT-Provider
+- `transcript`: optionales Diagnosefeld für lokale Tests; fehlt es, nutzt der Server den konfigurierten Spracherkennungsdienst
 
-Die Gegenstelle validiert das WAV-Format. Wenn `OPENAI_API_KEY` und `PICASTAI_VOICE_PROVIDER=openai` gesetzt sind, wird die Aufnahme serverseitig über den OpenAI-kompatiblen STT-Endpunkt transkribiert. Der Transcript-Text wird anschließend durch die Sicherheitsweiche und den Erzählmotor verarbeitet.
+Die Gegenstelle validiert das WAV-Format. Wenn `PICASTAI_STT_URL` und `PICASTAI_STT_MODEL` gesetzt sind, wird die Aufnahme serverseitig über einen OpenAI-kompatiblen Spracherkennungsdienst transkribiert, in der Regel ein eigener Server. Die Sprachausgabe läuft entsprechend über `PICASTAI_TTS_URL`, `PICASTAI_TTS_MODEL` und `PICASTAI_TTS_VOICE`; ohne diese Angaben bleibt der Dienst aus (siehe `docs/LLM-Anbieter.md`). Der Transcript-Text wird anschließend durch die Sicherheitsweiche und den Erzählmotor verarbeitet.
 
 Beispielantwort:
 
@@ -114,13 +114,14 @@ PICASTAI_DEVICE_ID=prototype-001
 PICASTAI_DEVICE_TOKEN=ein-langer-nicht-oeffentlicher-token
 PICASTAI_DEVICE_NAME=picastAI Raspberry-Pi-Prototyp
 KUNIBERT_DIAGNOSTIC_TEXT=0
-# Sprachmodell für Antworten und Geschichten (Gemini oder Claude): docs/LLM-Anbieter.md
-PICASTAI_LLM_PROVIDER=
-OPENAI_BASE_URL=https://api.openai.com/v1
-PICASTAI_VOICE_PROVIDER=openai
-PICASTAI_STT_MODEL=whisper-1
-PICASTAI_TTS_MODEL=tts-1
-PICASTAI_TTS_VOICE=alloy
+# Sprachmodell für Antworten und Geschichten (Claude): docs/LLM-Anbieter.md
+PICASTAI_LLM_PROVIDER=anthropic
+# Spracherkennung und Sprachausgabe: eigener Sprachserver, Namen nach dem Herunterladen eintragen
+PICASTAI_STT_URL=http://127.0.0.1:8000/v1
+PICASTAI_STT_MODEL=
+PICASTAI_TTS_URL=http://127.0.0.1:8000/v1
+PICASTAI_TTS_MODEL=
+PICASTAI_TTS_VOICE=
 PICASTAI_VOICE_TIMEOUT_MS=45000
 ```
 

@@ -3,9 +3,21 @@ import test from 'node:test';
 import { decodeWavHeader, encodeWav } from './audio.js';
 import { loadConfig } from './config.js';
 import { VoicePipeline, VoiceProviderError } from './voice.js';
+import type { KunibertConfig } from './config.js';
 
-function pipeline(): VoicePipeline {
-  return new VoicePipeline({ ...loadConfig(), openaiApiKey: 'test-key', voiceProvider: 'openai' });
+/** Beide Dienste mit eigenen Adressen; die Netzwerkaufrufe werden in den Tests ersetzt. */
+const SERVICES: Partial<KunibertConfig> = {
+  sttUrl: 'http://127.0.0.1:8001/v1',
+  sttApiKey: null,
+  sttModel: 'stt-test-modell',
+  ttsUrl: 'http://127.0.0.1:8002/v1',
+  ttsApiKey: null,
+  ttsModel: 'tts-test-modell',
+  ttsVoice: 'test-stimme',
+};
+
+function pipeline(overrides: Partial<KunibertConfig> = {}): VoicePipeline {
+  return new VoicePipeline({ ...loadConfig(), ...SERVICES, ...overrides });
 }
 
 async function withFetch<T>(response: () => Response | Promise<Response>, fn: () => Promise<T>): Promise<T> {
@@ -129,7 +141,7 @@ test('warmUp zählt Erfolge und wirft bei Ausfall nicht', async () => {
 });
 
 test('Ohne Provider: synthesizeCached meldet einen VoiceProviderError', async () => {
-  const voice = new VoicePipeline({ ...loadConfig(), openaiApiKey: null, voiceProvider: 'none' });
+  const voice = new VoicePipeline({ ...loadConfig(), sttUrl: null, ttsUrl: null });
   await assert.rejects(() => voice.synthesizeCached('Hallo'), VoiceProviderError);
 });
 
@@ -175,4 +187,146 @@ test('TTS: Stereo-WAV wird zu Mono gemischt', async () => {
     assert.equal(header.bitsPerSample, 16);
     assert.equal(header.dataSize, 1600 * 2);
   });
+});
+
+// ---------------------------------------------------------------------------
+// Robustes WAV-Lesen
+// ---------------------------------------------------------------------------
+
+/** WAV mit zusätzlichem LIST-Chunk vor den Daten, wie ihn manche Anbieter liefern. */
+function wavWithListChunk(pcm: Buffer, rate: number): Buffer {
+  const base = encodeWav(pcm, rate, 1, 16);
+  const list = Buffer.concat([Buffer.from('LIST'), Buffer.from([4, 0, 0, 0]), Buffer.from('INFO')]);
+  const out = Buffer.concat([base.subarray(0, 36), list, base.subarray(36)]);
+  out.writeUInt32LE(out.length - 8, 4);
+  return out;
+}
+
+test('TTS: WAV mit zusätzlichem Chunk wird sauber neu verpackt (keine Kopf-Bytes als Ton)', async () => {
+  const pcm = sinePcm(1600, 1, 16_000);
+  await withFetch(() => new Response(new Uint8Array(wavWithListChunk(pcm, 16_000)), { status: 200 }), async () => {
+    const result = await pipeline().synthesize('Hallo');
+    const header = decodeWavHeader(result);
+    assert.equal(header.dataSize, pcm.length);
+    assert.equal(result.length, 44 + pcm.length);
+    assert.deepEqual(result.subarray(44), pcm, 'Audiodaten unverändert');
+  });
+});
+
+test('TTS: Streaming-Kopf mit Datenlänge 0xFFFFFFFF nimmt den Rest der Datei', async () => {
+  const pcm = sinePcm(2400, 1, 24_000);
+  const source = encodeWav(pcm, 24_000, 1, 16);
+  source.writeUInt32LE(0xffffffff, 40);
+  await withFetch(() => new Response(new Uint8Array(source), { status: 200 }), async () => {
+    const header = decodeWavHeader(await pipeline().synthesize('Hallo'));
+    assert.equal(header.sampleRate, 16_000);
+    assert.equal(header.dataSize, 1600 * 2);
+  });
+});
+
+test('TTS: WAV ohne Audiodaten oder mit 8 Bit wird abgelehnt', async () => {
+  const noData = encodeWav(Buffer.alloc(0), 16_000, 1, 16);
+  await withFetch(() => new Response(new Uint8Array(noData), { status: 200 }), async () => {
+    await assert.rejects(() => pipeline().synthesize('Hallo'), VoiceProviderError);
+  });
+  const eightBit = encodeWav(Buffer.alloc(3200), 16_000, 1, 8);
+  await withFetch(() => new Response(new Uint8Array(eightBit), { status: 200 }), async () => {
+    await assert.rejects(() => pipeline().synthesize('Hallo'), VoiceProviderError);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Getrennte Dienste: Adresse, Schlüssel und Parameter
+// ---------------------------------------------------------------------------
+
+interface SeenRequest {
+  url: string;
+  headers: Record<string, string>;
+  body: unknown;
+}
+
+/** Zeichnet alle Anfragen auf und antwortet je nach Pfad wie ein Sprachdienst. */
+async function recordRequests<T>(fn: (seen: SeenRequest[]) => Promise<T>): Promise<T> {
+  const original = globalThis.fetch;
+  const seen: SeenRequest[] = [];
+  globalThis.fetch = (async (url: string, init: RequestInit) => {
+    seen.push({ url, headers: (init.headers ?? {}) as Record<string, string>, body: init.body });
+    if (url.endsWith('/audio/transcriptions')) return new Response(JSON.stringify({ text: ' Hallo Kunibert ' }), { status: 200 });
+    return okWav();
+  }) as unknown as typeof fetch;
+  try {
+    return await fn(seen);
+  } finally {
+    globalThis.fetch = original;
+  }
+}
+
+const silentWav = () => encodeWav(Buffer.alloc(3200), 16_000, 1, 16);
+
+test('STT: sendet Modell und language=de an die Adresse der Spracherkennung, ohne Schlüssel kein Authorization-Header', async () => {
+  await recordRequests(async (seen) => {
+    const text = await pipeline().transcribe(silentWav());
+    assert.equal(text, 'Hallo Kunibert');
+    assert.equal(seen.length, 1);
+    assert.equal(seen[0].url, 'http://127.0.0.1:8001/v1/audio/transcriptions');
+    assert.equal('Authorization' in seen[0].headers, false);
+    const form = seen[0].body as FormData;
+    assert.equal(form.get('model'), 'stt-test-modell');
+    assert.equal(form.get('language'), 'de');
+    assert.equal(form.get('prompt'), null);
+  });
+});
+
+test('STT: optionaler Hinweistext und Schlüssel werden mitgesendet', async () => {
+  await recordRequests(async (seen) => {
+    await pipeline({ sttPrompt: 'Kunibert, Ritter', sttApiKey: 'geheim' }).transcribe(silentWav());
+    assert.equal(seen[0].headers.Authorization, 'Bearer geheim');
+    assert.equal((seen[0].body as FormData).get('prompt'), 'Kunibert, Ritter');
+  });
+});
+
+test('TTS: Anfrage geht an die Adresse der Sprachausgabe mit Modell und Stimme, nicht an die der Erkennung', async () => {
+  await recordRequests(async (seen) => {
+    const result = await pipeline({ ttsApiKey: 'tts-geheim' }).synthesize('Es war einmal ein Ritter.');
+    assert.equal(seen.length, 1);
+    assert.equal(seen[0].url, 'http://127.0.0.1:8002/v1/audio/speech');
+    assert.equal(seen[0].headers.Authorization, 'Bearer tts-geheim');
+    const body = JSON.parse(String(seen[0].body));
+    assert.equal(body.model, 'tts-test-modell');
+    assert.equal(body.voice, 'test-stimme');
+    assert.equal(body.input, 'Es war einmal ein Ritter.');
+    assert.equal(body.response_format, 'wav');
+    assert.equal(decodeWavHeader(result).sampleRate, 16_000);
+  });
+});
+
+test('STT: eine ungültige JSON-Antwort ist ein wiederholbarer Fehler, kein Absturz', async () => {
+  await withFetch(() => new Response('<html>', { status: 200 }), async () => {
+    await assert.rejects(
+      () => pipeline().transcribe(silentWav()),
+      (error: unknown) => error instanceof VoiceProviderError && error.retryable === true
+    );
+  });
+});
+
+test('Ein Dienst ist nur mit Adresse und Modell konfiguriert, die Sprachausgabe zusätzlich mit Stimme', () => {
+  const both = pipeline();
+  assert.equal(both.sttConfigured, true);
+  assert.equal(both.ttsConfigured, true);
+
+  assert.equal(pipeline({ sttUrl: null }).sttConfigured, false);
+  assert.equal(pipeline({ sttModel: '' }).sttConfigured, false);
+  assert.equal(pipeline({ ttsUrl: null }).ttsConfigured, false);
+  assert.equal(pipeline({ ttsModel: '' }).ttsConfigured, false);
+  assert.equal(pipeline({ ttsVoice: '' }).ttsConfigured, false);
+});
+
+test('Die Dienste sind unabhängig: nur Erkennung oder nur Sprachausgabe ist möglich', () => {
+  const sttOnly = pipeline({ ttsUrl: null });
+  assert.equal(sttOnly.sttConfigured, true);
+  assert.equal(sttOnly.ttsConfigured, false);
+
+  const ttsOnly = pipeline({ sttUrl: null });
+  assert.equal(ttsOnly.sttConfigured, false);
+  assert.equal(ttsOnly.ttsConfigured, true);
 });

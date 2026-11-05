@@ -31,25 +31,74 @@ async function readError(response: Response): Promise<string> {
   }
 }
 
+interface PcmWavInfo {
+  formatTag: number;
+  channels: number;
+  sampleRate: number;
+  bitsPerSample: number;
+  dataOffset: number;
+  dataLength: number;
+}
+
+/**
+ * Liest ein WAV chunkweise. Anbieter liefern nicht immer den kanonischen 44-Byte-Kopf
+ * (zusätzliche Chunks, Streaming-Kopf mit Länge 0 oder 0xFFFFFFFF); feste Offsets würden
+ * dann Header-Bytes als Ton lesen.
+ */
+function parsePcmWav(audio: Buffer): PcmWavInfo {
+  if (audio.length < 12 || audio.toString('ascii', 0, 4) !== 'RIFF' || audio.toString('ascii', 8, 12) !== 'WAVE') {
+    throw new VoiceProviderError('TTS-Provider lieferte kein WAV');
+  }
+  let format: Omit<PcmWavInfo, 'dataOffset' | 'dataLength'> | null = null;
+  let offset = 12;
+  while (offset + 8 <= audio.length) {
+    const id = audio.toString('ascii', offset, offset + 4);
+    const size = audio.readUInt32LE(offset + 4);
+    const body = offset + 8;
+    if (id === 'fmt ') {
+      if (size < 16 || body + 16 > audio.length) throw new VoiceProviderError('TTS-Provider lieferte ein WAV mit defektem Formatblock');
+      format = {
+        formatTag: audio.readUInt16LE(body),
+        channels: audio.readUInt16LE(body + 2),
+        sampleRate: audio.readUInt32LE(body + 4),
+        bitsPerSample: audio.readUInt16LE(body + 14),
+      };
+    } else if (id === 'data') {
+      if (!format) throw new VoiceProviderError('TTS-Provider lieferte ein WAV ohne Formatblock');
+      const available = audio.length - body;
+      const dataLength = size === 0 || size === 0xffffffff || size > available ? available : size;
+      return { ...format, dataOffset: body, dataLength };
+    }
+    offset = body + size + (size % 2);
+  }
+  throw new VoiceProviderError('TTS-Provider lieferte ein WAV ohne Audiodaten');
+}
+
 function normalizePcmWav(audio: Buffer, targetRate: number): Buffer {
-  const header = decodeWavHeader(audio);
-  if (header.bitsPerSample !== 16 || (header.channels !== 1 && header.channels !== 2)) {
+  const wav = parsePcmWav(audio);
+  const pcmFormat = wav.formatTag === 1 || wav.formatTag === 0xfffe;
+  if (!pcmFormat || wav.bitsPerSample !== 16 || (wav.channels !== 1 && wav.channels !== 2) || wav.sampleRate <= 0) {
     throw new VoiceProviderError('TTS-Provider lieferte kein unterstütztes PCM-WAV');
   }
-  const dataOffset = 44;
-  const bytesPerFrame = header.channels * 2;
-  const availableFrames = Math.floor(Math.min(header.dataSize, audio.length - dataOffset) / bytesPerFrame);
+  const bytesPerFrame = wav.channels * 2;
+  const availableFrames = Math.floor(wav.dataLength / bytesPerFrame);
   if (availableFrames <= 0) throw new VoiceProviderError('TTS-Provider lieferte ein leeres WAV');
-  if (header.channels === 1 && header.sampleRate === targetRate) return audio;
+
+  if (wav.channels === 1 && wav.sampleRate === targetRate) {
+    const dataBytes = availableFrames * 2;
+    const canonical = wav.dataOffset === 44 && audio.length === 44 + dataBytes && audio.readUInt32LE(40) === dataBytes;
+    // Ein kanonisches WAV geht unverändert durch; sonst mit sauberem Kopf neu verpacken.
+    return canonical ? audio : encodeWav(audio.subarray(wav.dataOffset, wav.dataOffset + dataBytes), targetRate, 1, 16);
+  }
 
   const source = new Int16Array(availableFrames);
   for (let index = 0; index < availableFrames; index++) {
-    const offset = dataOffset + index * bytesPerFrame;
+    const offset = wav.dataOffset + index * bytesPerFrame;
     const left = audio.readInt16LE(offset);
-    const right = header.channels === 2 ? audio.readInt16LE(offset + 2) : left;
+    const right = wav.channels === 2 ? audio.readInt16LE(offset + 2) : left;
     source[index] = Math.round((left + right) / 2);
   }
-  const targetFrames = Math.max(1, Math.round(availableFrames * targetRate / header.sampleRate));
+  const targetFrames = Math.max(1, Math.round(availableFrames * targetRate / wav.sampleRate));
   const pcm = Buffer.alloc(targetFrames * 2);
   for (let index = 0; index < targetFrames; index++) {
     const sourcePosition = index * (availableFrames - 1) / Math.max(1, targetFrames - 1);
@@ -64,20 +113,29 @@ function normalizePcmWav(audio: Buffer, targetRate: number): Buffer {
   return encodeWav(pcm, targetRate, 1, 16);
 }
 
-export class OpenAiCompatibleVoiceProvider implements SpeechToTextProvider, TextToSpeechProvider {
-  private readonly baseUrl: string;
-  private readonly headers: Record<string, string>;
+/**
+ * Verbindung zu einem Sprachdienst mit OpenAI-kompatibler Schnittstelle, in der Regel ein
+ * eigener Server (z. B. Speaches). Es gibt bewusst keinen Standarddienst.
+ */
+export interface SpeechEndpoint {
+  /** Basis-URL einschließlich /v1, ohne abschließenden Schrägstrich. */
+  url: string;
+  /** Optional; ein eigener Server im eigenen Netz braucht keinen Schlüssel. */
+  apiKey: string | null;
+  model: string;
+  timeoutMs: number;
+}
 
-  constructor(private readonly config: KunibertConfig) {
-    this.baseUrl = config.openaiBaseUrl.replace(/\/$/, '');
-    this.headers = {
-      Authorization: `Bearer ${config.openaiApiKey || ''}`,
-      'User-Agent': 'picastAI-ritter-kunibert/0.1',
-    };
-  }
+function requestHeaders(endpoint: SpeechEndpoint): Record<string, string> {
+  const headers: Record<string, string> = { 'User-Agent': 'picastAI-ritter-kunibert/0.1' };
+  if (endpoint.apiKey) headers.Authorization = `Bearer ${endpoint.apiKey}`;
+  return headers;
+}
+
+export class OpenAiCompatibleSpeechToText implements SpeechToTextProvider {
+  constructor(private readonly endpoint: SpeechEndpoint, private readonly prompt = '') {}
 
   async transcribe(wav: Buffer): Promise<string> {
-    if (!this.config.openaiApiKey) throw new VoiceProviderError('STT-API-Key fehlt');
     try {
       decodeWavHeader(wav);
     } catch {
@@ -86,22 +144,29 @@ export class OpenAiCompatibleVoiceProvider implements SpeechToTextProvider, Text
 
     const form = new FormData();
     form.append('file', new Blob([new Uint8Array(wav)], { type: 'audio/wav' }), 'question.wav');
-    form.append('model', this.config.sttModel);
+    form.append('model', this.endpoint.model);
+    // Whisper-Modelle erkennen die Sprache sonst selbst und raten bei kurzen Kinderäußerungen falsch.
     form.append('language', 'de');
+    if (this.prompt) form.append('prompt', this.prompt);
     form.append('response_format', 'json');
 
-    const timeout = withTimeout(this.config.voiceTimeoutMs);
+    const timeout = withTimeout(this.endpoint.timeoutMs);
     try {
-      const response = await fetch(`${this.baseUrl}/audio/transcriptions`, {
+      const response = await fetch(`${this.endpoint.url}/audio/transcriptions`, {
         method: 'POST',
-        headers: this.headers,
+        headers: requestHeaders(this.endpoint),
         body: form,
         signal: timeout.signal,
       });
       if (!response.ok) {
         throw new VoiceProviderError(`STT-Provider antwortete mit HTTP ${response.status}: ${await readError(response)}`, response.status >= 500 || response.status === 429);
       }
-      const payload = await response.json() as { text?: unknown };
+      let payload: { text?: unknown };
+      try {
+        payload = await response.json() as { text?: unknown };
+      } catch {
+        throw new VoiceProviderError('STT-Provider lieferte keine gültige JSON-Antwort', true);
+      }
       const text = typeof payload.text === 'string' ? payload.text.trim().slice(0, 1000) : '';
       if (!text) throw new VoiceProviderError('STT-Provider lieferte kein Transcript');
       return text;
@@ -113,17 +178,24 @@ export class OpenAiCompatibleVoiceProvider implements SpeechToTextProvider, Text
       timeout.cancel();
     }
   }
+}
+
+export class OpenAiCompatibleTextToSpeech implements TextToSpeechProvider {
+  constructor(
+    private readonly endpoint: SpeechEndpoint,
+    private readonly voice: string,
+    private readonly targetSampleRate: number
+  ) {}
 
   async synthesize(text: string): Promise<Buffer> {
-    if (!this.config.openaiApiKey) throw new VoiceProviderError('TTS-API-Key fehlt');
-    const timeout = withTimeout(this.config.voiceTimeoutMs);
+    const timeout = withTimeout(this.endpoint.timeoutMs);
     try {
-      const response = await fetch(`${this.baseUrl}/audio/speech`, {
+      const response = await fetch(`${this.endpoint.url}/audio/speech`, {
         method: 'POST',
-        headers: { ...this.headers, 'Content-Type': 'application/json' },
+        headers: { ...requestHeaders(this.endpoint), 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: this.config.ttsModel,
-          voice: this.config.ttsVoice,
+          model: this.endpoint.model,
+          voice: this.voice,
           input: text.slice(0, 12_000),
           response_format: 'wav',
           speed: 0.95,
@@ -134,7 +206,8 @@ export class OpenAiCompatibleVoiceProvider implements SpeechToTextProvider, Text
         throw new VoiceProviderError(`TTS-Provider antwortete mit HTTP ${response.status}: ${await readError(response)}`, response.status >= 500 || response.status === 429);
       }
       const audio = Buffer.from(await response.arrayBuffer());
-      return normalizePcmWav(audio, this.config.audioSampleRate);
+      // Eigene Server liefern oft 22,05 kHz; das Pi-Format ist 16 kHz Mono.
+      return normalizePcmWav(audio, this.targetSampleRate);
     } catch (error) {
       if (error instanceof VoiceProviderError) throw error;
       if ((error as Error)?.name === 'AbortError') throw new VoiceProviderError('TTS-Timeout', true);
@@ -149,31 +222,44 @@ export class OpenAiCompatibleVoiceProvider implements SpeechToTextProvider, Text
 const MAX_FIXED_CACHE_ENTRIES = 16;
 
 export class VoicePipeline {
-  private readonly provider: OpenAiCompatibleVoiceProvider | null;
+  private readonly stt: SpeechToTextProvider | null;
+  private readonly tts: TextToSpeechProvider | null;
   private readonly fixedCache = new Map<string, Promise<Buffer>>();
 
-  constructor(private readonly config: KunibertConfig) {
-    this.provider = config.openaiApiKey && config.voiceProvider === 'openai'
-      ? new OpenAiCompatibleVoiceProvider(config)
+  constructor(config: KunibertConfig) {
+    // Ein Dienst gilt nur als konfiguriert, wenn Adresse und Modell (Sprachausgabe: auch Stimme)
+    // ausdrücklich gesetzt sind. Ohne Angabe bleibt er aus.
+    this.stt = config.sttUrl && config.sttModel
+      ? new OpenAiCompatibleSpeechToText(
+          { url: config.sttUrl, apiKey: config.sttApiKey, model: config.sttModel, timeoutMs: config.voiceTimeoutMs },
+          config.sttPrompt
+        )
+      : null;
+    this.tts = config.ttsUrl && config.ttsModel && config.ttsVoice
+      ? new OpenAiCompatibleTextToSpeech(
+          { url: config.ttsUrl, apiKey: config.ttsApiKey, model: config.ttsModel, timeoutMs: config.voiceTimeoutMs },
+          config.ttsVoice,
+          config.audioSampleRate
+        )
       : null;
   }
 
   get sttConfigured(): boolean {
-    return Boolean(this.provider);
+    return Boolean(this.stt);
   }
 
   get ttsConfigured(): boolean {
-    return Boolean(this.provider);
+    return Boolean(this.tts);
   }
 
   async transcribe(wav: Buffer): Promise<string> {
-    if (!this.provider) throw new VoiceProviderError('Kein STT-Provider konfiguriert');
-    return this.provider.transcribe(wav);
+    if (!this.stt) throw new VoiceProviderError('Kein STT-Provider konfiguriert');
+    return this.stt.transcribe(wav);
   }
 
   async synthesize(text: string): Promise<Buffer> {
-    if (!this.provider) throw new VoiceProviderError('Kein TTS-Provider konfiguriert');
-    return this.provider.synthesize(text);
+    if (!this.tts) throw new VoiceProviderError('Kein TTS-Provider konfiguriert');
+    return this.tts.synthesize(text);
   }
 
   /**

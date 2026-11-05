@@ -1,15 +1,14 @@
 # Sprachmodell-Anbieter (Antworten und Geschichten)
 
-Der Server erzeugt Antworten und Kunibert-Geschichten über einen austauschbaren Anbieter (`server-api/llm.ts`). Unterstützt sind **Gemini** und **Claude (Anthropic)**. Sprache-zu-Text und Text-zu-Sprache sind davon getrennt (OpenAI-kompatibel, siehe `docs/picastAI-Pi-API.md`).
+Der Server erzeugt Antworten und Kunibert-Geschichten über einen austauschbaren Anbieter (`server-api/llm.ts`). Derzeit gibt es **Claude (Anthropic)**. **Gemini wurde entfernt:** Googles Bedingungen für die Gemini-API verbieten Anwendungen, die sich an unter 18-Jährige richten oder wahrscheinlich von ihnen genutzt werden (Stand 5.11.2026, rechtlich prüfen lassen). Sprache-zu-Text und Text-zu-Sprache sind davon getrennt (siehe Abschnitt „Sprachdienste“ unten und `docs/picastAI-Pi-API.md`).
 
 ## Auswahl
 
 | Variable | Bedeutung |
 | --- | --- |
-| `PICASTAI_LLM_PROVIDER` | `gemini`, `anthropic` oder `none`. Ohne Angabe wählt der Server nach vorhandenem Key (Gemini zuerst, damit bestehende Installationen unverändert bleiben). |
-| `GEMINI_API_KEY`, `PICASTAI_GEMINI_MODEL` | Standardmodell `gemini-3.8-flash` (Google empfiehlt für neue Projekte `gemini-3.5-flash-lite` oder `gemini-3.8-flash`; das frühere `gemini-2.5-flash` ist für neue Nutzer eingeschränkt). |
+| `PICASTAI_LLM_PROVIDER` | `anthropic` oder `none`. Ohne Angabe wählt der Server Anthropic, wenn `ANTHROPIC_API_KEY` gesetzt ist. Ein altes `gemini` schaltet das Sprachmodell ab (feste Erzähltexte) und der Server warnt beim Start. |
 | `ANTHROPIC_API_KEY`, `PICASTAI_ANTHROPIC_MODEL` | Standardmodell `claude-sonnet-5-5`. Für kürzere Wartezeit und geringere Kosten ist `claude-haiku-5-5` eine Option. |
-| `PICASTAI_LLM_TIMEOUT_MS` | Zeitlimit pro Aufruf bei Anthropic (Standard 30000). |
+| `PICASTAI_LLM_TIMEOUT_MS` | Zeitlimit pro Aufruf (Standard 30000). |
 
 Schlägt ein Aufruf fehl oder verwirft der Ausgabe-Check den Text, spricht der feste Fallback. Das Dashboard und `GET /api/status` zeigen den aktiven Anbieter und das Modell.
 
@@ -18,9 +17,9 @@ Schlägt ein Aufruf fehl oder verwirft der Ausgabe-Check den Text, spricht der f
 Die Modelle unterscheiden sich in deutscher Erzählsprache, Kanon-Treue, Einstufung von Sicherheitsfällen und Wartezeit. Das lässt sich nicht aus Preislisten ablesen. Deshalb gibt es ein Vergleichsskript:
 
 ```bash
-GEMINI_API_KEY=... ANTHROPIC_API_KEY=... npm run eval:llm
+ANTHROPIC_API_KEY=... npm run eval:llm
 # eigene Kandidaten:
-EVAL_MODELS="gemini:gemini-3.8-flash,gemini:gemini-3.5-flash-lite,anthropic:claude-sonnet-5-5,anthropic:claude-haiku-5-5" npm run eval:llm
+EVAL_MODELS="anthropic:claude-sonnet-5-5,anthropic:claude-haiku-5-5" npm run eval:llm
 ```
 
 Es schickt 30 Kinder-Prompts (Wissensfragen, Gefühle, Ablehnungen, Namens-Köder, Geschichten mit Wünschen, Sicherheitsfälle; `server-api/eval-prompts.json`) durch die echte Kette aus Sicherheitsweiche, Modell und Ausgabe-Check. Ergebnis in `eval-out/<Zeitstempel>/`:
@@ -37,5 +36,21 @@ Hinweise:
 
 ## Datenschutz
 
-- Nur bezahlte API-Zugänge mit Auftragsverarbeitungsvertrag verwenden. Bei Gemini nutzt der kostenlose Tarif Inhalte zur Produktverbesserung, der bezahlte nicht (laut Preisübersicht eines Drittanbieters; vor dem Einsatz in Googles eigenen Bedingungen prüfen).
+- Nur bezahlte API-Zugänge mit Auftragsverarbeitungsvertrag verwenden.
+- Anthropic erlaubt Produkte für Minderjährige mit Schutzmaßnahmen (u. a. Kennzeichnung als KI, Inhaltsfilter, Altersprüfung) und verarbeitet in den USA; Aufbewahrung und Rechtsgrundlage vor dem Kinderbetrieb prüfen.
 - Jeder Anbieter ist ein weiterer Empfänger von Kindertext. Anbieter, Region und Aufbewahrung vor dem Kinderbetrieb rechtlich prüfen.
+
+## Sprachdienste (Stand 5.11.2026)
+
+Spracherkennung und Sprachausgabe sind zwei getrennte Dienste mit je einer Adresse. Beide sprechen die OpenAI-kompatible Schnittstelle (`POST {Adresse}/audio/transcriptions` und `POST {Adresse}/audio/speech`), zeigen aber auf einen Dienst, den der Betreiber bewusst wählt. **Es gibt keinen Standarddienst:** ohne Adresse und Modell bleibt der Dienst aus. OpenAI und Gemini sind für Kinderstimmen ausgeschlossen; der Server warnt beim Start, wenn eine Adresse auf `api.openai.com` oder `generativelanguage.googleapis.com` zeigt, und ebenso bei `http` zu einem fremden Rechner.
+
+| Dienst | Variablen |
+| --- | --- |
+| Spracherkennung | `PICASTAI_STT_URL` (bis einschließlich `/v1`), `PICASTAI_STT_MODEL`, optional `PICASTAI_STT_API_KEY` und `PICASTAI_STT_PROMPT` |
+| Sprachausgabe | `PICASTAI_TTS_URL`, `PICASTAI_TTS_MODEL`, `PICASTAI_TTS_VOICE`, optional `PICASTAI_TTS_API_KEY` |
+
+- Empfohlen ist ein eigener Server in der EU, zunächst [Speaches](https://github.com/speaches-ai/speaches) mit `faster-whisper` (Erkennung) und `Piper` (Stimme); Einrichtung in `deploy/EINRICHTUNG.md`, Abschnitt 4. Der Vergleich der Dienste samt offener Punkte steht im Dokument „Ritter Kunibert – Vergleich Spracherkennung und Sprachausgabe“.
+- Die Spracherkennung bekommt immer `language=de`; `PICASTAI_STT_PROMPT` ist ein optionaler Hinweistext.
+- Die Antwort der Sprachausgabe wird als WAV gelesen (auch mit zusätzlichen Chunks oder Streaming-Kopf) und auf 16 kHz Mono umgerechnet; eigene Server liefern oft 22,05 kHz.
+- Die Dienste sind unabhängig: Erkennung und Sprachausgabe können auf verschiedenen Servern laufen, jeweils mit eigener Adresse und eigenem Schlüssel.
+- Ob die Erkennung bei deutschen Kinderstimmen reicht und welche Stimme gut klingt, zeigt Schritt 11 der Checkliste (`deploy/CHECKLISTE.md`); dafür habe ich keine veröffentlichten Messwerte gefunden.

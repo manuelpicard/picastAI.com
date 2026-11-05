@@ -159,7 +159,7 @@ export class Brain {
     this.answerMaxWords = settings.answerMaxWords ?? config.answerMaxWords;
   }
 
-  /** Für Statusanzeige und Logs, z. B. "gemini:gemini-3.8-flash". */
+  /** Für Statusanzeige und Logs, z. B. "anthropic:claude-sonnet-5-5". */
   public get llmName(): string {
     return this.llm ? `${this.llm.name}:${this.llm.model}` : 'none';
   }

@@ -7,7 +7,7 @@ Diese Anleitung installiert den Kunibert-Server (Node 22, Express) hinter Caddy.
 ```text
 Pi --HTTPS :443--> Caddy --HTTP lokal--> 127.0.0.1:3000 Kunibert-Server
                                               |
-                      Spracherkennung/-ausgabe (OpenAI-kompatibel), Sprachmodell (Gemini oder Claude)
+                      Sprachserver (Speaches, nur lokal) und Claude (Sprachmodell)
 ```
 
 Öffentlich ist nur Caddy, und Caddy reicht nur `/health` und `/v1/*` durch. Admin-Routen (`/api/*`) und die Weboberfläche sind von außen nicht erreichbar.
@@ -17,8 +17,8 @@ Pi --HTTPS :443--> Caddy --HTTP lokal--> 127.0.0.1:3000 Kunibert-Server
 - Debian 12 oder Ubuntu 24.04 mit systemd, `sudo`-Zugang, Node.js 22 (wie in der CI; Installation nach [nodejs.org](https://nodejs.org/en/download)), `git`, `openssl`.
 - Ein Hostname, dessen DNS du kontrollierst, mit A-Eintrag auf die öffentliche IP (AAAA nur, wenn IPv6 wirklich geht). `kunibert.example` unten durch deinen Namen ersetzen, **überall gleich**.
 - Eingehend TCP 80 und 443 offen. Port 3000 nie nach außen freigeben.
-- Schlüssel: `OPENAI_API_KEY` (Spracherkennung und -ausgabe) und `GEMINI_API_KEY` oder `ANTHROPIC_API_KEY`. Für ein Gemini-Konto den **bezahlten** Tarif nehmen, der kostenlose nutzt Eingaben zur Produktverbesserung.
-- Kinderstimmen gehen an OpenAI, erkannter Text an Google oder Anthropic. Bis zur Datenschutzprüfung nur Erwachsene als Tester.
+- Schlüssel: `ANTHROPIC_API_KEY` (Sprachmodell). Spracherkennung und Sprachausgabe laufen auf einem eigenen Sprachserver (Abschnitt 4) und brauchen keinen Schlüssel.
+- Die Kinderstimme bleibt auf deinem Server und dem Sprachserver; nur der erkannte Text geht an Anthropic (Sprachmodell, Verarbeitung in den USA). OpenAI und Gemini sind für den Kinderbetrieb ausgeschlossen. Bis zur Datenschutzprüfung nur Erwachsene als Tester.
 
 ## 2. Benutzer, Code, Abhängigkeiten, Build
 
@@ -45,13 +45,45 @@ sudo openssl rand -hex 32     # zweimal ausführen: einmal Admin-Token, einmal G
 sudoedit /etc/kunibert/kunibert.env
 ```
 
-Mindestens setzen: `PICASTAI_PUBLIC_BASE_URL`, `PICASTAI_ADMIN_TOKEN`, `PICASTAI_DEVICE_TOKEN`, `OPENAI_API_KEY` und den Schlüssel des gewählten Sprachmodells (`PICASTAI_LLM_PROVIDER`). Werte nicht in die Shell-Historie tippen. Wichtige Punkte:
+Mindestens setzen: `PICASTAI_PUBLIC_BASE_URL`, `PICASTAI_ADMIN_TOKEN`, `PICASTAI_DEVICE_TOKEN`, `ANTHROPIC_API_KEY` und nach Abschnitt 4 `PICASTAI_STT_MODEL`, `PICASTAI_TTS_MODEL`, `PICASTAI_TTS_VOICE`. Werte nicht in die Shell-Historie tippen. Wichtige Punkte:
 
 - `NODE_ENV=production` ist Pflicht. Ohne sind Entwicklungsgeräte mit **bekannten Tokens** aktiv.
 - `PICASTAI_PUBLIC_BASE_URL` bestimmt die `audio_url`. Der Pi lehnt eine Adresse mit anderem Schema oder Host ab. Gleiche Schreibweise wie auf dem Pi (`PICASTAI_API_BASE_URL`).
 - Ein Gerät aus `PICASTAI_DEVICE_ID`/`PICASTAI_DEVICE_TOKEN` überlebt Neustarts. Über `/api/devices` angelegte Geräte nur mit `PICASTAI_DEVICE_STORE=firestore`.
 
-## 4. Dienst starten
+## 4. Sprachserver (Speaches)
+
+Spracherkennung und Sprachausgabe laufen auf einem eigenen Server, hier [Speaches](https://github.com/speaches-ai/speaches) (MIT-Lizenz, OpenAI-kompatible Schnittstelle, `faster-whisper` für die Erkennung, `Piper` für die Stimme). So erreicht die Kinderstimme keinen Dritten. Auf demselben Rechner wie der Kunibert-Server, ohne GPU:
+
+```bash
+sudo docker run --detach --name speaches --restart unless-stopped \
+  --publish 127.0.0.1:8000:8000 \
+  --volume hf-hub-cache:/home/ubuntu/.cache/huggingface/hub \
+  ghcr.io/speaches-ai/speaches:latest-cpu
+```
+
+`127.0.0.1` ist Absicht: der Sprachserver lauscht nur lokal und braucht deshalb keinen Schlüssel. Port 8000 nie nach außen freigeben. Mit NVIDIA-Grafikkarte stattdessen `latest-cuda` und `--gpus=all`. Liegt der Sprachserver auf einem anderen Rechner, nur per `https` und mit Schlüssel (`PICASTAI_STT_API_KEY`, `PICASTAI_TTS_API_KEY`) ansprechen; der Server warnt beim Start vor `http` zu fremden Rechnern.
+
+Modelle laden (mit [uv](https://docs.astral.sh/uv/), Adresse des Sprachservers gesetzt):
+
+```bash
+export SPEACHES_BASE_URL=http://127.0.0.1:8000
+uvx speaches-cli model download Systran/faster-whisper-small      # Beispiel aus der Speaches-Dokumentation
+uvx speaches-cli registry ls --task text-to-speech                # verfügbare Stimmenmodelle (Piper, Kokoro)
+```
+
+- **Erkennung:** `Systran/faster-whisper-small` ist das Beispiel der Dokumentation und klein. In der Studie [Kid-Whisper](https://arxiv.org/html/2309.07927) erkennt ein größeres Whisper-Modell Kinderstimmen etwas besser, kostet aber mehr Rechenzeit. Welches Modell reicht, entscheidet der Test in Schritt 11 der Checkliste.
+- **Stimme:** Piper hat deutsche Stimmen (`eva_k`, `karlsson`, `kerstin`, `mls`, `pavoque`, `ramona`, `thorsten`, `thorsten_emotional`). Welche Modellnamen Speaches dafür anbietet und wie die Stimme angesprochen wird, zeigt `registry ls` und die Speaches-Dokumentation; nicht gegengeprüft. Jede Stimme hat eine eigene Lizenz: vor dem Einsatz mit Kindern prüfen.
+- Die Namen in `/etc/kunibert/kunibert.env` eintragen (`PICASTAI_STT_MODEL`, `PICASTAI_TTS_MODEL`, `PICASTAI_TTS_VOICE`) und den Kunibert-Dienst neu starten.
+
+Stimme direkt prüfen (Namen einsetzen):
+
+```bash
+curl -s http://127.0.0.1:8000/v1/audio/speech -H 'Content-Type: application/json' --output test.wav \
+  --data '{"model":"<Stimmenmodell>","voice":"<Stimme>","input":"Hallo, ich bin Ritter Kunibert.","response_format":"wav"}'
+```
+
+## 5. Dienst starten
 
 ```bash
 sudo install -o root -g root -m 644 deploy/kunibert-server.service /etc/systemd/system/kunibert-server.service
@@ -62,9 +94,9 @@ sudo systemctl status kunibert-server --no-pager
 curl -fsS http://127.0.0.1:3000/health
 ```
 
-Erwartet: `{"status":"ok", ...}`. Im Journal steht beim Start `Feste Sprechtexte vorbereitet (3 von 3)`; bei `0 von 3` stimmt `OPENAI_API_KEY` oder das Netz nicht. Fehlersuche: `sudo journalctl -u kunibert-server -n 100 --no-pager`. Eine Warnung zu `NODE_ENV` darf **nicht** erscheinen.
+Erwartet: `{"status":"ok", ...}`. Im Journal steht beim Start `Feste Sprechtexte vorbereitet (3 von 3)`; bei `0 von 3` ist der Sprachserver nicht erreichbar oder Modell bzw. Stimme sind nicht heruntergeladen (Abschnitt 4). Eine Warnung zu `http` oder zu einem ausgeschlossenen Anbieter zeigt, dass eine Sprachdienst-Adresse nicht passt. Fehlersuche: `sudo journalctl -u kunibert-server -n 100 --no-pager`. Eine Warnung zu `NODE_ENV` darf **nicht** erscheinen.
 
-## 5. Caddy
+## 6. Caddy
 
 Installation nach der [offiziellen Anleitung](https://caddyserver.com/docs/install#debian-ubuntu-raspbian). Danach:
 
@@ -89,7 +121,7 @@ Frage und Geschichte laufen durch Spracherkennung, Sprachmodell und Sprachausgab
 
 Wer die Server-Grenzen ändert, passt die beiden anderen an.
 
-## 6. Abnahme von außen
+## 7. Abnahme von außen
 
 ```bash
 curl -i https://kunibert.example/health        # 200
@@ -100,7 +132,7 @@ curl -i http://kunibert.example/health         # Weiterleitung auf https
 
 Von innen mit Admin-Token (nur auf dem Server): `curl -H "Authorization: Bearer $TOKEN" http://127.0.0.1:3000/api/status`.
 
-## 7. Pi anbinden
+## 8. Pi anbinden
 
 Auf dem Pi (siehe [`pi-client/README.md`](../pi-client/README.md)) `PICASTAI_API_BASE_URL=https://kunibert.example`, dieselbe `PICASTAI_DEVICE_ID` und das Geräte-Token eintragen, dann `--once health` und `--once story` prüfen. Weiter mit der Checkliste.
 
