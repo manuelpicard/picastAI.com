@@ -28,9 +28,9 @@ Ausführliche Befehle: [`EINRICHTUNG.md`](EINRICHTUNG.md). Nur mit **erwachsenen
 6. [ ] **Mikrofon aus:** Schalter während einer Aufnahme umlegen. Aufnahme wird verworfen, LED Doppelblitz, nichts erscheint im Server-Journal.
 7. [ ] **Zu kurz / stumm:** Taste kurz antippen und ein Satz in Stille. Der Pi meldet „nicht verstanden“ oder verwirft die Aufnahme, kein Absturz.
 8. [ ] **Ausfall:** WLAN am Pi trennen und eine Frage stellen. LED zeigt Fehler, nach Wiederverbinden geht es ohne Neustart weiter.
-9. [ ] **Server-Ausfall:** Den Schlüssel der Sprachausgabe (`GEMINI_API_KEY`) kurz falsch setzen und neu starten. Frage ergibt Fehlerzustand statt Stille oder Endlosschleife (Server liefert 502, Pi wiederholt nicht). Danach Schlüssel zurücksetzen.
+9. [ ] **Ausfall des Sprachservers:** Den Sprachserver kurz anhalten (`sudo docker stop speaches`) und eine Frage stellen. Frage ergibt Fehlerzustand statt Stille oder Endlosschleife. Danach `sudo docker start speaches`.
 10. [ ] **Dauerlauf:** 10 Fragen hintereinander ohne Neustart, Arbeitsspeicher des Servers (`systemctl status`) bleibt stabil.
-11. [ ] **Spracherkennung und Stimme:** Zehn kurze Sätze, wie Kinder sie sagen („Hallo Kunibert“, „Erzähl mir eine Geschichte“, „Wo wohnt der Drache?“), am besten auch mit einer Kinderstimme. Die Antworten müssen zur Frage passen, sonst wurde falsch oder in der falschen Sprache erkannt (im Produktionsbetrieb ist der Wortlaut der Erkennung absichtlich nicht einsehbar). Bei `gpt-transcribe` ist kein Sprachparameter gesetzt; Auffälligkeiten notieren. Die Gemini-Stimme (`Sulafat`) bei einer ganzen Geschichte anhören: warm, deutlich, nicht zu schnell? Andere Stimmen (`Vindemiatrix`, `Gacrux`) und `PICASTAI_TTS_STYLE` lassen sich per Umgebungsvariable testen.
+11. [ ] **Spracherkennung und Stimme:** Zehn kurze Sätze, wie Kinder sie sagen („Hallo Kunibert“, „Erzähl mir eine Geschichte“, „Wo wohnt der Drache?“), am besten auch mit einer Kinderstimme. Die Antworten müssen zur Frage passen, sonst wurde falsch oder in der falschen Sprache erkannt (im Produktionsbetrieb ist der Wortlaut der Erkennung absichtlich nicht einsehbar). Dazu fünf Testsätze der Sicherheitsweiche aus Schritt 5 mit Kinderstimme: Die Weiche muss anschlagen, sonst ist die Erkennung zu schlecht. Meldet das Journal einen HTTP-Fehler der Spracherkennung, kann der Parameter `language=de` abgelehnt worden sein (die Speaches-Dokumentation nennt ihn nicht); das ist dann ein Fehler im Code, bitte melden. **Hörtest:** dieselbe ganze Geschichte mit mehreren deutschen Stimmen anhören (`PICASTAI_TTS_VOICE`): warm, deutlich, nicht zu schnell? Die gewählte Stimme und die Wartezeit notieren.
 
 ## D. Auswertung
 
@@ -40,4 +40,4 @@ Ausführliche Befehle: [`EINRICHTUNG.md`](EINRICHTUNG.md). Nur mit **erwachsenen
 
 ## Go / No-Go
 
-**Go für Tests mit Kindern** erst nach: abgeschlossener fachlicher Prüfung der Sicherheitsweiche, Datenschutz- und Einwilligungskonzept (Kinderstimme an OpenAI, Text an Google oder Anthropic, Antworttext an Google), Einwilligung der Erziehungsberechtigten und einem fehlerfreien Durchlauf aller Punkte oben.
+**Go für Tests mit Kindern** erst nach: abgeschlossener fachlicher Prüfung der Sicherheitsweiche, Datenschutz- und Einwilligungskonzept (Kinderstimme nur an den eigenen Sprachserver, erkannter Text an Anthropic), Einwilligung der Erziehungsberechtigten und einem fehlerfreien Durchlauf aller Punkte oben.

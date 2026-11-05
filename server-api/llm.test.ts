@@ -175,14 +175,17 @@ test('AnthropicProvider: Zeitüberschreitung wird als LlmError gemeldet', async 
   );
 });
 
-test('resolveLlmProvider: ausdrücklich, sonst nach Key (Gemini zuerst)', () => {
+test('resolveLlmProvider: ausdrücklich, sonst Anthropic nach Key; Gemini nie automatisch', () => {
   assert.equal(resolveLlmProvider({}), 'none');
-  assert.equal(resolveLlmProvider({ GEMINI_API_KEY: 'g' }), 'gemini');
   assert.equal(resolveLlmProvider({ ANTHROPIC_API_KEY: 'a' }), 'anthropic');
-  assert.equal(resolveLlmProvider({ GEMINI_API_KEY: 'g', ANTHROPIC_API_KEY: 'a' }), 'gemini');
+  // Ein Gemini-Key allein wählt Gemini nicht (Googles Bedingungen schließen Kinderprodukte aus).
+  assert.equal(resolveLlmProvider({ GEMINI_API_KEY: 'g' }), 'none');
+  assert.equal(resolveLlmProvider({ GEMINI_API_KEY: 'g', ANTHROPIC_API_KEY: 'a' }), 'anthropic');
+  // Ausdrücklich bleibt Gemini wählbar.
+  assert.equal(resolveLlmProvider({ GEMINI_API_KEY: 'g', PICASTAI_LLM_PROVIDER: 'gemini' }), 'gemini');
   assert.equal(resolveLlmProvider({ GEMINI_API_KEY: 'g', ANTHROPIC_API_KEY: 'a', PICASTAI_LLM_PROVIDER: 'anthropic' }), 'anthropic');
-  assert.equal(resolveLlmProvider({ GEMINI_API_KEY: 'g', PICASTAI_LLM_PROVIDER: 'none' }), 'none');
-  assert.equal(resolveLlmProvider({ GEMINI_API_KEY: 'g', PICASTAI_LLM_PROVIDER: 'unsinn' }), 'gemini');
+  assert.equal(resolveLlmProvider({ ANTHROPIC_API_KEY: 'a', PICASTAI_LLM_PROVIDER: 'none' }), 'none');
+  assert.equal(resolveLlmProvider({ GEMINI_API_KEY: 'g', PICASTAI_LLM_PROVIDER: 'unsinn' }), 'none');
 });
 
 test('createLlmProvider: liefert den Anbieter nur mit passendem Key', () => {

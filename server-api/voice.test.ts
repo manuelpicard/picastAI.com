@@ -5,8 +5,19 @@ import { loadConfig } from './config.js';
 import { VoicePipeline, VoiceProviderError } from './voice.js';
 import type { KunibertConfig } from './config.js';
 
-function pipeline(): VoicePipeline {
-  return new VoicePipeline({ ...loadConfig(), openaiApiKey: 'test-key', sttProvider: 'openai', ttsProvider: 'openai' });
+/** Beide Dienste mit eigenen Adressen; die Netzwerkaufrufe werden in den Tests ersetzt. */
+const SERVICES: Partial<KunibertConfig> = {
+  sttUrl: 'http://127.0.0.1:8001/v1',
+  sttApiKey: null,
+  sttModel: 'stt-test-modell',
+  ttsUrl: 'http://127.0.0.1:8002/v1',
+  ttsApiKey: null,
+  ttsModel: 'tts-test-modell',
+  ttsVoice: 'test-stimme',
+};
+
+function pipeline(overrides: Partial<KunibertConfig> = {}): VoicePipeline {
+  return new VoicePipeline({ ...loadConfig(), ...SERVICES, ...overrides });
 }
 
 async function withFetch<T>(response: () => Response | Promise<Response>, fn: () => Promise<T>): Promise<T> {
@@ -130,7 +141,7 @@ test('warmUp zählt Erfolge und wirft bei Ausfall nicht', async () => {
 });
 
 test('Ohne Provider: synthesizeCached meldet einen VoiceProviderError', async () => {
-  const voice = new VoicePipeline({ ...loadConfig(), openaiApiKey: null, sttProvider: 'none', ttsProvider: 'none' });
+  const voice = new VoicePipeline({ ...loadConfig(), sttUrl: null, ttsUrl: null });
   await assert.rejects(() => voice.synthesizeCached('Hallo'), VoiceProviderError);
 });
 
@@ -225,170 +236,97 @@ test('TTS: WAV ohne Audiodaten oder mit 8 Bit wird abgelehnt', async () => {
 });
 
 // ---------------------------------------------------------------------------
-// Spracherkennung: Parameter je Modell
+// Getrennte Dienste: Adresse, Schlüssel und Parameter
 // ---------------------------------------------------------------------------
 
-function sttPipeline(overrides: Partial<KunibertConfig>): VoicePipeline {
-  return new VoicePipeline({ ...loadConfig(), openaiApiKey: 'test-key', sttProvider: 'openai', ttsProvider: 'none', ...overrides });
+interface SeenRequest {
+  url: string;
+  headers: Record<string, string>;
+  body: unknown;
 }
 
-async function captureSttForm(overrides: Partial<KunibertConfig>): Promise<FormData> {
+/** Zeichnet alle Anfragen auf und antwortet je nach Pfad wie ein Sprachdienst. */
+async function recordRequests<T>(fn: (seen: SeenRequest[]) => Promise<T>): Promise<T> {
   const original = globalThis.fetch;
-  let form: FormData | null = null;
-  globalThis.fetch = (async (_url: string, init: RequestInit) => {
-    form = init.body as FormData;
-    return new Response(JSON.stringify({ text: ' Hallo Kunibert ' }), { status: 200 });
-  }) as unknown as typeof fetch;
-  try {
-    const text = await sttPipeline(overrides).transcribe(encodeWav(Buffer.alloc(3200), 16_000, 1, 16));
-    assert.equal(text, 'Hallo Kunibert');
-    return form as unknown as FormData;
-  } finally {
-    globalThis.fetch = original;
-  }
-}
-
-test('STT: whisper-1 bekommt language=de', async () => {
-  const form = await captureSttForm({ sttModel: 'whisper-1', sttPrompt: '' });
-  assert.equal(form.get('model'), 'whisper-1');
-  assert.equal(form.get('language'), 'de');
-  assert.equal(form.get('prompt'), null);
-});
-
-test('STT: gpt-transcribe bekommt kein language-Feld (nicht dokumentiert), nur den optionalen Hinweis', async () => {
-  const plain = await captureSttForm({ sttModel: 'gpt-transcribe', sttPrompt: '' });
-  assert.equal(plain.get('model'), 'gpt-transcribe');
-  assert.equal(plain.get('language'), null);
-  assert.equal(plain.get('prompt'), null);
-
-  const hinted = await captureSttForm({ sttModel: 'gpt-transcribe', sttPrompt: 'Kunibert, Ritter' });
-  assert.equal(hinted.get('prompt'), 'Kunibert, Ritter');
-  assert.equal(hinted.get('language'), null);
-});
-
-// ---------------------------------------------------------------------------
-// Sprachausgabe über Gemini
-// ---------------------------------------------------------------------------
-
-function geminiPipeline(overrides: Partial<KunibertConfig> = {}): VoicePipeline {
-  return new VoicePipeline({
-    ...loadConfig(),
-    geminiApiKey: 'g-test-key',
-    openaiApiKey: null,
-    sttProvider: 'none',
-    ttsProvider: 'gemini',
-    ttsModel: 'gemini-3.8-flash-tts',
-    ttsVoice: 'Sulafat',
-    ttsStyle: 'ruhig und warm',
-    ...overrides,
-  });
-}
-
-function geminiAnswer(wav: Buffer, extraSteps: unknown[] = []): Response {
-  return new Response(
-    JSON.stringify({
-      steps: [
-        ...extraSteps,
-        { type: 'model_output', content: [{ type: 'audio', data: wav.toString('base64') }] },
-      ],
-    }),
-    { status: 200 }
-  );
-}
-
-test('Gemini-TTS: Anfrage enthält Modell, Stimme, Sprechweise und Schlüssel im Header', async () => {
-  const original = globalThis.fetch;
-  let seen: { url: string; init: RequestInit } | null = null;
+  const seen: SeenRequest[] = [];
   globalThis.fetch = (async (url: string, init: RequestInit) => {
-    seen = { url, init };
-    return geminiAnswer(encodeWav(sinePcm(2400, 1, 24_000), 24_000, 1, 16));
+    seen.push({ url, headers: (init.headers ?? {}) as Record<string, string>, body: init.body });
+    if (url.endsWith('/audio/transcriptions')) return new Response(JSON.stringify({ text: ' Hallo Kunibert ' }), { status: 200 });
+    return okWav();
   }) as unknown as typeof fetch;
   try {
-    const result = await geminiPipeline().synthesize('Es war einmal ein Ritter.');
-    assert.equal(seen!.url, 'https://generativelanguage.googleapis.com/v1beta/interactions');
-    const headers = seen!.init.headers as Record<string, string>;
-    assert.equal(headers['x-goog-api-key'], 'g-test-key');
-    const body = JSON.parse(String(seen!.init.body));
-    assert.equal(body.model, 'gemini-3.8-flash-tts');
-    assert.deepEqual(body.response_format, { type: 'audio' });
-    assert.deepEqual(body.generation_config, { speech_config: [{ voice: 'Sulafat' }] });
-    const item = body.input[0].content[0];
-    assert.equal(item.text, 'Es war einmal ein Ritter.');
-    assert.deepEqual(item.annotations, [{ type: 'speech_metadata', style: 'ruhig und warm' }]);
-    // 24 kHz aus Gemini werden auf das Pi-Format 16 kHz umgerechnet.
-    const header = decodeWavHeader(result);
-    assert.equal(header.sampleRate, 16_000);
-    assert.equal(header.channels, 1);
-    assert.equal(header.bitsPerSample, 16);
+    return await fn(seen);
   } finally {
     globalThis.fetch = original;
   }
-});
+}
 
-test('Gemini-TTS: ohne Sprechweise entfällt die Anweisung', async () => {
-  const original = globalThis.fetch;
-  let body: { input: Array<{ content: Array<Record<string, unknown>> }> } | null = null;
-  globalThis.fetch = (async (_url: string, init: RequestInit) => {
-    body = JSON.parse(String(init.body));
-    return geminiAnswer(encodeWav(Buffer.alloc(3200), 16_000, 1, 16));
-  }) as unknown as typeof fetch;
-  try {
-    await geminiPipeline({ ttsStyle: '' }).synthesize('Hallo');
-    assert.equal('annotations' in body!.input[0].content[0], false);
-  } finally {
-    globalThis.fetch = original;
-  }
-});
+const silentWav = () => encodeWav(Buffer.alloc(3200), 16_000, 1, 16);
 
-test('Gemini-TTS: der letzte Audio-Eintrag zählt, andere Schritte werden übersprungen', async () => {
-  const quiet = encodeWav(Buffer.alloc(3200), 16_000, 1, 16);
-  const loud = encodeWav(sinePcm(1600, 1, 16_000), 16_000, 1, 16);
-  const response = () =>
-    new Response(
-      JSON.stringify({
-        steps: [
-          { type: 'thought', content: [{ type: 'text', text: 'ignoriert' }] },
-          { type: 'model_output', content: [{ type: 'audio', data: quiet.toString('base64') }, { type: 'audio', data: loud.toString('base64') }] },
-        ],
-      }),
-      { status: 200 }
-    );
-  await withFetch(response, async () => {
-    const result = await geminiPipeline().synthesize('Hallo');
-    assert.deepEqual(result, loud);
+test('STT: sendet Modell und language=de an die Adresse der Spracherkennung, ohne Schlüssel kein Authorization-Header', async () => {
+  await recordRequests(async (seen) => {
+    const text = await pipeline().transcribe(silentWav());
+    assert.equal(text, 'Hallo Kunibert');
+    assert.equal(seen.length, 1);
+    assert.equal(seen[0].url, 'http://127.0.0.1:8001/v1/audio/transcriptions');
+    assert.equal('Authorization' in seen[0].headers, false);
+    const form = seen[0].body as FormData;
+    assert.equal(form.get('model'), 'stt-test-modell');
+    assert.equal(form.get('language'), 'de');
+    assert.equal(form.get('prompt'), null);
   });
 });
 
-test('Gemini-TTS: Fehlerfälle werden zu VoiceProviderError mit richtiger Wiederholbarkeit', async () => {
-  await withFetch(() => new Response('overloaded', { status: 503 }), async () => {
-    await assert.rejects(() => geminiPipeline().synthesize('Hallo'), (e: unknown) => e instanceof VoiceProviderError && e.retryable === true);
+test('STT: optionaler Hinweistext und Schlüssel werden mitgesendet', async () => {
+  await recordRequests(async (seen) => {
+    await pipeline({ sttPrompt: 'Kunibert, Ritter', sttApiKey: 'geheim' }).transcribe(silentWav());
+    assert.equal(seen[0].headers.Authorization, 'Bearer geheim');
+    assert.equal((seen[0].body as FormData).get('prompt'), 'Kunibert, Ritter');
   });
-  await withFetch(() => new Response('rate', { status: 429 }), async () => {
-    await assert.rejects(() => geminiPipeline().synthesize('Hallo'), (e: unknown) => e instanceof VoiceProviderError && e.retryable === true);
+});
+
+test('TTS: Anfrage geht an die Adresse der Sprachausgabe mit Modell und Stimme, nicht an die der Erkennung', async () => {
+  await recordRequests(async (seen) => {
+    const result = await pipeline({ ttsApiKey: 'tts-geheim' }).synthesize('Es war einmal ein Ritter.');
+    assert.equal(seen.length, 1);
+    assert.equal(seen[0].url, 'http://127.0.0.1:8002/v1/audio/speech');
+    assert.equal(seen[0].headers.Authorization, 'Bearer tts-geheim');
+    const body = JSON.parse(String(seen[0].body));
+    assert.equal(body.model, 'tts-test-modell');
+    assert.equal(body.voice, 'test-stimme');
+    assert.equal(body.input, 'Es war einmal ein Ritter.');
+    assert.equal(body.response_format, 'wav');
+    assert.equal(decodeWavHeader(result).sampleRate, 16_000);
   });
-  await withFetch(() => new Response('bad key', { status: 403 }), async () => {
-    await assert.rejects(() => geminiPipeline().synthesize('Hallo'), (e: unknown) => e instanceof VoiceProviderError && e.retryable === false);
-  });
+});
+
+test('STT: eine ungültige JSON-Antwort ist ein wiederholbarer Fehler, kein Absturz', async () => {
   await withFetch(() => new Response('<html>', { status: 200 }), async () => {
-    await assert.rejects(() => geminiPipeline().synthesize('Hallo'), VoiceProviderError);
-  });
-  await withFetch(() => new Response(JSON.stringify({ steps: [] }), { status: 200 }), async () => {
-    await assert.rejects(() => geminiPipeline().synthesize('Hallo'), /kein Audio/);
-  });
-  // Kein WAV, sondern rohe Bytes: lieber ablehnen als Rauschen an ein Kind senden.
-  await withFetch(() => geminiAnswer(Buffer.alloc(3200, 7)), async () => {
-    await assert.rejects(() => geminiPipeline().synthesize('Hallo'), /kein WAV/);
+    await assert.rejects(
+      () => pipeline().transcribe(silentWav()),
+      (error: unknown) => error instanceof VoiceProviderError && error.retryable === true
+    );
   });
 });
 
-test('Gemini-TTS: ohne Gemini-Key ist die Sprachausgabe nicht konfiguriert', () => {
-  const voice = geminiPipeline({ geminiApiKey: null });
-  assert.equal(voice.ttsConfigured, false);
-  assert.equal(voice.sttConfigured, false);
+test('Ein Dienst ist nur mit Adresse und Modell konfiguriert, die Sprachausgabe zusätzlich mit Stimme', () => {
+  const both = pipeline();
+  assert.equal(both.sttConfigured, true);
+  assert.equal(both.ttsConfigured, true);
+
+  assert.equal(pipeline({ sttUrl: null }).sttConfigured, false);
+  assert.equal(pipeline({ sttModel: '' }).sttConfigured, false);
+  assert.equal(pipeline({ ttsUrl: null }).ttsConfigured, false);
+  assert.equal(pipeline({ ttsModel: '' }).ttsConfigured, false);
+  assert.equal(pipeline({ ttsVoice: '' }).ttsConfigured, false);
 });
 
-test('Sprachdienste sind getrennt: STT über OpenAI, TTS über Gemini', () => {
-  const voice = geminiPipeline({ openaiApiKey: 'o', sttProvider: 'openai' });
-  assert.equal(voice.sttConfigured, true);
-  assert.equal(voice.ttsConfigured, true);
+test('Die Dienste sind unabhängig: nur Erkennung oder nur Sprachausgabe ist möglich', () => {
+  const sttOnly = pipeline({ ttsUrl: null });
+  assert.equal(sttOnly.sttConfigured, true);
+  assert.equal(sttOnly.ttsConfigured, false);
+
+  const ttsOnly = pipeline({ sttUrl: null });
+  assert.equal(ttsOnly.sttConfigured, false);
+  assert.equal(ttsOnly.ttsConfigured, true);
 });

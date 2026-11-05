@@ -138,8 +138,11 @@ describe('picastAI-API (echter Server)', () => {
       PICASTAI_DEVICE_ID: ENV_DEVICE_ID,
       PICASTAI_DEVICE_TOKEN: ENV_DEVICE_TOKEN,
       PICASTAI_PUBLIC_BASE_URL: PUBLIC_BASE_URL,
-      OPENAI_API_KEY: 'test-key',
-      OPENAI_BASE_URL: `http://127.0.0.1:${fake.port}`,
+      PICASTAI_STT_URL: `http://127.0.0.1:${fake.port}`,
+      PICASTAI_STT_MODEL: 'test-stt',
+      PICASTAI_TTS_URL: `http://127.0.0.1:${fake.port}`,
+      PICASTAI_TTS_MODEL: 'test-tts',
+      PICASTAI_TTS_VOICE: 'test-voice',
       KUNIBERT_RATE_LIMIT: '500',
     };
     if (process.env.HOME) env.HOME = process.env.HOME;

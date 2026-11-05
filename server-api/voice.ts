@@ -113,20 +113,29 @@ function normalizePcmWav(audio: Buffer, targetRate: number): Buffer {
   return encodeWav(pcm, targetRate, 1, 16);
 }
 
-export class OpenAiCompatibleVoiceProvider implements SpeechToTextProvider, TextToSpeechProvider {
-  private readonly baseUrl: string;
-  private readonly headers: Record<string, string>;
+/**
+ * Verbindung zu einem Sprachdienst mit OpenAI-kompatibler Schnittstelle, in der Regel ein
+ * eigener Server (z. B. Speaches). Es gibt bewusst keinen Standarddienst.
+ */
+export interface SpeechEndpoint {
+  /** Basis-URL einschließlich /v1, ohne abschließenden Schrägstrich. */
+  url: string;
+  /** Optional; ein eigener Server im eigenen Netz braucht keinen Schlüssel. */
+  apiKey: string | null;
+  model: string;
+  timeoutMs: number;
+}
 
-  constructor(private readonly config: KunibertConfig) {
-    this.baseUrl = config.openaiBaseUrl.replace(/\/$/, '');
-    this.headers = {
-      Authorization: `Bearer ${config.openaiApiKey || ''}`,
-      'User-Agent': 'picastAI-ritter-kunibert/0.1',
-    };
-  }
+function requestHeaders(endpoint: SpeechEndpoint): Record<string, string> {
+  const headers: Record<string, string> = { 'User-Agent': 'picastAI-ritter-kunibert/0.1' };
+  if (endpoint.apiKey) headers.Authorization = `Bearer ${endpoint.apiKey}`;
+  return headers;
+}
+
+export class OpenAiCompatibleSpeechToText implements SpeechToTextProvider {
+  constructor(private readonly endpoint: SpeechEndpoint, private readonly prompt = '') {}
 
   async transcribe(wav: Buffer): Promise<string> {
-    if (!this.config.openaiApiKey) throw new VoiceProviderError('STT-API-Key fehlt');
     try {
       decodeWavHeader(wav);
     } catch {
@@ -135,26 +144,29 @@ export class OpenAiCompatibleVoiceProvider implements SpeechToTextProvider, Text
 
     const form = new FormData();
     form.append('file', new Blob([new Uint8Array(wav)], { type: 'audio/wav' }), 'question.wav');
-    form.append('model', this.config.sttModel);
-    // whisper-1 und gpt-4o-*-transcribe kennen "language". Für gpt-transcribe ist der
-    // Parameter nicht dokumentiert (stattdessen Sprachhinweise); ein unbekanntes Feld
-    // könnte die Anfrage ablehnen, daher dort nur der optionale Hinweis-Text.
-    if (!this.config.sttModel.startsWith('gpt-transcribe')) form.append('language', 'de');
-    if (this.config.sttPrompt) form.append('prompt', this.config.sttPrompt);
+    form.append('model', this.endpoint.model);
+    // Whisper-Modelle erkennen die Sprache sonst selbst und raten bei kurzen Kinderäußerungen falsch.
+    form.append('language', 'de');
+    if (this.prompt) form.append('prompt', this.prompt);
     form.append('response_format', 'json');
 
-    const timeout = withTimeout(this.config.voiceTimeoutMs);
+    const timeout = withTimeout(this.endpoint.timeoutMs);
     try {
-      const response = await fetch(`${this.baseUrl}/audio/transcriptions`, {
+      const response = await fetch(`${this.endpoint.url}/audio/transcriptions`, {
         method: 'POST',
-        headers: this.headers,
+        headers: requestHeaders(this.endpoint),
         body: form,
         signal: timeout.signal,
       });
       if (!response.ok) {
         throw new VoiceProviderError(`STT-Provider antwortete mit HTTP ${response.status}: ${await readError(response)}`, response.status >= 500 || response.status === 429);
       }
-      const payload = await response.json() as { text?: unknown };
+      let payload: { text?: unknown };
+      try {
+        payload = await response.json() as { text?: unknown };
+      } catch {
+        throw new VoiceProviderError('STT-Provider lieferte keine gültige JSON-Antwort', true);
+      }
       const text = typeof payload.text === 'string' ? payload.text.trim().slice(0, 1000) : '';
       if (!text) throw new VoiceProviderError('STT-Provider lieferte kein Transcript');
       return text;
@@ -166,17 +178,24 @@ export class OpenAiCompatibleVoiceProvider implements SpeechToTextProvider, Text
       timeout.cancel();
     }
   }
+}
+
+export class OpenAiCompatibleTextToSpeech implements TextToSpeechProvider {
+  constructor(
+    private readonly endpoint: SpeechEndpoint,
+    private readonly voice: string,
+    private readonly targetSampleRate: number
+  ) {}
 
   async synthesize(text: string): Promise<Buffer> {
-    if (!this.config.openaiApiKey) throw new VoiceProviderError('TTS-API-Key fehlt');
-    const timeout = withTimeout(this.config.voiceTimeoutMs);
+    const timeout = withTimeout(this.endpoint.timeoutMs);
     try {
-      const response = await fetch(`${this.baseUrl}/audio/speech`, {
+      const response = await fetch(`${this.endpoint.url}/audio/speech`, {
         method: 'POST',
-        headers: { ...this.headers, 'Content-Type': 'application/json' },
+        headers: { ...requestHeaders(this.endpoint), 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: this.config.ttsModel,
-          voice: this.config.ttsVoice,
+          model: this.endpoint.model,
+          voice: this.voice,
           input: text.slice(0, 12_000),
           response_format: 'wav',
           speed: 0.95,
@@ -187,66 +206,8 @@ export class OpenAiCompatibleVoiceProvider implements SpeechToTextProvider, Text
         throw new VoiceProviderError(`TTS-Provider antwortete mit HTTP ${response.status}: ${await readError(response)}`, response.status >= 500 || response.status === 429);
       }
       const audio = Buffer.from(await response.arrayBuffer());
-      return normalizePcmWav(audio, this.config.audioSampleRate);
-    } catch (error) {
-      if (error instanceof VoiceProviderError) throw error;
-      if ((error as Error)?.name === 'AbortError') throw new VoiceProviderError('TTS-Timeout', true);
-      throw new VoiceProviderError(`TTS-Netzwerkfehler: ${(error as Error)?.message || 'unbekannt'}`, true);
-    } finally {
-      timeout.cancel();
-    }
-  }
-}
-
-const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com';
-
-/**
- * Sprachausgabe über die Interactions-API von Gemini (gemini-3.8-flash-tts). Die Antwort
- * enthält das Audio als Base64-WAV (24 kHz, mono, 16 Bit) und wird auf das Pi-Format
- * umgerechnet. Die Sprechweise kommt als Anweisung ("style") in natürlicher Sprache.
- */
-export class GeminiSpeechProvider implements TextToSpeechProvider {
-  constructor(private readonly config: KunibertConfig) {}
-
-  async synthesize(text: string): Promise<Buffer> {
-    if (!this.config.geminiApiKey) throw new VoiceProviderError('TTS-API-Key fehlt');
-    const textItem: Record<string, unknown> = { type: 'text', text: text.slice(0, 12_000) };
-    if (this.config.ttsStyle) textItem.annotations = [{ type: 'speech_metadata', style: this.config.ttsStyle }];
-
-    const timeout = withTimeout(this.config.voiceTimeoutMs);
-    try {
-      const response = await fetch(`${GEMINI_API_BASE}/v1beta/interactions`, {
-        method: 'POST',
-        headers: {
-          'x-goog-api-key': this.config.geminiApiKey,
-          'Content-Type': 'application/json',
-          'User-Agent': 'picastAI-ritter-kunibert/0.1',
-        },
-        body: JSON.stringify({
-          model: this.config.ttsModel,
-          input: [{ type: 'user_input', content: [textItem] }],
-          response_format: { type: 'audio' },
-          generation_config: { speech_config: [{ voice: this.config.ttsVoice }] },
-        }),
-        signal: timeout.signal,
-      });
-      if (!response.ok) {
-        throw new VoiceProviderError(`TTS-Provider antwortete mit HTTP ${response.status}: ${await readError(response)}`, response.status >= 500 || response.status === 429);
-      }
-      let payload: { steps?: Array<{ type?: string; content?: Array<{ type?: string; data?: unknown }> }> };
-      try {
-        payload = await response.json() as typeof payload;
-      } catch {
-        throw new VoiceProviderError('TTS-Provider lieferte keine gültige JSON-Antwort', true);
-      }
-      const chunks = (payload.steps ?? [])
-        .filter((step) => step.type === 'model_output')
-        .flatMap((step) => step.content ?? [])
-        .filter((item) => item.type === 'audio' && typeof item.data === 'string' && item.data.length > 0);
-      // Wie in Googles Beispiel zählt der letzte Audio-Eintrag.
-      const last = chunks[chunks.length - 1];
-      if (!last) throw new VoiceProviderError('TTS-Provider lieferte kein Audio');
-      return normalizePcmWav(Buffer.from(last.data as string, 'base64'), this.config.audioSampleRate);
+      // Eigene Server liefern oft 22,05 kHz; das Pi-Format ist 16 kHz Mono.
+      return normalizePcmWav(audio, this.targetSampleRate);
     } catch (error) {
       if (error instanceof VoiceProviderError) throw error;
       if ((error as Error)?.name === 'AbortError') throw new VoiceProviderError('TTS-Timeout', true);
@@ -266,16 +227,21 @@ export class VoicePipeline {
   private readonly fixedCache = new Map<string, Promise<Buffer>>();
 
   constructor(config: KunibertConfig) {
-    this.stt = config.openaiApiKey && config.sttProvider === 'openai'
-      ? new OpenAiCompatibleVoiceProvider(config)
+    // Ein Dienst gilt nur als konfiguriert, wenn Adresse und Modell (Sprachausgabe: auch Stimme)
+    // ausdrücklich gesetzt sind. Ohne Angabe bleibt er aus.
+    this.stt = config.sttUrl && config.sttModel
+      ? new OpenAiCompatibleSpeechToText(
+          { url: config.sttUrl, apiKey: config.sttApiKey, model: config.sttModel, timeoutMs: config.voiceTimeoutMs },
+          config.sttPrompt
+        )
       : null;
-    if (config.ttsProvider === 'gemini' && config.geminiApiKey) {
-      this.tts = new GeminiSpeechProvider(config);
-    } else if (config.ttsProvider === 'openai' && config.openaiApiKey) {
-      this.tts = new OpenAiCompatibleVoiceProvider(config);
-    } else {
-      this.tts = null;
-    }
+    this.tts = config.ttsUrl && config.ttsModel && config.ttsVoice
+      ? new OpenAiCompatibleTextToSpeech(
+          { url: config.ttsUrl, apiKey: config.ttsApiKey, model: config.ttsModel, timeoutMs: config.voiceTimeoutMs },
+          config.ttsVoice,
+          config.audioSampleRate
+        )
+      : null;
   }
 
   get sttConfigured(): boolean {
