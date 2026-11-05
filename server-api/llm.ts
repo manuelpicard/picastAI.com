@@ -85,10 +85,15 @@ export interface GeminiLikeClient {
 export class GeminiProvider implements LlmProvider {
   readonly name = 'gemini' as const;
   readonly model: string;
+  /** Obergrenze pro Aufruf (PICASTAI_LLM_TIMEOUT_MS); danach greift in brain.ts der Fallback-Text. */
+  readonly timeoutMs: number;
   private client: GeminiLikeClient | null;
 
-  constructor(private readonly options: { apiKey: string; model: string; client?: GeminiLikeClient }) {
+  constructor(
+    private readonly options: { apiKey: string; model: string; timeoutMs?: number; client?: GeminiLikeClient }
+  ) {
     this.model = options.model;
+    this.timeoutMs = options.timeoutMs ?? 30_000;
     this.client = options.client ?? null;
   }
 
@@ -103,17 +108,36 @@ export class GeminiProvider implements LlmProvider {
 
   async generateJson(request: LlmJsonRequest): Promise<Record<string, unknown>> {
     const client = await this.getClient();
-    const response = await client.models.generateContent({
-      model: this.model,
-      contents: request.user,
-      config: {
-        systemInstruction: request.system,
-        responseMimeType: 'application/json',
-        responseSchema: toGeminiSchema(request.schema),
-        ...(request.maxOutputTokens ? { maxOutputTokens: request.maxOutputTokens } : {}),
-      },
+    // Ohne eigene Grenze wartet eine hängende Anfrage unbegrenzt; der Pi bricht
+    // dann ab und wiederholt die ganze Kette. Das Signal bricht die Anfrage im
+    // SDK ab, das Rennen garantiert die Grenze auch ohne SDK-Unterstützung.
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<never>((_resolve, reject) => {
+      timer = setTimeout(() => {
+        controller.abort();
+        reject(new LlmError('Gemini: Zeitüberschreitung'));
+      }, this.timeoutMs);
     });
-    return parseJsonObject(response.text, 'Gemini');
+    try {
+      const response = await Promise.race([
+        client.models.generateContent({
+          model: this.model,
+          contents: request.user,
+          config: {
+            systemInstruction: request.system,
+            responseMimeType: 'application/json',
+            responseSchema: toGeminiSchema(request.schema),
+            abortSignal: controller.signal,
+            ...(request.maxOutputTokens ? { maxOutputTokens: request.maxOutputTokens } : {}),
+          },
+        }),
+        timeout,
+      ]);
+      return parseJsonObject(response.text, 'Gemini');
+    } finally {
+      clearTimeout(timer);
+    }
   }
 }
 
@@ -205,7 +229,7 @@ export function createLlmProvider(
   >
 ): LlmProvider | null {
   if (cfg.llmProvider === 'gemini' && cfg.geminiApiKey) {
-    return new GeminiProvider({ apiKey: cfg.geminiApiKey, model: cfg.geminiModel });
+    return new GeminiProvider({ apiKey: cfg.geminiApiKey, model: cfg.geminiModel, timeoutMs: cfg.llmTimeoutMs });
   }
   if (cfg.llmProvider === 'anthropic' && cfg.anthropicApiKey) {
     return new AnthropicProvider({

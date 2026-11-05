@@ -457,6 +457,57 @@ class KunibertClientTests(unittest.TestCase):
             handler.redirect_request(None, None, 302, "Found", {}, "https://attacker.invalid/audio.wav")
         )
 
+    def test_pipeline_requests_wait_longer_than_the_server_chain(self):
+        # Frage und Geschichte dürfen nicht nach 30 s abbrechen: der Server braucht im
+        # schlechtesten Fall Spracherkennung + Sprachmodell + Sprachsynthese.
+        config = ClientConfig(api_base_url="https://picastAI.com", device_token="device-test-token")
+        self.assertGreater(config.pipeline_timeout_seconds, 45 + 30 + 45)
+        api = PicastApi(config)
+        audio = encode_wav(b"\x00\x00" * 200, config.sample_rate, config.channels, config.sample_width)
+        responses = [
+            (200, {}, b'{"audio_url":"/v1/device/audio/x"}'),
+            (200, {"Content-Type": "audio/wav"}, audio),
+        ]
+        with patch.object(api, "_request_absolute", side_effect=responses) as request:
+            self.assertEqual(api.request_story(), audio)
+
+        post_call, get_call = request.call_args_list
+        self.assertEqual(post_call.args[0], "POST")
+        self.assertEqual(post_call.kwargs["timeout"], config.pipeline_timeout_seconds)
+        self.assertEqual(get_call.args[0], "GET")
+        self.assertEqual(get_call.kwargs["timeout"], config.audio_timeout_seconds)
+
+    def test_question_uses_pipeline_timeout(self):
+        config = ClientConfig(api_base_url="https://picastAI.com", device_token="device-test-token")
+        api = PicastApi(config)
+        wav = encode_wav(b"\x00\x00" * 8000, config.sample_rate, config.channels, config.sample_width)
+        with patch.object(api, "_with_retries", return_value={"audio_url": "/v1/device/audio/x"}) as retries, \
+                patch.object(api, "_download_audio", return_value=b"wav"):
+            api.ask_question(wav)
+        self.assertEqual(retries.call_args.kwargs["timeout"], config.pipeline_timeout_seconds)
+
+    def test_timeouts_from_environment(self):
+        with patch.dict("os.environ", {"KUNIBERT_PIPELINE_TIMEOUT": "200", "KUNIBERT_REQUEST_TIMEOUT": "20"}):
+            config = ClientConfig.from_env()
+        self.assertEqual(config.pipeline_timeout_seconds, 200.0)
+        self.assertEqual(config.request_timeout_seconds, 20.0)
+
+    def test_request_absolute_passes_timeout_to_socket(self):
+        config = ClientConfig(api_base_url="https://picastAI.com", device_token="device-test-token")
+        api = PicastApi(config)
+        response = MagicMock()
+        response.__enter__.return_value = response
+        response.status = 200
+        response.headers.items.return_value = []
+        response.read.return_value = b"{}"
+        opener = MagicMock()
+        opener.open.return_value = response
+        with patch("kunibert_client.build_opener", return_value=opener):
+            api._request_absolute("GET", "https://picastAI.com/health", None, {})
+            api._request_absolute("POST", "https://picastAI.com/v1/device/kunibert-story", b"{}", {}, timeout=140.0)
+        self.assertEqual(opener.open.call_args_list[0].kwargs["timeout"], config.request_timeout_seconds)
+        self.assertEqual(opener.open.call_args_list[1].kwargs["timeout"], 140.0)
+
     def _retry_api(self):
         config = ClientConfig(api_base_url="https://picastAI.com", device_token="device-test-token", retry_count=2)
         return PicastApi(config)

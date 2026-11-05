@@ -1,0 +1,30 @@
+[Unit]
+Description=Ritter Kunibert – Server (Spracherkennung, Erzähler, Sprachausgabe)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=kunibert
+Group=kunibert
+WorkingDirectory=/opt/kunibert/app
+EnvironmentFile=/etc/kunibert/kunibert.env
+# Die Anwendung liest keine .env-Datei selbst; alle Einstellungen kommen aus der Umgebung.
+ExecStart=/usr/bin/node --import tsx server.ts
+Restart=on-failure
+RestartSec=3
+# Schreibbares Verzeichnis nur für Zwischenspeicher (tsx); Audio liegt nur im Arbeitsspeicher.
+StateDirectory=kunibert
+Environment=HOME=/var/lib/kunibert
+# Härtung
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+MemoryMax=1G
+
+[Install]
+WantedBy=multi-user.target

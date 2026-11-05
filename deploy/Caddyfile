@@ -1,0 +1,38 @@
+# /etc/caddy/Caddyfile – Ritter Kunibert
+#
+# Caddy holt das TLS-Zertifikat automatisch und erneuert es.
+# Voraussetzungen:
+#   1. DNS: A-Eintrag (und AAAA nur, wenn IPv6 wirklich erreichbar ist) für den Hostnamen
+#      unten zeigt auf die öffentliche IP dieses Servers.
+#   2. Ports 80/tcp und 443/tcp sind aus dem Internet erreichbar.
+#   3. Der Kunibert-Server läuft lokal auf 127.0.0.1:3000 (systemd-Dienst kunibert-server).
+#
+# kunibert.example durch den echten Hostnamen ersetzen. Derselbe Hostname gehört in
+# PICASTAI_PUBLIC_BASE_URL (Server) und PICASTAI_API_BASE_URL (Pi).
+
+kunibert.example {
+	# Nur die Geräte-API wird durchgereicht. /api/* (Admin: Geräte anlegen, Status) und
+	# die Weboberfläche bleiben von außen unerreichbar, alles andere bekommt 404.
+	@api path /v1/* /health
+	handle @api {
+		# Aufnahme höchstens 2 MiB plus Formularfelder (der Server lehnt mehr als 2 MiB ab).
+		request_body {
+			max_size 3MB
+		}
+		reverse_proxy 127.0.0.1:3000 {
+			transport http {
+				# Zeitkette: Server höchstens 45 s Spracherkennung + 30 s Sprachmodell + 45 s
+				# Sprachsynthese = 120 s, Caddy 130 s, Pi-Client 140 s (KUNIBERT_PIPELINE_TIMEOUT).
+				response_header_timeout 130s
+			}
+		}
+	}
+	handle {
+		respond 404
+	}
+
+	# Keine Software-Kennung nach außen.
+	header -Server
+
+	# Bewusst keine log-Direktive: Ohne sie schreibt Caddy keine Zugriffsprotokolle.
+}

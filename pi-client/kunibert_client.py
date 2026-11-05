@@ -64,6 +64,10 @@ class ClientConfig:
     min_record_seconds: float = 0.35
     audio_timeout_seconds: float = 45.0
     request_timeout_seconds: float = 30.0
+    # Frage und Geschichte laufen auf dem Server durch Spracherkennung, Sprachmodell
+    # und Sprachsynthese (Standardgrenzen 45 + 30 + 45 s). Der Client muss länger
+    # warten als der Server, sonst bricht er ab und wiederholt die ganze Kette.
+    pipeline_timeout_seconds: float = 140.0
     retry_count: int = 2
     retry_backoff_seconds: float = 1.5
     speech_button_gpio: int = 17
@@ -100,6 +104,7 @@ class ClientConfig:
             min_record_seconds=number("KUNIBERT_MIN_RECORD_SECONDS", 0.35),
             audio_timeout_seconds=number("KUNIBERT_AUDIO_TIMEOUT", 45.0),
             request_timeout_seconds=number("KUNIBERT_REQUEST_TIMEOUT", 30.0),
+            pipeline_timeout_seconds=number("KUNIBERT_PIPELINE_TIMEOUT", 140.0),
             retry_count=integer("KUNIBERT_RETRY_COUNT", 2),
             retry_backoff_seconds=number("KUNIBERT_RETRY_BACKOFF", 1.5),
             speech_button_gpio=integer("KUNIBERT_SPEECH_BUTTON_GPIO", 17),
@@ -396,7 +401,7 @@ class PicastApi:
         response = self._with_retries("POST", "/v1/device/question", body, {
             **self._headers,
             "Content-Type": content_type,
-        })
+        }, timeout=self.config.pipeline_timeout_seconds)
         return self._download_audio(response)
 
     def request_story(self) -> bytes:
@@ -409,7 +414,7 @@ class PicastApi:
         response = self._with_retries("POST", "/v1/device/kunibert-story", payload, {
             **self._headers,
             "Content-Type": "application/json",
-        })
+        }, timeout=self.config.pipeline_timeout_seconds)
         return self._download_audio(response)
 
     def _download_audio(self, response: dict[str, Any]) -> bytes:
@@ -422,7 +427,9 @@ class PicastApi:
             raise ApiError("audio_url ist keine gültige Adresse") from exc
         if not same_origin(absolute_url, self.config.api_base_url):
             raise ApiError("audio_url verweist nicht auf denselben Origin wie die API")
-        status, headers, data = self._request_absolute("GET", absolute_url, None, self._headers)
+        status, headers, data = self._request_absolute(
+            "GET", absolute_url, None, self._headers, timeout=self.config.audio_timeout_seconds
+        )
         if status != 200 or not data:
             raise ApiError(f"Audioabruf fehlgeschlagen (HTTP {status})", status=status, retryable=status >= 500)
         content_type = next((value for key, value in headers.items() if key.lower() == "content-type"), "")
@@ -431,11 +438,12 @@ class PicastApi:
         validate_wav(data, self.config)
         return data
 
-    def _with_retries(self, method: str, path: str, body: bytes, headers: dict[str, str]) -> dict[str, Any]:
+    def _with_retries(self, method: str, path: str, body: bytes, headers: dict[str, str],
+                      timeout: Optional[float] = None) -> dict[str, Any]:
         last_error: Optional[Exception] = None
         for attempt in range(self.config.retry_count + 1):
             try:
-                status, _response_headers, payload = self._request(method, path, body, headers)
+                status, _response_headers, payload = self._request(method, path, body, headers, timeout=timeout)
                 if status in (401, 400, 413, 415, 429):
                     raise ApiError(f"API-Anfrage abgelehnt (HTTP {status})", status=status, retryable=False)
                 if status < 200 or status >= 300:
@@ -471,20 +479,23 @@ class PicastApi:
         return isinstance(data, dict) and data.get("retryable") is False
 
     def _request(self, method: str, path: str, body: Optional[bytes] = None,
-                 headers: Optional[dict[str, str]] = None, accept_json: bool = False) -> tuple[int, dict[str, str], bytes | dict[str, Any]]:
+                 headers: Optional[dict[str, str]] = None, accept_json: bool = False,
+                 timeout: Optional[float] = None) -> tuple[int, dict[str, str], bytes | dict[str, Any]]:
         if accept_json:
-            status, response_headers, raw = self._request_absolute(method, urljoin(self.config.api_base_url + "/", path.lstrip("/")), body, headers or {})
+            status, response_headers, raw = self._request_absolute(method, urljoin(self.config.api_base_url + "/", path.lstrip("/")), body, headers or {}, timeout=timeout)
             try:
                 return status, response_headers, json.loads(raw.decode("utf-8"))
             except json.JSONDecodeError:
                 return status, response_headers, {}
-        return self._request_absolute(method, urljoin(self.config.api_base_url + "/", path.lstrip("/")), body, headers or {})
+        return self._request_absolute(method, urljoin(self.config.api_base_url + "/", path.lstrip("/")), body, headers or {}, timeout=timeout)
 
-    def _request_absolute(self, method: str, url: str, body: Optional[bytes], headers: dict[str, str]) -> tuple[int, dict[str, str], bytes]:
+    def _request_absolute(self, method: str, url: str, body: Optional[bytes], headers: dict[str, str],
+                          timeout: Optional[float] = None) -> tuple[int, dict[str, str], bytes]:
         request = Request(url, data=body, headers=headers, method=method)
         try:
             opener = build_opener(NoRedirectHandler())
-            with opener.open(request, timeout=self.config.request_timeout_seconds) as response:
+            effective_timeout = self.config.request_timeout_seconds if timeout is None else timeout
+            with opener.open(request, timeout=effective_timeout) as response:
                 return response.status, dict(response.headers.items()), response.read()
         except TimeoutError:
             raise
