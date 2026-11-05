@@ -34,7 +34,7 @@ Formularfelder:
 - `session_id`: temporäre Gerätekennung
 - `transcript`: optionales Diagnosefeld für lokale Tests; fehlt es, nutzt der Server den konfigurierten STT-Provider
 
-Die Gegenstelle validiert das WAV-Format. Wenn `OPENAI_API_KEY` und `PICASTAI_VOICE_PROVIDER=openai` gesetzt sind, wird die Aufnahme serverseitig über den OpenAI-kompatiblen STT-Endpunkt transkribiert. Der Transcript-Text wird anschließend durch die Sicherheitsweiche und den Erzählmotor verarbeitet.
+Die Gegenstelle validiert das WAV-Format. Wenn `OPENAI_API_KEY` gesetzt ist (und `PICASTAI_VOICE_PROVIDER` nicht `none` lautet), wird die Aufnahme serverseitig über den OpenAI-kompatiblen STT-Endpunkt transkribiert. Die Sprachausgabe läuft über Gemini (`GEMINI_API_KEY`) oder OpenAI, siehe `docs/LLM-Anbieter.md`. Der Transcript-Text wird anschließend durch die Sicherheitsweiche und den Erzählmotor verarbeitet.
 
 Beispielantwort:
 
@@ -117,10 +117,10 @@ KUNIBERT_DIAGNOSTIC_TEXT=0
 # Sprachmodell für Antworten und Geschichten (Gemini oder Claude): docs/LLM-Anbieter.md
 PICASTAI_LLM_PROVIDER=
 OPENAI_BASE_URL=https://api.openai.com/v1
-PICASTAI_VOICE_PROVIDER=openai
-PICASTAI_STT_MODEL=whisper-1
-PICASTAI_TTS_MODEL=tts-1
-PICASTAI_TTS_VOICE=alloy
+PICASTAI_STT_MODEL=gpt-transcribe
+PICASTAI_TTS_PROVIDER=gemini
+PICASTAI_TTS_MODEL=gemini-3.8-flash-tts
+PICASTAI_TTS_VOICE=Sulafat
 PICASTAI_VOICE_TIMEOUT_MS=45000
 ```
 

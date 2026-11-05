@@ -21,10 +21,17 @@ export interface KunibertConfig {
   anthropicBaseUrl: string;
   openaiApiKey: string | null;
   openaiBaseUrl: string;
-  voiceProvider: 'openai' | 'none';
+  /** Spracherkennung: nur OpenAI-kompatible Schnittstelle (/audio/transcriptions). */
+  sttProvider: 'openai' | 'none';
+  /** Sprachausgabe: OpenAI-kompatibel (/audio/speech) oder Gemini. */
+  ttsProvider: 'openai' | 'gemini' | 'none';
   sttModel: string;
+  /** Optionaler Hinweis an die Spracherkennung (PICASTAI_STT_PROMPT); leer = keiner. */
+  sttPrompt: string;
   ttsModel: string;
   ttsVoice: string;
+  /** Sprechweise für Gemini-TTS (Anweisung in natürlicher Sprache); leer = ohne Anweisung. */
+  ttsStyle: string;
   voiceTimeoutMs: number;
 
   // Erzähl- & Pädagogik-Parameter
@@ -72,6 +79,55 @@ export function resolveLlmProvider(
   return 'none';
 }
 
+export const DEFAULT_TTS_STYLE =
+  'Erzähle ruhig, warm und freundlich wie ein Märchenerzähler für Kinder. Nicht zu schnell, deutlich betont, mit kleinen Pausen.';
+
+/**
+ * Wahl der Sprachdienste. PICASTAI_VOICE_PROVIDER=none schaltet beide ab; "openai" wählt wie
+ * früher OpenAI für beides. Sonst bestimmt PICASTAI_TTS_PROVIDER die Sprachausgabe
+ * (openai | gemini | none), und ohne Angabe gilt: Gemini, wenn ein Gemini-Key da ist,
+ * sonst OpenAI mit Key. Hintergrund: OpenAI schaltet tts-1 am 6.1.2027 ab.
+ */
+export function resolveVoiceProviders(
+  env: {
+    PICASTAI_VOICE_PROVIDER?: string;
+    PICASTAI_TTS_PROVIDER?: string;
+    OPENAI_API_KEY?: string;
+    GEMINI_API_KEY?: string;
+  } = process.env
+): { stt: 'openai' | 'none'; tts: 'openai' | 'gemini' | 'none' } {
+  const master = env.PICASTAI_VOICE_PROVIDER?.trim().toLowerCase();
+  const hasOpenAi = Boolean(env.OPENAI_API_KEY?.trim());
+  const hasGemini = Boolean(env.GEMINI_API_KEY?.trim());
+  if (master === 'none') return { stt: 'none', tts: 'none' };
+
+  const stt = master === 'openai' || hasOpenAi ? 'openai' : 'none';
+
+  const requested = env.PICASTAI_TTS_PROVIDER?.trim().toLowerCase();
+  if (requested === 'openai' || requested === 'gemini' || requested === 'none') return { stt, tts: requested };
+  if (master === 'openai') return { stt, tts: 'openai' };
+  if (hasGemini) return { stt, tts: 'gemini' };
+  return { stt, tts: hasOpenAi ? 'openai' : 'none' };
+}
+
+/** Warnungen für Modelle, die der Anbieter bereits zur Abschaltung angekündigt hat (Stand 11/2026). */
+export function voiceDeprecationWarnings(
+  config: Pick<KunibertConfig, 'sttProvider' | 'sttModel' | 'ttsProvider' | 'ttsModel'>
+): string[] {
+  const warnings: string[] = [];
+  if (config.ttsProvider === 'openai' && ['tts-1', 'tts-1-hd', 'gpt-4o-mini-tts'].some((m) => config.ttsModel.startsWith(m))) {
+    warnings.push(
+      `Sprachausgabe: ${config.ttsModel} wird von OpenAI am 6.1.2027 abgeschaltet. Auf Gemini umstellen (GEMINI_API_KEY setzen, PICASTAI_TTS_PROVIDER=gemini).`
+    );
+  }
+  if (config.sttProvider === 'openai' && ['whisper-1', 'gpt-4o-transcribe', 'gpt-4o-mini-transcribe'].some((m) => config.sttModel.startsWith(m))) {
+    warnings.push(
+      `Spracherkennung: ${config.sttModel} wird von OpenAI am 26.2.2027 abgeschaltet. Auf gpt-transcribe umstellen (PICASTAI_STT_MODEL).`
+    );
+  }
+  return warnings;
+}
+
 export function loadConfig(): KunibertConfig {
   const parseNum = (val: string | undefined, fallback: number): number => {
     if (!val) return fallback;
@@ -81,6 +137,8 @@ export function loadConfig(): KunibertConfig {
   const storyMinWords = parseNum(process.env.KUNIBERT_STORY_MIN_WORDS, 170);
   // Verdrehte Grenzen (Minimum über Maximum) würden im Prompt widersprüchlich lauten.
   const storyMaxWords = Math.max(storyMinWords, parseNum(process.env.KUNIBERT_STORY_MAX_WORDS, 230));
+
+  const voiceProviders = resolveVoiceProviders();
 
   return {
     port: parseNum(process.env.PORT, 3000),
@@ -98,10 +156,14 @@ export function loadConfig(): KunibertConfig {
     anthropicBaseUrl: (process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com').replace(/\/$/, ''),
     openaiApiKey: process.env.OPENAI_API_KEY ? process.env.OPENAI_API_KEY.trim() : null,
     openaiBaseUrl: (process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1').replace(/\/$/, ''),
-    voiceProvider: (process.env.PICASTAI_VOICE_PROVIDER || (process.env.OPENAI_API_KEY ? 'openai' : 'none')) === 'openai' ? 'openai' : 'none',
-    sttModel: process.env.PICASTAI_STT_MODEL || 'whisper-1',
-    ttsModel: process.env.PICASTAI_TTS_MODEL || 'tts-1',
-    ttsVoice: process.env.PICASTAI_TTS_VOICE || 'alloy',
+    sttProvider: voiceProviders.stt,
+    ttsProvider: voiceProviders.tts,
+    sttModel: process.env.PICASTAI_STT_MODEL?.trim() || 'gpt-transcribe',
+    sttPrompt: process.env.PICASTAI_STT_PROMPT?.trim() || '',
+    ttsModel: process.env.PICASTAI_TTS_MODEL?.trim() || (voiceProviders.tts === 'gemini' ? 'gemini-3.8-flash-tts' : 'tts-1'),
+    ttsVoice: process.env.PICASTAI_TTS_VOICE?.trim() || (voiceProviders.tts === 'gemini' ? 'Sulafat' : 'alloy'),
+    // Ein ausdrücklich leerer Wert schaltet die Anweisung ab; nicht gesetzt = Standard.
+    ttsStyle: process.env.PICASTAI_TTS_STYLE === undefined ? DEFAULT_TTS_STYLE : process.env.PICASTAI_TTS_STYLE.trim(),
     voiceTimeoutMs: Math.min(120_000, Math.max(3_000, parseNum(process.env.PICASTAI_VOICE_TIMEOUT_MS, 45_000))),
 
     ageBracket: process.env.KUNIBERT_AGE || 'sechs bis zehn',
@@ -141,7 +203,8 @@ export function getSafeConfigSummary(config: KunibertConfig) {
         ? config.anthropicModel
         : null,
     hasOpenAiKey: Boolean(config.openaiApiKey),
-    voiceProvider: config.voiceProvider,
+    sttProvider: config.sttProvider,
+    ttsProvider: config.ttsProvider,
     sttModel: config.sttModel,
     ttsModel: config.ttsModel,
     ttsVoice: config.ttsVoice,

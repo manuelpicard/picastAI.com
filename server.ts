@@ -7,7 +7,7 @@ import { fileURLToPath } from 'url';
 import { DeviceRegistry, DeviceStoreError, RateLimiter, AudioStore } from './server-api/devices.js';
 import { Brain, StoryState } from './server-api/brain.js';
 import { AudioError, decodeWavHeader } from './server-api/audio.js';
-import { config, getSafeConfigSummary } from './server-api/config.js';
+import { config, getSafeConfigSummary, voiceDeprecationWarnings } from './server-api/config.js';
 import { isAdminTokenConfigured, verifyAdminAuthorization } from './server-api/admin-auth.js';
 import { VoicePipeline, VoiceProviderError } from './server-api/voice.js';
 import { FirestoreDeviceStore } from './server-api/firestore-service.js';
@@ -481,6 +481,7 @@ async function startServer() {
 
   app.listen(PORT, HOST, () => {
     console.log(`🏰 Ritter Kunibert Server läuft auf http://${HOST}:${PORT}`);
+    for (const warning of voiceDeprecationWarnings(config)) console.warn(`⚠️ ${warning}`);
     // Feste Sprechtexte vorab synthetisieren (Produktion), damit der Sicherheitshinweis
     // schon beim ersten Kind ohne Wartezeit und ohne Anbieter-Anfrage gesprochen wird.
     if (isProd && voice.ttsConfigured) {

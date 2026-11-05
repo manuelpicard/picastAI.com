@@ -17,8 +17,8 @@ Pi --HTTPS :443--> Caddy --HTTP lokal--> 127.0.0.1:3000 Kunibert-Server
 - Debian 12 oder Ubuntu 24.04 mit systemd, `sudo`-Zugang, Node.js 22 (wie in der CI; Installation nach [nodejs.org](https://nodejs.org/en/download)), `git`, `openssl`.
 - Ein Hostname, dessen DNS du kontrollierst, mit A-Eintrag auf die öffentliche IP (AAAA nur, wenn IPv6 wirklich geht). `kunibert.example` unten durch deinen Namen ersetzen, **überall gleich**.
 - Eingehend TCP 80 und 443 offen. Port 3000 nie nach außen freigeben.
-- Schlüssel: `OPENAI_API_KEY` (Spracherkennung und -ausgabe) und `GEMINI_API_KEY` oder `ANTHROPIC_API_KEY`. Für ein Gemini-Konto den **bezahlten** Tarif nehmen, der kostenlose nutzt Eingaben zur Produktverbesserung.
-- Kinderstimmen gehen an OpenAI, erkannter Text an Google oder Anthropic. Bis zur Datenschutzprüfung nur Erwachsene als Tester.
+- Schlüssel: `OPENAI_API_KEY` (Spracherkennung) und `GEMINI_API_KEY` (Sprachausgabe, dazu auch das Sprachmodell, wenn du Gemini wählst) oder `ANTHROPIC_API_KEY` (Sprachmodell). Für ein Gemini-Konto den **bezahlten** Tarif nehmen, der kostenlose nutzt Eingaben zur Produktverbesserung.
+- Kinderstimmen gehen an OpenAI (Spracherkennung), erkannter Text an Google oder Anthropic (Sprachmodell), die Antworttexte an Google (Sprachausgabe). Bis zur Datenschutzprüfung nur Erwachsene als Tester.
 
 ## 2. Benutzer, Code, Abhängigkeiten, Build
 
@@ -45,7 +45,7 @@ sudo openssl rand -hex 32     # zweimal ausführen: einmal Admin-Token, einmal G
 sudoedit /etc/kunibert/kunibert.env
 ```
 
-Mindestens setzen: `PICASTAI_PUBLIC_BASE_URL`, `PICASTAI_ADMIN_TOKEN`, `PICASTAI_DEVICE_TOKEN`, `OPENAI_API_KEY` und den Schlüssel des gewählten Sprachmodells (`PICASTAI_LLM_PROVIDER`). Werte nicht in die Shell-Historie tippen. Wichtige Punkte:
+Mindestens setzen: `PICASTAI_PUBLIC_BASE_URL`, `PICASTAI_ADMIN_TOKEN`, `PICASTAI_DEVICE_TOKEN`, `OPENAI_API_KEY`, `GEMINI_API_KEY` (Sprachausgabe) und den Schlüssel des gewählten Sprachmodells (`PICASTAI_LLM_PROVIDER`). Werte nicht in die Shell-Historie tippen. Wichtige Punkte:
 
 - `NODE_ENV=production` ist Pflicht. Ohne sind Entwicklungsgeräte mit **bekannten Tokens** aktiv.
 - `PICASTAI_PUBLIC_BASE_URL` bestimmt die `audio_url`. Der Pi lehnt eine Adresse mit anderem Schema oder Host ab. Gleiche Schreibweise wie auf dem Pi (`PICASTAI_API_BASE_URL`).
@@ -62,7 +62,7 @@ sudo systemctl status kunibert-server --no-pager
 curl -fsS http://127.0.0.1:3000/health
 ```
 
-Erwartet: `{"status":"ok", ...}`. Im Journal steht beim Start `Feste Sprechtexte vorbereitet (3 von 3)`; bei `0 von 3` stimmt `OPENAI_API_KEY` oder das Netz nicht. Fehlersuche: `sudo journalctl -u kunibert-server -n 100 --no-pager`. Eine Warnung zu `NODE_ENV` darf **nicht** erscheinen.
+Erwartet: `{"status":"ok", ...}`. Im Journal steht beim Start `Feste Sprechtexte vorbereitet (3 von 3)`; bei `0 von 3` stimmt der Schlüssel der Sprachausgabe (`GEMINI_API_KEY`, bei `PICASTAI_TTS_PROVIDER=openai` der OpenAI-Schlüssel) oder das Netz nicht. Eine Warnung zu einem „wird abgeschaltet“-Modell zeigt, dass noch ein altes OpenAI-Modell eingestellt ist. Fehlersuche: `sudo journalctl -u kunibert-server -n 100 --no-pager`. Eine Warnung zu `NODE_ENV` darf **nicht** erscheinen.
 
 ## 5. Caddy
 

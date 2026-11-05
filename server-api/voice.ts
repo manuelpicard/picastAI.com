@@ -31,25 +31,74 @@ async function readError(response: Response): Promise<string> {
   }
 }
 
+interface PcmWavInfo {
+  formatTag: number;
+  channels: number;
+  sampleRate: number;
+  bitsPerSample: number;
+  dataOffset: number;
+  dataLength: number;
+}
+
+/**
+ * Liest ein WAV chunkweise. Anbieter liefern nicht immer den kanonischen 44-Byte-Kopf
+ * (zusätzliche Chunks, Streaming-Kopf mit Länge 0 oder 0xFFFFFFFF); feste Offsets würden
+ * dann Header-Bytes als Ton lesen.
+ */
+function parsePcmWav(audio: Buffer): PcmWavInfo {
+  if (audio.length < 12 || audio.toString('ascii', 0, 4) !== 'RIFF' || audio.toString('ascii', 8, 12) !== 'WAVE') {
+    throw new VoiceProviderError('TTS-Provider lieferte kein WAV');
+  }
+  let format: Omit<PcmWavInfo, 'dataOffset' | 'dataLength'> | null = null;
+  let offset = 12;
+  while (offset + 8 <= audio.length) {
+    const id = audio.toString('ascii', offset, offset + 4);
+    const size = audio.readUInt32LE(offset + 4);
+    const body = offset + 8;
+    if (id === 'fmt ') {
+      if (size < 16 || body + 16 > audio.length) throw new VoiceProviderError('TTS-Provider lieferte ein WAV mit defektem Formatblock');
+      format = {
+        formatTag: audio.readUInt16LE(body),
+        channels: audio.readUInt16LE(body + 2),
+        sampleRate: audio.readUInt32LE(body + 4),
+        bitsPerSample: audio.readUInt16LE(body + 14),
+      };
+    } else if (id === 'data') {
+      if (!format) throw new VoiceProviderError('TTS-Provider lieferte ein WAV ohne Formatblock');
+      const available = audio.length - body;
+      const dataLength = size === 0 || size === 0xffffffff || size > available ? available : size;
+      return { ...format, dataOffset: body, dataLength };
+    }
+    offset = body + size + (size % 2);
+  }
+  throw new VoiceProviderError('TTS-Provider lieferte ein WAV ohne Audiodaten');
+}
+
 function normalizePcmWav(audio: Buffer, targetRate: number): Buffer {
-  const header = decodeWavHeader(audio);
-  if (header.bitsPerSample !== 16 || (header.channels !== 1 && header.channels !== 2)) {
+  const wav = parsePcmWav(audio);
+  const pcmFormat = wav.formatTag === 1 || wav.formatTag === 0xfffe;
+  if (!pcmFormat || wav.bitsPerSample !== 16 || (wav.channels !== 1 && wav.channels !== 2) || wav.sampleRate <= 0) {
     throw new VoiceProviderError('TTS-Provider lieferte kein unterstütztes PCM-WAV');
   }
-  const dataOffset = 44;
-  const bytesPerFrame = header.channels * 2;
-  const availableFrames = Math.floor(Math.min(header.dataSize, audio.length - dataOffset) / bytesPerFrame);
+  const bytesPerFrame = wav.channels * 2;
+  const availableFrames = Math.floor(wav.dataLength / bytesPerFrame);
   if (availableFrames <= 0) throw new VoiceProviderError('TTS-Provider lieferte ein leeres WAV');
-  if (header.channels === 1 && header.sampleRate === targetRate) return audio;
+
+  if (wav.channels === 1 && wav.sampleRate === targetRate) {
+    const dataBytes = availableFrames * 2;
+    const canonical = wav.dataOffset === 44 && audio.length === 44 + dataBytes && audio.readUInt32LE(40) === dataBytes;
+    // Ein kanonisches WAV geht unverändert durch; sonst mit sauberem Kopf neu verpacken.
+    return canonical ? audio : encodeWav(audio.subarray(wav.dataOffset, wav.dataOffset + dataBytes), targetRate, 1, 16);
+  }
 
   const source = new Int16Array(availableFrames);
   for (let index = 0; index < availableFrames; index++) {
-    const offset = dataOffset + index * bytesPerFrame;
+    const offset = wav.dataOffset + index * bytesPerFrame;
     const left = audio.readInt16LE(offset);
-    const right = header.channels === 2 ? audio.readInt16LE(offset + 2) : left;
+    const right = wav.channels === 2 ? audio.readInt16LE(offset + 2) : left;
     source[index] = Math.round((left + right) / 2);
   }
-  const targetFrames = Math.max(1, Math.round(availableFrames * targetRate / header.sampleRate));
+  const targetFrames = Math.max(1, Math.round(availableFrames * targetRate / wav.sampleRate));
   const pcm = Buffer.alloc(targetFrames * 2);
   for (let index = 0; index < targetFrames; index++) {
     const sourcePosition = index * (availableFrames - 1) / Math.max(1, targetFrames - 1);
@@ -87,7 +136,11 @@ export class OpenAiCompatibleVoiceProvider implements SpeechToTextProvider, Text
     const form = new FormData();
     form.append('file', new Blob([new Uint8Array(wav)], { type: 'audio/wav' }), 'question.wav');
     form.append('model', this.config.sttModel);
-    form.append('language', 'de');
+    // whisper-1 und gpt-4o-*-transcribe kennen "language". Für gpt-transcribe ist der
+    // Parameter nicht dokumentiert (stattdessen Sprachhinweise); ein unbekanntes Feld
+    // könnte die Anfrage ablehnen, daher dort nur der optionale Hinweis-Text.
+    if (!this.config.sttModel.startsWith('gpt-transcribe')) form.append('language', 'de');
+    if (this.config.sttPrompt) form.append('prompt', this.config.sttPrompt);
     form.append('response_format', 'json');
 
     const timeout = withTimeout(this.config.voiceTimeoutMs);
@@ -145,35 +198,102 @@ export class OpenAiCompatibleVoiceProvider implements SpeechToTextProvider, Text
   }
 }
 
+const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com';
+
+/**
+ * Sprachausgabe über die Interactions-API von Gemini (gemini-3.8-flash-tts). Die Antwort
+ * enthält das Audio als Base64-WAV (24 kHz, mono, 16 Bit) und wird auf das Pi-Format
+ * umgerechnet. Die Sprechweise kommt als Anweisung ("style") in natürlicher Sprache.
+ */
+export class GeminiSpeechProvider implements TextToSpeechProvider {
+  constructor(private readonly config: KunibertConfig) {}
+
+  async synthesize(text: string): Promise<Buffer> {
+    if (!this.config.geminiApiKey) throw new VoiceProviderError('TTS-API-Key fehlt');
+    const textItem: Record<string, unknown> = { type: 'text', text: text.slice(0, 12_000) };
+    if (this.config.ttsStyle) textItem.annotations = [{ type: 'speech_metadata', style: this.config.ttsStyle }];
+
+    const timeout = withTimeout(this.config.voiceTimeoutMs);
+    try {
+      const response = await fetch(`${GEMINI_API_BASE}/v1beta/interactions`, {
+        method: 'POST',
+        headers: {
+          'x-goog-api-key': this.config.geminiApiKey,
+          'Content-Type': 'application/json',
+          'User-Agent': 'picastAI-ritter-kunibert/0.1',
+        },
+        body: JSON.stringify({
+          model: this.config.ttsModel,
+          input: [{ type: 'user_input', content: [textItem] }],
+          response_format: { type: 'audio' },
+          generation_config: { speech_config: [{ voice: this.config.ttsVoice }] },
+        }),
+        signal: timeout.signal,
+      });
+      if (!response.ok) {
+        throw new VoiceProviderError(`TTS-Provider antwortete mit HTTP ${response.status}: ${await readError(response)}`, response.status >= 500 || response.status === 429);
+      }
+      let payload: { steps?: Array<{ type?: string; content?: Array<{ type?: string; data?: unknown }> }> };
+      try {
+        payload = await response.json() as typeof payload;
+      } catch {
+        throw new VoiceProviderError('TTS-Provider lieferte keine gültige JSON-Antwort', true);
+      }
+      const chunks = (payload.steps ?? [])
+        .filter((step) => step.type === 'model_output')
+        .flatMap((step) => step.content ?? [])
+        .filter((item) => item.type === 'audio' && typeof item.data === 'string' && item.data.length > 0);
+      // Wie in Googles Beispiel zählt der letzte Audio-Eintrag.
+      const last = chunks[chunks.length - 1];
+      if (!last) throw new VoiceProviderError('TTS-Provider lieferte kein Audio');
+      return normalizePcmWav(Buffer.from(last.data as string, 'base64'), this.config.audioSampleRate);
+    } catch (error) {
+      if (error instanceof VoiceProviderError) throw error;
+      if ((error as Error)?.name === 'AbortError') throw new VoiceProviderError('TTS-Timeout', true);
+      throw new VoiceProviderError(`TTS-Netzwerkfehler: ${(error as Error)?.message || 'unbekannt'}`, true);
+    } finally {
+      timeout.cancel();
+    }
+  }
+}
+
 /** Obergrenze für zwischengespeicherte feste Texte (es gibt nur eine Handvoll). */
 const MAX_FIXED_CACHE_ENTRIES = 16;
 
 export class VoicePipeline {
-  private readonly provider: OpenAiCompatibleVoiceProvider | null;
+  private readonly stt: SpeechToTextProvider | null;
+  private readonly tts: TextToSpeechProvider | null;
   private readonly fixedCache = new Map<string, Promise<Buffer>>();
 
-  constructor(private readonly config: KunibertConfig) {
-    this.provider = config.openaiApiKey && config.voiceProvider === 'openai'
+  constructor(config: KunibertConfig) {
+    this.stt = config.openaiApiKey && config.sttProvider === 'openai'
       ? new OpenAiCompatibleVoiceProvider(config)
       : null;
+    if (config.ttsProvider === 'gemini' && config.geminiApiKey) {
+      this.tts = new GeminiSpeechProvider(config);
+    } else if (config.ttsProvider === 'openai' && config.openaiApiKey) {
+      this.tts = new OpenAiCompatibleVoiceProvider(config);
+    } else {
+      this.tts = null;
+    }
   }
 
   get sttConfigured(): boolean {
-    return Boolean(this.provider);
+    return Boolean(this.stt);
   }
 
   get ttsConfigured(): boolean {
-    return Boolean(this.provider);
+    return Boolean(this.tts);
   }
 
   async transcribe(wav: Buffer): Promise<string> {
-    if (!this.provider) throw new VoiceProviderError('Kein STT-Provider konfiguriert');
-    return this.provider.transcribe(wav);
+    if (!this.stt) throw new VoiceProviderError('Kein STT-Provider konfiguriert');
+    return this.stt.transcribe(wav);
   }
 
   async synthesize(text: string): Promise<Buffer> {
-    if (!this.provider) throw new VoiceProviderError('Kein TTS-Provider konfiguriert');
-    return this.provider.synthesize(text);
+    if (!this.tts) throw new VoiceProviderError('Kein TTS-Provider konfiguriert');
+    return this.tts.synthesize(text);
   }
 
   /**
