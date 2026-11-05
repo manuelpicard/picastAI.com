@@ -12,6 +12,7 @@ import { isAdminTokenConfigured, verifyAdminAuthorization } from './server-api/a
 import { VoicePipeline, VoiceProviderError } from './server-api/voice.js';
 import { FirestoreDeviceStore } from './server-api/firestore-service.js';
 import { buildAudioUrl } from './server-api/http-utils.js';
+import { ERROR_RESPONSE_DE, SAFETY_RESPONSE_DE, UNCLEAR_RESPONSE_DE } from './server-api/safety.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -139,7 +140,12 @@ async function synthesizeIfConfigured(result: Awaited<ReturnType<Brain['handle']
   // VoiceProviderError (HTTP 503 bzw. 502 durch die Routen). So wird der
   // Pi-Client zum Wiederholen veranlasst, und der Story-State rückt nicht vor,
   // weil er erst nach erfolgreicher Synthese gespeichert wird.
-  result.wav = await voice.synthesize(result.speech);
+  // Feste Texte (Sicherheitshinweis, "nicht verstanden", Fehlerhinweis) kommen nach dem
+  // ersten Mal aus dem Speicher: schneller, billiger, und der Sicherheitshinweis bleibt
+  // auch bei einem Anbieter-Ausfall hörbar, wenn er vorher aufgewärmt wurde.
+  result.wav = result.fixed
+    ? await voice.synthesizeCached(result.speech)
+    : await voice.synthesize(result.speech);
   return result;
 }
 
@@ -465,6 +471,13 @@ async function startServer() {
 
   app.listen(PORT, HOST, () => {
     console.log(`🏰 Ritter Kunibert Server läuft auf http://${HOST}:${PORT}`);
+    // Feste Sprechtexte vorab synthetisieren (Produktion), damit der Sicherheitshinweis
+    // schon beim ersten Kind ohne Wartezeit und ohne Anbieter-Anfrage gesprochen wird.
+    if (isProd && voice.ttsConfigured) {
+      void voice
+        .warmUp([SAFETY_RESPONSE_DE, UNCLEAR_RESPONSE_DE, ERROR_RESPONSE_DE])
+        .then((count) => console.log(`Feste Sprechtexte vorbereitet (${count} von 3).`));
+    }
   });
 }
 
