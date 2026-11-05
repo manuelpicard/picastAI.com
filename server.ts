@@ -80,6 +80,17 @@ function authenticate(req: Request): string {
   return deviceId;
 }
 
+// Meldet das Gerät an, bevor ein Upload geparst wird: unbekannte Absender sollen keine
+// 2-MB-Dateien in den Arbeitsspeicher laden können.
+function requireDevice(req: Request, res: Response, next: NextFunction): void {
+  try {
+    res.locals.deviceId = authenticate(req);
+    next();
+  } catch {
+    res.status(401).json({ error: 'unauthorized' });
+  }
+}
+
 function requireAdminAuth(req: Request, res: Response, next: NextFunction): void {
   if (!isAdminTokenConfigured(config.adminToken)) {
     res.status(503).json({ error: 'admin_auth_not_configured' });
@@ -155,14 +166,10 @@ async function synthesizeIfConfigured(result: Awaited<ReturnType<Brain['handle']
 
 app.post(
   '/v1/device/question',
+  requireDevice,
   upload.single('audio'),
   async (req: Request, res: Response): Promise<any> => {
-    let deviceId: string;
-    try {
-      deviceId = authenticate(req);
-    } catch {
-      return res.status(401).json({ error: 'unauthorized' });
-    }
+    const deviceId = res.locals.deviceId as string;
 
     if (!limiter.allow(deviceId)) {
       return res.status(429).json({ error: 'rate_limited' });
@@ -261,15 +268,11 @@ app.get('/v1/device/audio/:turn_id', (req: Request, res: Response): any => {
 // POST /v1/turn
 app.post(
   '/v1/turn',
+  requireDevice,
   upload.single('audio'),
   async (req: Request, res: Response, next: NextFunction): Promise<any> => {
     try {
-      let deviceId: string;
-      try {
-        deviceId = authenticate(req);
-      } catch (authErr) {
-        return res.status(401).json({ error: 'unauthorized' });
-      }
+      const deviceId = res.locals.deviceId as string;
 
       const mode = req.body.mode;
       if (!['frage', 'geschichte', 'weiter'].includes(mode)) {
