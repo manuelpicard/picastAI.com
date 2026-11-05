@@ -11,6 +11,8 @@ import { config, getSafeConfigSummary } from './server-api/config.js';
 import { isAdminTokenConfigured, verifyAdminAuthorization } from './server-api/admin-auth.js';
 import { VoicePipeline, VoiceProviderError } from './server-api/voice.js';
 import { FirestoreDeviceStore } from './server-api/firestore-service.js';
+import { buildAudioUrl } from './server-api/http-utils.js';
+import { ERROR_RESPONSE_DE, SAFETY_RESPONSE_DE, UNCLEAR_RESPONSE_DE } from './server-api/safety.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -18,6 +20,11 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = config.port;
 const HOST = config.host;
+
+// Keine Framework-Kennung in den Antworten; hinter einem TLS-beendenden Proxy
+// erkennt der Server https nur, wenn PICASTAI_TRUST_PROXY gesetzt ist.
+app.disable('x-powered-by');
+if (config.trustProxy) app.set('trust proxy', config.trustProxy);
 
 // Geräteliste: flüchtig im RAM (Standard) oder dauerhaft in Firestore
 // (PICASTAI_DEVICE_STORE=firestore). Rate-Limit, Audio und Story-State bleiben flüchtig.
@@ -73,6 +80,17 @@ function authenticate(req: Request): string {
   return deviceId;
 }
 
+// Meldet das Gerät an, bevor ein Upload geparst wird: unbekannte Absender sollen keine
+// 2-MB-Dateien in den Arbeitsspeicher laden können.
+function requireDevice(req: Request, res: Response, next: NextFunction): void {
+  try {
+    res.locals.deviceId = authenticate(req);
+    next();
+  } catch {
+    res.status(401).json({ error: 'unauthorized' });
+  }
+}
+
 function requireAdminAuth(req: Request, res: Response, next: NextFunction): void {
   if (!isAdminTokenConfigured(config.adminToken)) {
     res.status(503).json({ error: 'admin_auth_not_configured' });
@@ -91,7 +109,12 @@ app.get('/health', (_req: Request, res: Response) => {
 });
 
 function deviceAudioUrl(req: Request, turnId: string): string {
-  return `${req.protocol}://${req.get('host')}/v1/device/audio/${encodeURIComponent(turnId)}`;
+  // Der Pi-Client akzeptiert nur eine audio_url mit gleichem Schema und Host wie seine
+  // API-Adresse. Hinter einem Proxy liefert req.protocol ohne trust proxy "http".
+  return buildAudioUrl(
+    { publicBaseUrl: config.publicBaseUrl, protocol: req.protocol, host: req.get('host') },
+    turnId
+  );
 }
 
 function deviceResponse(
@@ -111,16 +134,6 @@ function deviceResponse(
   return { body, turnId };
 }
 
-function normalizeDeviceLocale(value: unknown): string {
-  const locale = String(value || 'de-DE').trim();
-  return locale === 'de-DE' ? locale : 'de-DE';
-}
-
-function normalizeAgeBand(value: unknown): string {
-  const ageBand = String(value || '6-10').trim();
-  return /^(6-10|6–10)$/.test(ageBand) ? '6-10' : '6-10';
-}
-
 function rememberDeviceStoryState(deviceId: string, state: StoryState): void {
   // Nur der kleine Story-State bleibt im RAM; Audio und Diagnosetexte werden
   // nicht zusätzlich in dieser Session-Map gespeichert.
@@ -138,7 +151,12 @@ async function synthesizeIfConfigured(result: Awaited<ReturnType<Brain['handle']
   // VoiceProviderError (HTTP 503 bzw. 502 durch die Routen). So wird der
   // Pi-Client zum Wiederholen veranlasst, und der Story-State rückt nicht vor,
   // weil er erst nach erfolgreicher Synthese gespeichert wird.
-  result.wav = await voice.synthesize(result.speech);
+  // Feste Texte (Sicherheitshinweis, "nicht verstanden", Fehlerhinweis) kommen nach dem
+  // ersten Mal aus dem Speicher: schneller, billiger, und der Sicherheitshinweis bleibt
+  // auch bei einem Anbieter-Ausfall hörbar, wenn er vorher aufgewärmt wurde.
+  result.wav = result.fixed
+    ? await voice.synthesizeCached(result.speech)
+    : await voice.synthesize(result.speech);
   return result;
 }
 
@@ -148,14 +166,10 @@ async function synthesizeIfConfigured(result: Awaited<ReturnType<Brain['handle']
 
 app.post(
   '/v1/device/question',
+  requireDevice,
   upload.single('audio'),
   async (req: Request, res: Response): Promise<any> => {
-    let deviceId: string;
-    try {
-      deviceId = authenticate(req);
-    } catch {
-      return res.status(401).json({ error: 'unauthorized' });
-    }
+    const deviceId = res.locals.deviceId as string;
 
     if (!limiter.allow(deviceId)) {
       return res.status(429).json({ error: 'rate_limited' });
@@ -203,8 +217,8 @@ app.post(
       return res.status(429).json({ error: 'rate_limited' });
     }
 
-    const locale = normalizeDeviceLocale(req.body?.locale);
-    const ageBand = normalizeAgeBand(req.body?.age_band);
+    // locale und age_band nimmt der Vertrag entgegen, derzeit gilt aber nur de-DE und
+    // die serverseitig konfigurierte Altersgruppe (KUNIBERT_AGE).
     const requestedLength = String(req.body?.length || 'short');
     if (requestedLength !== 'short') {
       return res.status(400).json({ error: 'unsupported_length' });
@@ -212,8 +226,11 @@ app.post(
 
     try {
       const state = deviceStoryStates.get(deviceId) || {};
-      const wish = `${locale} ${ageBand}`;
-      const result = await synthesizeIfConfigured(await brain.handle('geschichte', wish, state));
+      // Die Erzähltaste setzt eine laufende Folge fort ("Drück noch einmal die
+      // Erzähltaste") und beginnt nur dann eine neue, wenn keine läuft. Mit Modus
+      // "geschichte" begänne jeder Druck wieder bei Teil 1. Einen Kinderwunsch gibt
+      // es hier nicht: die Taste trägt keinen Text.
+      const result = await synthesizeIfConfigured(await brain.handle('weiter', '', state));
       rememberDeviceStoryState(deviceId, result.story_state);
       const response = deviceResponse(req, deviceId, result, 'kunibert_story');
       return res.json(response.body);
@@ -251,15 +268,11 @@ app.get('/v1/device/audio/:turn_id', (req: Request, res: Response): any => {
 // POST /v1/turn
 app.post(
   '/v1/turn',
+  requireDevice,
   upload.single('audio'),
   async (req: Request, res: Response, next: NextFunction): Promise<any> => {
     try {
-      let deviceId: string;
-      try {
-        deviceId = authenticate(req);
-      } catch (authErr) {
-        return res.status(401).json({ error: 'unauthorized' });
-      }
+      const deviceId = res.locals.deviceId as string;
 
       const mode = req.body.mode;
       if (!['frage', 'geschichte', 'weiter'].includes(mode)) {
@@ -321,7 +334,8 @@ app.post(
       if (err instanceof VoiceProviderError) {
         return res.status(err.retryable ? 503 : 502).json({ error: 'voice_provider_failed', retryable: err.retryable });
       }
-      return res.status(500).json({ error: 'internal_error', detail: err.message });
+      // Keine Fehlertexte nach außen (können Provider-Antworten und Interna enthalten).
+      return res.status(500).json({ error: 'internal_error' });
     }
   }
 );
@@ -399,11 +413,49 @@ app.get('/api/status', requireAdminAuth, (req: Request, res: Response) => {
 });
 
 // ------------------------------------------------------------
+// Fehlerbehandlung: Upload- und JSON-Fehler als JSON-Antwort mit passendem Status
+// ------------------------------------------------------------
+
+// Ohne diese Weiche antwortet Express auf zu große Uploads mit HTTP 500 (und in der
+// Entwicklung mit Stacktrace). Der Pi-Client wiederholt 5xx, behandelt 400/413 aber
+// als endgültig abgelehnt.
+app.use((err: any, _req: Request, res: Response, next: NextFunction): any => {
+  if (res.headersSent) return next(err);
+  if (err instanceof multer.MulterError) {
+    const tooLarge = err.code === 'LIMIT_FILE_SIZE';
+    return res.status(tooLarge ? 413 : 400).json({ error: tooLarge ? 'audio_too_large' : 'bad_upload' });
+  }
+  if (err?.type === 'entity.too.large') {
+    return res.status(413).json({ error: 'payload_too_large' });
+  }
+  if (err?.type === 'entity.parse.failed') {
+    return res.status(400).json({ error: 'bad_json' });
+  }
+  // Fehler von Express und Middleware mit eigenem Clientstatus (zum Beispiel ein
+  // ungültig kodierter Pfad wie /v1/device/audio/%zz, URIError mit Status 400)
+  // bleiben 4xx. Als 500 würde der Pi-Client sie wiederholen.
+  const status = Number(err?.status ?? err?.statusCode);
+  if (Number.isInteger(status) && status >= 400 && status < 500) {
+    return res.status(status).json({ error: 'bad_request' });
+  }
+  console.error('Unbehandelter Fehler:', err);
+  return res.status(500).json({ error: 'internal_error' });
+});
+
+// ------------------------------------------------------------
 // Vite Dev Server / Static File Serving
 // ------------------------------------------------------------
 
 async function startServer() {
   const isProd = process.env.NODE_ENV === 'production';
+
+  if (!isProd) {
+    console.warn(
+      'Hinweis: NODE_ENV ist nicht "production". Entwicklungsgeräte mit bekannten Tokens ' +
+      '(prototype-1, simulator-web) und der Vite-Entwicklungsserver sind aktiv. ' +
+      'Für den echten Betrieb NODE_ENV=production setzen (und vorher npm run build ausführen).'
+    );
+  }
 
   // Fail-closed: Ist ein dauerhafter Store konfiguriert, aber nicht lesbar,
   // starten wir nicht. Sonst wären widerrufene Geräte wieder gültig.
@@ -429,6 +481,13 @@ async function startServer() {
 
   app.listen(PORT, HOST, () => {
     console.log(`🏰 Ritter Kunibert Server läuft auf http://${HOST}:${PORT}`);
+    // Feste Sprechtexte vorab synthetisieren (Produktion), damit der Sicherheitshinweis
+    // schon beim ersten Kind ohne Wartezeit und ohne Anbieter-Anfrage gesprochen wird.
+    if (isProd && voice.ttsConfigured) {
+      void voice
+        .warmUp([SAFETY_RESPONSE_DE, UNCLEAR_RESPONSE_DE, ERROR_RESPONSE_DE])
+        .then((count) => console.log(`Feste Sprechtexte vorbereitet (${count} von 3).`));
+    }
   });
 }
 

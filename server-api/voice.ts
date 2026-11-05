@@ -59,7 +59,9 @@ function normalizePcmWav(audio: Buffer, targetRate: number): Buffer {
     const sample = Math.round(source[lower] * (1 - fraction) + source[upper] * fraction);
     pcm.writeInt16LE(Math.max(-32768, Math.min(32767, sample)), index * 2);
   }
-  return encodeWav(pcm, targetRate, 1, 2);
+  // Vierter Parameter: Bits pro Sample (16), nicht Bytes. Mit 2 entstand ein kaputter
+  // Header (Bittiefe 2), den der Pi-Client als unerwartete Bittiefe ablehnt.
+  return encodeWav(pcm, targetRate, 1, 16);
 }
 
 export class OpenAiCompatibleVoiceProvider implements SpeechToTextProvider, TextToSpeechProvider {
@@ -143,8 +145,12 @@ export class OpenAiCompatibleVoiceProvider implements SpeechToTextProvider, Text
   }
 }
 
+/** Obergrenze für zwischengespeicherte feste Texte (es gibt nur eine Handvoll). */
+const MAX_FIXED_CACHE_ENTRIES = 16;
+
 export class VoicePipeline {
   private readonly provider: OpenAiCompatibleVoiceProvider | null;
+  private readonly fixedCache = new Map<string, Promise<Buffer>>();
 
   constructor(private readonly config: KunibertConfig) {
     this.provider = config.openaiApiKey && config.voiceProvider === 'openai'
@@ -168,5 +174,40 @@ export class VoicePipeline {
   async synthesize(text: string): Promise<Buffer> {
     if (!this.provider) throw new VoiceProviderError('Kein TTS-Provider konfiguriert');
     return this.provider.synthesize(text);
+  }
+
+  /**
+   * Für feste Sprechtexte (Sicherheitshinweis, "nicht verstanden", Fehlerhinweis):
+   * Derselbe Text ergibt dieselbe Sprachausgabe. Der erste Abruf synthetisiert, danach
+   * kommt das WAV aus dem Speicher. Das spart Kosten und Wartezeit, und der
+   * Sicherheitshinweis bleibt nach dem Aufwärmen auch bei einem Ausfall des Anbieters
+   * hörbar. Gleichzeitige Abrufe teilen sich eine Anfrage, Fehler werden nicht
+   * gespeichert. Das zurückgegebene Buffer-Objekt darf nicht verändert werden.
+   */
+  synthesizeCached(text: string): Promise<Buffer> {
+    const cached = this.fixedCache.get(text);
+    if (cached) return cached;
+    const pending = this.synthesize(text);
+    if (this.fixedCache.size < MAX_FIXED_CACHE_ENTRIES) {
+      this.fixedCache.set(text, pending);
+      pending.catch(() => {
+        if (this.fixedCache.get(text) === pending) this.fixedCache.delete(text);
+      });
+    }
+    return pending;
+  }
+
+  /** Füllt den Cache vor dem ersten Kontakt mit einem Kind. Fehler sind unkritisch; Rückgabe: Anzahl der Erfolge. */
+  async warmUp(texts: string[]): Promise<number> {
+    let succeeded = 0;
+    for (const text of texts) {
+      try {
+        await this.synthesizeCached(text);
+        succeeded++;
+      } catch (error) {
+        console.warn('Aufwärmen der festen Sprechtexte fehlgeschlagen:', (error as Error)?.message || error);
+      }
+    }
+    return succeeded;
   }
 }

@@ -62,6 +62,8 @@ Authentifizierung wie oben, JSON-Body:
 }
 ```
 
+Jeder Aufruf erzählt den **nächsten Teil der laufenden Folge** (eine Folge hat standardmäßig fünf Teile, `KUNIBERT_PARTS_PER_EPISODE`) und beginnt nur dann eine neue Folge, wenn keine läuft oder die letzte beendet wurde. So passt es zum Satz am Ende jedes Teils: „Wenn du wissen willst, wie es weitergeht, drück noch einmal die Erzähltaste.“ `session_end` ist `true`, sobald der letzte Teil einer Folge gesprochen wurde. `locale` und `age_band` nimmt der Vertrag entgegen; es gilt derzeit de-DE und die serverseitig konfigurierte Altersgruppe (`KUNIBERT_AGE`). Einen Kinderwunsch trägt die Taste nicht; Wünsche äußert das Kind über die Sprechtaste („Erzähl mir eine Geschichte mit einem Einhorn“).
+
 Die Story-Session wird für die Gerät-ID ausschließlich flüchtig im RAM gehalten. Turntexte und Storyzustände werden von den Geräte- und Turn-Endpunkten nicht in Firestore gespeichert. Nach einem Serverneustart beginnt die Story-Session neu. Die Antwort enthält eine kurzlebige Audio-URL:
 
 ```json
@@ -77,6 +79,27 @@ Die Story-Session wird für die Gerät-ID ausschließlich flüchtig im RAM gehal
 
 Erfordert wieder dieselben `Authorization`- und `X-Device-ID`-Header. Die WAV-Datei wird aus dem flüchtigen AudioStore geliefert und danach einmalig gelöscht. Die URL läuft ab, sobald die konfigurierte TTL erreicht ist.
 
+## Fehlerantworten
+
+| Status | Body | Bedeutung für den Client |
+| --- | --- | --- |
+| 400 | `bad_audio`, `unsupported_audio_format`, `audio_required`, `bad_upload`, `bad_json`, `unsupported_length`, `bad_request` (z. B. ungültig kodierter Pfad) | Anfrage fehlerhaft, nicht wiederholen |
+| 401 | `unauthorized` | Gerät unbekannt, widerrufen oder Token falsch |
+| 413 | `audio_too_large`, `payload_too_large` | Aufnahme über 2 MB, nicht wiederholen |
+| 429 | `rate_limited` | Rate-Limit pro Gerät erreicht |
+| 503 | `voice_provider_failed` mit `retryable: true` | Sprachdienst vorübergehend gestört, Wiederholen sinnvoll; der Story-Zustand rückt nicht vor |
+| 502 | `voice_provider_failed` mit `retryable: false` | Sprachdienst dauerhaft fehlerhaft (z. B. ungültiger Schlüssel); der Pi-Client wiederholt nicht |
+| 500 | `internal_error` | Unerwarteter Fehler, ohne Fehlertext nach außen |
+
+## Betrieb hinter einem Proxy
+
+Terminiert ein Reverse Proxy (nginx, Caddy, Cloud Run) das HTTPS, sieht der Node-Server nur `http` und den Host des Proxys. Die `audio_url` in der Antwort würde dann mit `http://` oder einem internen Host beginnen, und der Pi-Client lehnt sie ab, weil Schema und Host nicht zu seiner API-Adresse passen. Zwei Wege:
+
+- **`PICASTAI_PUBLIC_BASE_URL=https://kunibert.example`** (empfohlen): Der Server baut die `audio_url` aus diesem Ursprung, unabhängig von Headern. Pfad, Query und Zugangsdaten sind nicht erlaubt; Schreibweise und Port übernimmt der Server, wie sie dort stehen. Der Pi-Client vergleicht Schema, Host (ohne Beachtung der Groß-/Kleinschreibung) und effektiven Port, sodass `https://picastAI.com` und `https://picastai.com:443` als derselbe Ursprung gelten.
+- **`PICASTAI_TRUST_PROXY=1`** (Anzahl der Proxy-Hops, oder `true`/`loopback`): Der Server glaubt `X-Forwarded-Proto`. Der Proxy muss dann den Host-Header mit durchreichen (nginx: `proxy_set_header Host $host;`).
+
+Für den echten Betrieb außerdem `NODE_ENV=production` setzen (und vorher `npm run build` ausführen). Ohne diese Einstellung sind Entwicklungsgeräte mit bekannten Tokens aktiv; der Server warnt beim Start.
+
 ## Konfiguration
 
 In `.env` oder der vom Prozess geladenen Umgebung:
@@ -84,12 +107,15 @@ In `.env` oder der vom Prozess geladenen Umgebung:
 ```ini
 PORT=3000
 HOST=0.0.0.0
+PICASTAI_PUBLIC_BASE_URL=https://dein-exakter-host.example
 PICASTAI_ADMIN_TOKEN=<mindestens-32-zufaellige-Zeichen>
 PICASTAI_CORS_ORIGINS=https://dein-exakter-frontend-host.example
 PICASTAI_DEVICE_ID=prototype-001
 PICASTAI_DEVICE_TOKEN=ein-langer-nicht-oeffentlicher-token
 PICASTAI_DEVICE_NAME=picastAI Raspberry-Pi-Prototyp
 KUNIBERT_DIAGNOSTIC_TEXT=0
+# Sprachmodell für Antworten und Geschichten (Gemini oder Claude): docs/LLM-Anbieter.md
+PICASTAI_LLM_PROVIDER=
 OPENAI_BASE_URL=https://api.openai.com/v1
 PICASTAI_VOICE_PROVIDER=openai
 PICASTAI_STT_MODEL=whisper-1
@@ -145,6 +171,7 @@ Die `audio_url` aus der Antwort mit denselben Authentifizierungsheadern abrufen.
 ## Sicherheitsgrenzen des Prototyps
 
 - Rate-Limit pro Gerät: standardmäßig 30 Anfragen pro 10 Minuten.
+- Feste Sprechtexte (Sicherheitshinweis, „nicht verstanden“, Fehlerhinweis) werden nach der ersten Synthese im Speicher gehalten und in Produktion beim Start vorbereitet. Gespeichert werden nur diese festen Texte, nie Äußerungen von Kindern.
 - Audio nur im flüchtigen RAM, TTL standardmäßig 120 Sekunden.
 - Audio-URL benötigt erneut Geräteauthentifizierung.
 - Story-State, Rate-Limit und Audio sind im Prozessspeicher, nicht hochverfügbar. Die Geräteliste ist es nur ohne `PICASTAI_DEVICE_STORE=firestore`.

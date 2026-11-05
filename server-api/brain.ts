@@ -15,7 +15,7 @@ import {
   UNCLEAR_RESPONSE_DE,
 } from './safety.js';
 import { generateMelodyWav, generateToneWav } from './audio.js';
-import { config } from './config.js';
+import { config, type KunibertConfig } from './config.js';
 
 export interface StoryState {
   v: number;
@@ -35,6 +35,44 @@ export interface TurnResult {
   story_state: StoryState;
   fixed?: string;
   wav?: Buffer;
+}
+
+/** Längste Äußerung, die ins Sprachmodell geht (Kosten- und Missbrauchsgrenze; die Spracherkennung liefert höchstens 1000 Zeichen). */
+export const MAX_UTTERANCE_CHARS = 1000;
+
+/**
+ * Macht fremden Text prompt-tauglich: Steuerzeichen und Zeilenumbrüche werden zu
+ * Leerzeichen, die Anführungszeichen « », mit denen der Prompt Kinderäußerungen
+ * einrahmt, werden entschärft, und die Länge ist begrenzt.
+ */
+export function cleanText(text: unknown, maxChars: number): string {
+  return String(text ?? '')
+    .replace(/[\u0000-\u001f\u007f-\u009f]+/g, ' ')
+    .replace(/[«»]/g, '"')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, maxChars);
+}
+
+const WISH_FILLER = new Set([
+  'bitte', 'erzähl', 'erzähle', 'erzählst', 'erzählt', 'mir', 'mal', 'doch', 'noch', 'gerne', 'gern',
+  'ich', 'will', 'möchte', 'möchten', 'kannst', 'kann', 'du', 'hören', 'höre', 'wir',
+  'eine', 'ein', 'einen', 'einem', 'einer', 'der', 'die', 'das', 'dem', 'den', 'des',
+  'geschichte', 'geschichten', 'märchen', 'neue', 'neues', 'neuen', 'andere', 'weitere',
+  'von', 'vom', 'über', 'mit', 'und', 'zum', 'zur', 'im', 'in', 'auf', 'ritter', 'kunibert',
+]);
+
+/**
+ * Das Stichwort aus einem Geschichtenwunsch für den Notfall-Erzähler ohne Sprachmodell:
+ * höchstens drei Wörter, ohne Füllwörter, und nur wenn der Ausgabe-Check es erlaubt.
+ */
+export function extractWishKeyword(wish: string): string {
+  const words = cleanText(wish, 200)
+    .split(' ')
+    .map((word) => word.replace(/^[^a-zA-ZäöüÄÖÜß]+|[^a-zA-ZäöüÄÖÜß]+$/g, ''))
+    .filter((word) => word && !WISH_FILLER.has(word.toLowerCase()));
+  const keyword = words.slice(0, 3).join(' ');
+  return keyword && !screenOutput(keyword, 'story') ? keyword : '';
 }
 
 export function cleanState(raw: any): StoryState {
@@ -59,10 +97,10 @@ export function cleanState(raw: any): StoryState {
     ep: Math.max(1, Math.min(10000, ep)),
     part: Math.max(0, Math.min(50, part)),
     target,
-    seed: String(raw.seed || '').slice(0, 200),
-    summary: String(raw.summary || '').slice(0, 700),
-    threads: String(raw.threads || '').slice(0, 400),
-    hook: String(raw.hook || '').slice(0, 300),
+    seed: cleanText(raw.seed, 200),
+    summary: cleanText(raw.summary, 700),
+    threads: cleanText(raw.threads, 400),
+    hook: cleanText(raw.hook, 300),
     done: Boolean(raw.done),
   };
 }
@@ -100,15 +138,26 @@ export const STORY_SCHEMA: JsonSchema = {
   required: ['text', 'summary', 'open_threads', 'next_hook', 'episode_finished'],
 };
 
-export class Brain {
-  private age = config.ageBracket;
-  private partsPerEpisode = config.partsPerEpisode;
-  private storyMinWords = config.storyMinWords;
-  private storyMaxWords = config.storyMaxWords;
-  private answerMaxWords = config.answerMaxWords;
+export type BrainSettings = Pick<KunibertConfig, 'ageBracket' | 'partsPerEpisode' | 'storyMinWords' | 'storyMaxWords' | 'answerMaxWords'>;
 
-  /** Ohne Anbieter (kein Key) greifen die festen Fallback-Texte. */
-  constructor(private readonly llm: LlmProvider | null = createLlmProvider(config)) {}
+export class Brain {
+  private readonly age: string;
+  private readonly partsPerEpisode: number;
+  private readonly storyMinWords: number;
+  private readonly storyMaxWords: number;
+  private readonly answerMaxWords: number;
+
+  /**
+   * Ohne Anbieter (kein Key) greifen die festen Fallback-Texte. Die Einstellungen
+   * (Altersgruppe, Teile pro Folge, Wortgrenzen) kommen standardmäßig aus der Konfiguration.
+   */
+  constructor(private readonly llm: LlmProvider | null = createLlmProvider(config), settings: Partial<BrainSettings> = {}) {
+    this.age = settings.ageBracket ?? config.ageBracket;
+    this.partsPerEpisode = settings.partsPerEpisode ?? config.partsPerEpisode;
+    this.storyMinWords = settings.storyMinWords ?? config.storyMinWords;
+    this.storyMaxWords = settings.storyMaxWords ?? config.storyMaxWords;
+    this.answerMaxWords = settings.answerMaxWords ?? config.answerMaxWords;
+  }
 
   /** Für Statusanzeige und Logs, z. B. "gemini:gemini-3.8-flash". */
   public get llmName(): string {
@@ -121,7 +170,7 @@ export class Brain {
     rawState: any
   ): Promise<TurnResult> {
     const state = cleanState(rawState);
-    const transcript = (rawTranscript || '').trim();
+    const transcript = cleanText(rawTranscript, MAX_UTTERANCE_CHARS);
 
     // 1. Deterministische Sicherheitsweiche
     if (transcript && screen(transcript)) {
@@ -172,7 +221,7 @@ export class Brain {
     // Wenn ein Sprachmodell konfiguriert ist, befragen
     if (this.llm) {
       try {
-        const systemPrompt = ANSWER_SYSTEM(this.age, 80);
+        const systemPrompt = ANSWER_SYSTEM(this.age, this.answerMaxWords);
         const userPrompt = `Läuft gerade eine Kunibert-Geschichte: ${storyActive(state) ? 'ja' : 'nein'}\nErkannte Äußerung des Kindes: «${transcript}»`;
 
         const parsed = await this.llm.generateJson({
@@ -197,7 +246,7 @@ export class Brain {
           return await this.handleStory(!storyActive(state), state, '');
         }
         if (parsed.category === 'frage' && parsed.speech) {
-          const speech = trimWords(parsed.speech, 100);
+          const speech = trimWords(parsed.speech, this.answerMaxWords + 20);
           // Ausgabe-Check: bei Treffer greift der Fallback unten (catch-Pfad).
           if (screenOutput(speech, 'answer')) {
             throw new Error('Antwort des Sprachmodells durch Ausgabe-Check abgelehnt');
@@ -308,7 +357,7 @@ export class Brain {
             : `Bisher: ${current.summary}\nOffene Fäden: ${current.threads || 'keine'}\nAnknüpfen an: ${current.hook}`;
         const wishLine = wish && part === 1 ? `Wunsch des Kindes: «${wish.slice(0, 200)}»` : '';
 
-        const userPrompt = `Erzähle jetzt ${partLabel}.\nLänge: 170 bis 230 Wörter.\n${PHASE_HINTS[phase]}\n${continuity}\n${wishLine}\nAntworte strikt im JSON-Format.`;
+        const userPrompt = `Erzähle jetzt ${partLabel}.\nLänge: ${this.storyMinWords} bis ${this.storyMaxWords} Wörter.\n${PHASE_HINTS[phase]}\n${continuity}\n${wishLine}\nAntworte strikt im JSON-Format.`;
 
         const parsed = await this.llm.generateJson({
           system: systemPrompt,
@@ -317,7 +366,7 @@ export class Brain {
           schema: STORY_SCHEMA,
           maxOutputTokens: 1500,
         }) as { text?: string; summary?: string; open_threads?: string; next_hook?: string; episode_finished?: boolean };
-        const text = trimWords(String(parsed.text || ''), 280);
+        const text = trimWords(String(parsed.text || ''), this.storyMaxWords + 50);
         // Ausgabe-Check: bei Treffer greift der Fallback unten (catch-Pfad).
         if (!text || screenOutput(text, 'story')) {
           throw new Error('Geschichte des Sprachmodells durch Ausgabe-Check abgelehnt');
@@ -368,7 +417,7 @@ export class Brain {
 
     const part = current.part + 1;
     const target = current.target;
-    const wishKeyword = wish ? wish.replace(/erzähl.*mit|bitte|geschichte/gi, '').trim() : '';
+    const wishKeyword = extractWishKeyword(wish);
 
     let text = '';
     let summary = '';
@@ -388,10 +437,10 @@ export class Brain {
         `Holpernd rumpelten die Holzräder über das grobe Pflaster. Kunibert bot Münzen an, doch der Kutscher winkte ab. ` +
         `Am Rande des düsteren Waldes stieg Kunibert dankend ab. ` +
         (wishKeyword
-          ? `Zwischen den hohen Tannen sah er plötzlich eine geheimnisvolle Spur – es schien mit einem ${wishKeyword} zu tun zu haben.`
+          ? `Zwischen den hohen Tannen sah er plötzlich eine geheimnisvolle Spur – sie schien etwas mit „${wishKeyword}“ zu tun zu haben.`
           : `Ein leiser Wind raschelte durch das Moos, und etwas silbern Schimmerndes lockte ihn tiefer zwischen die Bäume.`);
       summary = `Kunibert ist im Gasthaus aufgebrochen, mit dem Kutscher zur Brücke gefahren und steht am Waldrand.`;
-      threads = wishKeyword ? `Die Spur von ${wishKeyword} im Wald ergründen.` : `Das Geheimnis im Wald erkunden.`;
+      threads = wishKeyword ? `Die Spur zu „${wishKeyword}“ im Wald ergründen.` : `Das Geheimnis im Wald erkunden.`;
       hook = `Kunibert betritt den Pfad der geheimnisvollen Hexe.`;
     } else if (part === 2) {
       text =

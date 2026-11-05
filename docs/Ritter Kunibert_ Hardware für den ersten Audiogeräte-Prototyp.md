@@ -1,5 +1,7 @@
 # Ritter Kunibert: Hardware für den ersten Audiogeräte-Prototyp
 
+> **Aktualisierung (November 2026):** Dieses Dokument ist die ursprüngliche Planung von Anfang Oktober. Der inzwischen implementierte Client (`pi-client/`, `pi-client/install_raspberry_pi.sh`) zielt auf den **Raspberry Pi Zero 2 W**, nicht auf den hier empfohlenen Pi 5. Welche Plattform für den ersten Aufbau gilt, ist eine offene Entscheidung des Projekts. Die Plattform heißt inzwischen **picastAI.com**; der Dienst ist in diesem Repository als Node-Server umgesetzt (`docs/picastAI-Pi-API.md`).
+
 **Stand: 2. Oktober 2026.** Empfehlung für einen **Tisch-Prototypen**, noch nicht für ein unbeaufsichtigt von Kindern genutztes Produkt. Das Kind braucht keinen Bildschirm; ein Computer/Telefon wird zunächst nur für Einrichtung und Entwicklung verwendet.
 
 ## Empfohlene Stückliste (Version 1)

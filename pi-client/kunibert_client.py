@@ -129,6 +129,33 @@ class NoRedirectHandler(HTTPRedirectHandler):
         return None
 
 
+_DEFAULT_PORTS = {"http": 80, "https": 443}
+
+
+def _origin(url: str) -> Optional[tuple[str, str, int]]:
+    """Scheme, host and port of ``url`` in comparable form, or None if unusable.
+
+    Host names are case-insensitive and a missing port means the scheme's default
+    port, so ``https://picastAI.com`` and ``https://picastai.com:443`` are the same
+    origin. URLs with credentials, other schemes or an invalid port yield None.
+    """
+    try:
+        parsed = urlparse(url)
+        scheme = parsed.scheme.lower()
+        host = (parsed.hostname or "").lower()
+        port = parsed.port
+    except ValueError:
+        return None
+    if scheme not in _DEFAULT_PORTS or not host or parsed.username or parsed.password:
+        return None
+    return scheme, host, port if port is not None else _DEFAULT_PORTS[scheme]
+
+
+def same_origin(first: str, second: str) -> bool:
+    origin = _origin(first)
+    return origin is not None and origin == _origin(second)
+
+
 class AudioInput(Protocol):
     def record_while_pressed(self, is_pressed: Callable[[], bool], max_seconds: float) -> bytes: ...
 
@@ -389,11 +416,13 @@ class PicastApi:
         audio_url = response.get("audio_url")
         if not isinstance(audio_url, str) or not audio_url:
             raise ApiError("API-Antwort enthält keine audio_url")
-        parsed_base = urlparse(self.config.api_base_url)
-        parsed_audio = urlparse(urljoin(self.config.api_base_url + "/", audio_url))
-        if parsed_audio.scheme != parsed_base.scheme or parsed_audio.netloc != parsed_base.netloc:
+        try:
+            absolute_url = urlparse(urljoin(self.config.api_base_url + "/", audio_url)).geturl()
+        except ValueError as exc:
+            raise ApiError("audio_url ist keine gültige Adresse") from exc
+        if not same_origin(absolute_url, self.config.api_base_url):
             raise ApiError("audio_url verweist nicht auf denselben Origin wie die API")
-        status, headers, data = self._request_absolute("GET", parsed_audio.geturl(), None, self._headers)
+        status, headers, data = self._request_absolute("GET", absolute_url, None, self._headers)
         if status != 200 or not data:
             raise ApiError(f"Audioabruf fehlgeschlagen (HTTP {status})", status=status, retryable=status >= 500)
         content_type = next((value for key, value in headers.items() if key.lower() == "content-type"), "")
@@ -410,7 +439,8 @@ class PicastApi:
                 if status in (401, 400, 413, 415, 429):
                     raise ApiError(f"API-Anfrage abgelehnt (HTTP {status})", status=status, retryable=False)
                 if status < 200 or status >= 300:
-                    raise ApiError(f"API-Fehler (HTTP {status})", status=status, retryable=status >= 500)
+                    retryable = status >= 500 and not self._server_says_not_retryable(payload)
+                    raise ApiError(f"API-Fehler (HTTP {status})", status=status, retryable=retryable)
                 try:
                     return json.loads(payload.decode("utf-8"))
                 except json.JSONDecodeError as exc:
@@ -424,6 +454,21 @@ class PicastApi:
                 LOG.warning("API-Versuch %d fehlgeschlagen (%s), neuer Versuch in %.1fs", attempt + 1, exc, delay)
                 time.sleep(delay)
         raise last_error or ApiError("Unbekannter API-Fehler")
+
+    @staticmethod
+    def _server_says_not_retryable(payload: Any) -> bool:
+        """True, wenn der Server mit ``"retryable": false`` meldet, dass ein neuer Versuch nichts ändert.
+
+        Beispiel: HTTP 502 bei einem dauerhaften Fehler des Sprachdienstes. Jeder weitere
+        Versuch würde dort erneut Modell- und Sprachsynthese-Kosten verursachen.
+        """
+        if not isinstance(payload, (bytes, bytearray)):
+            return False
+        try:
+            data = json.loads(bytes(payload).decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            return False
+        return isinstance(data, dict) and data.get("retryable") is False
 
     def _request(self, method: str, path: str, body: Optional[bytes] = None,
                  headers: Optional[dict[str, str]] = None, accept_json: bool = False) -> tuple[int, dict[str, str], bytes | dict[str, Any]]:

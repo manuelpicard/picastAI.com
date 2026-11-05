@@ -27,7 +27,59 @@ const PATTERNS: RegExp[] = [
   /\bich kann (gerade )?(nicht|nicht mehr) atmen\b/i,
   /\bfasst mich (\w+ )?(\w+ )?an\b/i,
   /\bwas \w+ mit mir (macht|machen|tut|tun|gemacht hat)\b/i,
-  /\b(liegt|liegen)( \w+){0,5} (bewegt sich nicht|wacht nicht auf|atmet nicht)\b/i,
+  /\b(liegt|liegen)( [a-zäöüß]+){0,5} (bewegt sich nicht|wacht nicht auf|atmet nicht)\b/i,
+];
+
+// Weitere Notlagen. JavaScript-\b kennt keine Umlaute, daher eigene Wortgrenzen
+// (L/R) und umlautsichere Wortklassen. Der Text ist vorher normalisiert
+// (Kleinschreibung, Satzzeichen entfernt, ein Leerzeichen am Ende).
+const L = '(?<![a-zäöüß])';
+const R = '(?![a-zäöüß])';
+const WORD = '[a-zäöüß]+';
+const PERSON = '(mama|mami|papa|papi|mutti|vati|mutter|vater|oma|opa|omi|opi|onkel|tante|bruder|schwester)';
+const POSS = '((mein|meine|meinen|meinem|meiner) )?';
+const PARENTS = '(mama|mami|papa|papi|mutti|vati|mutter|vater|eltern)';
+// Wörter, mit denen nach "ich finde Mama nicht" ein neuer Satzteil beginnt
+// ("... nicht, und ich habe Angst"). Bei anderen Fortsetzungen ("nicht mehr
+// lustig", "nicht mehr so oft") ist es eine Meinung, kein Notfall.
+const CONTINUATION = '(und|aber|weil|ich|sie|er|wo|hier|da|bitte|hilf|hilfe)';
+
+const PATTERNS_EXTRA: RegExp[] = [
+  // Eine Person reagiert nicht oder ist gestürzt
+  new RegExp(`${L}(${POSS}${PERSON}|er|sie|jemand) (ist |wurde )(${WORD} )?(ohnmächtig|bewusstlos)${R}`),
+  new RegExp(`${L}${POSS}${PERSON} (ist |liegt )(${WORD} ){0,3}(hingefallen|gestürzt|umgekippt|zusammengebrochen|(runter|hinunter|herunter|hinab)gefallen)${R}`),
+  // Bewusst nur mit einer Person als Subjekt: "der Drache liegt da und sagt nichts" ist eine Geschichte.
+  new RegExp(`${L}(${POSS}${PERSON}|er|sie|jemand) (liegt|liegen)( ${WORD}){0,6} (sagt nichts mehr|sagt gar nichts mehr|antwortet nicht|antwortet mir nicht|reagiert nicht|rührt sich nicht)${R}`),
+
+  // Kind ist von den Eltern getrennt oder weiß nicht, wo es ist. Kein Treffer bei
+  // Meinungen wie "ich finde Papa nicht schlimm" oder "ich sehe meine Eltern nicht mehr so oft".
+  new RegExp(`${L}(finde|find|sehe|seh) ${POSS}${PARENTS}( ${WORD})? (nirgends|nirgendwo)${R}`),
+  new RegExp(`${L}(finde|find|sehe|seh) ${POSS}${PARENTS}( ${WORD})? nicht( mehr| wieder)?(?= *$| ${CONTINUATION}${R})`),
+  new RegExp(`${L}ich (habe|hab) ${POSS}${PARENTS}( und ${POSS}${PARENTS})? verloren${R}`),
+  new RegExp(`${L}ich (habe|hab) mich (${WORD} ){0,3}(verlaufen|verirrt)${R}`),
+  new RegExp(`${L}ich bin (${WORD} ){0,2}(verlaufen|verirrt|verloren gegangen)${R}`),
+  new RegExp(`${L}ich (weiß|weiss) nicht( mehr)? wo ich bin${R}`),
+  new RegExp(`${L}ich bin (ganz |völlig )?allein (im|in der|in einem|in einer|am|auf dem) (supermarkt|laden|kaufhaus|geschäft|einkaufszentrum|zug|bus|bahnhof|schwimmbad|zoo)${R}`),
+
+  // Gedanken, nicht mehr da sein zu wollen, in weiteren Formulierungen
+  new RegExp(`${L}(wäre|wär) (es )?(besser|schöner|leichter)( für alle)? wenn (es )?(mich|ich) (${WORD} )?(nicht|nie)( mehr)? (gäbe|geben würde|geboren wäre|da wäre|hier wäre|existieren würde)${R}`),
+  new RegExp(`${L}wenn ich (nicht (mehr )?(da|hier)|tot) wäre${R}`),
+  new RegExp(`${L}(keiner|niemand) (würde|wird) mich (vermissen|brauchen)${R}`),
+  new RegExp(`${L}ich wünschte (ich wäre (tot|nie geboren|nicht mehr (da|hier))|es gäbe mich nicht)${R}`),
+  new RegExp(`${L}am liebsten (wäre|wär) ich (tot|nicht mehr (da|hier))${R}`),
+  new RegExp(`${L}keine lust mehr (zu leben|auf (das |mein )?leben)${R}`),
+
+  // Gas, Rauch, Verletzungen, fremde Person will das Kind mitnehmen. Rauch und
+  // Gas nur als Zustand des Raums ("es riecht nach Rauch"), nicht bei Personen
+  // oder Figuren ("Papa riecht nach Rauch", "der Drache riecht nach Rauch").
+  new RegExp(`${L}(es (riecht|stinkt)|(riecht|stinkt) es) (${WORD} ){0,3}nach (gas|rauch)${R}`),
+  new RegExp(`${L}ich rieche (gas|rauch)${R}`),
+  new RegExp(`${L}(rauch|qualm) (in der|im|in unserer|in unserem) (wohnung|haus|zimmer|küche|keller|flur)${R}`),
+  new RegExp(`${L}es qualmt${R}`),
+  // Nur Knochenbrüche und Schnitte an Körperteilen: "ich habe mir die Zunge
+  // verbrannt" und "ich habe mir ein Brot aufgeschnitten" sind Alltag.
+  new RegExp(`${L}ich (habe|hab) mir (${WORD} ){0,2}(arm|bein|finger|fuß|fuss|hand|knie|rippe|rippen|nase|daumen|zeh|handgelenk|schlüsselbein|knöchel|ellbogen|schulter|kopf) (gebrochen|aufgeschnitten)${R}`),
+  new RegExp(`${L}(fremder|fremde|fremden|unbekannter|unbekannte)( ${WORD}){0,3} (will|möchte|wollte|sagt|sagte|hat gesagt) (${WORD} ){0,2}(ich (soll |muss |darf )?(mitkommen|mit ?kommen|mitkomme|einsteigen|einsteige|ins auto|in (sein|ein|das|ihr) auto)|mich (mitnehmen|mit ?nehmen))${R}`),
 ];
 
 // Ausgabe-Check: deterministische Prüfung der vom Sprachmodell erzeugten Texte,
@@ -71,10 +123,12 @@ export function normalize(text: string): string {
   return cleaned.replace(/\s+/g, ' ').trim() + ' ';
 }
 
+const ALL_PATTERNS: RegExp[] = [...PATTERNS, ...PATTERNS_EXTRA];
+
 export function screen(transcript: string): boolean {
   if (!transcript) return false;
   const normalized = normalize(transcript);
-  return PATTERNS.some((pattern) => pattern.test(normalized));
+  return ALL_PATTERNS.some((pattern) => pattern.test(normalized));
 }
 
 export function getSafetyResponse(): string {

@@ -263,7 +263,7 @@ bash pi-client/test_alsa_audio.sh \
 
 - Die Aufnahme wird nur im RAM gehalten, bis die API-Anfrage abgeschlossen ist.
 - Die heruntergeladene Antwort wird nicht dauerhaft gespeichert.
-- Audio-URLs müssen denselben Origin (Schema, Host und Port) wie die API verwenden; HTTP-Downgrades werden abgelehnt. HTTP-Redirects werden nicht verfolgt.
+- Audio-URLs müssen denselben Origin (Schema, Host und Port) wie die API verwenden; der Host wird ohne Beachtung der Groß-/Kleinschreibung verglichen, ein fehlender Port gilt als Standardport (80/443), Zugangsdaten in der URL werden abgelehnt, HTTP-Downgrades ebenfalls. HTTP-Redirects werden nicht verfolgt.
 - HTTP 400, 401, 413, 415 und 429 werden nicht automatisch wiederholt.
 - Temporäre Netzwerk- und Serverfehler werden begrenzt wiederholt.
 - Bei Server-/Audiofehlern bleibt der Client nicht in einer Endlosschleife, sondern wechselt kurz nach `ERROR` zurück nach `READY`.

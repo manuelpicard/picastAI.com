@@ -1,10 +1,15 @@
 // Zentrale Konfiguration für alle Kunibert-Umgebungsvariablen
+import { normalizePublicBaseUrl, parseTrustProxy, type TrustProxySetting } from './http-utils.js';
 
 export interface KunibertConfig {
   // Server-Netzwerk
   port: number;
   host: string;
   adminToken: string | null;
+  /** Ursprung, unter dem Geräte den Server erreichen (für die audio_url); null = aus der Anfrage ableiten. */
+  publicBaseUrl: string | null;
+  /** Express "trust proxy" (hinter TLS-beendendem Proxy nötig, damit https erkannt wird). */
+  trustProxy: TrustProxySetting;
 
   // KI & Sprachmodelle
   llmProvider: 'gemini' | 'anthropic' | 'none';
@@ -41,7 +46,6 @@ export interface KunibertConfig {
 
   // Diagnose & Protokollierung
   diagnosticText: boolean;
-  devicesFilePath: string;
 
   // Geräteliste: 'memory' (flüchtig, Standard) oder 'firestore' (dauerhaft)
   deviceStore: 'memory' | 'firestore';
@@ -74,11 +78,16 @@ export function loadConfig(): KunibertConfig {
     const n = Number(val);
     return Number.isFinite(n) && n > 0 ? n : fallback;
   };
+  const storyMinWords = parseNum(process.env.KUNIBERT_STORY_MIN_WORDS, 170);
+  // Verdrehte Grenzen (Minimum über Maximum) würden im Prompt widersprüchlich lauten.
+  const storyMaxWords = Math.max(storyMinWords, parseNum(process.env.KUNIBERT_STORY_MAX_WORDS, 230));
 
   return {
     port: parseNum(process.env.PORT, 3000),
     host: process.env.HOST || '0.0.0.0',
     adminToken: process.env.PICASTAI_ADMIN_TOKEN?.trim() || null,
+    publicBaseUrl: normalizePublicBaseUrl(process.env.PICASTAI_PUBLIC_BASE_URL),
+    trustProxy: parseTrustProxy(process.env.PICASTAI_TRUST_PROXY),
 
     llmProvider: resolveLlmProvider(),
     llmTimeoutMs: Math.min(120_000, Math.max(3_000, parseNum(process.env.PICASTAI_LLM_TIMEOUT_MS, 30_000))),
@@ -97,8 +106,8 @@ export function loadConfig(): KunibertConfig {
 
     ageBracket: process.env.KUNIBERT_AGE || 'sechs bis zehn',
     partsPerEpisode: Math.min(12, Math.max(3, parseNum(process.env.KUNIBERT_PARTS_PER_EPISODE, 5))),
-    storyMinWords: parseNum(process.env.KUNIBERT_STORY_MIN_WORDS, 170),
-    storyMaxWords: parseNum(process.env.KUNIBERT_STORY_MAX_WORDS, 230),
+    storyMinWords,
+    storyMaxWords,
     answerMaxWords: parseNum(process.env.KUNIBERT_ANSWER_MAX_WORDS, 80),
 
     emergencyNumberPrimary: process.env.KUNIBERT_EMERGENCY_NUMBER_PRIMARY || 'Eins Eins Zwei',
@@ -110,7 +119,6 @@ export function loadConfig(): KunibertConfig {
     rateLimitWindowSeconds: parseNum(process.env.KUNIBERT_RATE_LIMIT_WINDOW, 600),
 
     diagnosticText: isDiagnosticTextEnabled(),
-    devicesFilePath: process.env.KUNIBERT_DEVICES_FILE || './devices.json',
     deviceStore: process.env.PICASTAI_DEVICE_STORE?.trim() === 'firestore' ? 'firestore' : 'memory',
   };
 }
@@ -122,6 +130,8 @@ export function getSafeConfigSummary(config: KunibertConfig) {
   return {
     port: config.port,
     host: config.host,
+    publicBaseUrl: config.publicBaseUrl,
+    trustProxy: String(config.trustProxy),
     hasGeminiKey: Boolean(config.geminiApiKey),
     hasAnthropicKey: Boolean(config.anthropicApiKey),
     llmProvider: config.llmProvider,

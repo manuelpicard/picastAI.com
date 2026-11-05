@@ -5,9 +5,9 @@ Ein bildschirmloses Zuhör- und Erzählgerät: Ein Kind drückt die **Sprechtast
 | Ordner | Inhalt | Stand |
 | --- | --- | --- |
 | `docs/` | Ursprungsgeschichte, Gerätekonzept, Hardware-Liste, Softwarearchitektur, **Kunibert-Kanon v0.1** und picastAI-Geräte-API | Pi-Vertikalschnitt in Arbeit |
-| `docs/ai-context/` | Gesprächsarchiv und historische Produktbeschreibung als Kontext für künftige KI-Sitzungen | Kontextarchiv 2026-10-02 bis 2026-10-14 |
+| `docs/ai-context/` | Gesprächsarchiv und historische Produktbeschreibung als Kontext für künftige KI-Sitzungen; verweist teils auf Pfade, die es nicht (mehr) gibt, z. B. `firmware/arduino-giga/` | Kontextarchiv 2026-10-02 bis 2026-10-14 |
 | `pi-client/` | Raspberry-Pi-Client: GPIO-Tasten, begrenzte Aufnahme, Antwort holen und abspielen | erweitert: Zustandsautomat, LED-Signale, Mikrofon-Aus, ALSA-Diagnose, Hardware-Mocks; Tests |
-| `server-api/` | Server hinter der API mit STT-/TTS-Providern, Sicherheitsweiche, Erzählmotor und AudioStore | HTTP-Vertikalschnitt implementiert |
+| `server-api/` | Server hinter der API mit STT-/TTS-Providern, Sicherheitsweiche, Erzählmotor (Gemini oder Claude, siehe `docs/LLM-Anbieter.md`) und AudioStore | HTTP-Vertikalschnitt implementiert |
 | `hoerproben/` | **neu:** komplette Kunibert-Folge (7:45 min) und Fragerunde als MP3, alles zum Mitlesen | echte Ausgabe, nicht nachbearbeitet |
 | `demo/` | Skript für den Live-Durchlauf (Client → Server → gespeichertes Abspiel-Audio) | – |
 

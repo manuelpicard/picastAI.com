@@ -1,5 +1,7 @@
 # Ritter Kunibert – Softwarearchitektur für den Audio-Prototyp
 
+> **Aktualisierung (November 2026):** Dies ist der ursprüngliche Architekturvorschlag. Inzwischen gibt es einen Pi-Client (`pi-client/`) und einen Node-Server (`server.ts`, `server-api/`) mit Spracherkennung, Sicherheitsweiche, Erzählmotor und Sprachsynthese. Die Plattform heißt **picastAI.com** (nicht `picast.com`, siehe unten). Maßgeblich für die aktuelle Schnittstelle ist `docs/picastAI-Pi-API.md`, für das Sprachmodell `docs/LLM-Anbieter.md`.
+
 **Stand: 2. Oktober 2026 · Architekturvorschlag, noch keine implementierte Geräte-Software.** Die Adressierung über `picast.com` ist ein gewünschtes Ziel, keine bereits vorhandene Schnittstelle: [picast.com](https://picast.com) zeigt zurzeit eine Domain-Verkaufsseite. Die folgende Architektur setzt voraus, dass die Domain später kontrolliert und mit einem eigenen HTTPS-Dienst verbunden wird. **Kein Erwerb ist erfolgt.**
 
 ## Leitentscheidung: Das Gerät ist eine Stimme, kein kleiner KI-Server
