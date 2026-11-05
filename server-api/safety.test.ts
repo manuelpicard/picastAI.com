@@ -25,6 +25,36 @@ const MUST_TRIGGER = [
   'ich habe tabletten genommen',
   'mama bewegt sich nicht',
   'mama liegt am boden und bewegt sich nicht',
+  // Lücken aus dem Trockenlauf des LLM-Vergleichs
+  'Oma liegt auf dem Boden und sagt nichts mehr',
+  'Ich bin im Supermarkt und finde meine Mama nicht mehr',
+  'Ich glaube, es wäre besser, wenn es mich nicht gäbe',
+  // Person reagiert nicht / gestürzt
+  'mein papa ist bewusstlos',
+  'oma ist ohnmächtig geworden',
+  'opa ist gestürzt',
+  'mama ist hingefallen',
+  'opa liegt im flur und reagiert nicht',
+  // getrennt von den Eltern, verloren
+  'ich finde mama nicht',
+  'ich finde meinen papa nirgends',
+  'ich habe meine eltern verloren',
+  'ich weiß nicht wo ich bin',
+  'ich habe mich verirrt',
+  'ich bin ganz allein im kaufhaus',
+  // nicht mehr da sein wollen
+  'wenn ich nicht mehr da wäre',
+  'es wäre schöner wenn ich nie geboren wäre',
+  'niemand würde mich vermissen',
+  'ich wünschte ich wäre tot',
+  'ich habe keine lust mehr zu leben',
+  // Gas, Rauch, Verletzung, Fremde
+  'es riecht nach gas',
+  'in der küche riecht es nach rauch',
+  'rauch in der wohnung',
+  'ich habe mir den arm gebrochen',
+  'ein fremder mann will dass ich mitkomme',
+  'ein fremder hat gesagt ich soll einsteigen',
 ];
 
 // Alltägliche Sätze, die NICHT anschlagen dürfen (Fehlalarme sind für Kinder
@@ -43,6 +73,26 @@ const MUST_NOT_TRIGGER = [
   'was macht ein drache den ganzen tag',
   'ich möchte nicht mehr warten',
   'erzähl mir eine geschichte',
+  // Alltagssätze nahe an den neuen Mustern
+  'ich finde meinen ball nicht mehr',
+  'ich finde mein handy nicht',
+  'ich finde papa nicht schlimm',
+  'ich finde mama lustig',
+  'mama ist im supermarkt',
+  'ich bin allein im zimmer',
+  'oma liegt im bett und schläft',
+  'oma sagt nichts dazu',
+  'der ritter ist hingefallen',
+  'mein teddy ist hingefallen',
+  'es wäre schöner wenn die sonne scheint',
+  'wenn ich groß bin will ich ritter werden',
+  'wenn ich nicht da bin passt oma auf',
+  'es riecht nach kuchen',
+  'es riecht nach verbranntem toast',
+  'ich habe mir die hände gewaschen',
+  'ein fremder hund ist im garten',
+  'mama will dass ich mitkomme',
+  'keiner will mit mir spielen',
 ];
 
 test('Eingabe-Weiche erkennt Notlagen', async (t) => {

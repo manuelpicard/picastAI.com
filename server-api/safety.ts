@@ -27,7 +27,45 @@ const PATTERNS: RegExp[] = [
   /\bich kann (gerade )?(nicht|nicht mehr) atmen\b/i,
   /\bfasst mich (\w+ )?(\w+ )?an\b/i,
   /\bwas \w+ mit mir (macht|machen|tut|tun|gemacht hat)\b/i,
-  /\b(liegt|liegen)( \w+){0,5} (bewegt sich nicht|wacht nicht auf|atmet nicht)\b/i,
+  /\b(liegt|liegen)( \w+){0,5} (bewegt sich nicht|wacht nicht auf|atmet nicht|sagt nichts( mehr)?|antwortet nicht|reagiert nicht|rührt sich nicht)\b/i,
+  /\bich (habe|hab) (mich )?verirrt/i,
+];
+
+// Weitere Notlagen. JavaScript-\b kennt keine Umlaute, daher eigene Wortgrenzen
+// (L/R) und umlautsichere Wortklassen. Der Text ist vorher normalisiert
+// (Kleinschreibung, Satzzeichen entfernt, ein Leerzeichen am Ende).
+const L = '(?<![a-zäöüß])';
+const R = '(?![a-zäöüß])';
+const WORD = '[a-zäöüß]+';
+const PERSON = '(mama|mami|papa|papi|mutti|vati|mutter|vater|oma|opa|omi|opi|onkel|tante|bruder|schwester)';
+const POSS = '((mein|meine|meinen|meinem|meiner) )?';
+const PARENTS = '(mama|mami|papa|papi|mutti|vati|mutter|vater|eltern)';
+
+const PATTERNS_EXTRA: RegExp[] = [
+  // Eine Person reagiert nicht oder ist gestürzt
+  new RegExp(`${L}(${POSS}${PERSON}|er|sie|jemand) (ist |wurde )(${WORD} )?(ohnmächtig|bewusstlos)${R}`),
+  new RegExp(`${L}${POSS}${PERSON} (ist |liegt )(${WORD} )?(hingefallen|gestürzt)${R}`),
+
+  // Kind ist von den Eltern getrennt oder weiß nicht, wo es ist. Kein Treffer bei
+  // Meinungen wie "ich finde Papa nicht schlimm".
+  new RegExp(`${L}(finde|find|sehe|seh) ${POSS}${PARENTS}( ${WORD})? (nicht (mehr|wieder)|nicht *$|nirgends|nirgendwo)`),
+  new RegExp(`${L}ich (habe|hab) ${POSS}${PARENTS} verloren${R}`),
+  new RegExp(`${L}ich (weiß|weiss) nicht( mehr)? wo ich bin${R}`),
+  new RegExp(`${L}ich bin (ganz |völlig )?allein (im|in der|in einem|in einer|am|auf dem) (supermarkt|laden|kaufhaus|geschäft|einkaufszentrum|zug|bus|bahnhof|schwimmbad|zoo)${R}`),
+
+  // Gedanken, nicht mehr da sein zu wollen, in weiteren Formulierungen
+  new RegExp(`${L}(wäre|wär) (es )?(besser|schöner|leichter)( für alle)? wenn (es )?(mich|ich) (${WORD} )?(nicht|nie)( mehr)? (gäbe|geben würde|geboren wäre|da wäre|hier wäre|existieren würde)${R}`),
+  new RegExp(`${L}wenn ich (nicht (mehr )?(da|hier)|tot) wäre${R}`),
+  new RegExp(`${L}(keiner|niemand) (würde|wird) mich (vermissen|brauchen)${R}`),
+  new RegExp(`${L}ich wünschte,? (ich wäre (tot|nie geboren)|es gäbe mich nicht)${R}`),
+  new RegExp(`${L}keine lust mehr (zu leben|auf (das |mein )?leben)${R}`),
+
+  // Gas, Rauch, Verletzungen, fremde Person will das Kind mitnehmen
+  new RegExp(`${L}(riecht|stinkt) (${WORD} ){0,3}nach (gas|rauch)${R}`),
+  new RegExp(`${L}(rauch|qualm) (in der|im|in unserer|in unserem) (wohnung|haus|zimmer|küche|keller|flur)${R}`),
+  new RegExp(`${L}es qualmt${R}`),
+  new RegExp(`${L}ich (habe|hab) mir (${WORD} ){1,3}(gebrochen|verbrannt|aufgeschnitten|verbrüht)${R}`),
+  new RegExp(`${L}(fremder|fremde|fremden|unbekannter|unbekannte)( ${WORD}){0,3} (will|möchte|wollte|sagt|sagte|hat gesagt) (${WORD} ){0,2}ich (soll |muss |darf )?(mitkommen|mit ?kommen|mitkomme|einsteigen|einsteige|ins auto)${R}`),
 ];
 
 // Ausgabe-Check: deterministische Prüfung der vom Sprachmodell erzeugten Texte,
@@ -71,10 +109,12 @@ export function normalize(text: string): string {
   return cleaned.replace(/\s+/g, ' ').trim() + ' ';
 }
 
+const ALL_PATTERNS: RegExp[] = [...PATTERNS, ...PATTERNS_EXTRA];
+
 export function screen(transcript: string): boolean {
   if (!transcript) return false;
   const normalized = normalize(transcript);
-  return PATTERNS.some((pattern) => pattern.test(normalized));
+  return ALL_PATTERNS.some((pattern) => pattern.test(normalized));
 }
 
 export function getSafetyResponse(): string {
