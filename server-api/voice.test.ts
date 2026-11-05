@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { encodeWav } from './audio.js';
+import { decodeWavHeader, encodeWav } from './audio.js';
 import { loadConfig } from './config.js';
 import { VoicePipeline, VoiceProviderError } from './voice.js';
 
@@ -131,4 +131,48 @@ test('warmUp zählt Erfolge und wirft bei Ausfall nicht', async () => {
 test('Ohne Provider: synthesizeCached meldet einen VoiceProviderError', async () => {
   const voice = new VoicePipeline({ ...loadConfig(), openaiApiKey: null, voiceProvider: 'none' });
   await assert.rejects(() => voice.synthesizeCached('Hallo'), VoiceProviderError);
+});
+
+/** Mono-Sinus als 16-Bit-PCM, damit die Umrechnung echte Werte statt Stille verarbeitet. */
+function sinePcm(frames: number, channels: number, rate: number): Buffer {
+  const pcm = Buffer.alloc(frames * channels * 2);
+  for (let frame = 0; frame < frames; frame++) {
+    const sample = Math.round(Math.sin((2 * Math.PI * 440 * frame) / rate) * 8000);
+    for (let channel = 0; channel < channels; channel++) pcm.writeInt16LE(sample, (frame * channels + channel) * 2);
+  }
+  return pcm;
+}
+
+test('TTS: 24-kHz-WAV wird auf 16 kHz Mono mit gültigem 16-Bit-Header umgerechnet', async () => {
+  // Echte TTS-Dienste liefern 24 kHz. Der Header der Umrechnung war einmal kaputt
+  // (Bittiefe 2), der Pi-Client lehnt solche Antworten ab.
+  const source = encodeWav(sinePcm(2400, 1, 24_000), 24_000, 1, 16);
+  await withFetch(() => new Response(new Uint8Array(source), { status: 200 }), async () => {
+    const result = await pipeline().synthesize('Hallo');
+    const header = decodeWavHeader(result);
+    assert.equal(header.sampleRate, 16_000);
+    assert.equal(header.channels, 1);
+    assert.equal(header.bitsPerSample, 16);
+    assert.equal(header.dataSize, 1600 * 2, '0,1 s bei 16 kHz');
+    assert.equal(result.length, 44 + header.dataSize);
+    // Blockgröße und Byterate müssen zum Format passen, sonst lehnen Player die Datei ab.
+    assert.equal(result.readUInt16LE(32), 2, 'block align');
+    assert.equal(result.readUInt32LE(28), 32_000, 'byte rate');
+    // Der Ton bleibt erhalten (kein Nullsignal).
+    let peak = 0;
+    for (let offset = 44; offset < result.length; offset += 2) peak = Math.max(peak, Math.abs(result.readInt16LE(offset)));
+    assert.ok(peak > 4000, `Spitzenwert ${peak}`);
+  });
+});
+
+test('TTS: Stereo-WAV wird zu Mono gemischt', async () => {
+  const source = encodeWav(sinePcm(1600, 2, 16_000), 16_000, 2, 16);
+  await withFetch(() => new Response(new Uint8Array(source), { status: 200 }), async () => {
+    const result = await pipeline().synthesize('Hallo');
+    const header = decodeWavHeader(result);
+    assert.equal(header.channels, 1);
+    assert.equal(header.sampleRate, 16_000);
+    assert.equal(header.bitsPerSample, 16);
+    assert.equal(header.dataSize, 1600 * 2);
+  });
 });

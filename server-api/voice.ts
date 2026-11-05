@@ -59,7 +59,9 @@ function normalizePcmWav(audio: Buffer, targetRate: number): Buffer {
     const sample = Math.round(source[lower] * (1 - fraction) + source[upper] * fraction);
     pcm.writeInt16LE(Math.max(-32768, Math.min(32767, sample)), index * 2);
   }
-  return encodeWav(pcm, targetRate, 1, 2);
+  // Vierter Parameter: Bits pro Sample (16), nicht Bytes. Mit 2 entstand ein kaputter
+  // Header (Bittiefe 2), den der Pi-Client als unerwartete Bittiefe ablehnt.
+  return encodeWav(pcm, targetRate, 1, 16);
 }
 
 export class OpenAiCompatibleVoiceProvider implements SpeechToTextProvider, TextToSpeechProvider {
