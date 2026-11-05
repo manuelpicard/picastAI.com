@@ -11,6 +11,7 @@ import { config, getSafeConfigSummary } from './server-api/config.js';
 import { isAdminTokenConfigured, verifyAdminAuthorization } from './server-api/admin-auth.js';
 import { VoicePipeline, VoiceProviderError } from './server-api/voice.js';
 import { FirestoreDeviceStore } from './server-api/firestore-service.js';
+import { buildAudioUrl } from './server-api/http-utils.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -18,6 +19,11 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = config.port;
 const HOST = config.host;
+
+// Keine Framework-Kennung in den Antworten; hinter einem TLS-beendenden Proxy
+// erkennt der Server https nur, wenn PICASTAI_TRUST_PROXY gesetzt ist.
+app.disable('x-powered-by');
+if (config.trustProxy) app.set('trust proxy', config.trustProxy);
 
 // Geräteliste: flüchtig im RAM (Standard) oder dauerhaft in Firestore
 // (PICASTAI_DEVICE_STORE=firestore). Rate-Limit, Audio und Story-State bleiben flüchtig.
@@ -91,7 +97,12 @@ app.get('/health', (_req: Request, res: Response) => {
 });
 
 function deviceAudioUrl(req: Request, turnId: string): string {
-  return `${req.protocol}://${req.get('host')}/v1/device/audio/${encodeURIComponent(turnId)}`;
+  // Der Pi-Client akzeptiert nur eine audio_url mit gleichem Schema und Host wie seine
+  // API-Adresse. Hinter einem Proxy liefert req.protocol ohne trust proxy "http".
+  return buildAudioUrl(
+    { publicBaseUrl: config.publicBaseUrl, protocol: req.protocol, host: req.get('host') },
+    turnId
+  );
 }
 
 function deviceResponse(
@@ -109,16 +120,6 @@ function deviceResponse(
   };
   if (config.diagnosticText) body.text = result.speech;
   return { body, turnId };
-}
-
-function normalizeDeviceLocale(value: unknown): string {
-  const locale = String(value || 'de-DE').trim();
-  return locale === 'de-DE' ? locale : 'de-DE';
-}
-
-function normalizeAgeBand(value: unknown): string {
-  const ageBand = String(value || '6-10').trim();
-  return /^(6-10|6–10)$/.test(ageBand) ? '6-10' : '6-10';
 }
 
 function rememberDeviceStoryState(deviceId: string, state: StoryState): void {
@@ -203,8 +204,8 @@ app.post(
       return res.status(429).json({ error: 'rate_limited' });
     }
 
-    const locale = normalizeDeviceLocale(req.body?.locale);
-    const ageBand = normalizeAgeBand(req.body?.age_band);
+    // locale und age_band nimmt der Vertrag entgegen, derzeit gilt aber nur de-DE und
+    // die serverseitig konfigurierte Altersgruppe (KUNIBERT_AGE).
     const requestedLength = String(req.body?.length || 'short');
     if (requestedLength !== 'short') {
       return res.status(400).json({ error: 'unsupported_length' });
@@ -212,8 +213,11 @@ app.post(
 
     try {
       const state = deviceStoryStates.get(deviceId) || {};
-      const wish = `${locale} ${ageBand}`;
-      const result = await synthesizeIfConfigured(await brain.handle('geschichte', wish, state));
+      // Die Erzähltaste setzt eine laufende Folge fort ("Drück noch einmal die
+      // Erzähltaste") und beginnt nur dann eine neue, wenn keine läuft. Mit Modus
+      // "geschichte" begänne jeder Druck wieder bei Teil 1. Einen Kinderwunsch gibt
+      // es hier nicht: die Taste trägt keinen Text.
+      const result = await synthesizeIfConfigured(await brain.handle('weiter', '', state));
       rememberDeviceStoryState(deviceId, result.story_state);
       const response = deviceResponse(req, deviceId, result, 'kunibert_story');
       return res.json(response.body);
@@ -321,7 +325,8 @@ app.post(
       if (err instanceof VoiceProviderError) {
         return res.status(err.retryable ? 503 : 502).json({ error: 'voice_provider_failed', retryable: err.retryable });
       }
-      return res.status(500).json({ error: 'internal_error', detail: err.message });
+      // Keine Fehlertexte nach außen (können Provider-Antworten und Interna enthalten).
+      return res.status(500).json({ error: 'internal_error' });
     }
   }
 );
@@ -399,11 +404,42 @@ app.get('/api/status', requireAdminAuth, (req: Request, res: Response) => {
 });
 
 // ------------------------------------------------------------
+// Fehlerbehandlung: Upload- und JSON-Fehler als JSON-Antwort mit passendem Status
+// ------------------------------------------------------------
+
+// Ohne diese Weiche antwortet Express auf zu große Uploads mit HTTP 500 (und in der
+// Entwicklung mit Stacktrace). Der Pi-Client wiederholt 5xx, behandelt 400/413 aber
+// als endgültig abgelehnt.
+app.use((err: any, _req: Request, res: Response, next: NextFunction): any => {
+  if (res.headersSent) return next(err);
+  if (err instanceof multer.MulterError) {
+    const tooLarge = err.code === 'LIMIT_FILE_SIZE';
+    return res.status(tooLarge ? 413 : 400).json({ error: tooLarge ? 'audio_too_large' : 'bad_upload' });
+  }
+  if (err?.type === 'entity.too.large') {
+    return res.status(413).json({ error: 'payload_too_large' });
+  }
+  if (err?.type === 'entity.parse.failed') {
+    return res.status(400).json({ error: 'bad_json' });
+  }
+  console.error('Unbehandelter Fehler:', err);
+  return res.status(500).json({ error: 'internal_error' });
+});
+
+// ------------------------------------------------------------
 // Vite Dev Server / Static File Serving
 // ------------------------------------------------------------
 
 async function startServer() {
   const isProd = process.env.NODE_ENV === 'production';
+
+  if (!isProd) {
+    console.warn(
+      'Hinweis: NODE_ENV ist nicht "production". Entwicklungsgeräte mit bekannten Tokens ' +
+      '(prototype-1, simulator-web) und der Vite-Entwicklungsserver sind aktiv. ' +
+      'Für den echten Betrieb NODE_ENV=production setzen (und vorher npm run build ausführen).'
+    );
+  }
 
   // Fail-closed: Ist ein dauerhafter Store konfiguriert, aber nicht lesbar,
   // starten wir nicht. Sonst wären widerrufene Geräte wieder gültig.
