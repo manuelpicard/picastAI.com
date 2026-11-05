@@ -410,7 +410,8 @@ class PicastApi:
                 if status in (401, 400, 413, 415, 429):
                     raise ApiError(f"API-Anfrage abgelehnt (HTTP {status})", status=status, retryable=False)
                 if status < 200 or status >= 300:
-                    raise ApiError(f"API-Fehler (HTTP {status})", status=status, retryable=status >= 500)
+                    retryable = status >= 500 and not self._server_says_not_retryable(payload)
+                    raise ApiError(f"API-Fehler (HTTP {status})", status=status, retryable=retryable)
                 try:
                     return json.loads(payload.decode("utf-8"))
                 except json.JSONDecodeError as exc:
@@ -424,6 +425,21 @@ class PicastApi:
                 LOG.warning("API-Versuch %d fehlgeschlagen (%s), neuer Versuch in %.1fs", attempt + 1, exc, delay)
                 time.sleep(delay)
         raise last_error or ApiError("Unbekannter API-Fehler")
+
+    @staticmethod
+    def _server_says_not_retryable(payload: Any) -> bool:
+        """True, wenn der Server mit ``"retryable": false`` meldet, dass ein neuer Versuch nichts ändert.
+
+        Beispiel: HTTP 502 bei einem dauerhaften Fehler des Sprachdienstes. Jeder weitere
+        Versuch würde dort erneut Modell- und Sprachsynthese-Kosten verursachen.
+        """
+        if not isinstance(payload, (bytes, bytearray)):
+            return False
+        try:
+            data = json.loads(bytes(payload).decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            return False
+        return isinstance(data, dict) and data.get("retryable") is False
 
     def _request(self, method: str, path: str, body: Optional[bytes] = None,
                  headers: Optional[dict[str, str]] = None, accept_json: bool = False) -> tuple[int, dict[str, str], bytes | dict[str, Any]]:

@@ -406,6 +406,48 @@ class KunibertClientTests(unittest.TestCase):
             handler.redirect_request(None, None, 302, "Found", {}, "https://attacker.invalid/audio.wav")
         )
 
+    def _retry_api(self):
+        config = ClientConfig(api_base_url="https://picastAI.com", device_token="device-test-token", retry_count=2)
+        return PicastApi(config)
+
+    def test_retries_503_until_success(self):
+        api = self._retry_api()
+        responses = [
+            (503, {}, b'{"error":"voice_provider_failed","retryable":true}'),
+            (200, {}, b'{"audio_url":"/v1/device/audio/x"}'),
+        ]
+        with patch.object(api, "_request", side_effect=responses) as request, patch("kunibert_client.time.sleep"):
+            result = api._with_retries("POST", "/v1/device/question", b"", {})
+        self.assertEqual(result, {"audio_url": "/v1/device/audio/x"})
+        self.assertEqual(request.call_count, 2)
+
+    def test_does_not_retry_when_server_says_not_retryable(self):
+        api = self._retry_api()
+        body = b'{"error":"voice_provider_failed","retryable":false}'
+        with patch.object(api, "_request", return_value=(502, {}, body)) as request, patch("kunibert_client.time.sleep"):
+            with self.assertRaises(ApiError) as caught:
+                api._with_retries("POST", "/v1/device/question", b"", {})
+        self.assertEqual(request.call_count, 1)
+        self.assertFalse(caught.exception.retryable)
+        self.assertEqual(caught.exception.status, 502)
+
+    def test_retries_5xx_without_json_body_and_gives_up_after_retry_count(self):
+        api = self._retry_api()
+        with patch.object(api, "_request", return_value=(500, {}, b"<html>boom</html>")) as request, patch(
+            "kunibert_client.time.sleep"
+        ):
+            with self.assertRaises(ApiError):
+                api._with_retries("POST", "/v1/device/question", b"", {})
+        self.assertEqual(request.call_count, 3)
+
+    def test_does_not_retry_client_errors_413_and_401(self):
+        for status in (401, 413):
+            api = self._retry_api()
+            with patch.object(api, "_request", return_value=(status, {}, b"{}")) as request, patch("kunibert_client.time.sleep"):
+                with self.assertRaises(ApiError):
+                    api._with_retries("POST", "/v1/device/question", b"", {})
+            self.assertEqual(request.call_count, 1, status)
+
 
 if __name__ == "__main__":
     unittest.main()
