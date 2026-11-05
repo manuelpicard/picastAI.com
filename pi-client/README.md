@@ -140,8 +140,12 @@ KUNIBERT_CACHE_DIR=/var/lib/kunibert/audio
 KUNIBERT_SAMPLE_RATE=16000
 KUNIBERT_MAX_RECORD_SECONDS=15
 KUNIBERT_REQUEST_TIMEOUT=30
+KUNIBERT_PIPELINE_TIMEOUT=140
+KUNIBERT_AUDIO_TIMEOUT=45
 KUNIBERT_RETRY_COUNT=2
 ```
+
+Zeitgrenzen in Sekunden: `KUNIBERT_REQUEST_TIMEOUT` gilt für den Health-Check, `KUNIBERT_PIPELINE_TIMEOUT` für Frage und Geschichte, `KUNIBERT_AUDIO_TIMEOUT` für den Abruf der WAV-Antwort. Frage und Geschichte laufen auf dem Server durch Spracherkennung, Sprachmodell und Sprachsynthese (Standardgrenzen 45 + 30 + 45 s). Der Client muss länger warten als diese Kette, sonst bricht er ab und schickt die Anfrage erneut, und der Server erzeugt die Antwort ein zweites Mal (bei der Geschichte rückt die Folge dabei weiter). Die abgestimmte Zeitkette mit dem Reverse Proxy steht in [`deploy/EINRICHTUNG.md`](../deploy/EINRICHTUNG.md).
 
 ```bash
 sudo install -d -m 0750 /etc/kunibert /var/lib/kunibert/audio

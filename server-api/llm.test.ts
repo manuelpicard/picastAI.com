@@ -70,6 +70,42 @@ test('GeminiProvider: leere Antwort ist ein LlmError', async () => {
   await assert.rejects(() => new GeminiProvider({ apiKey: 'k', model: 'm', client }).generateJson(REQUEST), LlmError);
 });
 
+test('GeminiProvider: hängende Anfrage endet nach timeoutMs als LlmError und wird abgebrochen', async () => {
+  let signal: AbortSignal | undefined;
+  const client: GeminiLikeClient = {
+    models: {
+      // Antwortet nie, wie ein hängender Dienst; ignoriert das Signal bewusst.
+      generateContent: (args) => {
+        signal = args.config.abortSignal as AbortSignal;
+        return new Promise(() => {});
+      },
+    },
+  };
+  const started = Date.now();
+  await assert.rejects(
+    () => new GeminiProvider({ apiKey: 'k', model: 'm', timeoutMs: 30, client }).generateJson(REQUEST),
+    (error: unknown) => error instanceof LlmError && /Zeitüberschreitung/.test(error.message)
+  );
+  assert.ok(Date.now() - started < 2_000, 'Grenze muss greifen, auch wenn das SDK das Signal ignoriert');
+  assert.equal(signal?.aborted, true, 'Anfrage wird im SDK abgebrochen');
+});
+
+test('GeminiProvider: rechtzeitige Antwort bricht nichts ab', async () => {
+  let signal: AbortSignal | undefined;
+  const client: GeminiLikeClient = {
+    models: {
+      generateContent: async (args) => {
+        signal = args.config.abortSignal as AbortSignal;
+        return { text: '{"category":"frage","done":true}' };
+      },
+    },
+  };
+  const provider = new GeminiProvider({ apiKey: 'k', model: 'm', timeoutMs: 50, client });
+  assert.deepEqual(await provider.generateJson(REQUEST), { category: 'frage', done: true });
+  await new Promise((resolve) => setTimeout(resolve, 80));
+  assert.equal(signal?.aborted, false);
+});
+
 function fakeFetch(handler: (url: string, init: RequestInit) => Response | Promise<Response>): typeof fetch {
   return (async (url: string, init: RequestInit) => handler(url, init)) as unknown as typeof fetch;
 }
@@ -162,9 +198,10 @@ test('createLlmProvider: liefert den Anbieter nur mit passendem Key', () => {
   assert.equal(createLlmProvider({ ...base, llmProvider: 'gemini' }), null, 'Gemini ohne Key');
   assert.equal(createLlmProvider({ ...base, llmProvider: 'anthropic' }), null, 'Anthropic ohne Key');
 
-  const gemini = createLlmProvider({ ...base, llmProvider: 'gemini', geminiApiKey: 'g' });
+  const gemini = createLlmProvider({ ...base, llmProvider: 'gemini', geminiApiKey: 'g', llmTimeoutMs: 12_345 });
   assert.equal(gemini?.name, 'gemini');
   assert.equal(gemini?.model, 'g-model');
+  assert.equal((gemini as GeminiProvider).timeoutMs, 12_345, 'PICASTAI_LLM_TIMEOUT_MS gilt auch für Gemini');
   const claude = createLlmProvider({ ...base, llmProvider: 'anthropic', anthropicApiKey: 'a' });
   assert.equal(claude?.name, 'anthropic');
   assert.equal(claude?.model, 'a-model');

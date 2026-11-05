@@ -167,7 +167,7 @@ function parseCandidates(): LlmProvider[] {
     if (!model) throw new Error(`EVAL_MODELS: "${spec}" hat kein Modell (Format anbieter:modell)`);
     if (provider === 'gemini') {
       if (!geminiKey) throw new Error('GEMINI_API_KEY fehlt für ' + spec);
-      return new GeminiProvider({ apiKey: geminiKey, model });
+      return new GeminiProvider({ apiKey: geminiKey, model, timeoutMs: config.llmTimeoutMs });
     }
     if (provider === 'anthropic') {
       if (!anthropicKey) throw new Error('ANTHROPIC_API_KEY fehlt für ' + spec);
@@ -178,7 +178,7 @@ function parseCandidates(): LlmProvider[] {
 
   if (specs.length) return specs.map(fromSpec);
   const defaults: LlmProvider[] = [];
-  if (geminiKey) defaults.push(new GeminiProvider({ apiKey: geminiKey, model: config.geminiModel }));
+  if (geminiKey) defaults.push(new GeminiProvider({ apiKey: geminiKey, model: config.geminiModel, timeoutMs: config.llmTimeoutMs }));
   if (anthropicKey) {
     defaults.push(
       new AnthropicProvider({ apiKey: anthropicKey, model: config.anthropicModel, baseUrl: config.anthropicBaseUrl, timeoutMs: config.llmTimeoutMs })
