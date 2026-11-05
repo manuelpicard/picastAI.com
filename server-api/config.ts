@@ -7,7 +7,13 @@ export interface KunibertConfig {
   adminToken: string | null;
 
   // KI & Sprachmodelle
+  llmProvider: 'gemini' | 'anthropic' | 'none';
+  llmTimeoutMs: number;
   geminiApiKey: string | null;
+  geminiModel: string;
+  anthropicApiKey: string | null;
+  anthropicModel: string;
+  anthropicBaseUrl: string;
   openaiApiKey: string | null;
   openaiBaseUrl: string;
   voiceProvider: 'openai' | 'none';
@@ -47,6 +53,21 @@ export function isDiagnosticTextEnabled(
   return env.NODE_ENV !== 'production' && env.KUNIBERT_DIAGNOSTIC_TEXT?.trim() === '1';
 }
 
+/**
+ * Wahl des Sprachmodell-Anbieters. Ausdrücklich per PICASTAI_LLM_PROVIDER
+ * (gemini | anthropic | none), sonst automatisch nach vorhandenem Key
+ * (Gemini zuerst, damit bestehende Installationen unverändert bleiben).
+ */
+export function resolveLlmProvider(
+  env: { PICASTAI_LLM_PROVIDER?: string; GEMINI_API_KEY?: string; ANTHROPIC_API_KEY?: string } = process.env
+): 'gemini' | 'anthropic' | 'none' {
+  const requested = env.PICASTAI_LLM_PROVIDER?.trim().toLowerCase();
+  if (requested === 'gemini' || requested === 'anthropic' || requested === 'none') return requested;
+  if (env.GEMINI_API_KEY?.trim()) return 'gemini';
+  if (env.ANTHROPIC_API_KEY?.trim()) return 'anthropic';
+  return 'none';
+}
+
 export function loadConfig(): KunibertConfig {
   const parseNum = (val: string | undefined, fallback: number): number => {
     if (!val) return fallback;
@@ -59,7 +80,13 @@ export function loadConfig(): KunibertConfig {
     host: process.env.HOST || '0.0.0.0',
     adminToken: process.env.PICASTAI_ADMIN_TOKEN?.trim() || null,
 
+    llmProvider: resolveLlmProvider(),
+    llmTimeoutMs: Math.min(120_000, Math.max(3_000, parseNum(process.env.PICASTAI_LLM_TIMEOUT_MS, 30_000))),
     geminiApiKey: process.env.GEMINI_API_KEY ? process.env.GEMINI_API_KEY.trim() : null,
+    geminiModel: process.env.PICASTAI_GEMINI_MODEL?.trim() || 'gemini-3.8-flash',
+    anthropicApiKey: process.env.ANTHROPIC_API_KEY?.trim() || null,
+    anthropicModel: process.env.PICASTAI_ANTHROPIC_MODEL?.trim() || 'claude-sonnet-5-5',
+    anthropicBaseUrl: (process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com').replace(/\/$/, ''),
     openaiApiKey: process.env.OPENAI_API_KEY ? process.env.OPENAI_API_KEY.trim() : null,
     openaiBaseUrl: (process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1').replace(/\/$/, ''),
     voiceProvider: (process.env.PICASTAI_VOICE_PROVIDER || (process.env.OPENAI_API_KEY ? 'openai' : 'none')) === 'openai' ? 'openai' : 'none',
@@ -96,6 +123,13 @@ export function getSafeConfigSummary(config: KunibertConfig) {
     port: config.port,
     host: config.host,
     hasGeminiKey: Boolean(config.geminiApiKey),
+    hasAnthropicKey: Boolean(config.anthropicApiKey),
+    llmProvider: config.llmProvider,
+    llmModel: config.llmProvider === 'gemini'
+      ? config.geminiModel
+      : config.llmProvider === 'anthropic'
+        ? config.anthropicModel
+        : null,
     hasOpenAiKey: Boolean(config.openaiApiKey),
     voiceProvider: config.voiceProvider,
     sttModel: config.sttModel,

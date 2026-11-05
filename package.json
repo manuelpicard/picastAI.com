@@ -8,7 +8,8 @@
     "build": "tsc && vite build",
     "start": "tsx server.ts",
     "lint": "tsc --noEmit",
-    "test": "node --import tsx --test server-api/config.test.ts server-api/admin-auth.test.ts server-api/safety.test.ts server-api/devices.test.ts server-api/voice.test.ts"
+    "test": "node --import tsx --test server-api/config.test.ts server-api/admin-auth.test.ts server-api/safety.test.ts server-api/devices.test.ts server-api/voice.test.ts server-api/llm.test.ts server-api/brain.test.ts server-api/eval-llm.test.ts",
+    "eval:llm": "tsx server-api/eval-llm.ts"
   },
   "dependencies": {
     "@google/genai": "latest",

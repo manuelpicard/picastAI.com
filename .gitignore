@@ -26,3 +26,6 @@ demo/demo-protokoll.json
 
 # Arbeitsnotizen
 NOTIZEN.md
+
+# LLM-Vergleichsergebnisse (npm run eval:llm)
+eval-out/
