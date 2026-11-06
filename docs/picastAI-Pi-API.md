@@ -34,7 +34,7 @@ Formularfelder:
 - `session_id`: temporäre Gerätekennung
 - `transcript`: optionales Diagnosefeld für lokale Tests; fehlt es, nutzt der Server den konfigurierten Spracherkennungsdienst
 
-Die Gegenstelle validiert das WAV-Format. Wenn `PICASTAI_STT_URL` und `PICASTAI_STT_MODEL` gesetzt sind, wird die Aufnahme serverseitig über einen OpenAI-kompatiblen Spracherkennungsdienst transkribiert, in der Regel ein eigener Server. Die Sprachausgabe läuft entsprechend über `PICASTAI_TTS_URL`, `PICASTAI_TTS_MODEL` und `PICASTAI_TTS_VOICE`; ohne diese Angaben bleibt der Dienst aus (siehe `docs/LLM-Anbieter.md`). Der Transcript-Text wird anschließend durch die Sicherheitsweiche und den Erzählmotor verarbeitet.
+Die Gegenstelle validiert das WAV-Format. Wenn `PICASTAI_STT_URL` und `PICASTAI_STT_MODEL` gesetzt sind, wird die Aufnahme serverseitig über einen OpenAI-kompatiblen Spracherkennungsdienst transkribiert, in der Regel ein eigener Server. Die Sprachausgabe läuft entsprechend über `PICASTAI_TTS_URL`, `PICASTAI_TTS_MODEL` und `PICASTAI_TTS_VOICE`; ohne diese Angaben bleibt der Dienst aus (siehe `docs/LLM-Anbieter.md`). Der Transcript-Text wird anschließend durch die Sicherheitsweiche und den Erzählmotor verarbeitet. Liefert die Erkennung keinen Text (Stille, Rauschen), ist das kein Fehler: der Server antwortet mit dem festen Hinweis „Das habe ich leider nicht richtig verstanden“ (HTTP 200).
 
 Beispielantwort:
 

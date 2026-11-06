@@ -330,3 +330,22 @@ test('Die Dienste sind unabhängig: nur Erkennung oder nur Sprachausgabe ist mö
   assert.equal(ttsOnly.sttConfigured, false);
   assert.equal(ttsOnly.ttsConfigured, true);
 });
+
+test('STT: ein leerer Text (Stille, Rauschen) ist kein Fehler, sondern ergibt einen leeren Text', async () => {
+  for (const text of ['', '   ', '\n']) {
+    await withFetch(() => new Response(JSON.stringify({ text }), { status: 200 }), async () => {
+      assert.equal(await pipeline().transcribe(silentWav()), '');
+    });
+  }
+});
+
+test('STT: eine Antwort ohne Textfeld ist weiter ein Fehler des Dienstes', async () => {
+  for (const payload of [{}, { text: null }, { text: 42 }]) {
+    await withFetch(() => new Response(JSON.stringify(payload), { status: 200 }), async () => {
+      await assert.rejects(
+        () => pipeline().transcribe(silentWav()),
+        (error: unknown) => error instanceof VoiceProviderError && error.retryable === false
+      );
+    });
+  }
+});

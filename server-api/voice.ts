@@ -167,9 +167,11 @@ export class OpenAiCompatibleSpeechToText implements SpeechToTextProvider {
       } catch {
         throw new VoiceProviderError('STT-Provider lieferte keine gültige JSON-Antwort', true);
       }
-      const text = typeof payload.text === 'string' ? payload.text.trim().slice(0, 1000) : '';
-      if (!text) throw new VoiceProviderError('STT-Provider lieferte kein Transcript');
-      return text;
+      // Ein leerer Text ist kein Fehler: Stille, Rauschen oder eine zu leise Äußerung ergeben
+      // keinen Text. Die Pipeline antwortet dann mit "Das habe ich leider nicht richtig verstanden"
+      // statt mit einem Fehler (502). Ein Antwortfeld ohne Text ist dagegen ein Fehler des Dienstes.
+      if (typeof payload.text !== 'string') throw new VoiceProviderError('STT-Provider lieferte keine Textantwort');
+      return payload.text.trim().slice(0, 1000);
     } catch (error) {
       if (error instanceof VoiceProviderError) throw error;
       if ((error as Error)?.name === 'AbortError') throw new VoiceProviderError('STT-Timeout', true);
