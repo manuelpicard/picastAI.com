@@ -633,3 +633,227 @@ test('Google: Text über 12.000 Zeichen wird wie bei der anderen Sprachausgabe b
     assert.ok(spoken.length > 11_000);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Pocket TTS (eigener Server, POST /tts mit Formularfeldern)
+// ---------------------------------------------------------------------------
+
+const POCKET: Partial<KunibertConfig> = {
+  ttsProvider: 'pocket',
+  pocketTtsUrl: 'http://127.0.0.1:8003',
+  pocketTtsVoice: 'juergen',
+  pocketTtsTempo: '1',
+  pocketTtsPauseMs: '',
+  // Die Adresse der OpenAI-kompatiblen Sprachausgabe darf bei Pocket keine Rolle spielen.
+  ttsUrl: 'http://127.0.0.1:8002/v1',
+  ttsModel: 'tts-test-modell',
+  ttsVoice: 'test-stimme',
+};
+
+/** Antwort wie bei Pocket TTS: WAV, 24 kHz Mono; mit `streaming` steht im Kopf eine unbekannte Länge (0xFFFFFFFF). */
+function pocketResponse(frames = 2400, streaming = false): Response {
+  const wav = encodeWav(Buffer.alloc(frames * 2, 1), 24_000, 1, 16);
+  if (streaming) {
+    wav.writeUInt32LE(0xffffffff, 4);
+    wav.writeUInt32LE(0xffffffff, 40);
+  }
+  return new Response(new Uint8Array(wav), { status: 200, headers: { 'Content-Type': 'audio/wav' } });
+}
+
+async function recordPocketRequests<T>(respond: () => Response, fn: (seen: SeenRequest[]) => Promise<T>): Promise<T> {
+  const original = globalThis.fetch;
+  const seen: SeenRequest[] = [];
+  globalThis.fetch = (async (url: string, init: RequestInit) => {
+    seen.push({ url, headers: (init.headers ?? {}) as Record<string, string>, body: init.body });
+    return respond();
+  }) as unknown as typeof fetch;
+  try {
+    return await fn(seen);
+  } finally {
+    globalThis.fetch = original;
+  }
+}
+
+const formField = (request: SeenRequest, name: string): string | null => {
+  const value = (request.body as FormData).get(name);
+  return typeof value === 'string' ? value : null;
+};
+
+test('Pocket: ein Satz geht als Formular an /tts, Stimme juergen, Ergebnis 16 kHz Mono', async () => {
+  await recordPocketRequests(() => pocketResponse(), async (seen) => {
+    const result = await pipeline(POCKET).synthesize('Es war einmal ein mutiger Ritter.');
+    assert.equal(seen.length, 1);
+    assert.equal(seen[0].url, 'http://127.0.0.1:8003/tts');
+    assert.ok(seen[0].body instanceof FormData);
+    assert.equal(formField(seen[0], 'text'), 'Es war einmal ein mutiger Ritter.');
+    assert.equal(formField(seen[0], 'voice_url'), 'juergen');
+    assert.equal('Authorization' in seen[0].headers, false);
+    // 2400 Bilder bei 24 kHz sind 0,1 s; bei 16 kHz Mono sind es 1600 Bilder (Tempo 1: unverändert).
+    const header = decodeWavHeader(result);
+    assert.equal(header.sampleRate, 16_000);
+    assert.equal(result.length, 44 + 1600 * 2);
+  });
+});
+
+test('Pocket: der Stream-Kopf mit unbekannter Länge wird gelesen', async () => {
+  await recordPocketRequests(() => pocketResponse(2400, true), async () => {
+    const result = await pipeline(POCKET).synthesize('Es war einmal ein mutiger Ritter.');
+    assert.equal(decodeWavHeader(result).sampleRate, 16_000);
+    assert.equal(result.length, 44 + 1600 * 2);
+  });
+});
+
+test('Pocket: jeder Satz ist eine Anfrage, dazwischen Stille nach Satzlänge (500 ms = 8000 Bilder bei 16 kHz)', async () => {
+  await recordPocketRequests(() => pocketResponse(), async (seen) => {
+    const result = await pipeline(POCKET).synthesize('Es war einmal ein mutiger Ritter. Er ritt durch den dunklen Wald.');
+    assert.equal(seen.length, 2);
+    assert.equal(formField(seen[0], 'text'), 'Es war einmal ein mutiger Ritter.');
+    assert.equal(formField(seen[1], 'text'), 'Er ritt durch den dunklen Wald.');
+    assert.equal(result.length, 44 + (1600 + 8000 + 1600) * 2);
+    // Die Stille steht zwischen den beiden Sätzen und besteht aus Nullen.
+    const pcm = result.subarray(44);
+    assert.ok(pcm.subarray(1600 * 2, (1600 + 8000) * 2).every((byte) => byte === 0));
+    assert.ok(pcm.subarray(0, 1600 * 2).some((byte) => byte !== 0));
+    assert.ok(pcm.subarray((1600 + 8000) * 2).some((byte) => byte !== 0));
+  });
+});
+
+test('Pocket: Absätze bekommen die längere Pause (900 ms), Pause 0 schaltet alle Pausen aus', async () => {
+  const text = 'Eins zwei drei vier fünf. Sechs sieben acht neun zehn.\nElf zwölf dreizehn vierzehn fünfzehn.';
+  await recordPocketRequests(() => pocketResponse(), async (seen) => {
+    const result = await pipeline(POCKET).synthesize(text);
+    assert.equal(seen.length, 3);
+    assert.equal(result.length, 44 + (3 * 1600 + 8000 + 14_400) * 2);
+  });
+  await recordPocketRequests(() => pocketResponse(), async (seen) => {
+    const result = await pipeline({ ...POCKET, pocketTtsPauseMs: '0' }).synthesize(text);
+    assert.equal(seen.length, 3);
+    assert.equal(result.length, 44 + 3 * 1600 * 2);
+  });
+  await recordPocketRequests(() => pocketResponse(), async () => {
+    const result = await pipeline({ ...POCKET, pocketTtsPauseMs: '300' }).synthesize(text);
+    // Satz 1: 300 ms, Absatzende: 540 ms.
+    assert.equal(result.length, 44 + (3 * 1600 + 4800 + 8640) * 2);
+  });
+});
+
+test('Pocket: das Tempo verlängert jeden Satz, ohne die Pause zu verändern', async () => {
+  // 2400 Bilder bei 24 kHz sind 1600 Bilder bei 16 kHz; bei Tempo 0,8 werden daraus 2000.
+  await recordPocketRequests(() => pocketResponse(), async () => {
+    const result = await pipeline({ ...POCKET, pocketTtsTempo: '0.8' }).synthesize('Es war einmal ein mutiger Ritter. Er ritt durch den dunklen Wald.');
+    assert.equal(result.length, 44 + (2000 + 8000 + 2000) * 2);
+  });
+  // Standard ohne Angabe: 0,9, aus 1600 werden 1778.
+  await recordPocketRequests(() => pocketResponse(), async () => {
+    const result = await pipeline({ ...POCKET, pocketTtsTempo: '' }).synthesize('Es war einmal ein mutiger Ritter.');
+    assert.equal(result.length, 44 + 1778 * 2);
+  });
+  // Ungültiges Tempo ergibt den Standard.
+  await recordPocketRequests(() => pocketResponse(), async () => {
+    const result = await pipeline({ ...POCKET, pocketTtsTempo: 'langsam' }).synthesize('Es war einmal ein mutiger Ritter.');
+    assert.equal(result.length, 44 + 1778 * 2);
+  });
+});
+
+test('Pocket: eigene Stimme und Adresse mit abschließendem Schrägstrich werden übernommen', async () => {
+  await recordPocketRequests(() => pocketResponse(), async (seen) => {
+    await pipeline({ ...POCKET, pocketTtsUrl: 'http://127.0.0.1:8003/', pocketTtsVoice: 'hf://kyutai/tts-voices/voice-zero/stimme.wav' }).synthesize('Hallo zusammen.');
+    assert.equal(seen[0].url, 'http://127.0.0.1:8003/tts');
+    assert.equal(formField(seen[0], 'voice_url'), 'hf://kyutai/tts-voices/voice-zero/stimme.wav');
+  });
+});
+
+test('Pocket: typografische Apostrophe werden geglättet', async () => {
+  await recordPocketRequests(() => pocketResponse(), async (seen) => {
+    await pipeline(POCKET).synthesize('Das gibt’s doch gar nicht.');
+    assert.equal(formField(seen[0], 'text'), "Das gibt's doch gar nicht.");
+  });
+});
+
+test('Pocket: leerer Text ist ein Fehler ohne Anfrage', async () => {
+  await recordPocketRequests(() => pocketResponse(), async (seen) => {
+    await assert.rejects(() => pipeline(POCKET).synthesize('  \n '), VoiceProviderError);
+    assert.equal(seen.length, 0);
+  });
+});
+
+test('Pocket: Text über 12.000 Zeichen wird wie bei den anderen Sprachausgaben begrenzt', async () => {
+  await recordPocketRequests(() => pocketResponse(240), async (seen) => {
+    await pipeline({ ...POCKET, pocketTtsPauseMs: '0' }).synthesize('Wort wort wort wort. '.repeat(2000));
+    const spoken = seen.map((request) => formField(request, 'text') ?? '').join(' ');
+    assert.ok(spoken.length <= 12_000);
+    assert.ok(spoken.length > 11_000);
+  });
+});
+
+test('Pocket: 400 ist nicht wiederholbar, 429 und 503 wiederholbar; ein Fehler bricht die ganze Ausgabe ab', async () => {
+  for (const [status, retryable] of [[400, false], [500, true], [429, true], [503, true]] as const) {
+    await withFetch(() => new Response('Fehlertext', { status }), async () => {
+      await assert.rejects(
+        () => pipeline(POCKET).synthesize('Es war einmal ein mutiger Ritter. Er ritt los und sang.'),
+        (error: unknown) => error instanceof VoiceProviderError && error.retryable === retryable && /Pocket/.test(error.message)
+      );
+    });
+  }
+  // Der zweite Satz scheitert: kein halbes Ergebnis.
+  let calls = 0;
+  await withFetch(() => (++calls === 1 ? pocketResponse() : new Response('kaputt', { status: 503 })), async () => {
+    await assert.rejects(() => pipeline(POCKET).synthesize('Es war einmal ein mutiger Ritter. Er ritt durch den dunklen Wald.'), VoiceProviderError);
+    assert.equal(calls, 2);
+  });
+});
+
+test('Pocket: Antwort ohne WAV oder ohne Audio ist ein Fehler', async () => {
+  await withFetch(() => new Response('kein wav', { status: 200 }), async () => {
+    await assert.rejects(() => pipeline(POCKET).synthesize('Hallo zusammen.'), VoiceProviderError);
+  });
+  await withFetch(() => pocketResponse(0), async () => {
+    await assert.rejects(() => pipeline(POCKET).synthesize('Hallo zusammen.'), VoiceProviderError);
+  });
+});
+
+test('Pocket: Netzwerkfehler und Zeitüberschreitung sind wiederholbare VoiceProviderError', async () => {
+  const original = globalThis.fetch;
+  try {
+    globalThis.fetch = (async () => { throw new Error('getrennt'); }) as unknown as typeof fetch;
+    await assert.rejects(
+      () => pipeline(POCKET).synthesize('Hallo zusammen.'),
+      (error: unknown) => error instanceof VoiceProviderError && error.retryable === true && /Pocket/.test(error.message)
+    );
+    globalThis.fetch = (async () => { const e = new Error('abgebrochen'); e.name = 'AbortError'; throw e; }) as unknown as typeof fetch;
+    await assert.rejects(
+      () => pipeline(POCKET).synthesize('Hallo zusammen.'),
+      (error: unknown) => error instanceof VoiceProviderError && error.retryable === true && error.message === 'TTS-Timeout'
+    );
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test('Pocket: die Sprachausgabe ist nur mit gültiger Adresse und Stimme konfiguriert; die Erkennung bleibt unberührt', async () => {
+  assert.equal(pipeline(POCKET).ttsConfigured, true);
+  assert.equal(pipeline(POCKET).sttConfigured, true);
+  assert.equal(pipeline({ ...POCKET, pocketTtsUrl: null }).ttsConfigured, false);
+  assert.equal(pipeline({ ...POCKET, pocketTtsUrl: 'kein-url' }).ttsConfigured, false);
+  assert.equal(pipeline({ ...POCKET, pocketTtsUrl: 'http://127.0.0.1:8003/v1' }).ttsConfigured, false);
+  assert.equal(pipeline({ ...POCKET, pocketTtsVoice: '' }).ttsConfigured, false);
+  assert.equal(pipeline({ ...POCKET, pocketTtsVoice: 'Jürgen' }).ttsConfigured, false);
+  // Die Einstellungen des OpenAI-kompatiblen Dienstes machen Pocket nicht startklar.
+  assert.equal(pipeline({ ttsProvider: 'pocket', pocketTtsUrl: null }).ttsConfigured, false);
+  // Die Erkennung geht weiter an den eigenen Server, nie an Pocket.
+  await recordRequests(async (seen) => {
+    await pipeline(POCKET).transcribe(silentWav());
+    assert.equal(seen.length, 1);
+    assert.equal(seen[0].url, 'http://127.0.0.1:8001/v1/audio/transcriptions');
+  });
+});
+
+test('Pocket: feste Texte werden einmal synthetisiert und danach aus dem Speicher gesprochen', async () => {
+  await recordPocketRequests(() => pocketResponse(), async (seen) => {
+    const voice = pipeline(POCKET);
+    const first = await voice.synthesizeCached('Das habe ich leider nicht richtig verstanden.');
+    const second = await voice.synthesizeCached('Das habe ich leider nicht richtig verstanden.');
+    assert.equal(seen.length, 1);
+    assert.equal(first, second);
+  });
+});

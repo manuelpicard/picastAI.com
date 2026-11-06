@@ -94,6 +94,11 @@ test('llmConfigWarnings: warnt vor Gemini-Einstellungen, die nicht mehr wirken',
   assert.equal(llmConfigWarnings({ PICASTAI_LLM_PROVIDER: 'gemini', GEMINI_API_KEY: 'g' }).length, 2);
 });
 
+test('resolveTtsProvider: "pocket" wählt Pocket TTS (Groß-/Kleinschreibung und Leerzeichen egal)', () => {
+  assert.equal(resolveTtsProvider({ PICASTAI_TTS_PROVIDER: ' Pocket ' }), 'pocket');
+  assert.equal(resolveTtsProvider({ PICASTAI_TTS_PROVIDER: 'pocket-tts' }), 'openai-compatible');
+});
+
 test('resolveTtsProvider: nur ein ausdrückliches "google" wählt Google', () => {
   assert.equal(resolveTtsProvider({}), 'openai-compatible');
   assert.equal(resolveTtsProvider({ PICASTAI_TTS_PROVIDER: '' }), 'openai-compatible');
@@ -107,10 +112,11 @@ test('resolveTtsProvider: nur ein ausdrückliches "google" wählt Google', () =>
 test('ttsProviderWarnings: ein unbekannter Wert wird gemeldet, bekannte und leere nicht', () => {
   assert.deepEqual(ttsProviderWarnings({}), []);
   assert.deepEqual(ttsProviderWarnings({ PICASTAI_TTS_PROVIDER: 'google' }), []);
+  assert.deepEqual(ttsProviderWarnings({ PICASTAI_TTS_PROVIDER: 'pocket' }), []);
   assert.deepEqual(ttsProviderWarnings({ PICASTAI_TTS_PROVIDER: 'openai-compatible' }), []);
   const unknown = ttsProviderWarnings({ PICASTAI_TTS_PROVIDER: 'googel' });
   assert.equal(unknown.length, 1);
-  assert.match(unknown[0], /googel.*unbekannt/);
+  assert.match(unknown[0], /googel.*unbekannt.*pocket/);
 });
 
 const GOOGLE_OK = {
@@ -206,4 +212,97 @@ test('getSafeConfigSummary: bei Google Host und Stimme, nie der Schlüssel', () 
   assert.equal(summary.ttsVoice, 'de-DE-Chirp3-HD-Algieba');
   assert.equal(summary.ttsModel, '');
   assert.equal(JSON.stringify(summary).includes('google-geheim'), false);
+});
+
+const POCKET_OK = {
+  sttUrl: null,
+  ttsUrl: null,
+  ttsProvider: 'pocket' as const,
+  pocketTtsUrl: 'http://127.0.0.1:8003',
+  pocketTtsVoice: 'juergen',
+  pocketTtsTempo: '0.9',
+  pocketTtsPauseMs: '500',
+};
+
+test('voiceConfigWarnings: vollständige Pocket-Einstellungen ergeben keine Warnung', () => {
+  assert.deepEqual(voiceConfigWarnings(POCKET_OK), []);
+  assert.deepEqual(voiceConfigWarnings({ ...POCKET_OK, pocketTtsTempo: '', pocketTtsPauseMs: '' }), []);
+  assert.deepEqual(voiceConfigWarnings({ ...POCKET_OK, pocketTtsPauseMs: '0', pocketTtsTempo: '1' }), []);
+});
+
+test('voiceConfigWarnings: Pocket ohne Adresse oder Stimme warnt, dass die Sprachausgabe aus bleibt', () => {
+  for (const missing of [{ pocketTtsUrl: null }, { pocketTtsVoice: '' }]) {
+    const warnings = voiceConfigWarnings({ ...POCKET_OK, ...missing });
+    assert.equal(warnings.length, 1);
+    assert.match(warnings[0], /müssen gesetzt sein/);
+  }
+});
+
+test('voiceConfigWarnings: ungültige Adresse, Stimme, Tempo und Pause bei Pocket', () => {
+  const badUrl = voiceConfigWarnings({ ...POCKET_OK, pocketTtsUrl: 'http://127.0.0.1:8003/v1' });
+  assert.equal(badUrl.length, 1);
+  assert.match(badUrl[0], /POCKET_TTS_URL.*keine gültige Adresse/);
+
+  const badVoice = voiceConfigWarnings({ ...POCKET_OK, pocketTtsVoice: 'Jürgen' });
+  assert.equal(badVoice.length, 1);
+  assert.match(badVoice[0], /Stimme ist ungültig/);
+
+  const badTempo = voiceConfigWarnings({ ...POCKET_OK, pocketTtsTempo: 'langsam' });
+  assert.equal(badTempo.length, 1);
+  assert.match(badTempo[0], /TEMPO.*ignoriert.*0\.9/);
+
+  const badPause = voiceConfigWarnings({ ...POCKET_OK, pocketTtsPauseMs: '5000' });
+  assert.equal(badPause.length, 1);
+  assert.match(badPause[0], /PAUSE_MS.*ignoriert.*500/);
+});
+
+test('voiceConfigWarnings: bei Pocket wird die Adresse der OpenAI-kompatiblen Sprachausgabe nicht geprüft, die von Pocket schon', () => {
+  assert.deepEqual(voiceConfigWarnings({ ...POCKET_OK, ttsUrl: 'https://api.openai.com/v1' }), []);
+  const remote = voiceConfigWarnings({ ...POCKET_OK, pocketTtsUrl: 'http://10.0.0.5:8003' });
+  assert.equal(remote.length, 1);
+  assert.match(remote[0], /Pocket.*unverschlüsselt/);
+  assert.deepEqual(voiceConfigWarnings({ ...POCKET_OK, pocketTtsUrl: 'https://tts.example.org' }), []);
+  const excluded = voiceConfigWarnings({ ...POCKET_OK, pocketTtsUrl: 'https://api.openai.com' });
+  assert.equal(excluded.length, 1);
+  assert.match(excluded[0], /ausgeschlossen/);
+  // Die Spracherkennung wird weiter geprüft.
+  const stt = voiceConfigWarnings({ ...POCKET_OK, sttUrl: 'http://10.0.0.5:8000/v1' });
+  assert.equal(stt.length, 1);
+  assert.match(stt[0], /Spracherkennung.*unverschlüsselt/);
+});
+
+test('loadConfig: Pocket-Standardstimme juergen, Adresse, Tempo und Pause aus der Umgebung', () => {
+  const keys = ['PICASTAI_POCKET_TTS_URL', 'PICASTAI_POCKET_TTS_VOICE', 'PICASTAI_POCKET_TTS_TEMPO', 'PICASTAI_POCKET_TTS_PAUSE_MS'];
+  const saved = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
+  try {
+    for (const key of keys) delete process.env[key];
+    const defaults = loadConfig();
+    assert.equal(defaults.pocketTtsUrl, null);
+    assert.equal(defaults.pocketTtsVoice, 'juergen');
+    assert.equal(defaults.pocketTtsTempo, '');
+    assert.equal(defaults.pocketTtsPauseMs, '');
+
+    process.env.PICASTAI_POCKET_TTS_URL = ' http://127.0.0.1:8003/ ';
+    process.env.PICASTAI_POCKET_TTS_VOICE = ' alba ';
+    process.env.PICASTAI_POCKET_TTS_TEMPO = '0.85';
+    process.env.PICASTAI_POCKET_TTS_PAUSE_MS = '300';
+    const set = loadConfig();
+    assert.equal(set.pocketTtsUrl, 'http://127.0.0.1:8003');
+    assert.equal(set.pocketTtsVoice, 'alba');
+    assert.equal(set.pocketTtsTempo, '0.85');
+    assert.equal(set.pocketTtsPauseMs, '300');
+  } finally {
+    for (const key of keys) {
+      if (saved[key] === undefined) delete process.env[key];
+      else process.env[key] = saved[key];
+    }
+  }
+});
+
+test('getSafeConfigSummary: bei Pocket nur Rechnername und Stimme, ohne Pfad und ohne Modell', () => {
+  const summary = getSafeConfigSummary({ ...loadConfig(), ...POCKET_OK, ttsModel: 'soll-nicht-erscheinen', ttsVoice: 'soll-auch-nicht' });
+  assert.equal(summary.ttsProvider, 'pocket');
+  assert.equal(summary.ttsHost, '127.0.0.1');
+  assert.equal(summary.ttsVoice, 'juergen');
+  assert.equal(summary.ttsModel, '');
 });

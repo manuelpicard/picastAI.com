@@ -8,6 +8,17 @@ import {
   type GoogleInput,
   type GoogleTtsSettings,
 } from './google-speech.js';
+import {
+  POCKET_MAX_SEGMENT_BYTES,
+  pcm16ToSamples,
+  preparePocketText,
+  samplesToPcm16,
+  silencePcm16,
+  timeStretchPcm16,
+  usablePocketSettings,
+  type PocketTtsSettings,
+} from './pocket-speech.js';
+import { planSpeechSegments } from './speech-text.js';
 
 export interface SpeechToTextProvider {
   transcribe(wav: Buffer): Promise<string>;
@@ -296,6 +307,62 @@ export class GoogleTextToSpeech implements TextToSpeechProvider {
   }
 }
 
+/**
+ * Sprachausgabe über Pocket TTS (Kyutai): ein Server im eigenen Netz (`pocket-tts serve`), zu dem
+ * nur der Antworttext geht; kein Dienst eines Dritten. Pocket TTS hat weder Tempo-Regler noch
+ * Pausen. Deshalb spricht der Server Satz für Satz (`POST {url}/tts`, Formularfelder `text` und
+ * `voice_url`), verlangsamt jeden Satz ohne Änderung der Tonhöhe (Zeitdehnung) und setzt zwischen
+ * die Sätze Stille: nach kurzen Sätzen weniger, nach langen und bei Absätzen mehr.
+ */
+export class PocketTextToSpeech implements TextToSpeechProvider {
+  constructor(
+    private readonly settings: PocketTtsSettings,
+    private readonly timeoutMs: number,
+    private readonly targetSampleRate: number
+  ) {}
+
+  async synthesize(text: string): Promise<Buffer> {
+    const segments = planSpeechSegments(preparePocketText(text.slice(0, 12_000)), this.settings.pauseMs, POCKET_MAX_SEGMENT_BYTES);
+    if (segments.length === 0) throw new VoiceProviderError('TTS: kein Text zum Sprechen');
+    const parts: Buffer[] = [];
+    for (const segment of segments) {
+      // normalizePcmWav liefert immer ein WAV mit kanonischem 44-Byte-Kopf in der Zielrate.
+      const wav = await this.synthesizeSegment(segment.text);
+      const samples = pcm16ToSamples(wav.subarray(44));
+      parts.push(samplesToPcm16(timeStretchPcm16(samples, this.settings.tempo, this.targetSampleRate)));
+      if (segment.pauseAfterMs > 0) parts.push(silencePcm16(this.targetSampleRate, segment.pauseAfterMs));
+    }
+    return encodeWav(Buffer.concat(parts), this.targetSampleRate, 1, 16);
+  }
+
+  private async synthesizeSegment(text: string): Promise<Buffer> {
+    const timeout = withTimeout(this.timeoutMs);
+    try {
+      const form = new FormData();
+      form.append('text', text);
+      form.append('voice_url', this.settings.voice);
+      const response = await fetch(`${this.settings.url}/tts`, {
+        method: 'POST',
+        headers: { 'User-Agent': 'picastAI-ritter-kunibert' },
+        body: form,
+        signal: timeout.signal,
+      });
+      if (!response.ok) {
+        throw new VoiceProviderError(`TTS-Provider (Pocket) antwortete mit HTTP ${response.status}: ${await readError(response)}`, response.status >= 500 || response.status === 429);
+      }
+      // Die Antwort kommt als Datenstrom mit Streaming-Kopf (Länge unbekannt); parsePcmWav kommt damit zurecht.
+      // Pocket TTS liefert 24 kHz Mono; das Pi-Format ist 16 kHz Mono.
+      return normalizePcmWav(Buffer.from(await response.arrayBuffer()), this.targetSampleRate);
+    } catch (error) {
+      if (error instanceof VoiceProviderError) throw error;
+      if ((error as Error)?.name === 'AbortError') throw new VoiceProviderError('TTS-Timeout', true);
+      throw new VoiceProviderError(`TTS-Netzwerkfehler (Pocket): ${(error as Error)?.message || 'unbekannt'}`, true);
+    } finally {
+      timeout.cancel();
+    }
+  }
+}
+
 /** Obergrenze für zwischengespeicherte feste Texte (es gibt nur eine Handvoll). */
 const MAX_FIXED_CACHE_ENTRIES = 16;
 
@@ -316,6 +383,9 @@ export class VoicePipeline {
     if (config.ttsProvider === 'google') {
       const google = usableGoogleSettings(config);
       this.tts = google ? new GoogleTextToSpeech(google, config.voiceTimeoutMs, config.audioSampleRate) : null;
+    } else if (config.ttsProvider === 'pocket') {
+      const pocket = usablePocketSettings(config);
+      this.tts = pocket ? new PocketTextToSpeech(pocket, config.voiceTimeoutMs, config.audioSampleRate) : null;
     } else {
       this.tts = config.ttsUrl && config.ttsModel && config.ttsVoice
         ? new OpenAiCompatibleTextToSpeech(

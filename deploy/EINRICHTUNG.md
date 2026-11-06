@@ -75,6 +75,14 @@ uvx speaches-cli registry ls --task text-to-speech                # verfügbare 
 - **Erkennung:** `Systran/faster-whisper-small` ist das Beispiel der Dokumentation und klein. In der Studie [Kid-Whisper](https://arxiv.org/html/2309.07927) erkennt ein größeres Whisper-Modell Kinderstimmen etwas besser, kostet aber mehr Rechenzeit. Welches Modell reicht, entscheidet der Test in Schritt 11 der Checkliste.
 - **Stimme:** Piper hat deutsche Stimmen (`eva_k`, `karlsson`, `kerstin`, `mls`, `pavoque`, `ramona`, `thorsten`, `thorsten_emotional`). Welche Modellnamen Speaches dafür anbietet und wie die Stimme angesprochen wird, zeigt `registry ls` und die Speaches-Dokumentation; nicht gegengeprüft. Jede Stimme hat eine eigene Lizenz: vor dem Einsatz mit Kindern prüfen.
 - **Klingt keine Piper-Stimme gut genug:** Im Hörtest vom 6.11.2026 klangen die Piper-Stimmen auch mit abgesenkter Tonhöhe unnatürlich. Die Sprachausgabe lässt sich allein auf Google Cloud Text-to-Speech umstellen (`PICASTAI_TTS_PROVIDER=google`, Chirp 3 HD, siehe `docs/LLM-Anbieter.md`). Die Standardwerte sind die im Hörtest gewählte Erzählstimme (Algieba, zwei Halbtöne tiefer, Tempo 0,9, Pausen nach den Sätzen); Tonlage, Tempo und Pausenlänge lassen sich mit `PICASTAI_GOOGLE_TTS_PITCH`, `_RATE` und `_PAUSE_MS` nachstellen. Die Spracherkennung bleibt auf dem eigenen Server; zu Google geht dann nur der Antworttext. Für den Kinderbetrieb rechtlich prüfen, bis dahin nur mit Erwachsenen testen.
+- **Eigene Stimme ohne Drittanbieter: Pocket TTS (Kyutai).** Läuft auf der CPU, der Text verlässt den eigenen Server nicht. Auf dem Sprachserver (mit [uv](https://docs.astral.sh/uv/)):
+
+  ```bash
+  # einmalig: auf der Hugging-Face-Seite kyutai/pocket-tts den Bedingungen zustimmen und sich mit einem Zugriffstoken anmelden
+  uvx pocket-tts serve --language german --host 127.0.0.1 --port 8003
+  ```
+
+  Port 8003 wie 8000 nie nach außen freigeben. In `/etc/kunibert/kunibert.env` eintragen: `PICASTAI_TTS_PROVIDER=pocket` und `PICASTAI_POCKET_TTS_URL=http://127.0.0.1:8003` (Tempo, Pause und Stimme: `docs/LLM-Anbieter.md`). Anhören, bevor der Dienst läuft: `npm run sprachprobe -- probe.wav` mit denselben Variablen. Herkunft und Lizenz der Stimme `juergen` sind ungeklärt, bis dahin nur mit Erwachsenen testen. Nicht gegen einen echten Pocket-Server von dieser Anleitung aus geprüft: Anmeldung, Start und Speicherbedarf.
 - Die Namen in `/etc/kunibert/kunibert.env` eintragen (`PICASTAI_STT_MODEL`, `PICASTAI_TTS_MODEL`, `PICASTAI_TTS_VOICE`) und den Kunibert-Dienst neu starten.
 
 Stimme direkt prüfen (Namen einsetzen):

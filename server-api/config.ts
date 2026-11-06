@@ -8,9 +8,15 @@ import {
   isValidPitch,
   isValidSpeakingRate,
 } from './google-speech.js';
+import {
+  DEFAULT_POCKET_VOICE,
+  isValidPocketUrl,
+  isValidPocketVoice,
+  isValidTempo,
+} from './pocket-speech.js';
 import { normalizePublicBaseUrl, parseTrustProxy, type TrustProxySetting } from './http-utils.js';
 
-export type TtsProviderName = 'openai-compatible' | 'google';
+export type TtsProviderName = 'openai-compatible' | 'google' | 'pocket';
 
 export interface KunibertConfig {
   // Server-Netzwerk
@@ -45,8 +51,9 @@ export interface KunibertConfig {
   ttsModel: string;
   ttsVoice: string;
   /**
-   * Anbieter der Sprachausgabe: 'openai-compatible' (ttsUrl/ttsModel/ttsVoice, Standard) oder
-   * 'google' (Google Cloud Text-to-Speech, Chirp 3 HD, EU-Endpunkt). Die Spracherkennung bleibt
+   * Anbieter der Sprachausgabe: 'openai-compatible' (ttsUrl/ttsModel/ttsVoice, Standard),
+   * 'google' (Google Cloud Text-to-Speech, Chirp 3 HD, EU-Endpunkt) oder 'pocket' (Pocket TTS auf dem
+   * eigenen Server, pocketTtsUrl). Die Spracherkennung bleibt
    * davon unberührt und geht immer an den Dienst unter sttUrl: die Kinderstimme verlässt den
    * eigenen Server nicht.
    */
@@ -60,6 +67,14 @@ export interface KunibertConfig {
   googleTtsPitch: string;
   /** Google: Pause nach jedem Satz in ms, 0 bis 2000 (PICASTAI_GOOGLE_TTS_PAUSE_MS); leer = Standard 500, 0 = keine. */
   googleTtsPauseMs: string;
+  /** Pocket TTS: Adresse des Servers (`pocket-tts serve`), ohne Pfad (PICASTAI_POCKET_TTS_URL); null = aus. */
+  pocketTtsUrl: string | null;
+  /** Pocket TTS: eingebaute Stimme oder hf://-/https://-Adresse, Standard juergen. */
+  pocketTtsVoice: string;
+  /** Pocket TTS: Tempo-Faktor 0,7 bis 1,3 (PICASTAI_POCKET_TTS_TEMPO); leer = Standard 0,9. */
+  pocketTtsTempo: string;
+  /** Pocket TTS: Grundpause nach einem Satz in ms, 0 bis 2000 (PICASTAI_POCKET_TTS_PAUSE_MS); leer = Standard 500, 0 = keine. */
+  pocketTtsPauseMs: string;
   voiceTimeoutMs: number;
 
   // Erzähl- & Pädagogik-Parameter
@@ -123,16 +138,17 @@ export function llmConfigWarnings(
   return warnings;
 }
 
-/** Anbieter der Sprachausgabe: nur ein ausdrückliches "google" wählt Google, sonst der OpenAI-kompatible Dienst. */
+/** Anbieter der Sprachausgabe: nur ein ausdrückliches "google" oder "pocket" wählt diesen, sonst der OpenAI-kompatible Dienst. */
 export function resolveTtsProvider(env: { PICASTAI_TTS_PROVIDER?: string } = process.env): TtsProviderName {
-  return env.PICASTAI_TTS_PROVIDER?.trim().toLowerCase() === 'google' ? 'google' : 'openai-compatible';
+  const requested = env.PICASTAI_TTS_PROVIDER?.trim().toLowerCase();
+  return requested === 'google' || requested === 'pocket' ? requested : 'openai-compatible';
 }
 
 /** Warnung beim Start bei einem unbekannten Wert für PICASTAI_TTS_PROVIDER (er würde sonst still ignoriert). */
 export function ttsProviderWarnings(env: { PICASTAI_TTS_PROVIDER?: string } = process.env): string[] {
   const requested = env.PICASTAI_TTS_PROVIDER?.trim().toLowerCase();
-  if (requested && requested !== 'google' && requested !== 'openai-compatible') {
-    return [`Sprachausgabe: PICASTAI_TTS_PROVIDER=${requested} ist unbekannt (erlaubt: openai-compatible, google). Es gilt openai-compatible.`];
+  if (requested && requested !== 'google' && requested !== 'pocket' && requested !== 'openai-compatible') {
+    return [`Sprachausgabe: PICASTAI_TTS_PROVIDER=${requested} ist unbekannt (erlaubt: openai-compatible, google, pocket). Es gilt openai-compatible.`];
   }
   return [];
 }
@@ -162,14 +178,16 @@ const EXCLUDED_VOICE_HOSTS = ['api.openai.com', 'generativelanguage.googleapis.c
  */
 export function voiceConfigWarnings(
   config: Pick<KunibertConfig, 'sttUrl' | 'ttsUrl'> &
-    Partial<Pick<KunibertConfig, 'ttsProvider' | 'googleTtsKey' | 'googleTtsVoice' | 'googleTtsRate' | 'googleTtsPitch' | 'googleTtsPauseMs'>>
+    Partial<Pick<KunibertConfig, 'ttsProvider' | 'googleTtsKey' | 'googleTtsVoice' | 'googleTtsRate' | 'googleTtsPitch' | 'googleTtsPauseMs' | 'pocketTtsUrl' | 'pocketTtsVoice' | 'pocketTtsTempo' | 'pocketTtsPauseMs'>>
 ): string[] {
   const warnings: string[] = [];
   const google = config.ttsProvider === 'google';
+  const pocket = config.ttsProvider === 'pocket';
   const services: Array<[string, string | null]> = [
     ['Spracherkennung', config.sttUrl],
-    // Bei Google ist die Sprachausgabe-Adresse nicht in Gebrauch.
-    ['Sprachausgabe', google ? null : config.ttsUrl],
+    // Bei Google und Pocket ist die Adresse der OpenAI-kompatiblen Sprachausgabe nicht in Gebrauch.
+    ['Sprachausgabe', google || pocket ? null : config.ttsUrl],
+    ['Sprachausgabe (Pocket)', pocket ? config.pocketTtsUrl ?? null : null],
   ];
   for (const [name, url] of services) {
     if (!url) continue;
@@ -186,6 +204,31 @@ export function voiceConfigWarnings(
     }
   }
   if (google) warnings.push(...googleConfigWarnings(config));
+  if (pocket) warnings.push(...pocketConfigWarnings(config));
+  return warnings;
+}
+
+function pocketConfigWarnings(
+  config: Partial<Pick<KunibertConfig, 'pocketTtsUrl' | 'pocketTtsVoice' | 'pocketTtsTempo' | 'pocketTtsPauseMs'>>
+): string[] {
+  const warnings: string[] = [];
+  const voice = config.pocketTtsVoice ?? '';
+  if (!config.pocketTtsUrl || !voice) {
+    warnings.push('Sprachausgabe (Pocket): Adresse und Stimme (PICASTAI_POCKET_TTS_URL, _VOICE) müssen gesetzt sein, sonst bleibt die Sprachausgabe aus.');
+    return warnings;
+  }
+  if (!isValidPocketUrl(config.pocketTtsUrl)) {
+    warnings.push('Sprachausgabe (Pocket): PICASTAI_POCKET_TTS_URL ist keine gültige Adresse (erwartet z. B. http://127.0.0.1:8003, ohne Pfad und Zugangsdaten). Die Sprachausgabe bleibt aus.');
+  }
+  if (!isValidPocketVoice(voice)) {
+    warnings.push('Sprachausgabe (Pocket): Die Stimme ist ungültig (erwartet z. B. juergen, hf://… oder https://…). Die Sprachausgabe bleibt aus.');
+  }
+  if (config.pocketTtsTempo && !isValidTempo(config.pocketTtsTempo)) {
+    warnings.push('Sprachausgabe (Pocket): PICASTAI_POCKET_TTS_TEMPO ist ungültig (erlaubt 0.7 bis 1.3, z. B. 0.9) und wird ignoriert; es gilt 0.9.');
+  }
+  if (config.pocketTtsPauseMs && !isValidPauseMs(config.pocketTtsPauseMs)) {
+    warnings.push('Sprachausgabe (Pocket): PICASTAI_POCKET_TTS_PAUSE_MS ist ungültig (erlaubt 0 bis 2000, z. B. 500) und wird ignoriert; es gilt 500.');
+  }
   return warnings;
 }
 
@@ -252,6 +295,10 @@ export function loadConfig(): KunibertConfig {
     googleTtsRate: process.env.PICASTAI_GOOGLE_TTS_RATE?.trim() || '',
     googleTtsPitch: process.env.PICASTAI_GOOGLE_TTS_PITCH?.trim() || '',
     googleTtsPauseMs: process.env.PICASTAI_GOOGLE_TTS_PAUSE_MS?.trim() || '',
+    pocketTtsUrl: normalizeServiceUrl(process.env.PICASTAI_POCKET_TTS_URL),
+    pocketTtsVoice: process.env.PICASTAI_POCKET_TTS_VOICE?.trim() || DEFAULT_POCKET_VOICE,
+    pocketTtsTempo: process.env.PICASTAI_POCKET_TTS_TEMPO?.trim() || '',
+    pocketTtsPauseMs: process.env.PICASTAI_POCKET_TTS_PAUSE_MS?.trim() || '',
     voiceTimeoutMs: Math.min(120_000, Math.max(3_000, parseNum(process.env.PICASTAI_VOICE_TIMEOUT_MS, 45_000))),
 
     ageBracket: process.env.KUNIBERT_AGE || 'sechs bis zehn',
@@ -288,10 +335,18 @@ export function getSafeConfigSummary(config: KunibertConfig) {
     // Nur der Rechnername, nie Pfad, Zugangsdaten oder Schlüssel.
     sttHost: config.sttUrl ? hostnameOf(config.sttUrl) : null,
     ttsProvider: config.ttsProvider,
-    ttsHost: config.ttsProvider === 'google' ? GOOGLE_TTS_HOST : (config.ttsUrl ? hostnameOf(config.ttsUrl) : null),
+    ttsHost: config.ttsProvider === 'google'
+      ? GOOGLE_TTS_HOST
+      : config.ttsProvider === 'pocket'
+        ? (config.pocketTtsUrl ? hostnameOf(config.pocketTtsUrl) : null)
+        : (config.ttsUrl ? hostnameOf(config.ttsUrl) : null),
     sttModel: config.sttModel,
-    ttsModel: config.ttsProvider === 'google' ? '' : config.ttsModel,
-    ttsVoice: config.ttsProvider === 'google' ? config.googleTtsVoice : config.ttsVoice,
+    ttsModel: config.ttsProvider === 'openai-compatible' ? config.ttsModel : '',
+    ttsVoice: config.ttsProvider === 'google'
+      ? config.googleTtsVoice
+      : config.ttsProvider === 'pocket'
+        ? config.pocketTtsVoice
+        : config.ttsVoice,
     ageBracket: config.ageBracket,
     partsPerEpisode: config.partsPerEpisode,
     storyWordRange: `${config.storyMinWords}–${config.storyMaxWords} Wörter`,

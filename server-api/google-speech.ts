@@ -1,6 +1,20 @@
 // Hilfen für die Sprachausgabe über Google Cloud Text-to-Speech (REST, Chirp 3 HD). Reine
 // Funktionen ohne Netzwerk, damit Konfiguration und Tests sie ohne den Rest der Sprachkette nutzen können.
 
+import {
+  CONTROL_CHARACTERS,
+  SENTENCE_BOUNDARY,
+  byteLength,
+  isValidPauseMs,
+  paragraphPauseMs,
+  sentencePauseMs,
+  splitSpeechText,
+} from './speech-text.js';
+
+// Die Text-Hilfen sind anbieterunabhängig (auch die Sprachausgabe über Pocket TTS nutzt sie) und stehen
+// in speech-text.ts; hier bleiben sie unter dem alten Namen erreichbar.
+export { isValidPauseMs, sentencePauseMs, splitSpeechText };
+
 /**
  * Feste Adresse im EU-Mehrfachstandort ("eu"). Es gibt bewusst keine einstellbare Adresse:
  * Der Antworttext soll nur in der EU verarbeitet werden, und der Schlüssel darf nur an Google gehen.
@@ -23,18 +37,6 @@ export const DEFAULT_GOOGLE_PITCH = -2;
 
 /** Pause nach jedem Satz in Millisekunden; bei Absätzen länger. 0 schaltet die Pausen aus. */
 export const DEFAULT_GOOGLE_PAUSE_MS = 500;
-
-/**
- * Pausen im Verhältnis zur Satzpause. Gleich lange Pausen nach jedem Satz klingen abgehackt:
- * nach sehr kurzen Sätzen ("Wer ist da?") ist die Pause kürzer, nach langen Sätzen länger,
- * bei Absätzen am längsten. Reine Annahme, im Hörtest noch nicht gegengeprüft: Länge mit
- * PICASTAI_GOOGLE_TTS_PAUSE_MS einstellen.
- */
-const PARAGRAPH_PAUSE_FACTOR = 1.8;
-const SHORT_SENTENCE_PAUSE_FACTOR = 0.6;
-const LONG_SENTENCE_PAUSE_FACTOR = 1.2;
-const SHORT_SENTENCE_MAX_WORDS = 3;
-const LONG_SENTENCE_MIN_WORDS = 15;
 
 /** Google erlaubt höchstens 5000 Bytes je Anfrage; hier mit Abstand. */
 export const GOOGLE_MAX_INPUT_BYTES = 4000;
@@ -64,11 +66,6 @@ export function isValidSpeakingRate(value: string): boolean {
 export function isValidPitch(value: string): boolean {
   if (!/^[+-]?\d(\.\d)?$/.test(value)) return false;
   return Math.abs(Number(value)) <= 6;
-}
-
-/** Pause in ganzen Millisekunden von 0 (aus) bis 2000. */
-export function isValidPauseMs(value: string): boolean {
-  return /^\d{1,4}$/.test(value) && Number(value) <= 2000;
 }
 
 /**
@@ -119,24 +116,6 @@ export function escapeXml(text: string): string {
     .replace(/'/g, '&apos;');
 }
 
-/** Trennt an Satzenden (. ! ? …), wenn danach Leerraum folgt; "?“, rief er." bleibt zusammen. */
-const SENTENCE_BOUNDARY = /(?<=[.!?…])\s+/;
-
-function byteLength(text: string): number {
-  return Buffer.byteLength(text, 'utf8');
-}
-
-/** Pause nach einem Satz in Millisekunden: kürzer nach sehr kurzen, länger nach langen Sätzen. */
-export function sentencePauseMs(sentence: string, basePauseMs: number): number {
-  const words = sentence.split(/\s+/).filter(Boolean).length;
-  const factor = words <= SHORT_SENTENCE_MAX_WORDS
-    ? SHORT_SENTENCE_PAUSE_FACTOR
-    : words >= LONG_SENTENCE_MIN_WORDS
-      ? LONG_SENTENCE_PAUSE_FACTOR
-      : 1;
-  return Math.round(basePauseMs * factor);
-}
-
 /**
  * SSML für Google: ganzer Text in `prosody` (Tonlage in Halbtönen, Tempo in Prozent), nach jedem
  * Satz eine Pause (je nach Satzlänge), bei Zeilenumbrüchen eine längere. Der Text wird maskiert;
@@ -145,7 +124,7 @@ export function sentencePauseMs(sentence: string, basePauseMs: number): number {
 export function buildGoogleSsml(text: string, style: GoogleVoiceStyle): string {
   const pause = (ms: number): string => (style.pauseMs > 0 ? `<break time="${ms}ms"/>` : ' ');
   const body = text
-    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, ' ')
+    .replace(CONTROL_CHARACTERS, ' ')
     .split(/\n+/)
     .map((paragraph) => paragraph.trim())
     .filter(Boolean)
@@ -157,81 +136,10 @@ export function buildGoogleSsml(text: string, style: GoogleVoiceStyle): string {
         )
         .join('');
     })
-    .join(pause(Math.round(style.pauseMs * PARAGRAPH_PAUSE_FACTOR)));
+    .join(pause(paragraphPauseMs(style.pauseMs)));
   const pitch = `${style.pitchSemitones >= 0 ? '+' : ''}${style.pitchSemitones}st`;
   const rate = `${Math.round(style.speakingRate * 100)}%`;
   return `<speak><prosody pitch="${pitch}" rate="${rate}">${body}</prosody></speak>`;
-}
-
-/** Teilt ein einzelnes zu langes Wort zeichenweise (nach Codepunkten, nie mitten in einem Zeichen). */
-function splitByCodePoints(text: string, maxBytes: number): string[] {
-  const parts: string[] = [];
-  let current = '';
-  for (const char of text) {
-    if (current && byteLength(current + char) > maxBytes) {
-      parts.push(current);
-      current = '';
-    }
-    current += char;
-  }
-  if (current) parts.push(current);
-  return parts;
-}
-
-/**
- * Teilt einen Text für Google in Stücke von höchstens `maxBytes` Bytes (UTF-8). Geteilt wird
- * bevorzugt nach Absätzen, dann nach Sätzen, ein zu langer Satz an Wortgrenzen und ein zu langes
- * Wort zeichenweise. Ein Text, der in eine Anfrage passt, bleibt unverändert (außer Steuerzeichen
- * und Rand-Leerraum). Leerer Text ergibt eine leere Liste.
- */
-export function splitSpeechText(text: string, maxBytes: number = GOOGLE_MAX_INPUT_BYTES): string[] {
-  const clean = text.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, ' ').trim();
-  if (!clean) return [];
-  if (byteLength(clean) <= maxBytes) return [clean];
-
-  const chunks: string[] = [];
-  let current = '';
-  const flush = (): void => {
-    if (current) chunks.push(current);
-    current = '';
-  };
-  const append = (piece: string, joiner: string): boolean => {
-    const candidate = current ? `${current}${joiner}${piece}` : piece;
-    if (byteLength(candidate) > maxBytes) return false;
-    current = candidate;
-    return true;
-  };
-
-  for (const paragraph of clean.split(/\n+/).map((part) => part.trim()).filter(Boolean)) {
-    if (append(paragraph, '\n')) continue;
-    flush();
-    if (byteLength(paragraph) <= maxBytes) {
-      current = paragraph;
-      continue;
-    }
-    for (const sentence of paragraph.split(SENTENCE_BOUNDARY)) {
-      if (append(sentence, ' ')) continue;
-      flush();
-      if (byteLength(sentence) <= maxBytes) {
-        current = sentence;
-        continue;
-      }
-      for (const word of sentence.split(/\s+/)) {
-        if (append(word, ' ')) continue;
-        flush();
-        if (byteLength(word) <= maxBytes) {
-          current = word;
-          continue;
-        }
-        for (const part of splitByCodePoints(word, maxBytes)) {
-          flush();
-          current = part;
-        }
-      }
-    }
-  }
-  flush();
-  return chunks;
 }
 
 /**
