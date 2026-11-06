@@ -82,7 +82,7 @@ uvx speaches-cli registry ls --task text-to-speech                # verfügbare 
   uvx pocket-tts serve --language german --host 127.0.0.1 --port 8003
   ```
 
-  Port 8003 wie 8000 nie nach außen freigeben. In `/etc/kunibert/kunibert.env` eintragen: `PICASTAI_TTS_PROVIDER=pocket` und `PICASTAI_POCKET_TTS_URL=http://127.0.0.1:8003` (Tempo, Pause und Stimme: `docs/LLM-Anbieter.md`). Anhören, bevor der Dienst läuft: `npm run sprachprobe -- probe.wav` mit denselben Variablen. Herkunft und Lizenz der Stimme `juergen` sind ungeklärt, bis dahin nur mit Erwachsenen testen. Nicht gegen einen echten Pocket-Server von dieser Anleitung aus geprüft: Anmeldung, Start und Speicherbedarf.
+  Port 8003 wie 8000 nie nach außen freigeben. In `/etc/kunibert/kunibert.env` eintragen: `PICASTAI_TTS_PROVIDER=pocket` und `PICASTAI_POCKET_TTS_URL=http://127.0.0.1:8003` (Tempo, Pause und Stimme: `docs/LLM-Anbieter.md`). Anhören, bevor der Dienst läuft: `npm run sprachprobe -- probe.wav` mit denselben Variablen. Herkunft und Lizenz der Stimme `juergen` sind ungeklärt, bis dahin nur mit Erwachsenen testen. Ohne `--port` lauscht der Pocket-Server laut Protokoll des Betreibers auf Port 8080; hier ist 8003 gewählt, damit er sich nicht mit anderen Diensten überschneidet. Von dieser Anleitung aus nicht geprüft: Anmeldung bei Hugging Face und Speicherbedarf.
 - Die Namen in `/etc/kunibert/kunibert.env` eintragen (`PICASTAI_STT_MODEL`, `PICASTAI_TTS_MODEL`, `PICASTAI_TTS_VOICE`) und den Kunibert-Dienst neu starten.
 
 Stimme direkt prüfen (Namen einsetzen):
