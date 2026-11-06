@@ -52,5 +52,16 @@ Spracherkennung und Sprachausgabe sind zwei getrennte Dienste mit je einer Adres
 - Empfohlen ist ein eigener Server in der EU, zunächst [Speaches](https://github.com/speaches-ai/speaches) mit `faster-whisper` (Erkennung) und `Piper` (Stimme); Einrichtung in `deploy/EINRICHTUNG.md`, Abschnitt 4. Der Vergleich der Dienste samt offener Punkte steht im Dokument „Ritter Kunibert – Vergleich Spracherkennung und Sprachausgabe“.
 - Die Spracherkennung bekommt immer `language=de`; `PICASTAI_STT_PROMPT` ist ein optionaler Hinweistext.
 - Die Antwort der Sprachausgabe wird als WAV gelesen (auch mit zusätzlichen Chunks oder Streaming-Kopf) und auf 16 kHz Mono umgerechnet; eigene Server liefern oft 22,05 kHz.
+- **Alternative Sprachausgabe: Azure AI Speech.** Klingt eine freie Stimme nicht gut genug, lässt sich nur die Sprachausgabe auf Azure umstellen; die Spracherkennung bleibt auf dem eigenen Server, die Kinderstimme verlässt ihn nie. Es geht nur der Antworttext hinaus (er kann trotzdem Wörter des Kindes enthalten, etwa einen Namen: vor dem Kinderbetrieb rechtlich prüfen).
+
+  | Variable | Bedeutung |
+  | --- | --- |
+  | `PICASTAI_TTS_PROVIDER` | `azure` schaltet um (Standard: `openai-compatible`). Dann gelten `PICASTAI_TTS_URL`, `_MODEL` und `_VOICE` nicht. |
+  | `PICASTAI_AZURE_TTS_REGION` | Kurzname der Region, **in der EU wählen**, z. B. `germanywestcentral` oder `westeurope`. Bei anderen Regionen warnt der Server beim Start. |
+  | `PICASTAI_AZURE_TTS_KEY` | Schlüssel der Speech-Ressource, nur serverseitig. |
+  | `PICASTAI_AZURE_TTS_VOICE` | Stimmenname, z. B. `de-de-Florian:DragonHDLatestNeural` (Dragon HD, männlich) oder `de-DE-ConradNeural`. |
+  | `PICASTAI_AZURE_TTS_PITCH`, `PICASTAI_AZURE_TTS_RATE` | Optional: Tonlage und Tempo als SSML-Wert (`-10%`, `+2st`, `low`; Tempo `-5%`, `slow`, `0.9`). Ungültige Werte werden ignoriert, der Server warnt. |
+
+  Nicht live getestet: Azure-Anfrage (SSML, Rohformat 16 kHz, Schlüssel im Header `Ocp-Apim-Subscription-Key`) stammt aus der Microsoft-Dokumentation. Ob `pitch` bei den Dragon-HD-Stimmen wirkt, ist dort nicht bestätigt (für `rate` gibt es ein Beispiel); das zeigt der Hörtest. Ob Dragon HD in der gewählten EU-Region verfügbar ist, zeigt die Regionsliste von Azure. Preis, Aufbewahrung der Texte und Vertrag zur Auftragsverarbeitung vor dem Kinderbetrieb prüfen.
 - Die Dienste sind unabhängig: Erkennung und Sprachausgabe können auf verschiedenen Servern laufen, jeweils mit eigener Adresse und eigenem Schlüssel.
 - Ob die Erkennung bei deutschen Kinderstimmen reicht und welche Stimme gut klingt, zeigt Schritt 11 der Checkliste (`deploy/CHECKLISTE.md`); dafür habe ich keine veröffentlichten Messwerte gefunden.

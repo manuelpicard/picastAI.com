@@ -1,5 +1,13 @@
 // Zentrale Konfiguration für alle Kunibert-Umgebungsvariablen
+import {
+  AZURE_EU_REGIONS,
+  isValidAzureRegion,
+  isValidAzureVoiceName,
+  isValidProsodyValue,
+} from './azure-speech.js';
 import { normalizePublicBaseUrl, parseTrustProxy, type TrustProxySetting } from './http-utils.js';
+
+export type TtsProviderName = 'openai-compatible' | 'azure';
 
 export interface KunibertConfig {
   // Server-Netzwerk
@@ -33,6 +41,21 @@ export interface KunibertConfig {
   ttsApiKey: string | null;
   ttsModel: string;
   ttsVoice: string;
+  /**
+   * Anbieter der Sprachausgabe: 'openai-compatible' (ttsUrl/ttsModel/ttsVoice, Standard) oder
+   * 'azure' (Azure AI Speech über REST). Die Spracherkennung bleibt davon unberührt und geht
+   * immer an den Dienst unter sttUrl: die Kinderstimme verlässt den eigenen Server nicht.
+   */
+  ttsProvider: TtsProviderName;
+  /** Azure: Kurzname der Region (z. B. germanywestcentral). Leer = nicht gesetzt. */
+  azureTtsRegion: string;
+  azureTtsKey: string | null;
+  /** Azure: Stimmenname (z. B. de-de-Florian:DragonHDLatestNeural). */
+  azureTtsVoice: string;
+  /** Azure: Tonlage im SSML (z. B. -10% oder low); leer = unverändert. */
+  azureTtsPitch: string;
+  /** Azure: Tempo im SSML (z. B. -5% oder slow); leer = unverändert. */
+  azureTtsRate: string;
   voiceTimeoutMs: number;
 
   // Erzähl- & Pädagogik-Parameter
@@ -96,6 +119,20 @@ export function llmConfigWarnings(
   return warnings;
 }
 
+/** Anbieter der Sprachausgabe: nur ein ausdrückliches "azure" wählt Azure, sonst der OpenAI-kompatible Dienst. */
+export function resolveTtsProvider(env: { PICASTAI_TTS_PROVIDER?: string } = process.env): TtsProviderName {
+  return env.PICASTAI_TTS_PROVIDER?.trim().toLowerCase() === 'azure' ? 'azure' : 'openai-compatible';
+}
+
+/** Warnung beim Start bei einem unbekannten Wert für PICASTAI_TTS_PROVIDER (er würde sonst still ignoriert). */
+export function ttsProviderWarnings(env: { PICASTAI_TTS_PROVIDER?: string } = process.env): string[] {
+  const requested = env.PICASTAI_TTS_PROVIDER?.trim().toLowerCase();
+  if (requested && requested !== 'azure' && requested !== 'openai-compatible') {
+    return [`Sprachausgabe: PICASTAI_TTS_PROVIDER=${requested} ist unbekannt (erlaubt: openai-compatible, azure). Es gilt openai-compatible.`];
+  }
+  return [];
+}
+
 /** Adresse eines Sprachdienstes: ohne Leerzeichen und ohne abschließenden Schrägstrich; leer = nicht gesetzt. */
 export function normalizeServiceUrl(value: string | undefined): string | null {
   const trimmed = value?.trim().replace(/\/+$/, '');
@@ -119,11 +156,16 @@ const EXCLUDED_VOICE_HOSTS = ['api.openai.com', 'generativelanguage.googleapis.c
  * Warnungen beim Start für Sprachdienst-Einstellungen, die Kinderstimmen gefährden:
  * unverschlüsselte Verbindung zu einem anderen Rechner und ausgeschlossene Anbieter.
  */
-export function voiceConfigWarnings(config: Pick<KunibertConfig, 'sttUrl' | 'ttsUrl'>): string[] {
+export function voiceConfigWarnings(
+  config: Pick<KunibertConfig, 'sttUrl' | 'ttsUrl'> &
+    Partial<Pick<KunibertConfig, 'ttsProvider' | 'azureTtsRegion' | 'azureTtsKey' | 'azureTtsVoice' | 'azureTtsPitch' | 'azureTtsRate'>>
+): string[] {
   const warnings: string[] = [];
+  const azure = config.ttsProvider === 'azure';
   const services: Array<[string, string | null]> = [
     ['Spracherkennung', config.sttUrl],
-    ['Sprachausgabe', config.ttsUrl],
+    // Bei Azure ist die Sprachausgabe-Adresse nicht in Gebrauch.
+    ['Sprachausgabe', azure ? null : config.ttsUrl],
   ];
   for (const [name, url] of services) {
     if (!url) continue;
@@ -138,6 +180,34 @@ export function voiceConfigWarnings(config: Pick<KunibertConfig, 'sttUrl' | 'tts
     if (EXCLUDED_VOICE_HOSTS.some((excluded) => host === excluded || host.endsWith(`.${excluded}`))) {
       warnings.push(`${name}: ${host} ist für Kinderprodukte ausgeschlossen (Anbieterbedingungen bzw. Entscheidung vom 5.11.2026).`);
     }
+  }
+  if (azure) warnings.push(...azureConfigWarnings(config));
+  return warnings;
+}
+
+function azureConfigWarnings(
+  config: Partial<Pick<KunibertConfig, 'azureTtsRegion' | 'azureTtsKey' | 'azureTtsVoice' | 'azureTtsPitch' | 'azureTtsRate'>>
+): string[] {
+  const warnings: string[] = [];
+  const region = config.azureTtsRegion ?? '';
+  const voice = config.azureTtsVoice ?? '';
+  if (!region || !config.azureTtsKey || !voice) {
+    warnings.push('Sprachausgabe (Azure): Region, Schlüssel und Stimme (PICASTAI_AZURE_TTS_REGION, _KEY, _VOICE) müssen alle gesetzt sein, sonst bleibt die Sprachausgabe aus.');
+    return warnings;
+  }
+  if (!isValidAzureRegion(region)) {
+    warnings.push('Sprachausgabe (Azure): Die Region ist ungültig (erwartet wird der Kurzname in Kleinbuchstaben, z. B. germanywestcentral). Die Sprachausgabe bleibt aus.');
+  } else if (!AZURE_EU_REGIONS.has(region)) {
+    warnings.push(`Sprachausgabe (Azure): Die Region ${region} liegt nicht in der EU. Die Antworttexte würden dort verarbeitet; Region und Datenschutz vorher prüfen.`);
+  }
+  if (!isValidAzureVoiceName(voice)) {
+    warnings.push('Sprachausgabe (Azure): Der Stimmenname enthält ungültige Zeichen. Die Sprachausgabe bleibt aus.');
+  }
+  if (config.azureTtsPitch && !isValidProsodyValue(config.azureTtsPitch)) {
+    warnings.push('Sprachausgabe (Azure): PICASTAI_AZURE_TTS_PITCH ist ungültig (erlaubt z. B. -10%, +2st, low) und wird ignoriert.');
+  }
+  if (config.azureTtsRate && !isValidProsodyValue(config.azureTtsRate)) {
+    warnings.push('Sprachausgabe (Azure): PICASTAI_AZURE_TTS_RATE ist ungültig (erlaubt z. B. -5%, slow, 0.9) und wird ignoriert.');
   }
   return warnings;
 }
@@ -172,6 +242,12 @@ export function loadConfig(): KunibertConfig {
     ttsApiKey: process.env.PICASTAI_TTS_API_KEY?.trim() || null,
     ttsModel: process.env.PICASTAI_TTS_MODEL?.trim() || '',
     ttsVoice: process.env.PICASTAI_TTS_VOICE?.trim() || '',
+    ttsProvider: resolveTtsProvider(),
+    azureTtsRegion: process.env.PICASTAI_AZURE_TTS_REGION?.trim().toLowerCase() || '',
+    azureTtsKey: process.env.PICASTAI_AZURE_TTS_KEY?.trim() || null,
+    azureTtsVoice: process.env.PICASTAI_AZURE_TTS_VOICE?.trim() || '',
+    azureTtsPitch: process.env.PICASTAI_AZURE_TTS_PITCH?.trim() || '',
+    azureTtsRate: process.env.PICASTAI_AZURE_TTS_RATE?.trim() || '',
     voiceTimeoutMs: Math.min(120_000, Math.max(3_000, parseNum(process.env.PICASTAI_VOICE_TIMEOUT_MS, 45_000))),
 
     ageBracket: process.env.KUNIBERT_AGE || 'sechs bis zehn',
@@ -207,10 +283,13 @@ export function getSafeConfigSummary(config: KunibertConfig) {
     llmModel: config.llmProvider === 'anthropic' ? config.anthropicModel : null,
     // Nur der Rechnername, nie Pfad, Zugangsdaten oder Schlüssel.
     sttHost: config.sttUrl ? hostnameOf(config.sttUrl) : null,
-    ttsHost: config.ttsUrl ? hostnameOf(config.ttsUrl) : null,
+    ttsProvider: config.ttsProvider,
+    ttsHost: config.ttsProvider === 'azure'
+      ? (isValidAzureRegion(config.azureTtsRegion) ? `${config.azureTtsRegion}.tts.speech.microsoft.com` : null)
+      : (config.ttsUrl ? hostnameOf(config.ttsUrl) : null),
     sttModel: config.sttModel,
-    ttsModel: config.ttsModel,
-    ttsVoice: config.ttsVoice,
+    ttsModel: config.ttsProvider === 'azure' ? '' : config.ttsModel,
+    ttsVoice: config.ttsProvider === 'azure' ? config.azureTtsVoice : config.ttsVoice,
     ageBracket: config.ageBracket,
     partsPerEpisode: config.partsPerEpisode,
     storyWordRange: `${config.storyMinWords}–${config.storyMaxWords} Wörter`,

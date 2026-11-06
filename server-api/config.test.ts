@@ -1,6 +1,15 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { isDiagnosticTextEnabled, llmConfigWarnings, normalizeServiceUrl, voiceConfigWarnings } from './config.js';
+import {
+  getSafeConfigSummary,
+  isDiagnosticTextEnabled,
+  llmConfigWarnings,
+  loadConfig,
+  normalizeServiceUrl,
+  resolveTtsProvider,
+  ttsProviderWarnings,
+  voiceConfigWarnings,
+} from './config.js';
 
 test('diagnosticText is opt-in and disabled in production', async (t) => {
   await t.test('is disabled when the flag is missing', () => {
@@ -83,4 +92,79 @@ test('llmConfigWarnings: warnt vor Gemini-Einstellungen, die nicht mehr wirken',
   assert.match(leftovers[0], /GEMINI_API_KEY.*nicht mehr gelesen/);
 
   assert.equal(llmConfigWarnings({ PICASTAI_LLM_PROVIDER: 'gemini', GEMINI_API_KEY: 'g' }).length, 2);
+});
+
+test('resolveTtsProvider: nur ein ausdrückliches "azure" wählt Azure', () => {
+  assert.equal(resolveTtsProvider({}), 'openai-compatible');
+  assert.equal(resolveTtsProvider({ PICASTAI_TTS_PROVIDER: '' }), 'openai-compatible');
+  assert.equal(resolveTtsProvider({ PICASTAI_TTS_PROVIDER: 'openai-compatible' }), 'openai-compatible');
+  assert.equal(resolveTtsProvider({ PICASTAI_TTS_PROVIDER: ' Azure ' }), 'azure');
+  assert.equal(resolveTtsProvider({ PICASTAI_TTS_PROVIDER: 'azur' }), 'openai-compatible');
+});
+
+test('ttsProviderWarnings: ein unbekannter Wert wird gemeldet, bekannte und leere nicht', () => {
+  assert.deepEqual(ttsProviderWarnings({}), []);
+  assert.deepEqual(ttsProviderWarnings({ PICASTAI_TTS_PROVIDER: 'azure' }), []);
+  assert.deepEqual(ttsProviderWarnings({ PICASTAI_TTS_PROVIDER: 'openai-compatible' }), []);
+  const unknown = ttsProviderWarnings({ PICASTAI_TTS_PROVIDER: 'azur' });
+  assert.equal(unknown.length, 1);
+  assert.match(unknown[0], /azur.*unbekannt/);
+});
+
+const AZURE_OK = {
+  sttUrl: null,
+  ttsUrl: null,
+  ttsProvider: 'azure' as const,
+  azureTtsRegion: 'germanywestcentral',
+  azureTtsKey: 'k',
+  azureTtsVoice: 'de-DE-ConradNeural',
+  azureTtsPitch: '-10%',
+  azureTtsRate: 'slow',
+};
+
+test('voiceConfigWarnings: vollständige Azure-Einstellungen in einer EU-Region ergeben keine Warnung', () => {
+  assert.deepEqual(voiceConfigWarnings(AZURE_OK), []);
+});
+
+test('voiceConfigWarnings: Azure ohne Region, Schlüssel oder Stimme warnt, dass die Sprachausgabe aus bleibt', () => {
+  for (const missing of [{ azureTtsRegion: '' }, { azureTtsKey: null }, { azureTtsVoice: '' }]) {
+    const warnings = voiceConfigWarnings({ ...AZURE_OK, ...missing });
+    assert.equal(warnings.length, 1);
+    assert.match(warnings[0], /müssen alle gesetzt sein/);
+  }
+});
+
+test('voiceConfigWarnings: Region außerhalb der EU, ungültige Region, Stimme, Tonlage und Tempo', () => {
+  const outside = voiceConfigWarnings({ ...AZURE_OK, azureTtsRegion: 'eastus' });
+  assert.equal(outside.length, 1);
+  assert.match(outside[0], /eastus.*nicht in der EU/);
+
+  const badRegion = voiceConfigWarnings({ ...AZURE_OK, azureTtsRegion: 'bad.host' });
+  assert.match(badRegion[0], /Region ist ungültig/);
+
+  const badVoice = voiceConfigWarnings({ ...AZURE_OK, azureTtsVoice: 'x"y' });
+  assert.match(badVoice[0], /Stimmenname/);
+
+  const badProsody = voiceConfigWarnings({ ...AZURE_OK, azureTtsPitch: 'tief', azureTtsRate: 'zack' });
+  assert.equal(badProsody.length, 2);
+  assert.match(badProsody[0], /PITCH.*ignoriert/);
+  assert.match(badProsody[1], /RATE.*ignoriert/);
+});
+
+test('voiceConfigWarnings: bei Azure wird die Adresse der OpenAI-kompatiblen Sprachausgabe nicht geprüft', () => {
+  assert.deepEqual(voiceConfigWarnings({ ...AZURE_OK, ttsUrl: 'https://api.openai.com/v1' }), []);
+  // Die Spracherkennung wird weiter geprüft.
+  const stt = voiceConfigWarnings({ ...AZURE_OK, sttUrl: 'http://10.0.0.5:8000/v1' });
+  assert.equal(stt.length, 1);
+  assert.match(stt[0], /Spracherkennung.*unverschlüsselt/);
+});
+
+test('getSafeConfigSummary: bei Azure Host und Stimme, nie der Schlüssel', () => {
+  const summary = getSafeConfigSummary({ ...loadConfig(), ...AZURE_OK, azureTtsKey: 'azure-geheim' });
+  assert.equal(summary.ttsProvider, 'azure');
+  assert.equal(summary.ttsHost, 'germanywestcentral.tts.speech.microsoft.com');
+  assert.equal(summary.ttsVoice, 'de-DE-ConradNeural');
+  assert.equal(JSON.stringify(summary).includes('azure-geheim'), false);
+  const broken = getSafeConfigSummary({ ...loadConfig(), ...AZURE_OK, azureTtsRegion: 'bad.host' });
+  assert.equal(broken.ttsHost, null);
 });

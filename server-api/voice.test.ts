@@ -330,3 +330,120 @@ test('Die Dienste sind unabhängig: nur Erkennung oder nur Sprachausgabe ist mö
   assert.equal(ttsOnly.sttConfigured, false);
   assert.equal(ttsOnly.ttsConfigured, true);
 });
+
+const AZURE: Partial<KunibertConfig> = {
+  ttsProvider: 'azure',
+  azureTtsRegion: 'germanywestcentral',
+  azureTtsKey: 'azure-geheim',
+  azureTtsVoice: 'de-de-Florian:DragonHDLatestNeural',
+  azureTtsPitch: '-10%',
+  azureTtsRate: '-5%',
+  // Die Adresse der OpenAI-kompatiblen Sprachausgabe darf bei Azure keine Rolle spielen.
+  ttsUrl: 'http://127.0.0.1:8002/v1',
+  ttsModel: 'tts-test-modell',
+  ttsVoice: 'test-stimme',
+};
+
+/** Antwortet wie Azure: rohes 16-Bit-PCM ohne WAV-Kopf. */
+async function recordAzureRequests<T>(rawBytes: number, fn: (seen: SeenRequest[]) => Promise<T>): Promise<T> {
+  const original = globalThis.fetch;
+  const seen: SeenRequest[] = [];
+  globalThis.fetch = (async (url: string, init: RequestInit) => {
+    seen.push({ url, headers: (init.headers ?? {}) as Record<string, string>, body: init.body });
+    return new Response(new Uint8Array(Buffer.alloc(rawBytes, 1)), { status: 200 });
+  }) as unknown as typeof fetch;
+  try {
+    return await fn(seen);
+  } finally {
+    globalThis.fetch = original;
+  }
+}
+
+test('Azure: Anfrage geht an die Region mit Schlüssel, SSML, Stimme, Tonlage, Tempo und Rohformat 16 kHz', async () => {
+  await recordAzureRequests(3200, async (seen) => {
+    const result = await pipeline(AZURE).synthesize('Es war einmal ein Ritter.');
+    assert.equal(seen.length, 1);
+    assert.equal(seen[0].url, 'https://germanywestcentral.tts.speech.microsoft.com/cognitiveservices/v1');
+    assert.equal(seen[0].headers['Ocp-Apim-Subscription-Key'], 'azure-geheim');
+    assert.equal(seen[0].headers['Content-Type'], 'application/ssml+xml');
+    assert.equal(seen[0].headers['X-Microsoft-OutputFormat'], 'raw-16khz-16bit-mono-pcm');
+    assert.equal('Authorization' in seen[0].headers, false);
+    const ssml = String(seen[0].body);
+    assert.ok(ssml.includes('<voice name="de-de-Florian:DragonHDLatestNeural">'));
+    assert.ok(ssml.includes('<prosody pitch="-10%" rate="-5%">Es war einmal ein Ritter.</prosody>'));
+    const header = decodeWavHeader(result);
+    assert.equal(header.sampleRate, 16_000);
+    assert.equal(result.length, 44 + 3200);
+  });
+});
+
+test('Azure: eine andere Zielrate wird über 24 kHz umgerechnet', async () => {
+  await recordAzureRequests(4800, async (seen) => {
+    const result = await pipeline({ ...AZURE, audioSampleRate: 22_050 }).synthesize('Hallo');
+    assert.equal(seen[0].headers['X-Microsoft-OutputFormat'], 'raw-24khz-16bit-mono-pcm');
+    assert.equal(decodeWavHeader(result).sampleRate, 22_050);
+  });
+});
+
+test('Azure: ein halbes Sample am Ende wird abgeschnitten, leere Antwort ist ein Fehler', async () => {
+  await recordAzureRequests(3201, async () => {
+    const result = await pipeline(AZURE).synthesize('Hallo');
+    assert.equal(result.length, 44 + 3200);
+  });
+  await recordAzureRequests(0, async () => {
+    await assert.rejects(() => pipeline(AZURE).synthesize('Hallo'), VoiceProviderError);
+  });
+});
+
+test('Azure: 401 ist nicht wiederholbar, 429 und 503 sind wiederholbar; der Schlüssel steht in keiner Fehlermeldung', async () => {
+  for (const [status, retryable] of [[401, false], [400, false], [429, true], [503, true]] as const) {
+    await withFetch(() => new Response('Fehlertext', { status }), async () => {
+      await assert.rejects(
+        () => pipeline(AZURE).synthesize('Hallo'),
+        (error: unknown) =>
+          error instanceof VoiceProviderError && error.retryable === retryable && !error.message.includes('azure-geheim')
+      );
+    });
+  }
+});
+
+test('Azure: Netzwerkfehler und Zeitüberschreitung sind wiederholbare VoiceProviderError', async () => {
+  const original = globalThis.fetch;
+  try {
+    globalThis.fetch = (async () => { throw new Error('getrennt'); }) as unknown as typeof fetch;
+    await assert.rejects(
+      () => pipeline(AZURE).synthesize('Hallo'),
+      (error: unknown) => error instanceof VoiceProviderError && error.retryable === true && /Azure/.test(error.message)
+    );
+    globalThis.fetch = (async () => { const e = new Error('abgebrochen'); e.name = 'AbortError'; throw e; }) as unknown as typeof fetch;
+    await assert.rejects(
+      () => pipeline(AZURE).synthesize('Hallo'),
+      (error: unknown) => error instanceof VoiceProviderError && error.retryable === true && error.message === 'TTS-Timeout'
+    );
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test('Azure: die Sprachausgabe ist nur mit gültiger Region, Schlüssel und Stimme konfiguriert; die Erkennung bleibt unberührt', () => {
+  const azure = pipeline(AZURE);
+  assert.equal(azure.ttsConfigured, true);
+  assert.equal(azure.sttConfigured, true);
+
+  assert.equal(pipeline({ ...AZURE, azureTtsRegion: '' }).ttsConfigured, false);
+  assert.equal(pipeline({ ...AZURE, azureTtsRegion: 'evil.example' }).ttsConfigured, false);
+  assert.equal(pipeline({ ...AZURE, azureTtsKey: null }).ttsConfigured, false);
+  assert.equal(pipeline({ ...AZURE, azureTtsVoice: '' }).ttsConfigured, false);
+  // Die Einstellungen des OpenAI-kompatiblen Dienstes machen Azure nicht startklar.
+  assert.equal(pipeline({ ttsProvider: 'azure' }).ttsConfigured, false);
+  // Und umgekehrt: Azure-Werte ohne ausdrücklichen Anbieter ändern nichts am Standard.
+  const standard = pipeline({ ...AZURE, ttsProvider: 'openai-compatible', ttsUrl: null });
+  assert.equal(standard.ttsConfigured, false);
+});
+
+test('Azure: die Erkennung geht weiter an den eigenen Server, nie an Azure', async () => {
+  await recordRequests(async (seen) => {
+    await pipeline(AZURE).transcribe(silentWav());
+    assert.equal(seen[0].url, 'http://127.0.0.1:8001/v1/audio/transcriptions');
+  });
+});

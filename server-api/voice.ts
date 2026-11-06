@@ -1,4 +1,12 @@
 import { decodeWavHeader, encodeWav } from './audio.js';
+import {
+  azureEndpoint,
+  azureOutputFormat,
+  buildAzureSsml,
+  pickAzureSampleRate,
+  usableAzureSettings,
+  type AzureTtsSettings,
+} from './azure-speech.js';
 import type { KunibertConfig } from './config.js';
 
 export interface SpeechToTextProvider {
@@ -218,6 +226,56 @@ export class OpenAiCompatibleTextToSpeech implements TextToSpeechProvider {
   }
 }
 
+/**
+ * Sprachausgabe über Azure AI Speech (REST, SSML). Es geht nur der Antworttext des
+ * Sprachmodells hinaus, nie die Kinderstimme. Azure liefert rohes PCM; der Server verpackt es
+ * als WAV und rechnet bei Bedarf auf die Zielrate um.
+ */
+export class AzureTextToSpeech implements TextToSpeechProvider {
+  constructor(
+    private readonly settings: AzureTtsSettings,
+    private readonly timeoutMs: number,
+    private readonly targetSampleRate: number
+  ) {}
+
+  async synthesize(text: string): Promise<Buffer> {
+    const sampleRate = pickAzureSampleRate(this.targetSampleRate);
+    const ssml = buildAzureSsml(text.slice(0, 12_000), {
+      voice: this.settings.voice,
+      pitch: this.settings.pitch,
+      rate: this.settings.rate,
+    });
+    const timeout = withTimeout(this.timeoutMs);
+    try {
+      const response = await fetch(azureEndpoint(this.settings.region), {
+        method: 'POST',
+        headers: {
+          'Ocp-Apim-Subscription-Key': this.settings.key,
+          'Content-Type': 'application/ssml+xml',
+          'X-Microsoft-OutputFormat': azureOutputFormat(sampleRate),
+          'User-Agent': 'picastAI-ritter-kunibert',
+        },
+        body: ssml,
+        signal: timeout.signal,
+      });
+      if (!response.ok) {
+        throw new VoiceProviderError(`TTS-Provider (Azure) antwortete mit HTTP ${response.status}: ${await readError(response)}`, response.status >= 500 || response.status === 429);
+      }
+      const raw = Buffer.from(await response.arrayBuffer());
+      // 16-Bit-Samples: ein halbes Sample am Ende abschneiden; ohne Audio ist es ein Fehler.
+      const pcm = raw.subarray(0, raw.length - (raw.length % 2));
+      if (pcm.length === 0) throw new VoiceProviderError('TTS-Provider (Azure) lieferte kein Audio');
+      return normalizePcmWav(encodeWav(pcm, sampleRate, 1, 16), this.targetSampleRate);
+    } catch (error) {
+      if (error instanceof VoiceProviderError) throw error;
+      if ((error as Error)?.name === 'AbortError') throw new VoiceProviderError('TTS-Timeout', true);
+      throw new VoiceProviderError(`TTS-Netzwerkfehler (Azure): ${(error as Error)?.message || 'unbekannt'}`, true);
+    } finally {
+      timeout.cancel();
+    }
+  }
+}
+
 /** Obergrenze für zwischengespeicherte feste Texte (es gibt nur eine Handvoll). */
 const MAX_FIXED_CACHE_ENTRIES = 16;
 
@@ -235,13 +293,18 @@ export class VoicePipeline {
           config.sttPrompt
         )
       : null;
-    this.tts = config.ttsUrl && config.ttsModel && config.ttsVoice
-      ? new OpenAiCompatibleTextToSpeech(
-          { url: config.ttsUrl, apiKey: config.ttsApiKey, model: config.ttsModel, timeoutMs: config.voiceTimeoutMs },
-          config.ttsVoice,
-          config.audioSampleRate
-        )
-      : null;
+    if (config.ttsProvider === 'azure') {
+      const azure = usableAzureSettings(config);
+      this.tts = azure ? new AzureTextToSpeech(azure, config.voiceTimeoutMs, config.audioSampleRate) : null;
+    } else {
+      this.tts = config.ttsUrl && config.ttsModel && config.ttsVoice
+        ? new OpenAiCompatibleTextToSpeech(
+            { url: config.ttsUrl, apiKey: config.ttsApiKey, model: config.ttsModel, timeoutMs: config.voiceTimeoutMs },
+            config.ttsVoice,
+            config.audioSampleRate
+          )
+        : null;
+    }
   }
 
   get sttConfigured(): boolean {
