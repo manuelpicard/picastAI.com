@@ -3,8 +3,9 @@
 //
 //   ANTHROPIC_API_KEY=... npm run eval:llm
 //
-// Kandidaten (optional): EVAL_MODELS="anthropic:claude-sonnet-5-5,anthropic:claude-haiku-5-5"
-// Standard: je ein Kandidat pro vorhandenem Key mit dem konfigurierten Modell.
+// Kandidaten: Standard ist der Vergleich claude-sonnet-5-5 gegen claude-haiku-5-5. Eigene Auswahl:
+// EVAL_MODELS="anthropic:claude-sonnet-5-5,anthropic:claude-haiku-5-5" (Format anbieter:modell, kommagetrennt).
+// Ohne ANTHROPIC_API_KEY bricht das Skript mit einer verständlichen Meldung ab, ohne Netzaufruf.
 // Ergebnis in eval-out/<Zeitstempel>/: summary.md (Messwerte), blind.md
 // (Texte ohne Modellnamen zum Bewerten), key.json (Zuordnung), results.json.
 //
@@ -153,32 +154,56 @@ class RecordingProvider implements LlmProvider {
   }
 }
 
-function parseCandidates(): LlmProvider[] {
-  const specs = (process.env.EVAL_MODELS || '')
+/** Fehler in den Einstellungen des Vergleichs. Die Meldung ist für Menschen gedacht und wird ohne Stacktrace ausgegeben. */
+export class EvalSetupError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'EvalSetupError';
+  }
+}
+
+/** Standardvergleich: das Standardmodell gegen die schnellere und günstigere Alternative. */
+export const DEFAULT_EVAL_MODELS = ['claude-sonnet-5-5', 'claude-haiku-5-5'] as const;
+
+const MISSING_KEY_MESSAGE = [
+  'ANTHROPIC_API_KEY ist nicht gesetzt. Der Vergleich ruft Claude wirklich auf und braucht deshalb einen Schlüssel.',
+  '  Bash:       ANTHROPIC_API_KEY=... npm run eval:llm',
+  '  PowerShell: $env:ANTHROPIC_API_KEY = "..."; npm run eval:llm',
+  'Es wurde nichts aufgerufen und nichts geschrieben. Anleitung: docs/LLM-Anbieter.md',
+].join('\n');
+
+/**
+ * Bestimmt die Kandidaten aus der Umgebung (ANTHROPIC_API_KEY, EVAL_MODELS) und legt die Anbieter an.
+ * Ohne Schlüssel gibt es einen EvalSetupError, bevor irgendetwas aufgerufen wird. `makeProvider` ist
+ * austauschbar, damit Tests ohne Netzwerk laufen.
+ */
+export function resolveCandidates(
+  env: { ANTHROPIC_API_KEY?: string; EVAL_MODELS?: string } = process.env,
+  makeProvider: (model: string, apiKey: string) => LlmProvider = (model, apiKey) =>
+    new AnthropicProvider({ apiKey, model, baseUrl: config.anthropicBaseUrl, timeoutMs: config.llmTimeoutMs })
+): LlmProvider[] {
+  const apiKey = env.ANTHROPIC_API_KEY?.trim();
+  if (!apiKey) throw new EvalSetupError(MISSING_KEY_MESSAGE);
+
+  const specs = (env.EVAL_MODELS || '')
     .split(',')
     .map((item) => item.trim())
     .filter(Boolean);
-  const anthropicKey = config.anthropicApiKey;
-
-  const fromSpec = (spec: string): LlmProvider => {
-    const [provider, ...rest] = spec.split(':');
-    const model = rest.join(':');
-    if (!model) throw new Error(`EVAL_MODELS: "${spec}" hat kein Modell (Format anbieter:modell)`);
-    if (provider === 'anthropic') {
-      if (!anthropicKey) throw new Error('ANTHROPIC_API_KEY fehlt für ' + spec);
-      return new AnthropicProvider({ apiKey: anthropicKey, model, baseUrl: config.anthropicBaseUrl, timeoutMs: config.llmTimeoutMs });
-    }
-    throw new Error(`EVAL_MODELS: unbekannter Anbieter "${provider}" (nur anthropic)`);
-  };
-
-  if (specs.length) return specs.map(fromSpec);
-  const defaults: LlmProvider[] = [];
-  if (anthropicKey) {
-    defaults.push(
-      new AnthropicProvider({ apiKey: anthropicKey, model: config.anthropicModel, baseUrl: config.anthropicBaseUrl, timeoutMs: config.llmTimeoutMs })
-    );
+  const models = specs.length
+    ? specs.map((spec) => {
+        const [provider, ...rest] = spec.split(':');
+        const model = rest.join(':').trim();
+        if (provider !== 'anthropic') {
+          throw new EvalSetupError(`EVAL_MODELS: Anbieter "${provider}" in "${spec}" ist unbekannt. Erlaubt ist nur "anthropic", zum Beispiel anthropic:claude-haiku-5-5.`);
+        }
+        if (!model) throw new EvalSetupError(`EVAL_MODELS: "${spec}" hat kein Modell (Format anbieter:modell, zum Beispiel anthropic:claude-haiku-5-5).`);
+        return model;
+      })
+    : [...DEFAULT_EVAL_MODELS];
+  if (new Set(models).size !== models.length) {
+    throw new EvalSetupError('EVAL_MODELS: Ein Modell steht mehrfach in der Liste. Für die Blind-Bewertung muss jedes Modell genau einmal vorkommen.');
   }
-  return defaults;
+  return models.map((model) => makeProvider(model, apiKey));
 }
 
 function renderSummary(summaries: ModelSummary[], promptCount: number): string {
@@ -233,21 +258,29 @@ function renderBlindSheet(
   return { markdown: lines.join('\n'), key };
 }
 
-export async function runEval(): Promise<void> {
+export interface RunEvalOptions {
+  /** Kandidaten; Standard: aus ANTHROPIC_API_KEY und EVAL_MODELS (siehe resolveCandidates). */
+  candidates?: LlmProvider[];
+  /** Zielordner; Standard: eval-out/<Zeitstempel> im aktuellen Ordner. */
+  outDir?: string;
+  /** Ausgabe der Fortschrittszeilen; Standard: console.log. */
+  log?: (line: string) => void;
+}
+
+/** Führt den Vergleich aus und gibt den Ergebnisordner zurück. */
+export async function runEval(options: RunEvalOptions = {}): Promise<string> {
+  const log = options.log ?? ((line: string) => console.log(line));
   const here = path.dirname(fileURLToPath(import.meta.url));
   const prompts: EvalPrompt[] = JSON.parse(fs.readFileSync(path.join(here, 'eval-prompts.json'), 'utf8'));
-  const candidates = parseCandidates();
-  if (!candidates.length) {
-    console.error('Kein Kandidat: ANTHROPIC_API_KEY setzen (oder EVAL_MODELS angeben).');
-    process.exit(1);
-  }
+  const candidates = options.candidates ?? resolveCandidates();
+  if (!candidates.length) throw new EvalSetupError('Kein Kandidat für den Vergleich.');
 
   const rows: EvalRow[] = [];
   for (const provider of candidates) {
     const recorder = new RecordingProvider(provider);
     const brain = new Brain(recorder);
     const modelId = `${provider.name}:${provider.model}`;
-    console.log(`\n== ${modelId}`);
+    log(`\n== ${modelId}`);
     for (const prompt of prompts) {
       recorder.resetTurn();
       const started = Date.now();
@@ -280,7 +313,7 @@ export async function runEval(): Promise<void> {
         expectFixed: prompt.expectFixed ?? null,
         safetyOk: prompt.expectFixed ? fixed === prompt.expectFixed : null,
       });
-      console.log(`  ${prompt.id.padEnd(30)} ${String(ms).padStart(6)} ms  ${kind}${fixed ? '/' + fixed : ''}${recorder.turnFailed ? '  [MODELLFEHLER]' : ''}`);
+      log(`  ${prompt.id.padEnd(30)} ${String(ms).padStart(6)} ms  ${kind}${fixed ? '/' + fixed : ''}${recorder.turnFailed ? '  [MODELLFEHLER]' : ''}`);
     }
   }
 
@@ -289,19 +322,25 @@ export async function runEval(): Promise<void> {
   const random = seededRandom(Number(process.env.EVAL_SEED) || 42);
   const blind = renderBlindSheet(prompts, rows, models, random);
 
-  const outDir = path.join(process.cwd(), 'eval-out', new Date().toISOString().replace(/[:.]/g, '-'));
+  const outDir = options.outDir ?? path.join(process.cwd(), 'eval-out', new Date().toISOString().replace(/[:.]/g, '-'));
   fs.mkdirSync(outDir, { recursive: true });
   fs.writeFileSync(path.join(outDir, 'results.json'), JSON.stringify(rows, null, 2));
   fs.writeFileSync(path.join(outDir, 'summary.md'), renderSummary(summaries, prompts.length));
   fs.writeFileSync(path.join(outDir, 'blind.md'), blind.markdown);
   fs.writeFileSync(path.join(outDir, 'key.json'), JSON.stringify(blind.key, null, 2));
-  console.log(`\nErgebnisse: ${outDir}`);
-  console.log('Zuerst blind.md bewerten lassen, erst danach key.json öffnen.');
+  log(`\nErgebnisse: ${outDir}`);
+  log('Nur blind.md zum Bewerten weitergeben (ohne Modellnamen). summary.md, results.json und key.json verraten die Modelle: erst nach der Bewertung öffnen.');
+  return outDir;
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   runEval().catch((error) => {
-    console.error(error);
+    if (error instanceof EvalSetupError) {
+      // Einstellungsfehler: nur die Meldung, kein Stacktrace.
+      console.error(error.message);
+    } else {
+      console.error(error);
+    }
     process.exit(1);
   });
 }
