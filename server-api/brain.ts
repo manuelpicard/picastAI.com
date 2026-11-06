@@ -16,6 +16,7 @@ import {
 } from './safety.js';
 import { generateMelodyWav, generateToneWav } from './audio.js';
 import { config, type KunibertConfig } from './config.js';
+import { NO_TIMER, type StageTimer } from './timing.js';
 
 export interface StoryState {
   v: number;
@@ -164,16 +165,18 @@ export class Brain {
     return this.llm ? `${this.llm.name}:${this.llm.model}` : 'none';
   }
 
+  /** Der optionale Zeitmesser misst nur die Dauer von Weiche, Sprachmodell und Ausgabe-Check; am Ablauf ändert er nichts. */
   public async handle(
     mode: 'frage' | 'geschichte' | 'weiter',
     rawTranscript: string,
-    rawState: any
+    rawState: any,
+    timer: StageTimer = NO_TIMER
   ): Promise<TurnResult> {
     const state = cleanState(rawState);
     const transcript = cleanText(rawTranscript, MAX_UTTERANCE_CHARS);
 
     // 1. Deterministische Sicherheitsweiche
-    if (transcript && screen(transcript)) {
+    if (transcript && timer.timeSync('weiche', () => screen(transcript))) {
       return {
         kind: 'hinweis',
         speech: SAFETY_RESPONSE_DE,
@@ -185,13 +188,13 @@ export class Brain {
 
     try {
       if (mode === 'frage') {
-        return await this.handleQuestion(transcript, state);
+        return await this.handleQuestion(transcript, state, timer);
       }
       if (mode === 'geschichte') {
-        return await this.handleStory(true, state, transcript);
+        return await this.handleStory(true, state, transcript, timer);
       }
       if (mode === 'weiter') {
-        return await this.handleStory(!storyActive(state), state, '');
+        return await this.handleStory(!storyActive(state), state, '', timer);
       }
     } catch (err) {
       console.error('Brain execution error:', err);
@@ -207,7 +210,7 @@ export class Brain {
     throw new Error('Unbekannter Modus');
   }
 
-  private async handleQuestion(transcript: string, state: StoryState): Promise<TurnResult> {
+  private async handleQuestion(transcript: string, state: StoryState, timer: StageTimer): Promise<TurnResult> {
     if (!transcript) {
       return {
         kind: 'hinweis',
@@ -219,17 +222,18 @@ export class Brain {
     }
 
     // Wenn ein Sprachmodell konfiguriert ist, befragen
-    if (this.llm) {
+    const llm = this.llm;
+    if (llm) {
       try {
         const systemPrompt = ANSWER_SYSTEM(this.age, this.answerMaxWords);
         const userPrompt = `Läuft gerade eine Kunibert-Geschichte: ${storyActive(state) ? 'ja' : 'nein'}\nErkannte Äußerung des Kindes: «${transcript}»`;
 
-        const parsed = await this.llm.generateJson({
+        const parsed = await timer.time('sprachmodell', () => llm.generateJson({
           system: systemPrompt,
           user: userPrompt,
           schemaName: 'kunibert_antwort',
           schema: QUESTION_SCHEMA,
-        }) as { category?: string; speech?: string };
+        })) as { category?: string; speech?: string };
         if (parsed.category === 'sicherheit') {
           return {
             kind: 'hinweis',
@@ -240,15 +244,15 @@ export class Brain {
           };
         }
         if (parsed.category === 'geschichte') {
-          return await this.handleStory(true, state, transcript);
+          return await this.handleStory(true, state, transcript, timer);
         }
         if (parsed.category === 'weiter') {
-          return await this.handleStory(!storyActive(state), state, '');
+          return await this.handleStory(!storyActive(state), state, '', timer);
         }
         if (parsed.category === 'frage' && parsed.speech) {
           const speech = trimWords(parsed.speech, this.answerMaxWords + 20);
           // Ausgabe-Check: bei Treffer greift der Fallback unten (catch-Pfad).
-          if (screenOutput(speech, 'answer')) {
+          if (timer.timeSync('ausgabecheck', () => screenOutput(speech, 'answer'))) {
             throw new Error('Antwort des Sprachmodells durch Ausgabe-Check abgelehnt');
           }
           return {
@@ -319,7 +323,8 @@ export class Brain {
   private async handleStory(
     newEpisode: boolean,
     state: StoryState,
-    wish: string
+    wish: string,
+    timer: StageTimer
   ): Promise<TurnResult> {
     let current = { ...state };
     if (newEpisode) {
@@ -344,7 +349,8 @@ export class Brain {
     else if (part >= target) phase = 'finale';
     else if (part === target - 1) phase = 'trick';
 
-    if (this.llm) {
+    const llm = this.llm;
+    if (llm) {
       try {
         const systemPrompt = STORYTELLER_SYSTEM(this.age);
         const partLabel =
@@ -359,16 +365,16 @@ export class Brain {
 
         const userPrompt = `Erzähle jetzt ${partLabel}.\nLänge: ${this.storyMinWords} bis ${this.storyMaxWords} Wörter.\n${PHASE_HINTS[phase]}\n${continuity}\n${wishLine}\nAntworte strikt im JSON-Format.`;
 
-        const parsed = await this.llm.generateJson({
+        const parsed = await timer.time('sprachmodell', () => llm.generateJson({
           system: systemPrompt,
           user: userPrompt,
           schemaName: 'kunibert_geschichte',
           schema: STORY_SCHEMA,
           maxOutputTokens: 1500,
-        }) as { text?: string; summary?: string; open_threads?: string; next_hook?: string; episode_finished?: boolean };
+        })) as { text?: string; summary?: string; open_threads?: string; next_hook?: string; episode_finished?: boolean };
         const text = trimWords(String(parsed.text || ''), this.storyMaxWords + 50);
         // Ausgabe-Check: bei Treffer greift der Fallback unten (catch-Pfad).
-        if (!text || screenOutput(text, 'story')) {
+        if (!text || timer.timeSync('ausgabecheck', () => screenOutput(text, 'story'))) {
           throw new Error('Geschichte des Sprachmodells durch Ausgabe-Check abgelehnt');
         }
         const done = Boolean(parsed.episode_finished) || phase === 'finale';
