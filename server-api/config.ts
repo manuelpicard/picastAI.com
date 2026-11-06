@@ -1,5 +1,14 @@
 // Zentrale Konfiguration für alle Kunibert-Umgebungsvariablen
+import {
+  DEFAULT_GOOGLE_VOICE,
+  GOOGLE_TTS_HOST,
+  isValidGoogleApiKey,
+  isValidGoogleVoiceName,
+  isValidSpeakingRate,
+} from './google-speech.js';
 import { normalizePublicBaseUrl, parseTrustProxy, type TrustProxySetting } from './http-utils.js';
+
+export type TtsProviderName = 'openai-compatible' | 'google';
 
 export interface KunibertConfig {
   // Server-Netzwerk
@@ -33,6 +42,18 @@ export interface KunibertConfig {
   ttsApiKey: string | null;
   ttsModel: string;
   ttsVoice: string;
+  /**
+   * Anbieter der Sprachausgabe: 'openai-compatible' (ttsUrl/ttsModel/ttsVoice, Standard) oder
+   * 'google' (Google Cloud Text-to-Speech, Chirp 3 HD, EU-Endpunkt). Die Spracherkennung bleibt
+   * davon unberührt und geht immer an den Dienst unter sttUrl: die Kinderstimme verlässt den
+   * eigenen Server nicht.
+   */
+  ttsProvider: TtsProviderName;
+  googleTtsKey: string | null;
+  /** Google: Stimmenname, Standard de-DE-Chirp3-HD-Algenib. */
+  googleTtsVoice: string;
+  /** Google: Tempo 0,25 bis 2,0 (PICASTAI_GOOGLE_TTS_RATE); leer = Standard 0,95. */
+  googleTtsRate: string;
   voiceTimeoutMs: number;
 
   // Erzähl- & Pädagogik-Parameter
@@ -96,6 +117,20 @@ export function llmConfigWarnings(
   return warnings;
 }
 
+/** Anbieter der Sprachausgabe: nur ein ausdrückliches "google" wählt Google, sonst der OpenAI-kompatible Dienst. */
+export function resolveTtsProvider(env: { PICASTAI_TTS_PROVIDER?: string } = process.env): TtsProviderName {
+  return env.PICASTAI_TTS_PROVIDER?.trim().toLowerCase() === 'google' ? 'google' : 'openai-compatible';
+}
+
+/** Warnung beim Start bei einem unbekannten Wert für PICASTAI_TTS_PROVIDER (er würde sonst still ignoriert). */
+export function ttsProviderWarnings(env: { PICASTAI_TTS_PROVIDER?: string } = process.env): string[] {
+  const requested = env.PICASTAI_TTS_PROVIDER?.trim().toLowerCase();
+  if (requested && requested !== 'google' && requested !== 'openai-compatible') {
+    return [`Sprachausgabe: PICASTAI_TTS_PROVIDER=${requested} ist unbekannt (erlaubt: openai-compatible, google). Es gilt openai-compatible.`];
+  }
+  return [];
+}
+
 /** Adresse eines Sprachdienstes: ohne Leerzeichen und ohne abschließenden Schrägstrich; leer = nicht gesetzt. */
 export function normalizeServiceUrl(value: string | undefined): string | null {
   const trimmed = value?.trim().replace(/\/+$/, '');
@@ -119,11 +154,16 @@ const EXCLUDED_VOICE_HOSTS = ['api.openai.com', 'generativelanguage.googleapis.c
  * Warnungen beim Start für Sprachdienst-Einstellungen, die Kinderstimmen gefährden:
  * unverschlüsselte Verbindung zu einem anderen Rechner und ausgeschlossene Anbieter.
  */
-export function voiceConfigWarnings(config: Pick<KunibertConfig, 'sttUrl' | 'ttsUrl'>): string[] {
+export function voiceConfigWarnings(
+  config: Pick<KunibertConfig, 'sttUrl' | 'ttsUrl'> &
+    Partial<Pick<KunibertConfig, 'ttsProvider' | 'googleTtsKey' | 'googleTtsVoice' | 'googleTtsRate'>>
+): string[] {
   const warnings: string[] = [];
+  const google = config.ttsProvider === 'google';
   const services: Array<[string, string | null]> = [
     ['Spracherkennung', config.sttUrl],
-    ['Sprachausgabe', config.ttsUrl],
+    // Bei Google ist die Sprachausgabe-Adresse nicht in Gebrauch.
+    ['Sprachausgabe', google ? null : config.ttsUrl],
   ];
   for (const [name, url] of services) {
     if (!url) continue;
@@ -138,6 +178,28 @@ export function voiceConfigWarnings(config: Pick<KunibertConfig, 'sttUrl' | 'tts
     if (EXCLUDED_VOICE_HOSTS.some((excluded) => host === excluded || host.endsWith(`.${excluded}`))) {
       warnings.push(`${name}: ${host} ist für Kinderprodukte ausgeschlossen (Anbieterbedingungen bzw. Entscheidung vom 5.11.2026).`);
     }
+  }
+  if (google) warnings.push(...googleConfigWarnings(config));
+  return warnings;
+}
+
+function googleConfigWarnings(
+  config: Partial<Pick<KunibertConfig, 'googleTtsKey' | 'googleTtsVoice' | 'googleTtsRate'>>
+): string[] {
+  const warnings: string[] = [];
+  const voice = config.googleTtsVoice ?? '';
+  if (!config.googleTtsKey || !voice) {
+    warnings.push('Sprachausgabe (Google): Schlüssel und Stimme (PICASTAI_GOOGLE_TTS_KEY, _VOICE) müssen gesetzt sein, sonst bleibt die Sprachausgabe aus.');
+    return warnings;
+  }
+  if (!isValidGoogleApiKey(config.googleTtsKey)) {
+    warnings.push('Sprachausgabe (Google): PICASTAI_GOOGLE_TTS_KEY enthält ungültige Zeichen (Leerzeichen, Zeilenumbruch oder Anführungszeichen mit eingefügt?). Die Sprachausgabe bleibt aus.');
+  }
+  if (!isValidGoogleVoiceName(voice)) {
+    warnings.push('Sprachausgabe (Google): Der Stimmenname ist ungültig (erwartet z. B. de-DE-Chirp3-HD-Algenib). Die Sprachausgabe bleibt aus.');
+  }
+  if (config.googleTtsRate && !isValidSpeakingRate(config.googleTtsRate)) {
+    warnings.push('Sprachausgabe (Google): PICASTAI_GOOGLE_TTS_RATE ist ungültig (erlaubt 0.25 bis 2.0, z. B. 0.9) und wird ignoriert; es gilt 0.95.');
   }
   return warnings;
 }
@@ -172,6 +234,10 @@ export function loadConfig(): KunibertConfig {
     ttsApiKey: process.env.PICASTAI_TTS_API_KEY?.trim() || null,
     ttsModel: process.env.PICASTAI_TTS_MODEL?.trim() || '',
     ttsVoice: process.env.PICASTAI_TTS_VOICE?.trim() || '',
+    ttsProvider: resolveTtsProvider(),
+    googleTtsKey: process.env.PICASTAI_GOOGLE_TTS_KEY?.trim() || null,
+    googleTtsVoice: process.env.PICASTAI_GOOGLE_TTS_VOICE?.trim() || DEFAULT_GOOGLE_VOICE,
+    googleTtsRate: process.env.PICASTAI_GOOGLE_TTS_RATE?.trim() || '',
     voiceTimeoutMs: Math.min(120_000, Math.max(3_000, parseNum(process.env.PICASTAI_VOICE_TIMEOUT_MS, 45_000))),
 
     ageBracket: process.env.KUNIBERT_AGE || 'sechs bis zehn',
@@ -207,10 +273,11 @@ export function getSafeConfigSummary(config: KunibertConfig) {
     llmModel: config.llmProvider === 'anthropic' ? config.anthropicModel : null,
     // Nur der Rechnername, nie Pfad, Zugangsdaten oder Schlüssel.
     sttHost: config.sttUrl ? hostnameOf(config.sttUrl) : null,
-    ttsHost: config.ttsUrl ? hostnameOf(config.ttsUrl) : null,
+    ttsProvider: config.ttsProvider,
+    ttsHost: config.ttsProvider === 'google' ? GOOGLE_TTS_HOST : (config.ttsUrl ? hostnameOf(config.ttsUrl) : null),
     sttModel: config.sttModel,
-    ttsModel: config.ttsModel,
-    ttsVoice: config.ttsVoice,
+    ttsModel: config.ttsProvider === 'google' ? '' : config.ttsModel,
+    ttsVoice: config.ttsProvider === 'google' ? config.googleTtsVoice : config.ttsVoice,
     ageBracket: config.ageBracket,
     partsPerEpisode: config.partsPerEpisode,
     storyWordRange: `${config.storyMinWords}–${config.storyMaxWords} Wörter`,

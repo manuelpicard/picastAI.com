@@ -74,6 +74,7 @@ uvx speaches-cli registry ls --task text-to-speech                # verfügbare 
 
 - **Erkennung:** `Systran/faster-whisper-small` ist das Beispiel der Dokumentation und klein. In der Studie [Kid-Whisper](https://arxiv.org/html/2309.07927) erkennt ein größeres Whisper-Modell Kinderstimmen etwas besser, kostet aber mehr Rechenzeit. Welches Modell reicht, entscheidet der Test in Schritt 11 der Checkliste.
 - **Stimme:** Piper hat deutsche Stimmen (`eva_k`, `karlsson`, `kerstin`, `mls`, `pavoque`, `ramona`, `thorsten`, `thorsten_emotional`). Welche Modellnamen Speaches dafür anbietet und wie die Stimme angesprochen wird, zeigt `registry ls` und die Speaches-Dokumentation; nicht gegengeprüft. Jede Stimme hat eine eigene Lizenz: vor dem Einsatz mit Kindern prüfen.
+- **Klingt keine Piper-Stimme gut genug:** Im Hörtest vom 6.11.2026 klangen die Piper-Stimmen auch mit abgesenkter Tonhöhe unnatürlich. Die Sprachausgabe lässt sich allein auf Google Cloud Text-to-Speech umstellen (`PICASTAI_TTS_PROVIDER=google`, Chirp 3 HD, siehe `docs/LLM-Anbieter.md`). Die Spracherkennung bleibt auf dem eigenen Server; zu Google geht dann nur der Antworttext. Für den Kinderbetrieb rechtlich prüfen.
 - Die Namen in `/etc/kunibert/kunibert.env` eintragen (`PICASTAI_STT_MODEL`, `PICASTAI_TTS_MODEL`, `PICASTAI_TTS_VOICE`) und den Kunibert-Dienst neu starten.
 
 Stimme direkt prüfen (Namen einsetzen):
