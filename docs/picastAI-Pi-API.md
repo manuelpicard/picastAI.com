@@ -34,7 +34,7 @@ Formularfelder:
 - `session_id`: temporäre Gerätekennung
 - `transcript`: optionales Diagnosefeld für lokale Tests; fehlt es, nutzt der Server den konfigurierten Spracherkennungsdienst
 
-Die Gegenstelle validiert das WAV-Format. Wenn `PICASTAI_STT_URL` und `PICASTAI_STT_MODEL` gesetzt sind, wird die Aufnahme serverseitig über einen OpenAI-kompatiblen Spracherkennungsdienst transkribiert, in der Regel ein eigener Server. Die Sprachausgabe läuft entsprechend über `PICASTAI_TTS_URL`, `PICASTAI_TTS_MODEL` und `PICASTAI_TTS_VOICE`; ohne diese Angaben bleibt der Dienst aus (siehe `docs/LLM-Anbieter.md`). Der Transcript-Text wird anschließend durch die Sicherheitsweiche und den Erzählmotor verarbeitet. Liefert die Erkennung keinen Text (Stille, Rauschen), ist das kein Fehler: der Server antwortet mit dem festen Hinweis „Das habe ich leider nicht richtig verstanden“ (HTTP 200).
+Die Gegenstelle validiert das WAV-Format. Wenn `PICASTAI_STT_URL` und `PICASTAI_STT_MODEL` gesetzt sind, wird die Aufnahme serverseitig über einen OpenAI-kompatiblen Spracherkennungsdienst transkribiert, in der Regel ein eigener Server. Die Sprachausgabe läuft entsprechend über `PICASTAI_TTS_URL`, `PICASTAI_TTS_MODEL` und `PICASTAI_TTS_VOICE`; ohne diese Angaben bleibt der Dienst aus (siehe `docs/LLM-Anbieter.md`). Alternativ lässt sich nur die Sprachausgabe auf Google Cloud Text-to-Speech umstellen (`PICASTAI_TTS_PROVIDER=google`, eingeführt mit PR #14); die Einstellungen dazu stehen in `docs/LLM-Anbieter.md` und sind hier nicht wiederholt. Der Transcript-Text wird anschließend durch die Sicherheitsweiche und den Erzählmotor verarbeitet. Liefert die Erkennung keinen Text (Stille, Rauschen), ist das kein Fehler: der Server antwortet mit dem festen Hinweis „Das habe ich leider nicht richtig verstanden“ (HTTP 200).
 
 Beispielantwort:
 
@@ -122,6 +122,7 @@ PICASTAI_STT_MODEL=
 PICASTAI_TTS_URL=http://127.0.0.1:8000/v1
 PICASTAI_TTS_MODEL=
 PICASTAI_TTS_VOICE=
+# Alternative Sprachausgabe: Google Cloud Text-to-Speech (PICASTAI_TTS_PROVIDER=google, PR #14), siehe docs/LLM-Anbieter.md
 PICASTAI_VOICE_TIMEOUT_MS=45000
 ```
 

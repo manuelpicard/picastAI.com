@@ -6,6 +6,8 @@
 
 ## Empfohlene Stückliste (Version 1)
 
+> **Widerspruch zum Code (offen, nicht entschieden):** Diese Stückliste geht durchgehend vom **Raspberry Pi 5** aus (Netzteil, Kühlung, USB-Audio). Der Client im Repository zielt dagegen auf den **Raspberry Pi Zero 2 W** (`pi-client/README.md`: Audio-HAT statt USB-Audio). Welche Plattform für den ersten Aufbau gilt, steht hier nicht fest; das entscheidet das Projekt.
+
 | Teil | Empfehlung | Warum |
 | --- | --- | --- |
 | Einplatinencomputer | [Raspberry Pi 5](https://www.raspberrypi.com/products/raspberry-pi-5/) mit **4 GB RAM** | Genug Reserven für Linux, Audioaufnahme, WLAN und Steuerung; USB-Ports und GPIO sind direkt vorhanden. Die eigentliche KI kann online laufen. |
@@ -33,18 +35,22 @@ Während das Gerät spricht, ist das Mikrofon in Version 1 nicht offen. Das verm
 
 ## Warum noch nicht der kleinste Pi?
 
+> **Widerspruch zum Code (offen):** Dieser Abschnitt rät vom Pi Zero 2 W für den ersten Aufbau ab. Der Client im Repository zielt aber auf genau dieses Gerät. Beides steht hier nebeneinander; die Plattform ist nicht entschieden.
+
 Der [Raspberry Pi Zero 2 W](https://www.raspberrypi.com/products/raspberry-pi-zero-2-w/) misst nur **65 × 30 mm**, hat aber **512 MB RAM**, einen **Micro-USB-OTG-Port** und keine normalen USB-A-Buchsen. Für zwei USB-Audiogeräte braucht er Adapter/Hub oder eine integrierte Audioplatine. Er ist eine sinnvolle **Miniaturisierung nach dem Funktionstest**, aber nicht die einfachste erste Testplattform. Eine mögliche kompakte Audioalternative ist der [Raspberry Pi Codec Zero](https://www.raspberrypi.com/documentation/accessories/audio.html) mit eingebautem Mikrofon und Anschluss für einen kleinen Monolautsprecher; seine Einrichtung ist komplexer als zwei USB-Geräte. Für vollständig lokale Spracherkennung **und** gute freie KI-Antworten müsste die Rechenplattform gesondert erprobt werden; die kleine Platine ist dafür nicht automatisch ausreichend.
 
-## picast.com: derzeit eine offene Abhängigkeit
+## picast.com: derzeit eine offene Abhängigkeit (veraltet)
+
+> **Veraltet (Stand 2. Oktober 2026):** Die Plattform heißt inzwischen **picastAI.com** (`README.md`, `ORGANIZATION.md`); der Dienst ist als Node-Server in diesem Repository umgesetzt (`docs/picastAI-Pi-API.md`). Der folgende Abschnitt bleibt als Verlauf stehen. Ob und wem die Domain `picast.com` gehört, wird hier weder behauptet noch entschieden.
 
 Die direkt geprüfte Adresse [picast.com](https://picast.com) zeigt aktuell **eine Verkaufsseite für die Domain**, keine dokumentierte Sprachplattform oder API. In der vorhandenen Projektkonfiguration ist auch kein Picast-Connector erkennbar. Deshalb kann ich nicht seriös festlegen, dass Sprachaufnahme, KI und Sprachausgabe *bereits* darüber laufen. Die Hardware oben bleibt verwendbar, falls später ein eigener Server unter dieser Domain betrieben wird: Das Gerät würde dann nur mit einem autorisierten HTTPS-Endpunkt unter `picast.com` sprechen; die konkreten KI-Dienste müssten dort serverseitig integriert werden. **Weder Domain noch Hardware wurden gekauft.**
 
 ## Praktische Reihenfolge
 
-1. Pi 5 mit Netzteil, Kühlung, SD-Karte, USB-Mikrofon und USB-Lautsprecher auf dem Tisch aufbauen; Tonaufnahme und Wiedergabe getrennt prüfen.
+1. Pi 5 mit Netzteil, Kühlung, SD-Karte, USB-Mikrofon und USB-Lautsprecher auf dem Tisch aufbauen; Tonaufnahme und Wiedergabe getrennt prüfen. *(Pi 5: siehe „Widerspruch zum Code“ oben; der Client zielt auf den Pi Zero 2 W.)*
 2. Sprechtaste und Aufnahme-LED über GPIO anschließen; die Anleitung [GPIOzero Basic Recipes](https://gpiozero.readthedocs.io/en/stable/recipes.html) zeigt das Prinzip. Eine zweite Taste startet eine Kunibert-Geschichte.
 3. Erst dann Sprachdienst anbinden und mit Erwachsenen testen: kurze Fragen, lange Geschichten, Fehlerfall und unklare Aussprache.
 4. Mikrofon-Aus-Schalter und sichere Gehäuseintegration prüfen; insbesondere testen, dass bei OFF **elektrisch keine Aufnahme** möglich ist.
 5. Bevor Kinder allein damit spielen: Antworten, Datenfluss, Einwilligung der Sorgeberechtigten, Umgang mit Notlagen und elektrische/mechanische Sicherheit fachlich prüfen. Der Prototyp ist noch kein sicheres Kinderprodukt.
 
-**Entscheidung vor der Software-Anbindung:** Ist `picast.com` eine Domain, die du erwerben und als eigene Plattform betreiben willst, oder meintest du einen anderen bereits existierenden Dienst? Bis dahin bleibt die Serveranbindung offen.
+**Entscheidung vor der Software-Anbindung *(veraltet, siehe Abschnitt „picast.com“ oben)*:** Ist `picast.com` eine Domain, die du erwerben und als eigene Plattform betreiben willst, oder meintest du einen anderen bereits existierenden Dienst? Bis dahin bleibt die Serveranbindung offen.

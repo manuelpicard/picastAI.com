@@ -313,7 +313,7 @@ export const ParentDashboard: React.FC<ParentDashboardProps> = ({
             <ShieldCheck className="w-6 h-6" />
           </div>
           <div>
-            <h3 className="text-lg font-bold text-stone-100">Eltern- &amp; Geräteverwaltung (picast.com)</h3>
+            <h3 className="text-lg font-bold text-stone-100">Eltern- &amp; Geräteverwaltung (picastAI.com)</h3>
             <p className="text-xs text-stone-400">Geräteauthentifizierung, WLAN-Netzwerk-Steuerung und Datenschutz-Garantien</p>
           </div>
         </div>

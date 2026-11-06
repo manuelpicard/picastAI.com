@@ -1,5 +1,11 @@
 # Gesprächskontext: picast.com / picastAI.com und Ritter Kunibert
 
+> **Archiv (veraltet in einigen Punkten), Stand 14. Oktober 2026.** Diese Datei wird nicht fortgeschrieben. Überholt sind besonders:
+> - **`picast.com`** als Plattformadresse: Die Plattform heißt **picastAI.com** (`README.md`, `ORGANIZATION.md`). Ob und wem `picast.com` gehört, ist hier nur als Nutzerangabe festgehalten und wurde nie von Dritten bestätigt.
+> - **Raspberry Pi 5** als Hardware: Der Client im Repository zielt auf den Raspberry Pi Zero 2 W. Die Plattformfrage ist offen und hier nicht entschieden.
+> - **`firmware/arduino-giga/`**: Diesen Ordner gibt es in diesem Repository nicht mehr (hinzugefügt in `a9fb68a`, entfernt in `e0784a6`). Die Zielplattform ist der Pi, nicht Arduino.
+> - Maßgeblich für den heutigen Stand sind `README.md`, `handoff-2026-11-01.md` und der Code.
+
 **Zeitraum:** 2.–14. Oktober 2026  
 **Zweck:** Gesprächs- und Arbeitskontext für zukünftige KI-Sitzungen  
 **Aktueller Ablageort:** `docs/ai-context/` im privaten Repository `manuelpicard/picastAI.com`  
@@ -210,7 +216,7 @@ Zukünftige KI soll die Eigentumsaussage nicht als verifiziert durch Dritte dars
 - [`server-api/prompts.ts`](../../server-api/prompts.ts) – implementierte Erzähl- und Antwortprompts (sofern dieser Pfad in der aktuellen Repo-Version existiert).
 - [`Produktentwurf-Ritter-Kunibert-2026-10-02.md`](Produktentwurf-Ritter-Kunibert-2026-10-02.md) – vollständige historische Fassung der Produktbeschreibung.
 - `docs/Ritter Kunibert und der Drache am Berg.md` – erste Geschichte nach Erinnerungen, nicht als Originaltranskript behandeln.
-- `docs/picastAI-Pi-API.md` und `firmware/arduino-giga/` – neuere Hardware-/API-Arbeit im aktuellen Repository.
+- `docs/picastAI-Pi-API.md` – aktuelle Geräte-Schnittstelle. *(Veraltet: Der hier früher genannte Ordner `firmware/arduino-giga/` existiert nicht mehr, siehe Hinweis oben.)*
 
 ## Hinweise für zukünftige KI-Sitzungen
 
