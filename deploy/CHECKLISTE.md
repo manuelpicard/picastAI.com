@@ -20,6 +20,7 @@ Ausführliche Befehle: [`EINRICHTUNG.md`](EINRICHTUNG.md). Nur mit **erwachsenen
 
 ## C. Erster Durchlauf (Dienst starten, `journalctl -u kunibert.service -f` und Server-Journal nebeneinander)
 
+0. [ ] **KI-Ansage beim ersten Einschalten:** Merkdatei `/var/lib/kunibert/state/intro-played` löschen, Dienst starten. Kunibert spricht zuerst die Vorstellung („Ich bin ein Computer-Ritter, kein echter Mensch …“); währenddessen zeigt die LED „Wiedergabe“ und eine gedrückte Sprechtaste bewirkt nichts. Danach LED „bereit“, die Datei existiert. Zweiter Start: keine Ansage. Prüfen, ob sie verständlich und nicht zu schnell ist. Ausfall: Sprachserver oder WLAN trennen, Merkdatei löschen, starten. Das Gerät darf nicht „bereit“ werden (Fehler-LED, Dienst startet neu).
 1. [ ] **Frage:** Sprechtaste halten, „Warum ist der Himmel blau?“, loslassen. LED: Aufnahme (schnell), dann Verarbeitung (langsam), dann Wiedergabe; die Antwort ist verständlich, kindgerecht und unter ca. 80 Wörtern.
 2. [ ] **Dauer:** Zeit von Loslassen bis erstes Wort notieren (Ziel: unter 20 s; über 60 s ist ein Problem).
 3. [ ] **Geschichte in 5 Teilen:** Erzähltaste fünfmal nacheinander. Teil 1 bis 5 setzen sich fort, nach Teil 5 ein Abschluss, der sechste Druck beginnt eine neue Folge.

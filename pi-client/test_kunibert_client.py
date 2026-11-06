@@ -1,11 +1,16 @@
+import contextlib
 import io
+import os
 import sys
+import tempfile
 import unittest
 import wave
+from pathlib import Path
 from types import ModuleType
 from unittest.mock import MagicMock, patch
 
 from kunibert_client import (
+    INTRO_MARKER_NAME,
     ApiError,
     ClientConfig,
     ClientState,
@@ -19,19 +24,29 @@ from kunibert_client import (
     NoRedirectHandler,
     PicastApi,
     encode_wav,
+    main,
     multipart_form,
+    parse_args,
     same_origin,
     validate_wav,
 )
 
 
 class FakeApi:
-    def __init__(self):
+    def __init__(self, intro_error=None):
         self.questions = 0
         self.stories = 0
+        self.intros = 0
+        self.intro_error = intro_error
 
     def health(self):
         return True
+
+    def fetch_intro(self):
+        self.intros += 1
+        if self.intro_error is not None:
+            raise self.intro_error
+        return "0123456789ab", encode_wav(b"\x00\x00" * 8000, 16000, 1, 2)
 
     def ask_question(self, wav):
         self.questions += 1
@@ -117,9 +132,34 @@ class CaptureLed:
         self.closed = True
 
 
+class StopAfterPlaybackOutput(CaptureAudioOutput):
+    """Beendet den Client nach der ersten Wiedergabe, damit run() in Tests zurückkehrt."""
+
+    def __init__(self, fail_with=None):
+        super().__init__()
+        self.client = None
+        self.fail_with = fail_with
+
+    def play_wav(self, wav_bytes):
+        if self.fail_with is not None:
+            raise self.fail_with
+        super().play_wav(wav_bytes)
+        self.client.stop_requested = True
+
+
 class KunibertClientTests(unittest.TestCase):
-    def config(self):
-        return ClientConfig(dry_run=True, min_record_seconds=0.1)
+    def setUp(self):
+        # Standard in den Tests: Das Gerät hat sich schon vorgestellt (Merkdatei vorhanden),
+        # damit die KI-Ansage die übrigen Tests nicht stört. Die Ansage testen die Tests unten.
+        self._state = tempfile.TemporaryDirectory()
+        self.addCleanup(self._state.cleanup)
+        self.state_dir = Path(self._state.name)
+        (self.state_dir / INTRO_MARKER_NAME).write_text("test\n", encoding="utf-8")
+
+    def config(self, **overrides):
+        settings = dict(dry_run=True, min_record_seconds=0.1, state_dir=self.state_dir)
+        settings.update(overrides)
+        return ClientConfig(**settings)
 
     def test_valid_state_path_for_story(self):
         buttons = PressedButtons(story=True)
@@ -287,6 +327,178 @@ class KunibertClientTests(unittest.TestCase):
         self.assertEqual(led.modes[-1], "off")
         self.assertTrue(buttons.closed)
         self.assertTrue(led.closed)
+
+    # --- KI-Ansage beim ersten Einschalten (Art. 50 KI-Verordnung) ---
+
+    def _intro_client(self, config, api=None, output=None, buttons=None):
+        api = api or FakeApi()
+        output = output or StopAfterPlaybackOutput()
+        led = CaptureLed()
+        client = KunibertClient(config, api, DryRunAudio(config), output, buttons or PressedButtons(), led)
+        if hasattr(output, "client"):
+            output.client = client
+        return client, api, output, led
+
+    def _forget_intro(self):
+        marker = self.state_dir / INTRO_MARKER_NAME
+        marker.unlink()
+        return marker
+
+    def test_first_start_plays_intro_before_ready_and_remembers_it(self):
+        marker = self._forget_intro()
+        client, api, output, led = self._intro_client(self.config(), buttons=PressedButtons(speech=True))
+
+        with patch("kunibert_client.time.sleep"):
+            client.run()
+
+        self.assertEqual(api.intros, 1)
+        self.assertEqual(len(output.played), 1)
+        self.assertEqual(
+            client.state_history,
+            [ClientState.WIFI_CONNECTING, ClientState.PLAYING, ClientState.READY, ClientState.SHUTDOWN],
+        )
+        self.assertEqual(led.modes, ["busy", "busy", "ready", "off"])
+        self.assertEqual(marker.read_text(encoding="utf-8").strip(), "0123456789ab")
+        self.assertEqual(api.questions, 0, "eine gedrückte Sprechtaste darf während der Ansage nichts auslösen")
+        self.assertIsNone(client.last_error)
+
+    def test_intro_is_skipped_when_the_device_already_introduced_itself(self):
+        client, api, output, _led = self._intro_client(self.config())
+        client.stop_requested = True  # Schleife nicht betreten; nur der Start interessiert
+
+        client.run()
+
+        self.assertEqual(api.intros, 0, "kein Serveraufruf, wenn die Merkdatei da ist")
+        self.assertEqual(output.played, [])
+        self.assertEqual(
+            client.state_history, [ClientState.WIFI_CONNECTING, ClientState.READY, ClientState.SHUTDOWN]
+        )
+
+    def test_replay_intro_plays_again_even_with_marker(self):
+        client, api, output, _led = self._intro_client(self.config(replay_intro=True))
+
+        client.run()
+
+        self.assertEqual(api.intros, 1)
+        self.assertEqual(len(output.played), 1)
+        self.assertIn(ClientState.PLAYING, client.state_history)
+
+    def test_device_is_not_released_when_the_intro_cannot_be_fetched(self):
+        marker = self._forget_intro()
+        client, api, output, _led = self._intro_client(
+            self.config(), api=FakeApi(intro_error=ApiError("Server nicht erreichbar", retryable=True))
+        )
+
+        client.run()
+
+        self.assertEqual(output.played, [])
+        self.assertNotIn(ClientState.READY, client.state_history)
+        self.assertIn(ClientState.ERROR, client.state_history)
+        self.assertEqual(client.state, ClientState.SHUTDOWN)
+        self.assertIn("Server nicht erreichbar", client.last_error)
+        self.assertFalse(marker.exists())
+
+    def test_device_is_not_released_and_marker_not_written_when_playback_fails(self):
+        marker = self._forget_intro()
+        client, api, output, _led = self._intro_client(
+            self.config(), output=StopAfterPlaybackOutput(fail_with=HardwareError("Lautsprecher getrennt"))
+        )
+
+        client.run()
+
+        self.assertEqual(api.intros, 1)
+        self.assertNotIn(ClientState.READY, client.state_history)
+        self.assertIn(ClientState.ERROR, client.state_history)
+        self.assertIn("Lautsprecher getrennt", client.last_error)
+        self.assertFalse(marker.exists(), "ohne vollständige Wiedergabe gilt die Ansage nicht als gespielt")
+
+    def test_unwritable_marker_does_not_stop_the_client(self):
+        blocker = self.state_dir / "blocker"
+        blocker.write_text("keine Ordner hier", encoding="utf-8")
+        client, api, output, _led = self._intro_client(self.config(state_dir=blocker / "state"))
+
+        with self.assertLogs("kunibert", level="WARNING") as logs:
+            client.run()
+
+        self.assertEqual(len(output.played), 1)
+        self.assertIn(ClientState.READY, client.state_history)
+        self.assertTrue(any("Merkdatei" in line for line in logs.output), logs.output)
+
+    def test_intro_plays_even_when_the_microphone_switch_is_off(self):
+        self._forget_intro()
+        client, _api, output, _led = self._intro_client(self.config(), buttons=PressedButtons(mic_off=True))
+
+        client.run()
+
+        self.assertEqual(len(output.played), 1)
+        self.assertEqual(
+            client.state_history,
+            [ClientState.WIFI_CONNECTING, ClientState.PLAYING, ClientState.MIC_OFF, ClientState.SHUTDOWN],
+        )
+
+    def test_fetch_intro_requests_the_intro_path_and_returns_version_and_audio(self):
+        config = ClientConfig(api_base_url="https://picastAI.com", device_token="device-test-token")
+        api = PicastApi(config)
+        audio = encode_wav(b"\x00\x00" * 200, config.sample_rate, config.channels, config.sample_width)
+        answer = {"type": "intro", "audio_url": "/v1/device/audio/i", "version": "abc123def456"}
+
+        with patch.object(api, "_with_retries", return_value=answer) as retries, patch.object(
+            api, "_download_audio", return_value=audio
+        ) as download:
+            version, wav = api.fetch_intro()
+
+        self.assertEqual((version, wav), ("abc123def456", audio))
+        self.assertEqual(retries.call_args.args[:3], ("GET", "/v1/device/intro", None))
+        self.assertEqual(retries.call_args.kwargs["timeout"], config.pipeline_timeout_seconds)
+        self.assertEqual(retries.call_args.args[3]["Authorization"], "Bearer device-test-token")
+        download.assert_called_once_with(answer)
+
+    def test_fetch_intro_cleans_up_the_version_before_it_reaches_the_marker_file(self):
+        api = PicastApi(ClientConfig(api_base_url="https://picastAI.com", device_token="device-test-token"))
+        for raw, expected in (("../etc/pass\nwd", "..etcpasswd"), ("", "unbekannt"), (None, "unbekannt"), ("a" * 100, "a" * 64)):
+            answer = {"audio_url": "/v1/device/audio/i"}
+            if raw is not None:
+                answer["version"] = raw
+            with patch.object(api, "_with_retries", return_value=answer), patch.object(api, "_download_audio", return_value=b"x"):
+                self.assertEqual(api.fetch_intro()[0], expected, repr(raw))
+
+    def test_fetch_intro_is_not_retried_when_the_server_has_no_voice_configured(self):
+        api = self._retry_api()
+        body = b'{"error":"tts_not_configured","retryable":false}'
+        with patch.object(api, "_request", return_value=(503, {}, body)) as request, patch("kunibert_client.time.sleep"):
+            with self.assertRaises(ApiError) as caught:
+                api.fetch_intro()
+        self.assertEqual(request.call_count, 1)
+        self.assertFalse(caught.exception.retryable)
+
+    def test_state_dir_comes_from_the_environment_with_a_default(self):
+        self.assertEqual(ClientConfig().state_dir, Path("/var/lib/kunibert/state"))
+        with patch.dict(os.environ, {"KUNIBERT_STATE_DIR": "/tmp/kunibert-state"}):
+            self.assertEqual(ClientConfig.from_env().state_dir, Path("/tmp/kunibert-state"))
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("KUNIBERT_STATE_DIR", None)
+            self.assertEqual(ClientConfig.from_env().state_dir, Path("/var/lib/kunibert/state"))
+
+    def test_command_line_flag_ansage_replays_the_intro(self):
+        self.assertFalse(parse_args([]).ansage)
+        self.assertTrue(parse_args(["--ansage"]).ansage)
+        fake_client = MagicMock(last_error=None)
+        with patch.dict(os.environ, {"PICASTAI_DEVICE_TOKEN": "device-test-token"}), patch(
+            "kunibert_client.build_client", return_value=fake_client
+        ) as build, patch("kunibert_client.signal.signal"):
+            self.assertEqual(main(["--ansage"]), 0)
+            self.assertTrue(build.call_args.args[0].replay_intro)
+            self.assertEqual(main([]), 0)
+            self.assertFalse(build.call_args.args[0].replay_intro)
+
+    def test_once_ansage_prints_version_and_size_without_playing(self):
+        out = io.StringIO()
+        with patch.dict(os.environ, {"PICASTAI_DEVICE_TOKEN": "device-test-token"}), patch(
+            "kunibert_client.PicastApi.fetch_intro", return_value=("abc123def456", b"x" * 1234)
+        ), contextlib.redirect_stdout(out):
+            self.assertEqual(main(["--once", "ansage"]), 0)
+        self.assertIn("1234 Bytes", out.getvalue())
+        self.assertIn("abc123def456", out.getvalue())
 
     def test_led_modes_have_distinct_patterns(self):
         recording = GpioStatusLed.pattern_for_mode("recording")

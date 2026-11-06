@@ -19,6 +19,7 @@ import io
 import json
 import logging
 import os
+import re
 import secrets
 import signal
 import sys
@@ -26,7 +27,7 @@ import tempfile
 import threading
 import time
 import wave
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import Enum, auto
 from pathlib import Path
 from typing import Any, Callable, Optional, Protocol
@@ -35,6 +36,12 @@ from urllib.error import HTTPError, URLError
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 LOG = logging.getLogger("kunibert")
+
+# Merkdatei im Zustandsordner: Sie liegt dort, sobald das Gerät die KI-Ansage ("Ich bin ein
+# Computer-Ritter, kein echter Mensch") vollständig abgespielt hat. Ohne sie spielt der Client
+# die Ansage beim Start ab, bevor ein Kind etwas fragen kann (Art. 50 KI-Verordnung).
+# Zum Wiederholen: Datei löschen oder den Client mit --ansage starten.
+INTRO_MARKER_NAME = "intro-played"
 
 
 class ClientState(Enum):
@@ -76,6 +83,9 @@ class ClientConfig:
     status_led_gpio: int = 23
     poll_interval_seconds: float = 0.04
     cache_dir: Path = Path("/var/lib/kunibert/audio")
+    state_dir: Path = Path("/var/lib/kunibert/state")
+    # True (--ansage): die KI-Ansage auch dann abspielen, wenn sie schon einmal gespielt wurde.
+    replay_intro: bool = False
     dry_run: bool = False
 
     @classmethod
@@ -112,6 +122,7 @@ class ClientConfig:
             mic_off_gpio=integer("KUNIBERT_MIC_OFF_GPIO", 22),
             status_led_gpio=integer("KUNIBERT_STATUS_LED_GPIO", 23),
             cache_dir=Path(os.getenv("KUNIBERT_CACHE_DIR", "/var/lib/kunibert/audio")),
+            state_dir=Path(os.getenv("KUNIBERT_STATE_DIR", "/var/lib/kunibert/state")),
             dry_run=dry_run,
         )
 
@@ -417,6 +428,17 @@ class PicastApi:
         }, timeout=self.config.pipeline_timeout_seconds)
         return self._download_audio(response)
 
+    def fetch_intro(self) -> tuple[str, bytes]:
+        """Holt die feste KI-Ansage vom Server: (Kennung des Wortlauts, WAV).
+
+        Die Ansage kommt nie vom Sprachmodell. Beim allerersten Abruf muss der Server sie
+        eventuell erst sprechen lassen, deshalb gilt wie bei Frage und Geschichte die lange Grenze.
+        """
+        response = self._with_retries("GET", "/v1/device/intro", None, self._headers,
+                                      timeout=self.config.pipeline_timeout_seconds)
+        version = re.sub(r"[^A-Za-z0-9._-]", "", str(response.get("version", "")))[:64] or "unbekannt"
+        return version, self._download_audio(response)
+
     def _download_audio(self, response: dict[str, Any]) -> bytes:
         audio_url = response.get("audio_url")
         if not isinstance(audio_url, str) or not audio_url:
@@ -438,7 +460,7 @@ class PicastApi:
         validate_wav(data, self.config)
         return data
 
-    def _with_retries(self, method: str, path: str, body: bytes, headers: dict[str, str],
+    def _with_retries(self, method: str, path: str, body: Optional[bytes], headers: dict[str, str],
                       timeout: Optional[float] = None) -> dict[str, Any]:
         last_error: Optional[Exception] = None
         for attempt in range(self.config.retry_count + 1):
@@ -542,7 +564,8 @@ class KunibertClient:
     def transition(self, new_state: ClientState) -> None:
         allowed = {
             ClientState.BOOT: {ClientState.WIFI_CONNECTING, ClientState.MIC_OFF, ClientState.SHUTDOWN},
-            ClientState.WIFI_CONNECTING: {ClientState.READY, ClientState.ERROR, ClientState.MIC_OFF, ClientState.SHUTDOWN},
+            # PLAYING nur für die KI-Ansage beim ersten Start; READY erst danach.
+            ClientState.WIFI_CONNECTING: {ClientState.PLAYING, ClientState.READY, ClientState.ERROR, ClientState.MIC_OFF, ClientState.SHUTDOWN},
             ClientState.READY: {ClientState.RECORDING, ClientState.REQUESTING_STORY, ClientState.MIC_OFF, ClientState.ERROR, ClientState.SHUTDOWN},
             ClientState.RECORDING: {ClientState.UPLOADING, ClientState.READY, ClientState.MIC_OFF, ClientState.ERROR, ClientState.SHUTDOWN},
             ClientState.UPLOADING: {ClientState.PLAYING, ClientState.READY, ClientState.ERROR, ClientState.SHUTDOWN},
@@ -578,6 +601,10 @@ class KunibertClient:
             self.transition(ClientState.WIFI_CONNECTING)
             if not self.config.dry_run and not self.api.health():
                 raise ApiError("picastAI Health-Endpunkt nicht erreichbar", retryable=True)
+            # Erst die KI-Ansage, dann Tasten freigeben: Das Kind erfährt, dass Kunibert kein
+            # Mensch ist, bevor es ihm etwas sagen kann. Scheitert die Ansage, wird das Gerät
+            # nicht freigegeben (Fehlerzustand, Dienst beendet sich, systemd startet neu).
+            self.announce_intro_if_needed()
             self.transition(ClientState.MIC_OFF if self.buttons.mic_off else ClientState.READY)
             LOG.info("Kunibert bereit. Sprechtaste gedrückt halten oder Erzähltaste drücken.")
             while not self.stop_requested:
@@ -595,6 +622,36 @@ class KunibertClient:
                     pass
         finally:
             self.shutdown()
+
+    def announce_intro_if_needed(self) -> None:
+        """Spielt beim ersten Start die feste KI-Ansage ab und merkt sich das.
+
+        Die Merkdatei entsteht erst nach vollständiger Wiedergabe. Bricht der Abruf oder die
+        Wiedergabe ab, bleibt sie aus, und die Ansage kommt beim nächsten Start noch einmal.
+        Lässt sich die Merkdatei nicht schreiben, läuft der Client weiter; die Ansage wird dann
+        bei jedem Start gespielt, was zu oft ist, aber nie zu selten.
+        """
+        if not self.config.replay_intro and self._intro_marker().is_file():
+            return
+        LOG.info("KI-Ansage: Kunibert stellt sich vor")
+        version, wav = self.api.fetch_intro()
+        self.transition(ClientState.PLAYING)
+        self.audio_out.play_wav(wav)
+        self._remember_intro(version)
+
+    def _intro_marker(self) -> Path:
+        return self.config.state_dir / INTRO_MARKER_NAME
+
+    def _remember_intro(self, version: str) -> None:
+        marker = self._intro_marker()
+        try:
+            marker.parent.mkdir(parents=True, exist_ok=True)
+            temporary = marker.with_name(marker.name + ".tmp")
+            temporary.write_text(version + "\n", encoding="utf-8")
+            os.replace(temporary, marker)
+        except OSError as exc:
+            LOG.warning("KI-Ansage gespielt, aber Merkdatei %s nicht schreibbar (%s); "
+                        "die Ansage kommt beim nächsten Start erneut", marker, exc)
 
     def step(self) -> None:
         if self.buttons.mic_off:
@@ -712,7 +769,10 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Ritter Kunibert Raspberry-Pi-Client")
     parser.add_argument("--dry-run", action="store_true", help="ohne GPIO/Audio-Hardware starten")
     parser.add_argument("--debug", action="store_true", help="Debug-Logging aktivieren")
-    parser.add_argument("--once", choices=["health", "story"], help="einmaliger Diagnose-/Story-Test")
+    parser.add_argument("--once", choices=["health", "story", "ansage"],
+                        help="einmaliger Diagnose-/Story-/Ansage-Test (ohne Wiedergabe)")
+    parser.add_argument("--ansage", action="store_true",
+                        help="KI-Ansage beim Start erneut abspielen, auch wenn sie schon gespielt wurde")
     return parser.parse_args(argv)
 
 
@@ -723,6 +783,8 @@ def main(argv: Optional[list[str]] = None) -> int:
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
     config = ClientConfig.from_env(dry_run=args.dry_run)
+    if args.ansage:
+        config = replace(config, replay_intro=True)
     if args.once:
         api = PicastApi(config)
         if args.once == "health":
@@ -731,6 +793,10 @@ def main(argv: Optional[list[str]] = None) -> int:
         if args.once == "story":
             wav = api.request_story()
             print(f"Story-Audio empfangen: {len(wav)} Bytes")
+            return 0
+        if args.once == "ansage":
+            version, wav = api.fetch_intro()
+            print(f"Ansage empfangen: {len(wav)} Bytes, Fassung {version}")
             return 0
     client = build_client(config)
     signal.signal(signal.SIGTERM, lambda _signum, _frame: setattr(client, "stop_requested", True))

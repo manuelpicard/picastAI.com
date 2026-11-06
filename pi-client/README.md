@@ -57,7 +57,7 @@ Die geheime Konfiguration liegt danach in `/etc/kunibert/kunibert.env` und wird 
 BOOT
   ↓
 WIFI_CONNECTING
-  ↓
+  ↓  (nur beim ersten Start: PLAYING mit der KI-Ansage, siehe unten)
 READY ←──────────────┐
   │                  │
   ├─ Sprechtaste     │
@@ -76,6 +76,32 @@ SIGTERM/Ctrl+C ──> SHUTDOWN
 ```
 
 Die API-Keys und Modellaufrufe bleiben auf `picastAI.com`. Der Pi nimmt nur auf, authentifiziert sich, lädt WAV-Audio herunter und spielt es ab.
+
+## KI-Ansage beim ersten Einschalten
+
+Kunibert sagt dem Kind beim ersten Einschalten selbst, dass er ein Computer-Ritter und kein Mensch ist und sich irren kann (Hinweispflicht nach Art. 50 KI-Verordnung). Der Ablauf:
+
+1. Beim Start prüft der Client, ob `intro-played` im Zustandsordner liegt (`KUNIBERT_STATE_DIR`, Standard `/var/lib/kunibert/state`).
+2. Fehlt die Datei, holt er die Ansage mit `GET /v1/device/intro` vom Server und spielt sie ab. Währenddessen zeigt die LED „Wiedergabe“, und die Tasten haben keine Wirkung.
+3. Erst nach vollständiger Wiedergabe schreibt er die Datei (mit der Kennung der Textfassung) und geht auf `READY`.
+
+Der Text steht fest im Server (`server-api/ansage.ts`), kommt also nie vom Sprachmodell, und wird in Kuniberts Stimme gesprochen. Der Server bereitet ihn beim Start vor, die Ansage kommt dann ohne Wartezeit.
+
+**Das Gerät wird nicht freigegeben, wenn die Ansage fehlschlägt** (Server oder Sprachausgabe nicht erreichbar, Lautsprecher defekt): Der Client meldet Fehler und beendet sich, systemd startet ihn neu (`Restart=on-failure`). Beim vom Installationsskript angelegten Dienst gibt systemd nach fünf Fehlversuchen in zwei Minuten auf; das Gerät bleibt dann stumm, bis jemand `sudo systemctl restart kunibert.service` ausführt. Ein Kind kann so nie mit einem Gerät sprechen, das sich nicht vorgestellt hat. Lässt sich nur die Merkdatei nicht schreiben, läuft der Client weiter und spielt die Ansage bei jedem Start (zu oft ist besser als zu selten).
+
+Wiederholen (zum Beispiel für die Eltern oder nach einer Textänderung):
+
+```bash
+# einmalig beim nächsten Start
+sudo -u kunibert rm /var/lib/kunibert/state/intro-played
+sudo systemctl restart kunibert.service
+
+# oder von Hand, ohne die Merkdatei zu ändern (Dienst vorher stoppen)
+set -a; . /etc/kunibert/kunibert.env; set +a
+/opt/kunibert/.venv/bin/python pi-client/kunibert_client.py --ansage
+```
+
+Nur prüfen, ob der Server die Ansage liefert, ohne sie abzuspielen: `kunibert_client.py --once ansage` (zeigt Größe und Fassung).
 
 ## Hardware-/GPIO-Belegung
 
@@ -137,6 +163,7 @@ PICASTAI_API_BASE_URL=https://picastAI.com
 PICASTAI_DEVICE_ID=prototype-001
 PICASTAI_DEVICE_TOKEN=NICHT_IN_GIT_EINTRAGEN
 KUNIBERT_CACHE_DIR=/var/lib/kunibert/audio
+KUNIBERT_STATE_DIR=/var/lib/kunibert/state
 KUNIBERT_SAMPLE_RATE=16000
 KUNIBERT_MAX_RECORD_SECONDS=15
 KUNIBERT_REQUEST_TIMEOUT=30
@@ -148,7 +175,7 @@ KUNIBERT_RETRY_COUNT=2
 Zeitgrenzen in Sekunden: `KUNIBERT_REQUEST_TIMEOUT` gilt für den Health-Check, `KUNIBERT_PIPELINE_TIMEOUT` für Frage und Geschichte, `KUNIBERT_AUDIO_TIMEOUT` für den Abruf der WAV-Antwort. Frage und Geschichte laufen auf dem Server durch Spracherkennung, Sprachmodell und Sprachsynthese (Standardgrenzen 45 + 30 + 45 s). Der Client muss länger warten als diese Kette, sonst bricht er ab und schickt die Anfrage erneut, und der Server erzeugt die Antwort ein zweites Mal (bei der Geschichte rückt die Folge dabei weiter). Die abgestimmte Zeitkette mit dem Reverse Proxy steht in [`deploy/EINRICHTUNG.md`](../deploy/EINRICHTUNG.md).
 
 ```bash
-sudo install -d -m 0750 /etc/kunibert /var/lib/kunibert/audio
+sudo install -d -m 0750 /etc/kunibert /var/lib/kunibert/audio /var/lib/kunibert/state
 sudo chmod 600 /etc/kunibert/kunibert.env
 ```
 

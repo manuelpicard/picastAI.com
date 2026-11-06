@@ -134,7 +134,7 @@ if ! id -u "$APP_USER" >/dev/null 2>&1; then
   useradd --system --create-home --home-dir "$INSTALL_DIR" --shell /usr/sbin/nologin "$APP_USER"
 fi
 usermod -a -G "$APP_GROUP" "$APP_USER" 2>/dev/null || true
-install -d -o "$APP_USER" -g "$APP_GROUP" -m 0750 "$INSTALL_DIR" "$DATA_DIR" "$DATA_DIR/audio"
+install -d -o "$APP_USER" -g "$APP_GROUP" -m 0750 "$INSTALL_DIR" "$DATA_DIR" "$DATA_DIR/audio" "$DATA_DIR/state"
 install -d -o root -g "$APP_GROUP" -m 0750 "$CONFIG_DIR"
 
 log "Kopiere Client und richte virtuelle Python-Umgebung ein …"
@@ -189,6 +189,7 @@ PICASTAI_DEVICE_TOKEN=$(printf '%q' "$DEVICE_TOKEN")
 PICASTAI_DEVICE_NAME=$(printf '%q' "$DEVICE_NAME")
 KUNIBERT_SAMPLE_RATE=$(printf '%q' "$SAMPLE_RATE")
 KUNIBERT_CACHE_DIR=$(printf '%q' "$DATA_DIR/audio")
+KUNIBERT_STATE_DIR=$(printf '%q' "$DATA_DIR/state")
 KUNIBERT_MAX_RECORD_SECONDS=15
 KUNIBERT_MIN_RECORD_SECONDS=0.35
 KUNIBERT_REQUEST_TIMEOUT=30
