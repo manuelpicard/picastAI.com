@@ -356,8 +356,10 @@ const GOOGLE_KEY = 'test-geheimer-schluessel-123456';
 const GOOGLE: Partial<KunibertConfig> = {
   ttsProvider: 'google',
   googleTtsKey: GOOGLE_KEY,
-  googleTtsVoice: 'de-DE-Chirp3-HD-Algenib',
+  googleTtsVoice: 'de-DE-Chirp3-HD-Algieba',
   googleTtsRate: '',
+  googleTtsPitch: '',
+  googleTtsPauseMs: '',
   // Die Adresse der OpenAI-kompatiblen Sprachausgabe darf bei Google keine Rolle spielen.
   ttsUrl: 'http://127.0.0.1:8002/v1',
   ttsModel: 'tts-test-modell',
@@ -387,9 +389,19 @@ async function recordGoogleRequests<T>(
   }
 }
 
-test('Google: Anfrage geht an den EU-Endpunkt, Schlüssel nur im Kopf, Stimme Algenib, Standardtempo 0,95', async () => {
+/** Was der Server tatsächlich sprechen lässt: Marken weg, Pausen als Leerzeichen, Leerraum geglättet. */
+function spokenFrom(input: { text?: string; ssml?: string }): string {
+  return (input.ssml ?? input.text ?? '')
+    .replace(/<break [^>]*\/>/g, ' ')
+    .replace(/<\/?(speak|prosody)[^>]*>/g, '')
+    .replace(/&amp;/g, '&')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+test('Google: Erzählstimme als SSML an den EU-Endpunkt, Schlüssel nur im Kopf, Algieba, 2 Halbtöne tiefer, Tempo 90 %', async () => {
   await recordGoogleRequests(() => googleResponse(), async (seen) => {
-    const result = await pipeline(GOOGLE).synthesize('Es war einmal ein Ritter.');
+    const result = await pipeline(GOOGLE).synthesize('Es war einmal ein Ritter. Er ritt los.');
     assert.equal(seen.length, 1);
     assert.equal(seen[0].url, 'https://eu-texttospeech.googleapis.com/v1/text:synthesize');
     assert.equal(seen[0].url, GOOGLE_TTS_ENDPOINT);
@@ -398,9 +410,12 @@ test('Google: Anfrage geht an den EU-Endpunkt, Schlüssel nur im Kopf, Stimme Al
     assert.equal('Authorization' in seen[0].headers, false);
     assert.equal(seen[0].url.includes(GOOGLE_KEY), false);
     assert.deepEqual(JSON.parse(String(seen[0].body)), {
-      input: { text: 'Es war einmal ein Ritter.' },
-      voice: { languageCode: 'de-DE', name: 'de-DE-Chirp3-HD-Algenib' },
-      audioConfig: { audioEncoding: 'LINEAR16', speakingRate: 0.95 },
+      input: {
+        ssml: '<speak><prosody pitch="-2st" rate="90%">Es war einmal ein Ritter.<break time="500ms"/>Er ritt los.</prosody></speak>',
+      },
+      voice: { languageCode: 'de-DE', name: 'de-DE-Chirp3-HD-Algieba' },
+      // Bei SSML steckt das Tempo im Text; speakingRate wird nicht mitgeschickt.
+      audioConfig: { audioEncoding: 'LINEAR16' },
     });
     // 2400 Bilder bei 24 kHz sind 0,1 s; bei 16 kHz Mono sind es 1600 Bilder.
     const header = decodeWavHeader(result);
@@ -409,23 +424,79 @@ test('Google: Anfrage geht an den EU-Endpunkt, Schlüssel nur im Kopf, Stimme Al
   });
 });
 
-test('Google: eingestelltes Tempo und andere Stimme werden übernommen, ein ungültiges Tempo ergibt den Standard', async () => {
+test('Google: ohne Tonlage und Pausen einfacher Text mit speakingRate; Tempo und Stimme sind einstellbar, Ungültiges ergibt den Standard', async () => {
   await recordGoogleRequests(() => googleResponse(), async (seen) => {
-    await pipeline({ ...GOOGLE, googleTtsRate: '0.9', googleTtsVoice: 'de-DE-Chirp3-HD-Charon' }).synthesize('Hallo');
-    await pipeline({ ...GOOGLE, googleTtsRate: 'schnell' }).synthesize('Hallo');
-    const first = JSON.parse(String(seen[0].body));
-    assert.equal(first.audioConfig.speakingRate, 0.9);
-    assert.equal(first.voice.name, 'de-DE-Chirp3-HD-Charon');
-    assert.equal(JSON.parse(String(seen[1].body)).audioConfig.speakingRate, 0.95);
+    const plain = { googleTtsPitch: '0', googleTtsPauseMs: '0' };
+    await pipeline({ ...GOOGLE, ...plain, googleTtsRate: '0.8', googleTtsVoice: 'de-DE-Chirp3-HD-Charon' }).synthesize('Hallo');
+    await pipeline({ ...GOOGLE, ...plain, googleTtsRate: 'schnell' }).synthesize('Hallo');
+    assert.deepEqual(JSON.parse(String(seen[0].body)), {
+      input: { text: 'Hallo' },
+      voice: { languageCode: 'de-DE', name: 'de-DE-Chirp3-HD-Charon' },
+      audioConfig: { audioEncoding: 'LINEAR16', speakingRate: 0.8 },
+    });
+    assert.equal(JSON.parse(String(seen[1].body)).audioConfig.speakingRate, 0.9);
   });
 });
 
-test('Google: ein langer Text geht in mehreren Anfragen unter 5000 Bytes und wird zu einem WAV zusammengesetzt', async () => {
+test('Google: Tonlage, Tempo und Pause aus der Konfiguration landen im SSML; ungültige Werte ergeben die Standardwerte', async () => {
+  await recordGoogleRequests(() => googleResponse(), async (seen) => {
+    await pipeline({ ...GOOGLE, googleTtsPitch: '-3', googleTtsRate: '0.85', googleTtsPauseMs: '300' }).synthesize('Eins zwei drei vier. Fünf sechs sieben acht.');
+    await pipeline({ ...GOOGLE, googleTtsPitch: 'tief', googleTtsRate: 'schnell', googleTtsPauseMs: 'lang' }).synthesize('Eins zwei drei vier. Fünf sechs sieben acht.');
+    assert.equal(
+      JSON.parse(String(seen[0].body)).input.ssml,
+      '<speak><prosody pitch="-3st" rate="85%">Eins zwei drei vier.<break time="300ms"/>Fünf sechs sieben acht.</prosody></speak>'
+    );
+    assert.equal(
+      JSON.parse(String(seen[1].body)).input.ssml,
+      '<speak><prosody pitch="-2st" rate="90%">Eins zwei drei vier.<break time="500ms"/>Fünf sechs sieben acht.</prosody></speak>'
+    );
+  });
+});
+
+test('Google: Text mit spitzen Klammern kann kein eigenes SSML einschleusen', async () => {
+  await recordGoogleRequests(() => googleResponse(), async (seen) => {
+    await pipeline(GOOGLE).synthesize('Hör zu <break time="10s"/> & </prosody><audio src="http://x"/> fertig.');
+    const ssml = JSON.parse(String(seen[0].body)).input.ssml as string;
+    assert.equal(ssml.includes('<audio'), false);
+    assert.equal(ssml.includes('<break time="10s"'), false);
+    assert.equal((ssml.match(/<speak>/g) ?? []).length, 1);
+    assert.equal((ssml.match(/<\/prosody>/g) ?? []).length, 1);
+  });
+});
+
+test('Google: ein langer Text geht in mehreren SSML-Anfragen unter 5000 Bytes, der Wortlaut bleibt gleich', async () => {
   const sentence = 'Der mutige Ritter ritt durch den dunklen Wald, und die Vögel sangen laut.';
   // 120 Sätze sind etwa 8800 Zeichen, also unter der Obergrenze von 12.000 Zeichen je Aufruf.
   const text = Array.from({ length: 120 }, () => sentence).join(' ');
   await recordGoogleRequests(() => googleResponse(), async (seen) => {
-    const result = await pipeline(GOOGLE).synthesize(text);
+    await pipeline({ ...GOOGLE, googleTtsPauseMs: '0' }).synthesize(text);
+    assert.ok(seen.length > 1);
+    const spoken: string[] = [];
+    for (const request of seen) {
+      const input = JSON.parse(String(request.body)).input as { ssml: string };
+      assert.ok(Buffer.byteLength(input.ssml, 'utf8') <= 4800);
+      spoken.push(spokenFrom(input));
+    }
+    assert.equal(spoken.join(' '), text);
+  });
+  await recordGoogleRequests(() => googleResponse(), async (seen) => {
+    await pipeline(GOOGLE).synthesize(text);
+    assert.ok(seen.length > 1);
+    const spoken: string[] = [];
+    for (const request of seen) {
+      const input = JSON.parse(String(request.body)).input as { ssml: string };
+      assert.ok(Buffer.byteLength(input.ssml, 'utf8') <= 4800, `zu groß: ${Buffer.byteLength(input.ssml, 'utf8')}`);
+      spoken.push(spokenFrom(input));
+    }
+    assert.equal(spoken.join(' '), text);
+  });
+});
+
+test('Google: ein langer Text ohne SSML geht in Text-Stücken bis 4000 Bytes und wird zu einem WAV zusammengesetzt', async () => {
+  const sentence = 'Der mutige Ritter ritt durch den dunklen Wald, und die Vögel sangen laut.';
+  const text = Array.from({ length: 120 }, () => sentence).join(' ');
+  await recordGoogleRequests(() => googleResponse(), async (seen) => {
+    const result = await pipeline({ ...GOOGLE, googleTtsPitch: '0', googleTtsPauseMs: '0' }).synthesize(text);
     assert.ok(seen.length > 1);
     const spoken: string[] = [];
     for (const request of seen) {
@@ -436,7 +507,24 @@ test('Google: ein langer Text geht in mehreren Anfragen unter 5000 Bytes und wir
     assert.equal(spoken.join(' '), text);
     const header = decodeWavHeader(result);
     assert.equal(header.sampleRate, 16_000);
+    // Ohne Pause nichts dazwischen: jedes Stück liefert 1600 Bilder bei 16 kHz.
     assert.equal(result.length, 44 + seen.length * 1600 * 2);
+  });
+});
+
+test('Google: zwischen zwei Stücken eines langen Textes steht Stille in Länge der Pause (500 ms = 8000 Bilder bei 16 kHz)', async () => {
+  const sentence = 'Der mutige Ritter ritt durch den dunklen Wald, und die Vögel sangen laut.';
+  const text = Array.from({ length: 120 }, () => sentence).join(' ');
+  await recordGoogleRequests(() => googleResponse(), async (seen) => {
+    const result = await pipeline(GOOGLE).synthesize(text);
+    assert.ok(seen.length > 1);
+    const speech = seen.length * 1600 * 2;
+    const silence = (seen.length - 1) * 8000 * 2;
+    assert.equal(result.length, 44 + speech + silence);
+  });
+  await recordGoogleRequests(() => googleResponse(), async (seen) => {
+    const result = await pipeline({ ...GOOGLE, googleTtsPauseMs: '300' }).synthesize(text);
+    assert.equal(result.length, 44 + seen.length * 1600 * 2 + (seen.length - 1) * 4800 * 2);
   });
 });
 
@@ -538,7 +626,9 @@ test('Google: feste Texte werden einmal synthetisiert und danach aus dem Speiche
 test('Google: Text über 12.000 Zeichen wird wie bei der anderen Sprachausgabe begrenzt', async () => {
   await recordGoogleRequests(() => googleResponse(), async (seen) => {
     await pipeline(GOOGLE).synthesize('Wort. '.repeat(5000));
-    const spoken = seen.map((request) => JSON.parse(String(request.body)).input.text as string).join(' ');
+    const spoken = seen
+      .map((request) => spokenFrom(JSON.parse(String(request.body)).input as { ssml: string }))
+      .join(' ');
     assert.ok(spoken.length <= 12_000);
     assert.ok(spoken.length > 11_000);
   });

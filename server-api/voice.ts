@@ -3,8 +3,9 @@ import type { KunibertConfig } from './config.js';
 import {
   GOOGLE_TTS_ENDPOINT,
   buildGoogleRequest,
-  splitSpeechText,
+  planGoogleInputs,
   usableGoogleSettings,
+  type GoogleInput,
   type GoogleTtsSettings,
 } from './google-speech.js';
 
@@ -230,9 +231,10 @@ export class OpenAiCompatibleTextToSpeech implements TextToSpeechProvider {
 /**
  * Sprachausgabe über Google Cloud Text-to-Speech (REST, Chirp 3 HD, EU-Endpunkt). Es geht nur der
  * Antworttext des Sprachmodells hinaus, nie die Kinderstimme. Der Schlüssel steht im Kopf
- * `X-Goog-Api-Key`, nie in der Adresse, damit er in keinem Protokoll auftaucht. Google nimmt
- * höchstens 5000 Bytes je Anfrage: längere Texte werden an Satzgrenzen geteilt und die Teile
- * hintereinander zu einem WAV zusammengesetzt.
+ * `X-Goog-Api-Key`, nie in der Adresse, damit er in keinem Protokoll auftaucht. Für die
+ * Erzählstimme wird der Text als SSML geschickt (Tonlage tiefer, Tempo, Pausen nach Sätzen). Google
+ * nimmt höchstens 5000 Bytes je Anfrage: längere Texte werden an Absatz- und Satzgrenzen geteilt und
+ * die Teile hintereinander (mit Stille in Länge der Satzpause dazwischen) zu einem WAV zusammengesetzt.
  */
 export class GoogleTextToSpeech implements TextToSpeechProvider {
   constructor(
@@ -242,18 +244,24 @@ export class GoogleTextToSpeech implements TextToSpeechProvider {
   ) {}
 
   async synthesize(text: string): Promise<Buffer> {
-    const chunks = splitSpeechText(text.slice(0, 12_000));
-    if (chunks.length === 0) throw new VoiceProviderError('TTS: kein Text zum Sprechen');
-    const wavs: Buffer[] = [];
-    for (const chunk of chunks) wavs.push(await this.synthesizeChunk(chunk));
-    if (wavs.length === 1) return wavs[0];
-    // normalizePcmWav liefert immer ein WAV mit kanonischem 44-Byte-Kopf in der Zielrate.
-    return encodeWav(Buffer.concat(wavs.map((wav) => wav.subarray(44))), this.targetSampleRate, 1, 16);
+    const inputs = planGoogleInputs(text.slice(0, 12_000), this.settings);
+    if (inputs.length === 0) throw new VoiceProviderError('TTS: kein Text zum Sprechen');
+    const parts: Buffer[] = [];
+    for (const input of inputs) {
+      // normalizePcmWav liefert immer ein WAV mit kanonischem 44-Byte-Kopf in der Zielrate.
+      const wav = await this.synthesizeInput(input);
+      if (parts.length > 0 && this.settings.pauseMs > 0) {
+        parts.push(Buffer.alloc(Math.round((this.targetSampleRate * this.settings.pauseMs) / 1000) * 2));
+      }
+      parts.push(wav.subarray(44));
+    }
+    return encodeWav(Buffer.concat(parts), this.targetSampleRate, 1, 16);
   }
 
-  private async synthesizeChunk(text: string): Promise<Buffer> {
+  private async synthesizeInput(input: GoogleInput): Promise<Buffer> {
     const timeout = withTimeout(this.timeoutMs);
     try {
+      const request = buildGoogleRequest(input, this.settings.voice, 'ssml' in input ? null : this.settings.speakingRate);
       const response = await fetch(GOOGLE_TTS_ENDPOINT, {
         method: 'POST',
         headers: {
@@ -261,7 +269,7 @@ export class GoogleTextToSpeech implements TextToSpeechProvider {
           'Content-Type': 'application/json',
           'User-Agent': 'picastAI-ritter-kunibert',
         },
-        body: JSON.stringify(buildGoogleRequest(text, this.settings.voice, this.settings.speakingRate)),
+        body: JSON.stringify(request),
         signal: timeout.signal,
       });
       if (!response.ok) {

@@ -4,6 +4,8 @@ import {
   GOOGLE_TTS_HOST,
   isValidGoogleApiKey,
   isValidGoogleVoiceName,
+  isValidPauseMs,
+  isValidPitch,
   isValidSpeakingRate,
 } from './google-speech.js';
 import { normalizePublicBaseUrl, parseTrustProxy, type TrustProxySetting } from './http-utils.js';
@@ -50,10 +52,14 @@ export interface KunibertConfig {
    */
   ttsProvider: TtsProviderName;
   googleTtsKey: string | null;
-  /** Google: Stimmenname, Standard de-DE-Chirp3-HD-Algenib. */
+  /** Google: Stimmenname, Standard de-DE-Chirp3-HD-Algieba. */
   googleTtsVoice: string;
-  /** Google: Tempo 0,25 bis 2,0 (PICASTAI_GOOGLE_TTS_RATE); leer = Standard 0,95. */
+  /** Google: Tempo 0,25 bis 2,0 (PICASTAI_GOOGLE_TTS_RATE); leer = Standard 0,9. */
   googleTtsRate: string;
+  /** Google: Tonlage in Halbtönen -6 bis +6 (PICASTAI_GOOGLE_TTS_PITCH); leer = Standard -2, 0 = unverändert. */
+  googleTtsPitch: string;
+  /** Google: Pause nach jedem Satz in ms, 0 bis 2000 (PICASTAI_GOOGLE_TTS_PAUSE_MS); leer = Standard 500, 0 = keine. */
+  googleTtsPauseMs: string;
   voiceTimeoutMs: number;
 
   // Erzähl- & Pädagogik-Parameter
@@ -156,7 +162,7 @@ const EXCLUDED_VOICE_HOSTS = ['api.openai.com', 'generativelanguage.googleapis.c
  */
 export function voiceConfigWarnings(
   config: Pick<KunibertConfig, 'sttUrl' | 'ttsUrl'> &
-    Partial<Pick<KunibertConfig, 'ttsProvider' | 'googleTtsKey' | 'googleTtsVoice' | 'googleTtsRate'>>
+    Partial<Pick<KunibertConfig, 'ttsProvider' | 'googleTtsKey' | 'googleTtsVoice' | 'googleTtsRate' | 'googleTtsPitch' | 'googleTtsPauseMs'>>
 ): string[] {
   const warnings: string[] = [];
   const google = config.ttsProvider === 'google';
@@ -184,7 +190,7 @@ export function voiceConfigWarnings(
 }
 
 function googleConfigWarnings(
-  config: Partial<Pick<KunibertConfig, 'googleTtsKey' | 'googleTtsVoice' | 'googleTtsRate'>>
+  config: Partial<Pick<KunibertConfig, 'googleTtsKey' | 'googleTtsVoice' | 'googleTtsRate' | 'googleTtsPitch' | 'googleTtsPauseMs'>>
 ): string[] {
   const warnings: string[] = [];
   const voice = config.googleTtsVoice ?? '';
@@ -196,10 +202,16 @@ function googleConfigWarnings(
     warnings.push('Sprachausgabe (Google): PICASTAI_GOOGLE_TTS_KEY enthält ungültige Zeichen (Leerzeichen, Zeilenumbruch oder Anführungszeichen mit eingefügt?). Die Sprachausgabe bleibt aus.');
   }
   if (!isValidGoogleVoiceName(voice)) {
-    warnings.push('Sprachausgabe (Google): Der Stimmenname ist ungültig (erwartet z. B. de-DE-Chirp3-HD-Algenib). Die Sprachausgabe bleibt aus.');
+    warnings.push('Sprachausgabe (Google): Der Stimmenname ist ungültig (erwartet z. B. de-DE-Chirp3-HD-Algieba). Die Sprachausgabe bleibt aus.');
   }
   if (config.googleTtsRate && !isValidSpeakingRate(config.googleTtsRate)) {
-    warnings.push('Sprachausgabe (Google): PICASTAI_GOOGLE_TTS_RATE ist ungültig (erlaubt 0.25 bis 2.0, z. B. 0.9) und wird ignoriert; es gilt 0.95.');
+    warnings.push('Sprachausgabe (Google): PICASTAI_GOOGLE_TTS_RATE ist ungültig (erlaubt 0.25 bis 2.0, z. B. 0.9) und wird ignoriert; es gilt 0.9.');
+  }
+  if (config.googleTtsPitch && !isValidPitch(config.googleTtsPitch)) {
+    warnings.push('Sprachausgabe (Google): PICASTAI_GOOGLE_TTS_PITCH ist ungültig (erlaubt -6 bis 6 Halbtöne, z. B. -2) und wird ignoriert; es gilt -2.');
+  }
+  if (config.googleTtsPauseMs && !isValidPauseMs(config.googleTtsPauseMs)) {
+    warnings.push('Sprachausgabe (Google): PICASTAI_GOOGLE_TTS_PAUSE_MS ist ungültig (erlaubt 0 bis 2000, z. B. 500) und wird ignoriert; es gilt 500.');
   }
   return warnings;
 }
@@ -238,6 +250,8 @@ export function loadConfig(): KunibertConfig {
     googleTtsKey: process.env.PICASTAI_GOOGLE_TTS_KEY?.trim() || null,
     googleTtsVoice: process.env.PICASTAI_GOOGLE_TTS_VOICE?.trim() || DEFAULT_GOOGLE_VOICE,
     googleTtsRate: process.env.PICASTAI_GOOGLE_TTS_RATE?.trim() || '',
+    googleTtsPitch: process.env.PICASTAI_GOOGLE_TTS_PITCH?.trim() || '',
+    googleTtsPauseMs: process.env.PICASTAI_GOOGLE_TTS_PAUSE_MS?.trim() || '',
     voiceTimeoutMs: Math.min(120_000, Math.max(3_000, parseNum(process.env.PICASTAI_VOICE_TIMEOUT_MS, 45_000))),
 
     ageBracket: process.env.KUNIBERT_AGE || 'sechs bis zehn',

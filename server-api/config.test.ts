@@ -118,13 +118,18 @@ const GOOGLE_OK = {
   ttsUrl: null,
   ttsProvider: 'google' as const,
   googleTtsKey: 'test-schluessel-123456',
-  googleTtsVoice: 'de-DE-Chirp3-HD-Algenib',
+  googleTtsVoice: 'de-DE-Chirp3-HD-Algieba',
   googleTtsRate: '0.9',
+  googleTtsPitch: '-2',
+  googleTtsPauseMs: '500',
 };
 
 test('voiceConfigWarnings: vollständige Google-Einstellungen ergeben keine Warnung', () => {
   assert.deepEqual(voiceConfigWarnings(GOOGLE_OK), []);
-  assert.deepEqual(voiceConfigWarnings({ ...GOOGLE_OK, googleTtsRate: '' }), []);
+  // Leer heißt: es gelten die Standardwerte (Tempo 0,9, Tonlage -2, Pause 500 ms).
+  assert.deepEqual(voiceConfigWarnings({ ...GOOGLE_OK, googleTtsRate: '', googleTtsPitch: '', googleTtsPauseMs: '' }), []);
+  // 0 ist gültig: keine Absenkung, keine Pausen.
+  assert.deepEqual(voiceConfigWarnings({ ...GOOGLE_OK, googleTtsPitch: '0', googleTtsPauseMs: '0' }), []);
 });
 
 test('voiceConfigWarnings: Google ohne Schlüssel oder Stimme warnt, dass die Sprachausgabe aus bleibt', () => {
@@ -135,19 +140,55 @@ test('voiceConfigWarnings: Google ohne Schlüssel oder Stimme warnt, dass die Sp
   }
 });
 
-test('voiceConfigWarnings: ungültiger Schlüssel, ungültige Stimme und ungültiges Tempo bei Google', () => {
+test('voiceConfigWarnings: ungültiger Schlüssel, ungültige Stimme, ungültiges Tempo, ungültige Tonlage und Pause bei Google', () => {
   const badKey = voiceConfigWarnings({ ...GOOGLE_OK, googleTtsKey: 'mit Leerzeichen drin' });
   assert.equal(badKey.length, 1);
   assert.match(badKey[0], /KEY.*ungültige Zeichen/);
   assert.equal(JSON.stringify(badKey).includes('mit Leerzeichen drin'), false);
 
-  const badVoice = voiceConfigWarnings({ ...GOOGLE_OK, googleTtsVoice: 'Algenib' });
+  const badVoice = voiceConfigWarnings({ ...GOOGLE_OK, googleTtsVoice: 'Algieba' });
   assert.equal(badVoice.length, 1);
   assert.match(badVoice[0], /Stimmenname/);
 
   const badRate = voiceConfigWarnings({ ...GOOGLE_OK, googleTtsRate: 'schnell' });
   assert.equal(badRate.length, 1);
-  assert.match(badRate[0], /RATE.*ignoriert/);
+  assert.match(badRate[0], /RATE.*ignoriert.*0\.9/);
+
+  const badPitch = voiceConfigWarnings({ ...GOOGLE_OK, googleTtsPitch: 'tief' });
+  assert.equal(badPitch.length, 1);
+  assert.match(badPitch[0], /PITCH.*ignoriert.*-2/);
+  assert.equal(voiceConfigWarnings({ ...GOOGLE_OK, googleTtsPitch: '9' }).length, 1);
+
+  const badPause = voiceConfigWarnings({ ...GOOGLE_OK, googleTtsPauseMs: 'lang' });
+  assert.equal(badPause.length, 1);
+  assert.match(badPause[0], /PAUSE_MS.*ignoriert.*500/);
+  assert.equal(voiceConfigWarnings({ ...GOOGLE_OK, googleTtsPauseMs: '5000' }).length, 1);
+});
+
+test('loadConfig: Standardstimme Algieba, Tempo/Tonlage/Pause aus der Umgebung', () => {
+  const keys = ['PICASTAI_GOOGLE_TTS_VOICE', 'PICASTAI_GOOGLE_TTS_RATE', 'PICASTAI_GOOGLE_TTS_PITCH', 'PICASTAI_GOOGLE_TTS_PAUSE_MS'];
+  const saved = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
+  try {
+    for (const key of keys) delete process.env[key];
+    const defaults = loadConfig();
+    assert.equal(defaults.googleTtsVoice, 'de-DE-Chirp3-HD-Algieba');
+    assert.equal(defaults.googleTtsRate, '');
+    assert.equal(defaults.googleTtsPitch, '');
+    assert.equal(defaults.googleTtsPauseMs, '');
+
+    process.env.PICASTAI_GOOGLE_TTS_RATE = ' 0.85 ';
+    process.env.PICASTAI_GOOGLE_TTS_PITCH = '-3';
+    process.env.PICASTAI_GOOGLE_TTS_PAUSE_MS = '300';
+    const set = loadConfig();
+    assert.equal(set.googleTtsRate, '0.85');
+    assert.equal(set.googleTtsPitch, '-3');
+    assert.equal(set.googleTtsPauseMs, '300');
+  } finally {
+    for (const key of keys) {
+      if (saved[key] === undefined) delete process.env[key];
+      else process.env[key] = saved[key];
+    }
+  }
 });
 
 test('voiceConfigWarnings: bei Google wird die Adresse der OpenAI-kompatiblen Sprachausgabe nicht geprüft', () => {
@@ -162,7 +203,7 @@ test('getSafeConfigSummary: bei Google Host und Stimme, nie der Schlüssel', () 
   const summary = getSafeConfigSummary({ ...loadConfig(), ...GOOGLE_OK, googleTtsKey: 'google-geheim-123456' });
   assert.equal(summary.ttsProvider, 'google');
   assert.equal(summary.ttsHost, 'eu-texttospeech.googleapis.com');
-  assert.equal(summary.ttsVoice, 'de-DE-Chirp3-HD-Algenib');
+  assert.equal(summary.ttsVoice, 'de-DE-Chirp3-HD-Algieba');
   assert.equal(summary.ttsModel, '');
   assert.equal(JSON.stringify(summary).includes('google-geheim'), false);
 });
