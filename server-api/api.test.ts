@@ -259,6 +259,26 @@ describe('picastAI-API (echter Server)', () => {
     );
   });
 
+  it('Frage, bei der die Erkennung keinen Text liefert (Stille), ergibt "nicht verstanden" statt eines Fehlers', async () => {
+    const device = await registerDevice();
+    const original = fake.state.transcript;
+    fake.state.transcript = '';
+    try {
+      const res = await postQuestion(device, questionForm(wav16k()));
+      assert.equal(res.status, 200, await res.clone().text());
+      const body = (await res.json()) as { type: string; audio_url: string };
+      assert.equal(body.type, 'answer');
+      const audio = await fetchAudio(device, body.audio_url);
+      assert.equal(audio.status, 200);
+      assert.ok(
+        fake.state.speechInputs.some((text) => text.startsWith('Das habe ich leider nicht richtig verstanden')),
+        `gesprochen wurde: ${fake.state.speechInputs.join(' | ').slice(0, 300)}`
+      );
+    } finally {
+      fake.state.transcript = original;
+    }
+  });
+
   it('fehlerhafte Aufnahmen ergeben 400 mit klarem Fehlercode', async () => {
     const device = await registerDevice();
     const noAudio = await postQuestion(device, questionForm(null, { transcript: 'hallo' }));
