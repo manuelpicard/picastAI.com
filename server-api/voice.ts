@@ -1,5 +1,12 @@
 import { decodeWavHeader, encodeWav } from './audio.js';
 import type { KunibertConfig } from './config.js';
+import {
+  GOOGLE_TTS_ENDPOINT,
+  buildGoogleRequest,
+  splitSpeechText,
+  usableGoogleSettings,
+  type GoogleTtsSettings,
+} from './google-speech.js';
 
 export interface SpeechToTextProvider {
   transcribe(wav: Buffer): Promise<string>;
@@ -220,6 +227,67 @@ export class OpenAiCompatibleTextToSpeech implements TextToSpeechProvider {
   }
 }
 
+/**
+ * Sprachausgabe über Google Cloud Text-to-Speech (REST, Chirp 3 HD, EU-Endpunkt). Es geht nur der
+ * Antworttext des Sprachmodells hinaus, nie die Kinderstimme. Der Schlüssel steht im Kopf
+ * `X-Goog-Api-Key`, nie in der Adresse, damit er in keinem Protokoll auftaucht. Google nimmt
+ * höchstens 5000 Bytes je Anfrage: längere Texte werden an Satzgrenzen geteilt und die Teile
+ * hintereinander zu einem WAV zusammengesetzt.
+ */
+export class GoogleTextToSpeech implements TextToSpeechProvider {
+  constructor(
+    private readonly settings: GoogleTtsSettings,
+    private readonly timeoutMs: number,
+    private readonly targetSampleRate: number
+  ) {}
+
+  async synthesize(text: string): Promise<Buffer> {
+    const chunks = splitSpeechText(text.slice(0, 12_000));
+    if (chunks.length === 0) throw new VoiceProviderError('TTS: kein Text zum Sprechen');
+    const wavs: Buffer[] = [];
+    for (const chunk of chunks) wavs.push(await this.synthesizeChunk(chunk));
+    if (wavs.length === 1) return wavs[0];
+    // normalizePcmWav liefert immer ein WAV mit kanonischem 44-Byte-Kopf in der Zielrate.
+    return encodeWav(Buffer.concat(wavs.map((wav) => wav.subarray(44))), this.targetSampleRate, 1, 16);
+  }
+
+  private async synthesizeChunk(text: string): Promise<Buffer> {
+    const timeout = withTimeout(this.timeoutMs);
+    try {
+      const response = await fetch(GOOGLE_TTS_ENDPOINT, {
+        method: 'POST',
+        headers: {
+          'X-Goog-Api-Key': this.settings.key,
+          'Content-Type': 'application/json',
+          'User-Agent': 'picastAI-ritter-kunibert',
+        },
+        body: JSON.stringify(buildGoogleRequest(text, this.settings.voice, this.settings.speakingRate)),
+        signal: timeout.signal,
+      });
+      if (!response.ok) {
+        throw new VoiceProviderError(`TTS-Provider (Google) antwortete mit HTTP ${response.status}: ${await readError(response)}`, response.status >= 500 || response.status === 429);
+      }
+      let payload: { audioContent?: unknown };
+      try {
+        payload = await response.json() as { audioContent?: unknown };
+      } catch {
+        throw new VoiceProviderError('TTS-Provider (Google) lieferte keine gültige JSON-Antwort', true);
+      }
+      if (typeof payload.audioContent !== 'string' || !payload.audioContent) {
+        throw new VoiceProviderError('TTS-Provider (Google) lieferte kein Audio');
+      }
+      // LINEAR16 kommt mit WAV-Kopf (bei Chirp 3 HD 24 kHz); auf das Pi-Format 16 kHz Mono umrechnen.
+      return normalizePcmWav(Buffer.from(payload.audioContent, 'base64'), this.targetSampleRate);
+    } catch (error) {
+      if (error instanceof VoiceProviderError) throw error;
+      if ((error as Error)?.name === 'AbortError') throw new VoiceProviderError('TTS-Timeout', true);
+      throw new VoiceProviderError(`TTS-Netzwerkfehler (Google): ${(error as Error)?.message || 'unbekannt'}`, true);
+    } finally {
+      timeout.cancel();
+    }
+  }
+}
+
 /** Obergrenze für zwischengespeicherte feste Texte (es gibt nur eine Handvoll). */
 const MAX_FIXED_CACHE_ENTRIES = 16;
 
@@ -237,13 +305,18 @@ export class VoicePipeline {
           config.sttPrompt
         )
       : null;
-    this.tts = config.ttsUrl && config.ttsModel && config.ttsVoice
-      ? new OpenAiCompatibleTextToSpeech(
-          { url: config.ttsUrl, apiKey: config.ttsApiKey, model: config.ttsModel, timeoutMs: config.voiceTimeoutMs },
-          config.ttsVoice,
-          config.audioSampleRate
-        )
-      : null;
+    if (config.ttsProvider === 'google') {
+      const google = usableGoogleSettings(config);
+      this.tts = google ? new GoogleTextToSpeech(google, config.voiceTimeoutMs, config.audioSampleRate) : null;
+    } else {
+      this.tts = config.ttsUrl && config.ttsModel && config.ttsVoice
+        ? new OpenAiCompatibleTextToSpeech(
+            { url: config.ttsUrl, apiKey: config.ttsApiKey, model: config.ttsModel, timeoutMs: config.voiceTimeoutMs },
+            config.ttsVoice,
+            config.audioSampleRate
+          )
+        : null;
+    }
   }
 
   get sttConfigured(): boolean {
