@@ -1,0 +1,16 @@
+{
+  "hinweis": "Feste Sprechtexte für den Pi. Die Dateinamen sind der Vertrag mit pi-client/rueckmeldung.py und dürfen nur gemeinsam geändert werden. Erzeugt werden die WAV-Dateien mit: npm run ansagen -- <zielordner> (siehe docs/Ansagen.md).",
+  "ansagen": [
+    {
+      "datei": "willkommen.wav",
+      "text": "Sei gegrüßt! Ich bin Ritter Kunibert. Ich bin ein Computer-Ritter, kein echter Mensch. Ich erzähle dir Geschichten und beantworte deine Fragen. Manchmal irre ich mich. Ich höre dir nur zu, solange du die Taste drückst. Dann leuchtet meine Lampe. Sag mir bitte nicht deinen Nachnamen und nicht, wo du wohnst. Das brauche ich nicht. Und wenn dir etwas Schlimmes passiert oder du Angst hast: Geh zu einem Erwachsenen, dem du vertraust. Ich bin nur ein Spielzeug und kann dir dann nicht richtig helfen."
+    },
+    { "datei": "zwischen-1.wav", "text": "Ich höre dir zu. Einen Moment." },
+    { "datei": "zwischen-2.wav", "text": "Lass mich kurz nachdenken." },
+    { "datei": "zwischen-3.wav", "text": "Hmm, einen Augenblick." },
+    { "datei": "zwischen-4.wav", "text": "Ich überlege." },
+    { "datei": "zwischen-5.wav", "text": "Gleich bin ich so weit." },
+    { "datei": "zwischen-6.wav", "text": "Einen Moment bitte." },
+    { "datei": "zwischen-lang.wav", "text": "Das dauert heute etwas länger." }
+  ]
+}
