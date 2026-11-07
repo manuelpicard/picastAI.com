@@ -587,11 +587,11 @@ class KunibertClient:
     state: ClientState = ClientState.BOOT
     stop_requested: bool = False
     last_error: Optional[str] = None
-    state_history: list[ClientState] = field(default_factory=list)
     # Rückmeldung beim Warten und Vorstellung. Ohne Wert verhält sich der Client wie bisher.
     feedback: Optional[Feedback] = None
     _intro_hold_since: Optional[float] = field(default=None, init=False, repr=False)
     _intro_armed: bool = field(default=True, init=False, repr=False)
+    state_history: list[ClientState] = field(default_factory=list)
 
     def transition(self, new_state: ClientState) -> None:
         allowed = {
