@@ -13,6 +13,7 @@ import { VoicePipeline, VoiceProviderError } from './server-api/voice.js';
 import { FirestoreDeviceStore } from './server-api/firestore-service.js';
 import { buildAudioUrl } from './server-api/http-utils.js';
 import { ERROR_RESPONSE_DE, SAFETY_RESPONSE_DE, UNCLEAR_RESPONSE_DE } from './server-api/safety.js';
+import { INTRO_TEXT_DE, INTRO_VERSION } from './server-api/ansage.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -243,6 +244,30 @@ app.post(
     }
   }
 );
+
+// KI-Hinweis beim ersten Einschalten (Art. 50 KI-Verordnung): fester Text, nicht vom
+// Sprachmodell, nach dem ersten Mal aus dem Speicher. Der Pi-Client holt die Ansage beim
+// Start, solange er sie noch nicht abgespielt hat, und gibt das Gerät erst danach frei.
+// Kein Rate-Limit-Eintrag: es ist keine Kinderanfrage, und ein Neustart-Lauf soll
+// die Zahl der erlaubten Fragen nicht aufbrauchen.
+app.get('/v1/device/intro', requireDevice, async (req: Request, res: Response): Promise<any> => {
+  const deviceId = res.locals.deviceId as string;
+  if (!voice.ttsConfigured) {
+    return res.status(503).json({ error: 'tts_not_configured', retryable: false });
+  }
+  try {
+    const wav = await voice.synthesizeCached(INTRO_TEXT_DE);
+    const turnId = store.put(deviceId, wav);
+    res.set('Cache-Control', 'no-store');
+    return res.json({ type: 'intro', audio_url: deviceAudioUrl(req, turnId), version: INTRO_VERSION });
+  } catch (err) {
+    console.error('Error in /v1/device/intro:', err);
+    if (err instanceof VoiceProviderError) {
+      return res.status(err.retryable ? 503 : 502).json({ error: 'voice_provider_failed', retryable: err.retryable });
+    }
+    return res.status(500).json({ error: 'internal_error' });
+  }
+});
 
 app.get('/v1/device/audio/:turn_id', (req: Request, res: Response): any => {
   let deviceId: string;
@@ -482,11 +507,13 @@ async function startServer() {
     console.log(`🏰 Ritter Kunibert Server läuft auf http://${HOST}:${PORT}`);
     for (const warning of [...llmConfigWarnings(), ...ttsProviderWarnings(), ...voiceConfigWarnings(config)]) console.warn(`⚠️ ${warning}`);
     // Feste Sprechtexte vorab synthetisieren (Produktion), damit der Sicherheitshinweis
-    // schon beim ersten Kind ohne Wartezeit und ohne Anbieter-Anfrage gesprochen wird.
+    // und die KI-Ansage schon beim ersten Kind ohne Wartezeit und ohne Anbieter-Anfrage
+    // gesprochen werden.
     if (isProd && voice.ttsConfigured) {
+      const fixedTexts = [SAFETY_RESPONSE_DE, UNCLEAR_RESPONSE_DE, ERROR_RESPONSE_DE, INTRO_TEXT_DE];
       void voice
-        .warmUp([SAFETY_RESPONSE_DE, UNCLEAR_RESPONSE_DE, ERROR_RESPONSE_DE])
-        .then((count) => console.log(`Feste Sprechtexte vorbereitet (${count} von 3).`));
+        .warmUp(fixedTexts)
+        .then((count) => console.log(`Feste Sprechtexte vorbereitet (${count} von ${fixedTexts.length}).`));
     }
   });
 }

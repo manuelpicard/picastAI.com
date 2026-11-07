@@ -1,9 +1,12 @@
-"""Tests für Quittung, Zwischensätze und Vorstellung (rueckmeldung.py und die Haken im Client).
+"""Tests für Quittung und Zwischensätze (rueckmeldung.py und die Haken im Client).
 
 Alles läuft ohne Hardware, ohne echtes Warten und ohne Netzwerk:
 - eine Fake-Uhr, die nur vorrückt, wenn gewartet oder abgespielt wird,
 - ein Fake-Lautsprecher, der jede Wiedergabe mit Anfang und Ende auf dieser Uhr festhält,
 - eine Fake-Anfrage, deren Antwort zu einer bestimmten Zeit "fertig" ist.
+
+Die KI-Ansage beim ersten Einschalten gehört zu PR 17 und wird dort getestet. Hier wird nur geprüft, dass die
+Eltern-Tastenkombination sie vom Server holt und abspielt.
 """
 
 import io
@@ -29,13 +32,10 @@ from kunibert_client import (
 from rueckmeldung import (
     ALL_ANNOUNCEMENT_FILES,
     FILLER_FILES,
-    INTRO_FILE,
     LONG_WAIT_FILE,
-    STATUS_FILE,
     Ansagen,
     Feedback,
     FeedbackSettings,
-    StatusStore,
     ThreadCall,
     build_feedback,
     make_tone_wav,
@@ -123,9 +123,17 @@ class FakeApi:
         self.answer = answer
         self.calls = []  # (Art, Zeit)
         self.error = None
+        self.intro = silence(3.0)
+        self.intro_error = None
 
     def health(self):
         return True
+
+    def fetch_intro(self):
+        self.calls.append(("intro", self.clock.now))
+        if self.intro_error:
+            raise self.intro_error
+        return "testversion", self.intro
 
     def ask_question(self, wav):
         self.calls.append(("frage", self.clock.now))
@@ -178,7 +186,7 @@ class FirstChoice:
 class Setup:
     """Ein Client mit Fake-Uhr, Fake-Lautsprecher und Zwischensätzen aus einem Ordner."""
 
-    def __init__(self, test, latency=1.0, files=True, settings=None, rng=None, buttons=None, state_dir=None):
+    def __init__(self, test, latency=1.0, files=True, settings=None, rng=None, buttons=None):
         self.clock = FakeClock()
         self.latency = Latency(latency)
         self.speaker = FakeSpeaker(self.clock)
@@ -189,17 +197,14 @@ class Setup:
         self.api = FakeApi(self.clock, self.answer)
         self.folder = Path(test.tmp.name) / "ansagen"
         self.folder.mkdir(exist_ok=True)
-        self.labels = {self.answer: "antwort"}
+        self.labels = {self.answer: "antwort", self.api.intro: "vorstellung"}
         if files:
             self.labels.update(write_announcements(self.folder))
-        config = ClientConfig(dry_run=True, min_record_seconds=0.1, announcements_dir=self.folder,
-                              state_dir=Path(state_dir) if state_dir else Path(test.tmp.name))
+        config = ClientConfig(dry_run=True, min_record_seconds=0.1, announcements_dir=self.folder)
         ansagen = Ansagen(self.folder, RATE, 1, 2)
         ansagen.load()
-        self.status = StatusStore(Path(state_dir) if state_dir else Path(test.tmp.name))
         self.feedback = Feedback(
             ansagen,
-            self.status,
             settings or FeedbackSettings(),
             clock=self.clock,
             rng=rng or FirstChoice(),
@@ -224,7 +229,7 @@ class Setup:
 def write_announcements(folder):
     """Schreibt Testdateien mit unterschiedlichen Längen, damit jede Datei eindeutig erkennbar ist."""
     labels = {}
-    files = {INTRO_FILE: ("vorstellung", 3.0), LONG_WAIT_FILE: ("lang", 2.0)}
+    files = {LONG_WAIT_FILE: ("lang", 2.0)}
     for number, name in enumerate(FILLER_FILES, start=1):
         files[name] = (f"satz{number}", 1.0 + 0.1 * (number - 1))
     for name, (label, seconds) in files.items():
@@ -334,7 +339,7 @@ class AcknowledgementTests(TempDirCase):
 
         speaker = Speaker()
         ansagen = Ansagen(Path(self.tmp.name) / "leer", RATE, 1, 2)
-        feedback = Feedback(ansagen, StatusStore(None), FeedbackSettings(first_filler_after=30, poll_interval=0.01))
+        feedback = Feedback(ansagen, FeedbackSettings(first_filler_after=30, poll_interval=0.01))
         config = ClientConfig(dry_run=True, min_record_seconds=0.1)
         client = KunibertClient(config, BlockingApi(), FakeRecorder(FakeClock()), speaker, PressedButtons(speech=True),
                                 CaptureLed(), feedback=feedback)
@@ -462,7 +467,7 @@ class MissingFilesTests(TempDirCase):
     def test_missing_files_keep_the_tone_and_led_and_warn(self):
         with self.assertLogs(LOGGER, level="WARNING") as logs:
             s = Setup(self, latency=20.0, files=False)
-        self.assertTrue(any("Ansagen fehlen (8 von 8)" in line for line in logs.output), logs.output)
+        self.assertTrue(any("Ansagen fehlen (7 von 7)" in line for line in logs.output), logs.output)
         s.client.handle_question()
         self.assertEqual(s.played(), ["ton", "antwort"])
         self.assertIn("thinking", s.led.modes)
@@ -473,7 +478,7 @@ class MissingFilesTests(TempDirCase):
         with self.assertLogs(LOGGER, level="WARNING") as logs:
             ansagen.load()
         self.assertEqual(len(logs.output), 1)
-        self.assertEqual((ansagen.intro, ansagen.fillers, ansagen.long_wait), (None, [], None))
+        self.assertEqual((ansagen.fillers, ansagen.long_wait), ([], None))
 
     def test_only_some_files_missing_still_plays_the_rest(self):
         folder = Path(self.tmp.name) / "teil"
@@ -483,10 +488,9 @@ class MissingFilesTests(TempDirCase):
         ansagen = Ansagen(folder, RATE, 1, 2)
         with self.assertLogs(LOGGER, level="WARNING") as logs:
             ansagen.load()
-        self.assertIn("6 von 8", logs.output[0])
+        self.assertIn("5 von 7", logs.output[0])
         self.assertEqual(len(ansagen.fillers), 1)
         self.assertIsNotNone(ansagen.long_wait)
-        self.assertIsNone(ansagen.intro)
 
     def test_unusable_file_is_skipped_with_a_warning(self):
         folder = Path(self.tmp.name) / "kaputt"
@@ -515,115 +519,72 @@ class MissingFilesTests(TempDirCase):
         # müssen beide Seiten gleichzeitig angepasst werden.
         self.assertEqual(
             ALL_ANNOUNCEMENT_FILES,
-            ("willkommen.wav", "zwischen-1.wav", "zwischen-2.wav", "zwischen-3.wav", "zwischen-4.wav",
+            ("zwischen-1.wav", "zwischen-2.wav", "zwischen-3.wav", "zwischen-4.wav",
              "zwischen-5.wav", "zwischen-6.wav", "zwischen-lang.wav"),
         )
 
 
-class IntroTests(TempDirCase):
-    def run_client(self, s):
-        s.client.stop_requested = True  # nur der Start, keine Schleife
-        s.client.run()
+class IntroRepeatTests(TempDirCase):
+    """Die KI-Ansage beim ersten Einschalten kommt aus PR 17. Hier nur: Eltern können sie wiederholen."""
 
-    def test_first_start_plays_the_intro_before_the_child_can_ask(self):
-        s = Setup(self)
-        states = []
-        s.speaker.observer = lambda: states.append(s.client.state)
-        s.client.state = ClientState.BOOT
-        s.client.state_history.clear()
-        self.run_client(s)
-        self.assertEqual(s.played(), ["vorstellung"])
-        self.assertEqual(states, [ClientState.WIFI_CONNECTING], "die Vorstellung kommt vor dem Zustand READY")
-        self.assertLess(s.client.state_history.index(ClientState.WIFI_CONNECTING),
-                        s.client.state_history.index(ClientState.READY))
-
-    def test_second_start_does_not_play_it_again(self):
-        first = Setup(self)
-        first.client.state = ClientState.BOOT
-        self.run_client(first)
-        self.assertEqual(first.played(), ["vorstellung"])
-        second = Setup(self)
-        second.client.state = ClientState.BOOT
-        self.run_client(second)
-        self.assertEqual(second.played(), [])
-
-    def test_status_file_holds_no_personal_data(self):
-        s = Setup(self)
-        s.client.state = ClientState.BOOT
-        self.run_client(s)
-        raw = (Path(self.tmp.name) / STATUS_FILE).read_text(encoding="utf-8")
-        self.assertEqual(json.loads(raw), {"version": 1, "vorstellung_gespielt": True})
-        self.assertNotIn(s.client.config.device_id, raw)
-        self.assertLess(len(raw), 100)
-
-    def test_missing_intro_file_warns_continues_and_is_not_marked_as_played(self):
-        with self.assertLogs(LOGGER, level="WARNING"):
-            s = Setup(self, files=False)
-        s.client.state = ClientState.BOOT
-        with self.assertLogs(LOGGER, level="WARNING") as logs:
-            self.run_client(s)
-        self.assertTrue(any("Vorstellung" in line for line in logs.output))
-        self.assertEqual(s.client.state, ClientState.SHUTDOWN)
-        self.assertIn(ClientState.READY, s.client.state_history, "der Client läuft normal weiter")
-        self.assertFalse((Path(self.tmp.name) / STATUS_FILE).exists(), "ohne Ansage gilt das Kind nicht als vorgestellt")
-        self.assertTrue(s.feedback.needs_intro())
-
-    def test_unwritable_status_file_warns_and_still_plays_only_once_per_run(self):
-        blocker = Path(self.tmp.name) / "datei"
-        blocker.write_text("x")
-        store = StatusStore(blocker)  # "datei/status.json" lässt sich nicht anlegen
-        with self.assertLogs(LOGGER, level="WARNING") as logs:
-            store.mark_intro_played()
-        self.assertIn("nicht schreibbar", logs.output[0])
-        self.assertTrue(store.intro_played(), "im selben Lauf wird nicht erneut vorgestellt")
-        self.assertFalse(StatusStore(blocker).intro_played(), "beim nächsten Start dagegen schon")
-
-    def test_corrupt_status_file_counts_as_not_introduced(self):
-        (Path(self.tmp.name) / STATUS_FILE).write_text("{kaputt", encoding="utf-8")
-        self.assertFalse(StatusStore(Path(self.tmp.name)).intro_played())
+    def hold(self, s, seconds):
+        for _ in range(int(seconds * 10)):
+            s.client.step()
+            s.clock.sleep(0.1)
 
     def test_parent_combination_repeats_the_intro_only_with_mic_off_and_both_buttons_held(self):
         buttons = PressedButtons(speech=True, story=True, mic_off=True)
         s = Setup(self, buttons=buttons)
         s.client.transition(ClientState.MIC_OFF)
 
-        def hold(seconds):
-            for _ in range(int(seconds * 10)):
-                s.client.step()
-                s.clock.sleep(0.1)
-
-        hold(4.5)
+        self.hold(s, 4.5)
         self.assertEqual(s.played(), [], "nach 4,5 Sekunden noch nicht")
-        hold(1.0)
+        self.hold(s, 1.0)
         self.assertEqual(s.played(), ["vorstellung"])
         self.assertGreaterEqual(s.start_of("vorstellung"), 5.0)
-        hold(8.0)
+        self.assertEqual([call[0] for call in s.api.calls], ["intro"], "die Ansage wird vom Server geholt")
+        self.hold(s, 8.0)
         self.assertEqual(s.played(), ["vorstellung"], "dauerhaftes Halten wiederholt sie nicht")
         self.assertEqual(s.led.modes[-1], "mic_off")
         self.assertEqual(s.client.state, ClientState.MIC_OFF)
 
         buttons.speech_pressed = buttons.story_pressed = False
-        hold(0.3)
+        self.hold(s, 0.3)
         buttons.speech_pressed = buttons.story_pressed = True
-        hold(5.5)
+        self.hold(s, 5.5)
         self.assertEqual(s.played(), ["vorstellung", "vorstellung"], "nach dem Loslassen geht es wieder")
+
+    def test_the_repeat_does_not_touch_the_state_directory(self):
+        state = Path(self.tmp.name) / "state"
+        state.mkdir()
+        s = Setup(self, buttons=PressedButtons(speech=True, story=True, mic_off=True))
+        s.client.config = ClientConfig(dry_run=True, state_dir=state)
+        s.client.transition(ClientState.MIC_OFF)
+        self.hold(s, 6.0)
+        self.assertEqual(s.played(), ["vorstellung"])
+        self.assertEqual(list(state.iterdir()), [], "die Merkdatei aus PR 17 bleibt unberührt")
+
+    def test_when_the_server_cannot_be_reached_the_client_only_warns(self):
+        s = Setup(self, buttons=PressedButtons(speech=True, story=True, mic_off=True))
+        s.api.intro_error = ApiError("API-Fehler (HTTP 503)", status=503)
+        s.client.transition(ClientState.MIC_OFF)
+        with self.assertLogs("kunibert", level="WARNING") as logs:
+            self.hold(s, 6.0)
+        self.assertTrue(any("nicht wiederholt" in line for line in logs.output), logs.output)
+        self.assertEqual(s.played(), [])
+        self.assertEqual(s.client.state, ClientState.MIC_OFF)
+        self.assertEqual(s.led.modes[-1], "mic_off")
 
     def test_one_button_alone_or_a_short_press_does_not_trigger_the_repeat(self):
         buttons = PressedButtons(speech=True, story=False, mic_off=True)
         s = Setup(self, buttons=buttons)
         s.client.transition(ClientState.MIC_OFF)
-        for _ in range(100):
-            s.client.step()
-            s.clock.sleep(0.1)
+        self.hold(s, 10.0)
         self.assertEqual(s.played(), [])
         buttons.story_pressed = True
-        for _ in range(30):  # nur 3 Sekunden beide
-            s.client.step()
-            s.clock.sleep(0.1)
+        self.hold(s, 3.0)  # nur 3 Sekunden beide
         buttons.speech_pressed = buttons.story_pressed = False
-        for _ in range(5):
-            s.client.step()
-            s.clock.sleep(0.1)
+        self.hold(s, 0.5)
         self.assertEqual(s.played(), [])
 
     def test_both_buttons_with_the_mic_on_never_play_the_intro(self):
@@ -638,22 +599,8 @@ class IntroTests(TempDirCase):
         s = Setup(self, buttons=buttons)
         s.client.feedback = None
         s.client.transition(ClientState.MIC_OFF)
-        for _ in range(80):
-            s.client.step()
-            s.clock.sleep(0.1)
+        self.hold(s, 8.0)
         self.assertEqual(s.played(), [])
-
-    def test_dry_run_keeps_the_status_only_in_memory(self):
-        config = ClientConfig(dry_run=True, announcements_dir=Path(self.tmp.name) / "a", state_dir=Path(self.tmp.name) / "s")
-        (Path(self.tmp.name) / "s").mkdir()
-        (Path(self.tmp.name) / "a").mkdir()
-        write_announcements(Path(self.tmp.name) / "a")
-        feedback = build_feedback(config)
-        speaker = FakeSpeaker(FakeClock())
-        self.assertTrue(feedback.play_intro(speaker))
-        self.assertFalse((Path(self.tmp.name) / "s" / STATUS_FILE).exists())
-        self.assertFalse(feedback.needs_intro())
-
 
 class LedAndConfigTests(unittest.TestCase):
     def test_thinking_pattern_is_a_slow_smooth_pulse_distinct_from_busy(self):

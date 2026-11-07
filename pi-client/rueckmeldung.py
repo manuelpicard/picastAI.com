@@ -1,4 +1,4 @@
-"""Rückmeldung beim Warten und Vorstellung für den Ritter-Kunibert-Pi-Client.
+"""Rückmeldung beim Warten für den Ritter-Kunibert-Pi-Client.
 
 Das Modul braucht keine Hardware und importiert nichts aus kunibert_client.py. Alles, was Zeit
 braucht, läuft über eine austauschbare Uhr. So lassen sich die Abläufe in Tests ohne echtes
@@ -8,8 +8,10 @@ Es enthält:
 - einen kurzen Ton, der im Code erzeugt wird (Quittung beim Loslassen der Sprechtaste),
 - die Wiedergabe-Reihenfolge beim Warten: Zwischensätze, dann die Antwort. Es spielt immer nur
   eines nach dem anderen, nichts überlappt und nichts wird abgeschnitten,
-- das Laden der festen Ansagen aus einem Ordner (fehlende Dateien sind kein Fehler),
-- die Statusdatei für die Vorstellung beim ersten Einschalten (ohne persönliche Daten).
+- das Laden der festen Zwischensätze aus einem Ordner (fehlende Dateien sind kein Fehler).
+
+Die KI-Ansage beim ersten Einschalten kommt nicht von hier, sondern aus dem Server (/v1/device/intro,
+siehe kunibert_client.py).
 
 Gesprochene Texte, Antworten und Aufnahmen werden hier nie geloggt.
 """
@@ -17,10 +19,8 @@ Gesprochene Texte, Antworten und Aufnahmen werden hier nie geloggt.
 from __future__ import annotations
 
 import io
-import json
 import logging
 import math
-import os
 import random
 import struct
 import threading
@@ -34,13 +34,10 @@ LOG = logging.getLogger("kunibert.rueckmeldung")
 
 # Feste Dateinamen. Der Server erzeugt genau diese Dateien mit "npm run ansagen -- <Ordner>"
 # (siehe docs/Ansagen.md), der Pi erwartet sie in KUNIBERT_ANNOUNCEMENTS_DIR.
-INTRO_FILE = "willkommen.wav"
+# Die Vorstellung ("willkommen") ist keine Datei: Sie kommt aus dem Server.
 FILLER_FILES = tuple(f"zwischen-{number}.wav" for number in range(1, 7))
 LONG_WAIT_FILE = "zwischen-lang.wav"
-ALL_ANNOUNCEMENT_FILES = (INTRO_FILE, *FILLER_FILES, LONG_WAIT_FILE)
-
-STATUS_FILE = "status.json"
-STATUS_VERSION = 1
+ALL_ANNOUNCEMENT_FILES = (*FILLER_FILES, LONG_WAIT_FILE)
 
 
 class Clock(Protocol):
@@ -96,7 +93,7 @@ def wav_seconds(wav_bytes: bytes) -> float:
 
 
 class Ansagen:
-    """Die festen Sprachdateien: Vorstellung, sechs Zwischensätze und ein zweiter Satz für lange Wartezeiten.
+    """Die festen Sprachdateien: sechs Zwischensätze und ein zweiter Satz für lange Wartezeiten.
 
     Fehlende oder unbrauchbare Dateien sind kein Fehler. Der Client läuft dann ohne diese Sätze
     weiter (mit Ton und LED), und ``load`` schreibt eine Warnung ins Log.
@@ -107,12 +104,11 @@ class Ansagen:
         self.sample_rate = sample_rate
         self.channels = channels
         self.sample_width = sample_width
-        self.intro: Optional[bytes] = None
         self.fillers: list[bytes] = []
         self.long_wait: Optional[bytes] = None
 
     def load(self) -> None:
-        self.intro, self.fillers, self.long_wait = None, [], None
+        self.fillers, self.long_wait = [], None
         if self.folder is None or not self.folder.is_dir():
             LOG.warning("Ansagen-Ordner %s fehlt; der Client läuft ohne gesprochene Ansagen und Zwischensätze", self.folder)
             return
@@ -136,7 +132,6 @@ class Ansagen:
         if missing:
             LOG.warning("Ansagen fehlen (%d von %d): %s. Der Client läuft ohne diese Sätze weiter",
                         len(missing), len(ALL_ANNOUNCEMENT_FILES), ", ".join(missing))
-        self.intro = loaded.get(INTRO_FILE)
         self.fillers = [loaded[name] for name in FILLER_FILES if name in loaded]
         self.long_wait = loaded.get(LONG_WAIT_FILE)
 
@@ -154,41 +149,6 @@ class Ansagen:
         except (wave.Error, EOFError):
             return "keine gültige WAV-Datei"
         return None
-
-
-class StatusStore:
-    """Merkt sich in einer kleinen Datei, ob die Vorstellung schon gespielt wurde.
-
-    Die Datei enthält nur zwei Werte (Version und ja/nein), keine Namen, Geräte-IDs oder Zeiten.
-    Ohne Ordner (Dry-Run) bleibt der Stand nur im Speicher.
-    """
-
-    def __init__(self, folder: Optional[Path]):
-        self._path = Path(folder) / STATUS_FILE if folder is not None else None
-        self._played_in_memory = False
-
-    def intro_played(self) -> bool:
-        if self._played_in_memory:
-            return True
-        if self._path is None:
-            return False
-        try:
-            data = json.loads(self._path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            return False
-        return isinstance(data, dict) and data.get("vorstellung_gespielt") is True
-
-    def mark_intro_played(self) -> None:
-        self._played_in_memory = True
-        if self._path is None:
-            return
-        temp = self._path.with_name(self._path.name + ".tmp")
-        try:
-            temp.write_text(json.dumps({"version": STATUS_VERSION, "vorstellung_gespielt": True}), encoding="utf-8")
-            os.replace(temp, self._path)
-        except OSError as exc:
-            LOG.warning("Statusdatei %s nicht schreibbar (%s); die Vorstellung läuft beim nächsten Start erneut",
-                        self._path, exc.strerror or type(exc).__name__)
 
 
 class ThreadCall:
@@ -234,16 +194,15 @@ class FeedbackSettings:
     long_wait_after: float = 15.0     # zweiter Satz, wenn es immer noch nicht weitergeht
     answer_pause: float = 0.3         # Pause zwischen einem Zwischensatz und der Antwort
     poll_interval: float = 0.05       # wie oft nachgesehen wird, ob die Antwort da ist
-    intro_hold: float = 5.0           # so lange beide Tasten halten, um die Vorstellung zu wiederholen
+    intro_hold: float = 5.0           # so lange beide Tasten halten, um die KI-Ansage zu wiederholen
 
 
 class Feedback:
-    """Ton, Zwischensätze und Vorstellung. Wird dem Client übergeben; ohne Feedback verhält er sich wie bisher."""
+    """Ton und Zwischensätze beim Warten. Wird dem Client übergeben; ohne Feedback verhält er sich wie bisher."""
 
     def __init__(
         self,
         ansagen: Ansagen,
-        status: StatusStore,
         settings: FeedbackSettings = FeedbackSettings(),
         *,
         clock: Optional[Clock] = None,
@@ -252,7 +211,6 @@ class Feedback:
         tone: Optional[bytes] = None,
     ):
         self.ansagen = ansagen
-        self.status = status
         self.settings = settings
         self.clock: Clock = clock or SystemClock()
         self._rng = rng or random.Random()
@@ -320,21 +278,6 @@ class Feedback:
         self._last_filler = choice
         return self.ansagen.fillers[choice]
 
-    # -- Vorstellung ------------------------------------------------------------------------
-
-    def needs_intro(self) -> bool:
-        return not self.status.intro_played()
-
-    def play_intro(self, audio_out: Playback) -> bool:
-        """Spielt die Vorstellung. Nur wenn sie wirklich gespielt wurde, merkt sich der Pi das."""
-        if self.ansagen.intro is None:
-            LOG.warning("Die Vorstellung kann nicht gespielt werden (Datei %s fehlt oder ist unbrauchbar)", INTRO_FILE)
-            return False
-        if not self._play(audio_out, self.ansagen.intro, "Vorstellung"):
-            return False
-        self.status.mark_intro_played()
-        return True
-
     # -- gemeinsam --------------------------------------------------------------------------
 
     @staticmethod
@@ -351,11 +294,10 @@ def build_feedback(config: Any) -> Feedback:
     """Baut Feedback aus der Client-Konfiguration (ClientConfig, nur über Attribute gelesen)."""
     ansagen = Ansagen(config.announcements_dir, config.sample_rate, config.channels, config.sample_width)
     ansagen.load()
-    status = StatusStore(None if config.dry_run else config.state_dir)
     settings = FeedbackSettings(
         first_filler_after=config.filler_after_seconds,
         long_wait_after=config.long_wait_seconds,
         answer_pause=config.answer_pause_seconds,
         intro_hold=config.intro_hold_seconds,
     )
-    return Feedback(ansagen, status, settings)
+    return Feedback(ansagen, settings=settings)

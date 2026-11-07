@@ -57,7 +57,7 @@ Die geheime Konfiguration liegt danach in `/etc/kunibert/kunibert.env` und wird 
 BOOT
   ↓
 WIFI_CONNECTING
-  ↓
+  ↓  (nur beim ersten Start: PLAYING mit der KI-Ansage, siehe unten)
 READY ←──────────────┐
   │                  │
   ├─ Sprechtaste     │
@@ -76,6 +76,32 @@ SIGTERM/Ctrl+C ──> SHUTDOWN
 ```
 
 Die API-Keys und Modellaufrufe bleiben auf `picastAI.com`. Der Pi nimmt nur auf, authentifiziert sich, lädt WAV-Audio herunter und spielt es ab.
+
+## KI-Ansage beim ersten Einschalten
+
+Kunibert sagt dem Kind beim ersten Einschalten selbst, dass er ein Computer-Ritter und kein Mensch ist und sich irren kann (Hinweispflicht nach Art. 50 KI-Verordnung). Der Ablauf:
+
+1. Beim Start prüft der Client, ob `intro-played` im Zustandsordner liegt (`KUNIBERT_STATE_DIR`, Standard `/var/lib/kunibert/state`).
+2. Fehlt die Datei, holt er die Ansage mit `GET /v1/device/intro` vom Server und spielt sie ab. Währenddessen zeigt die LED „Wiedergabe“, und die Tasten haben keine Wirkung.
+3. Erst nach vollständiger Wiedergabe schreibt er die Datei (mit der Kennung der Textfassung) und geht auf `READY`.
+
+Der Text steht fest im Server (`server-api/ansage.ts`), kommt also nie vom Sprachmodell, und wird in Kuniberts Stimme gesprochen. Der Server bereitet ihn beim Start vor, die Ansage kommt dann ohne Wartezeit.
+
+**Das Gerät wird nicht freigegeben, wenn die Ansage fehlschlägt** (Server oder Sprachausgabe nicht erreichbar, Lautsprecher defekt): Der Client meldet Fehler und beendet sich, systemd startet ihn neu (`Restart=on-failure`). Beim vom Installationsskript angelegten Dienst gibt systemd nach fünf Fehlversuchen in zwei Minuten auf; das Gerät bleibt dann stumm, bis jemand `sudo systemctl restart kunibert.service` ausführt. Ein Kind kann so nie mit einem Gerät sprechen, das sich nicht vorgestellt hat. Lässt sich nur die Merkdatei nicht schreiben, läuft der Client weiter und spielt die Ansage bei jedem Start (zu oft ist besser als zu selten).
+
+Wiederholen (zum Beispiel für die Eltern oder nach einer Textänderung):
+
+```bash
+# einmalig beim nächsten Start
+sudo -u kunibert rm /var/lib/kunibert/state/intro-played
+sudo systemctl restart kunibert.service
+
+# oder von Hand, ohne die Merkdatei zu ändern (Dienst vorher stoppen)
+set -a; . /etc/kunibert/kunibert.env; set +a
+/opt/kunibert/.venv/bin/python pi-client/kunibert_client.py --ansage
+```
+
+Nur prüfen, ob der Server die Ansage liefert, ohne sie abzuspielen: `kunibert_client.py --once ansage` (zeigt Größe und Fassung).
 
 ## Hardware-/GPIO-Belegung
 
@@ -120,9 +146,9 @@ Der Softwareablauf bei OFF ist:
 
 Die softwareseitige Abbruch- und Verwerfungslogik ist mit `python3 -m unittest -v` testbar; der Unit-Test ersetzt keine Prüfung der tatsächlichen elektrischen Abschaltung am Pi.
 
-## Rückmeldung beim Warten und Vorstellung
+## Rückmeldung beim Warten
 
-Kinder sollen nie still warten müssen. Und sie sollen wissen, dass Kunibert ein Computer ist und kein Mensch. Dafür gibt es drei Dinge. Der Code steht in `rueckmeldung.py`.
+Kinder sollen nie still warten müssen. Dafür gibt es zwei Dinge (Quittung und Zwischensätze) und eine Tastenkombination für Eltern. Der Code steht in `rueckmeldung.py`. Die KI-Ansage beim ersten Einschalten kommt aus dem Server und ist [oben](#ki-ansage-beim-ersten-einschalten) beschrieben.
 
 ### Quittung: „Ich habe dich gehört“
 
@@ -143,27 +169,23 @@ Dauert die Antwort länger, spricht Kunibert kurz dazwischen:
 - Mehr als diese zwei Sätze gibt es pro Frage nicht.
 - Es spielt immer nur eines nach dem anderen. Ein Satz wird nie abgeschnitten und nichts überlappt. Kommt die Antwort während eines Satzes, spielt der Satz zu Ende, dann folgen 300 Millisekunden Pause und danach die Antwort.
 
-### Vorstellung beim ersten Einschalten
+### KI-Ansage wiederholen (Eltern)
 
-Beim allerersten Start spielt der Pi eine Ansage, bevor das Kind etwas fragen kann. Sie sagt, dass Kunibert ein Computer-Ritter ist, dass er sich irren kann, dass er nur zuhört, solange die Taste gedrückt ist, und dass das Kind bei Angst oder Not zu einem Erwachsenen gehen soll. Danach merkt sich der Pi das in der kleinen Datei `status.json` (im Ordner `KUNIBERT_STATE_DIR`, normalerweise `/var/lib/kunibert`). Die Datei enthält nur `{"version": 1, "vorstellung_gespielt": true}`. Es stehen keine Namen, Geräte-IDs oder Uhrzeiten darin.
-
-Die Vorstellung gilt erst als gespielt, wenn sie wirklich abgespielt wurde. Fehlt die Datei, wird sie beim nächsten Start nachgeholt.
-
-**Wiederholen durch die Eltern:**
+Die KI-Ansage kommt beim allerersten Start (siehe [oben](#ki-ansage-beim-ersten-einschalten)). Eltern können sie auch ohne Rechner noch einmal abspielen:
 
 1. Mikrofon-Schalter auf „aus“ stellen (die LED zeigt die zwei Blitze).
 2. **Beide Tasten** (Sprechtaste und Erzähltaste) **5 Sekunden lang gedrückt halten.**
-3. Der Pi spielt die Vorstellung. Zum nächsten Mal beide Tasten erst loslassen.
+3. Der Pi holt die Ansage vom Server und spielt sie ab. Zum nächsten Mal beide Tasten erst loslassen.
+
+Die Merkdatei `intro-played` bleibt dabei unberührt. Klappt der Abruf nicht (kein Netz), steht nur eine Warnung im Log.
 
 Warum diese Kombination: Bei ausgeschaltetem Mikrofon startet ein Tastendruck nie eine Aufnahme. Ohne den Schalter würde schon das Drücken der Sprechtaste die Aufnahme starten. Außerdem braucht es drei bewusste Handgriffe (Schalter, beide Tasten, 5 Sekunden). Ein Kind löst das nicht aus Versehen aus. Die Zeit ist mit `KUNIBERT_INTRO_HOLD_SECONDS` einstellbar.
-
 ### Die Sprachdateien
 
-Die gesprochenen Sätze sind WAV-Dateien (16 kHz, Mono, 16 Bit) im Ordner `KUNIBERT_ANNOUNCEMENTS_DIR` (Standard `/var/lib/kunibert/ansagen`). Die Dateinamen sind fest:
+Die Zwischensätze sind WAV-Dateien (16 kHz, Mono, 16 Bit) im Ordner `KUNIBERT_ANNOUNCEMENTS_DIR` (Standard `/var/lib/kunibert/ansagen`). Die Dateinamen sind fest:
 
 | Datei | Wofür |
 |---|---|
-| `willkommen.wav` | Vorstellung beim ersten Einschalten |
 | `zwischen-1.wav` bis `zwischen-6.wav` | sechs Zwischensätze nach 2,5 Sekunden |
 | `zwischen-lang.wav` | zweiter Satz nach 15 Sekunden |
 
@@ -177,17 +199,16 @@ Alle Werte sind optional und stehen in `/etc/kunibert/kunibert.env`.
 
 | Variable | Standard | Bedeutung |
 |---|---:|---|
-| `KUNIBERT_FEEDBACK` | `1` | `0` schaltet Ton, Zwischensätze und Vorstellung ab (der Client verhält sich dann wie vorher) |
+| `KUNIBERT_FEEDBACK` | `1` | `0` schaltet Ton, Zwischensätze und die Elternkombination ab (der Client verhält sich dann wie vorher; die KI-Ansage beim ersten Start bleibt) |
 | `KUNIBERT_ANNOUNCEMENTS_DIR` | `/var/lib/kunibert/ansagen` | Ordner mit den Sprachdateien |
-| `KUNIBERT_STATE_DIR` | `/var/lib/kunibert` | Ordner für `status.json` |
 | `KUNIBERT_FILLER_AFTER_SECONDS` | `2.5` | Sekunden bis zum ersten Zwischensatz |
 | `KUNIBERT_LONG_WAIT_SECONDS` | `15` | Sekunden bis zum zweiten Satz |
 | `KUNIBERT_ANSWER_PAUSE_SECONDS` | `0.3` | Pause zwischen Zwischensatz und Antwort |
-| `KUNIBERT_INTRO_HOLD_SECONDS` | `5` | Sekunden, die die Eltern beide Tasten halten |
+| `KUNIBERT_INTRO_HOLD_SECONDS` | `5` | Sekunden, die die Eltern beide Tasten halten, um die KI-Ansage zu wiederholen |
 
 ### Was getestet ist
 
-Die Abläufe sind mit einer Fake-Uhr und Fake-Audio in `test_rueckmeldung.py` getestet (Ton, Zwischensätze, Pausen, Reihenfolge, Vorstellung, Elternkombination, fehlende Dateien). Auf echter Hardware ist **nichts** getestet: weder, wie der Ton und die Sätze über den Lautsprecher klingen, noch das sanfte Pulsieren der LED (es braucht PWM über `gpiozero.PWMLED`; ohne PWM blinkt die LED langsam).
+Die Abläufe sind mit einer Fake-Uhr und Fake-Audio in `test_rueckmeldung.py` getestet (Ton, Zwischensätze, Pausen, Reihenfolge, Elternkombination, fehlende Dateien). Auf echter Hardware ist **nichts** getestet: weder, wie der Ton und die Sätze über den Lautsprecher klingen, noch das sanfte Pulsieren der LED (es braucht PWM über `gpiozero.PWMLED`; ohne PWM blinkt die LED langsam).
 
 ## Installation auf Raspberry Pi OS Lite
 
@@ -207,6 +228,7 @@ PICASTAI_API_BASE_URL=https://picastAI.com
 PICASTAI_DEVICE_ID=prototype-001
 PICASTAI_DEVICE_TOKEN=NICHT_IN_GIT_EINTRAGEN
 KUNIBERT_CACHE_DIR=/var/lib/kunibert/audio
+KUNIBERT_STATE_DIR=/var/lib/kunibert/state
 KUNIBERT_SAMPLE_RATE=16000
 KUNIBERT_MAX_RECORD_SECONDS=15
 KUNIBERT_REQUEST_TIMEOUT=30
@@ -218,7 +240,7 @@ KUNIBERT_RETRY_COUNT=2
 Zeitgrenzen in Sekunden: `KUNIBERT_REQUEST_TIMEOUT` gilt für den Health-Check, `KUNIBERT_PIPELINE_TIMEOUT` für Frage und Geschichte, `KUNIBERT_AUDIO_TIMEOUT` für den Abruf der WAV-Antwort. Frage und Geschichte laufen auf dem Server durch Spracherkennung, Sprachmodell und Sprachsynthese (Standardgrenzen 45 + 30 + 45 s). Der Client muss länger warten als diese Kette, sonst bricht er ab und schickt die Anfrage erneut, und der Server erzeugt die Antwort ein zweites Mal (bei der Geschichte rückt die Folge dabei weiter). Die abgestimmte Zeitkette mit dem Reverse Proxy steht in [`deploy/EINRICHTUNG.md`](../deploy/EINRICHTUNG.md).
 
 ```bash
-sudo install -d -m 0750 /etc/kunibert /var/lib/kunibert/audio
+sudo install -d -m 0750 /etc/kunibert /var/lib/kunibert/audio /var/lib/kunibert/state
 sudo chmod 600 /etc/kunibert/kunibert.env
 ```
 

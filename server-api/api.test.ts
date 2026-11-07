@@ -9,6 +9,7 @@ import net from 'node:net';
 import path from 'node:path';
 import { after, before, describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { INTRO_TEXT_DE, INTRO_VERSION } from './ansage.js';
 import { decodeWavHeader, encodeWav } from './audio.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -194,6 +195,32 @@ describe('picastAI-API (echter Server)', () => {
     assert.equal(wrong.status, 401);
     const audio = await fetch(`${base}/v1/device/audio/t_gibt_es_nicht`);
     assert.equal(audio.status, 401);
+    const intro = await fetch(`${base}/v1/device/intro`);
+    assert.equal(intro.status, 401);
+  });
+
+  it('KI-Ansage: fester Text als 16-kHz-Mono-WAV, einmal abrufbar und nur einmal synthetisiert', async () => {
+    const first = await registerDevice();
+    const second = await registerDevice();
+    for (const device of [first, second]) {
+      const res = await fetch(`${base}/v1/device/intro`, { headers: deviceHeaders(device.id, device.token) });
+      assert.equal(res.status, 200, await res.clone().text());
+      assert.equal(res.headers.get('cache-control'), 'no-store');
+      const body = (await res.json()) as { type: string; audio_url: string; version: string };
+      assert.equal(body.type, 'intro');
+      assert.equal(body.version, INTRO_VERSION);
+      assert.ok(body.audio_url.startsWith(`${PUBLIC_BASE_URL}/v1/device/audio/`), body.audio_url);
+
+      const audio = await fetchAudio(device, body.audio_url);
+      assert.equal(audio.status, 200);
+      const header = decodeWavHeader(Buffer.from(await audio.arrayBuffer()));
+      assert.equal(header.sampleRate, 16_000);
+      assert.equal(header.channels, 1);
+      assert.equal(header.bitsPerSample, 16);
+      assert.equal((await fetchAudio(device, body.audio_url)).status, 404, 'zweiter Abruf muss scheitern');
+    }
+    const spoken = fake.state.speechInputs.filter((text) => text === INTRO_TEXT_DE);
+    assert.equal(spoken.length, 1, 'fester Text wird nur einmal an den Sprachdienst geschickt (Aufwärmen oder erster Abruf)');
   });
 
   it('Erzähltaste setzt die Folge fort: Teile 1 bis 5, session_end erst am Ende, danach neue Folge', async () => {
