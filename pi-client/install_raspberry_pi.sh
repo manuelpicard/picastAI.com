@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Install Ritter Kunibert Pi client on a fresh Raspberry Pi OS installation.
-# Tested design target: Raspberry Pi OS Lite, Raspberry Pi Zero 2 W.
+# Target: Raspberry Pi OS Lite on a Raspberry Pi 5 (first build, USB audio) or a
+# Raspberry Pi Zero 2 W (later, small device). Not yet run on real Pi hardware.
 # Run as root: sudo bash pi-client/install_raspberry_pi.sh --api-token '...'
 
 set -Eeuo pipefail
@@ -19,8 +20,10 @@ SOURCE_DIR=""
 API_BASE_URL="https://picastAI.com"
 DEVICE_ID="prototype-001"
 DEVICE_TOKEN=""
-DEVICE_NAME="picastAI Raspberry Pi Zero 2 W"
+DEVICE_NAME="picastAI Raspberry Pi"
 AUDIO_CARD=""
+CAPTURE_DEVICE=""
+PLAYBACK_DEVICE=""
 SAMPLE_RATE="16000"
 DRY_RUN="0"
 NON_INTERACTIVE="0"
@@ -28,6 +31,8 @@ NON_INTERACTIVE="0"
 log() { printf '[kunibert-install] %s\n' "$*"; }
 warn() { printf '[kunibert-install] WARNUNG: %s\n' "$*" >&2; }
 die() { printf '[kunibert-install] FEHLER: %s\n' "$*" >&2; exit 1; }
+# Wert für die systemd-EnvironmentFile in Anführungszeichen (Leerzeichen bleiben erhalten).
+env_quote() { local v="$1"; v="${v//\\/\\\\}"; v="${v//\"/\\\"}"; printf '"%s"' "$v"; }
 
 usage() {
   cat <<'EOF'
@@ -43,6 +48,9 @@ Optionen:
   --api-token TOKEN      Geräte-Token; nicht in Git speichern
   --device-name NAME     Anzeigename des Geräts
   --audio-card CARD      ALSA-Karte, z. B. hw:wm8960soundcard,0
+  --capture-device DEV  Mikrofon für den Client (sounddevice-Name oder -Nummer,
+                         siehe: python3 -m sounddevice). Für getrennte USB-Geräte.
+  --playback-device DEV  Lautsprecher für den Client (wie oben)
   --sample-rate HZ       Audio-Abtastrate (Standard: 16000)
   --non-interactive      niemals nach einem Token fragen
   --dry-run              nur prüfen, keine Änderungen durchführen
@@ -74,12 +82,18 @@ while [[ $# -gt 0 ]]; do
     --api-token) [[ $# -ge 2 ]] || die "--api-token benötigt einen Wert"; DEVICE_TOKEN="$2"; shift 2 ;;
     --device-name) [[ $# -ge 2 ]] || die "--device-name benötigt einen Wert"; DEVICE_NAME="$2"; shift 2 ;;
     --audio-card) [[ $# -ge 2 ]] || die "--audio-card benötigt einen Wert"; AUDIO_CARD="$2"; shift 2 ;;
+    --capture-device) [[ $# -ge 2 ]] || die "--capture-device benötigt einen Wert"; CAPTURE_DEVICE="$2"; shift 2 ;;
+    --playback-device) [[ $# -ge 2 ]] || die "--playback-device benötigt einen Wert"; PLAYBACK_DEVICE="$2"; shift 2 ;;
     --sample-rate) [[ $# -ge 2 ]] || die "--sample-rate benötigt einen Wert"; SAMPLE_RATE="$2"; shift 2 ;;
     --non-interactive) NON_INTERACTIVE="1"; shift ;;
     --dry-run) DRY_RUN="1"; shift ;;
     -h|--help) usage; exit 0 ;;
     *) die "Unbekannte Option: $1" ;;
   esac
+done
+
+for _dev in "$CAPTURE_DEVICE" "$PLAYBACK_DEVICE"; do
+  [[ "$_dev" != *$'\n'* ]] || die "Audiogeräte-Namen dürfen keinen Zeilenumbruch enthalten."
 done
 
 [[ "${EUID}" -eq 0 ]] || die "Bitte mit sudo oder als root ausführen."
@@ -107,20 +121,31 @@ if ! [[ "$SAMPLE_RATE" =~ ^[0-9]+$ ]] || (( SAMPLE_RATE < 8000 || SAMPLE_RATE > 
 fi
 if [[ "$DRY_RUN" == "1" ]]; then
   log "Dry-Run: keine Änderungen werden vorgenommen."
-  printf 'Quelle: %s\nZiel: %s\nAPI: %s\nGerät: %s\nALSA-Karte: %s\n' \
-    "$SOURCE_DIR" "$INSTALL_DIR" "$API_BASE_URL" "$DEVICE_ID" "${AUDIO_CARD:-automatisch}"
+  printf 'Quelle: %s\nZiel: %s\nAPI: %s\nGerät: %s\nALSA-Karte: %s\nMikrofon: %s\nLautsprecher: %s\n' \
+    "$SOURCE_DIR" "$INSTALL_DIR" "$API_BASE_URL" "$DEVICE_ID" "${AUDIO_CARD:-automatisch}" \
+    "${CAPTURE_DEVICE:-Standard}" "${PLAYBACK_DEVICE:-Standard}"
   exit 0
 fi
 
 export DEBIAN_FRONTEND=noninteractive
 log "Installiere Systempakete …"
 apt-get update
+# python3-gpiozero empfiehlt python3-lgpio nur ("Recommends"), und --no-install-recommends
+# lässt es weg. Auf dem Pi 5 geht GPIO aber nur mit lgpio. Das Paket gibt es im
+# Raspberry-Pi-OS-Archiv, nicht im normalen Debian; daher nur installieren, wenn vorhanden.
+OPTIONAL_PACKAGES=()
+if apt-cache show python3-lgpio >/dev/null 2>&1; then
+  OPTIONAL_PACKAGES+=(python3-lgpio)
+else
+  warn "python3-lgpio ist nicht in den Paketquellen (kein Raspberry Pi OS?). Auf dem Pi 5 funktioniert GPIO ohne lgpio nicht."
+fi
 apt-get install -y --no-install-recommends \
   python3 \
   python3-venv \
   python3-pip \
   python3-dev \
   python3-gpiozero \
+  "${OPTIONAL_PACKAGES[@]}" \
   libportaudio2 \
   libsndfile1 \
   alsa-utils \
@@ -134,6 +159,10 @@ if ! id -u "$APP_USER" >/dev/null 2>&1; then
   useradd --system --create-home --home-dir "$INSTALL_DIR" --shell /usr/sbin/nologin "$APP_USER"
 fi
 usermod -a -G "$APP_GROUP" "$APP_USER" 2>/dev/null || true
+# GPIO-Zugriff (Pi 5: /dev/gpiochip*) läuft über die Gruppe gpio, sofern es sie gibt.
+if getent group gpio >/dev/null; then
+  usermod -a -G gpio "$APP_USER" 2>/dev/null || true
+fi
 install -d -o "$APP_USER" -g "$APP_GROUP" -m 0750 "$INSTALL_DIR" "$DATA_DIR" "$DATA_DIR/audio"
 install -d -o root -g "$APP_GROUP" -m 0750 "$CONFIG_DIR"
 
@@ -202,6 +231,9 @@ KUNIBERT_SPEECH_BUTTON_GPIO=17
 KUNIBERT_STORY_BUTTON_GPIO=27
 KUNIBERT_MIC_OFF_GPIO=22
 KUNIBERT_STATUS_LED_GPIO=23
+# Leer = Standardgerät. Mit zwei USB-Geräten Mikrofon und Lautsprecher getrennt setzen.
+KUNIBERT_INPUT_DEVICE=$(env_quote "$CAPTURE_DEVICE")
+KUNIBERT_OUTPUT_DEVICE=$(env_quote "$PLAYBACK_DEVICE")
 EOF
 chmod 0640 "$CONFIG_FILE"
 chown root:"$APP_GROUP" "$CONFIG_FILE"
@@ -217,7 +249,8 @@ Wants=network-online.target
 Type=simple
 User=$APP_USER
 Group=$APP_GROUP
-WorkingDirectory=$INSTALL_DIR
+# Arbeitsverzeichnis beschreibbar: die GPIO-Bibliothek lgpio legt dort Hilfsdateien an.
+WorkingDirectory=$DATA_DIR
 EnvironmentFile=$CONFIG_FILE
 ExecStart=$VENV_DIR/bin/python $INSTALL_DIR/pi-client/kunibert_client.py
 Restart=on-failure
@@ -229,7 +262,7 @@ PrivateTmp=true
 ProtectHome=true
 ProtectSystem=strict
 ReadWritePaths=$DATA_DIR
-# GPIO and ALSA access are provided through the audio group and gpiozero.
+# Audio access comes from the audio group, GPIO access from the gpio group (see above).
 
 [Install]
 WantedBy=multi-user.target

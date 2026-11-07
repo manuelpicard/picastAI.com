@@ -18,8 +18,10 @@ from kunibert_client import (
     KunibertClient,
     NoRedirectHandler,
     PicastApi,
+    SoundDeviceAudio,
     encode_wav,
     multipart_form,
+    parse_audio_device,
     same_origin,
     validate_wav,
 )
@@ -549,6 +551,54 @@ class KunibertClientTests(unittest.TestCase):
                 with self.assertRaises(ApiError):
                     api._with_retries("POST", "/v1/device/question", b"", {})
             self.assertEqual(request.call_count, 1, status)
+
+
+class SoundDeviceSelectionTests(unittest.TestCase):
+    """Zwei getrennte USB-Geräte: Aufnahme und Wiedergabe wählen ihr Gerät einzeln."""
+
+    @staticmethod
+    def _fake_sd():
+        sd = MagicMock()
+        stream = MagicMock()
+        stream.read.return_value = (b"\x00\x00" * 1024, False)
+        sd.RawInputStream.return_value.__enter__.return_value = stream
+        return sd
+
+    def _audio(self, **config_values):
+        sd = self._fake_sd()
+        with patch.dict(sys.modules, {"sounddevice": sd}):
+            audio = SoundDeviceAudio(ClientConfig(**config_values))
+        return audio, sd
+
+    def test_without_settings_both_directions_use_the_default_device(self):
+        audio, sd = self._audio()
+        audio.record_while_pressed(iter([True, False]).__next__, 1.0)
+        audio.play_wav(encode_wav(b"\x00\x00" * 160, 16000, 1, 2))
+        self.assertIsNone(sd.RawInputStream.call_args.kwargs["device"])
+        self.assertIsNone(sd.play.call_args.kwargs["device"])
+
+    def test_input_and_output_device_are_passed_separately(self):
+        audio, sd = self._audio(input_device="USB Mini Microphone", output_device=3)
+        audio.record_while_pressed(iter([True, False]).__next__, 1.0)
+        audio.play_wav(encode_wav(b"\x00\x00" * 160, 16000, 1, 2))
+        self.assertEqual(sd.RawInputStream.call_args.kwargs["device"], "USB Mini Microphone")
+        self.assertEqual(sd.play.call_args.kwargs["device"], 3)
+
+    def test_parse_audio_device(self):
+        self.assertIsNone(parse_audio_device(None))
+        self.assertIsNone(parse_audio_device("  "))
+        self.assertEqual(parse_audio_device("2"), 2)
+        self.assertEqual(parse_audio_device(" sysdefault:CARD=Device "), "sysdefault:CARD=Device")
+
+    def test_devices_from_environment(self):
+        with patch.dict("os.environ", {"KUNIBERT_INPUT_DEVICE": "1", "KUNIBERT_OUTPUT_DEVICE": "Speaker"}):
+            config = ClientConfig.from_env()
+        self.assertEqual(config.input_device, 1)
+        self.assertEqual(config.output_device, "Speaker")
+        with patch.dict("os.environ", {}, clear=True):
+            config = ClientConfig.from_env()
+        self.assertIsNone(config.input_device)
+        self.assertIsNone(config.output_device)
 
 
 if __name__ == "__main__":
