@@ -1,10 +1,10 @@
-// Erzeugt die festen Sprachdateien für den Pi (Vorstellung und Zwischensätze) über die gerade
+// Erzeugt die festen Zwischensätze für den Pi (sie füllen die Wartezeit) über die gerade
 // konfigurierte Sprachausgabe:
 //
 //   npm run ansagen -- <zielordner>
 //
 // Die Texte stehen in deploy/ansagen.json, die Dateinamen sind der Vertrag mit
-// pi-client/rueckmeldung.py. Das Skript benutzt nur die bestehende Sprachausgabe
+// pi-client/rueckmeldung.py. Die KI-Ansage beim ersten Einschalten gehört nicht dazu: Sie kommt aus dem Server. Das Skript benutzt nur die bestehende Sprachausgabe
 // (VoicePipeline.synthesize) und ändert keinen Anbieter. Die WAV-Dateien selbst liegen nicht im Repo.
 //
 // Alles oder nichts: Es wird erst geschrieben, wenn alle Dateien erfolgreich erzeugt wurden.
@@ -26,7 +26,6 @@ export interface Ansage {
  * pi-client/rueckmeldung.py und im Test beider Seiten. Ein Name darf nur an allen Stellen gleichzeitig geändert werden.
  */
 export const ERWARTETE_DATEIEN = [
-  'willkommen.wav',
   'zwischen-1.wav',
   'zwischen-2.wav',
   'zwischen-3.wav',
@@ -155,7 +154,7 @@ function sprachausgabeAusUmgebung(): Synthesizer {
 
 const HILFE =
   'Aufruf: npm run ansagen -- <zielordner> [--liste <datei>]\n' +
-  '  Erzeugt die festen Sprachdateien für den Pi (WAV, 16 kHz, Mono, 16 Bit) aus deploy/ansagen.json\n' +
+  '  Erzeugt die festen Zwischensätze für den Pi (WAV, 16 kHz, Mono, 16 Bit) aus deploy/ansagen.json\n' +
   '  über die gerade konfigurierte Sprachausgabe. Siehe docs/Ansagen.md.';
 
 /** Der Ablauf des Befehls. Gibt den Rückgabewert zurück (0 = gut). Wirft nie. */

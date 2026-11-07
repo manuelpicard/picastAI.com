@@ -15,7 +15,6 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 // Der Vertrag mit dem Pi (pi-client/rueckmeldung.py, ALL_ANNOUNCEMENT_FILES). Dieselbe Liste steht
 // ausgeschrieben im Pi-Test. Ändert sich ein Name, müssen beide Tests und beide Seiten zusammen angepasst werden.
 const VERTRAG = [
-  'willkommen.wav',
   'zwischen-1.wav',
   'zwischen-2.wav',
   'zwischen-3.wav',
@@ -25,9 +24,8 @@ const VERTRAG = [
   'zwischen-lang.wav',
 ];
 
-// Die vorgegebenen Texte, wörtlich.
+// Die vorgegebenen Texte, wörtlich. Die KI-Ansage beim ersten Einschalten steht nicht hier, sie kommt aus dem Server (server-api/ansage.ts).
 const TEXTE = [
-  'Sei gegrüßt! Ich bin Ritter Kunibert. Ich bin ein Computer-Ritter, kein echter Mensch. Ich erzähle dir Geschichten und beantworte deine Fragen. Manchmal irre ich mich. Ich höre dir nur zu, solange du die Taste drückst. Dann leuchtet meine Lampe. Sag mir bitte nicht deinen Nachnamen und nicht, wo du wohnst. Das brauche ich nicht. Und wenn dir etwas Schlimmes passiert oder du Angst hast: Geh zu einem Erwachsenen, dem du vertraust. Ich bin nur ein Spielzeug und kann dir dann nicht richtig helfen.',
   'Ich höre dir zu. Einen Moment.',
   'Lass mich kurz nachdenken.',
   'Hmm, einen Augenblick.',
@@ -60,10 +58,8 @@ test('Die Texte der Liste sind wörtlich die vorgegebenen', () => {
   assert.deepEqual(loadAnsagenListe(STANDARD_LISTE).map((eintrag) => eintrag.text), TEXTE);
 });
 
-test('Die Vorstellung sagt, dass Kunibert eine KI ist, und die Zwischensätze sind neutral', () => {
-  const liste = loadAnsagenListe(STANDARD_LISTE);
-  assert.match(liste[0].text, /Computer-Ritter, kein echter Mensch/);
-  for (const { datei, text } of liste.slice(1)) {
+test('Die Zwischensätze sind kurz und neutral (vorher ist nicht klar, ob eine Notfall-Antwort folgt)', () => {
+  for (const { datei, text } of loadAnsagenListe(STANDARD_LISTE)) {
     assert.ok(text.length < 60, `${datei} ist zu lang für einen Zwischensatz`);
     assert.doesNotMatch(text, /Notfall|Erwachsene|Polizei|Hilfe/i, `${datei} darf nichts Bedrohliches andeuten`);
   }
@@ -94,9 +90,9 @@ test('erzeugeAnsagen schreibt je Eintrag eine 16-kHz-Mono-WAV, ruft die Sprachau
 
 test('bestehende Dateien werden überschrieben (Stimme gewechselt)', async () => {
   const ziel = tempOrdner();
-  fs.writeFileSync(path.join(ziel, 'willkommen.wav'), 'alt');
+  fs.writeFileSync(path.join(ziel, 'zwischen-1.wav'), 'alt');
   await erzeugeAnsagen({ liste: loadAnsagenListe(STANDARD_LISTE), zielordner: ziel, synthesize: async () => kurzesWav() });
-  assert.equal(decodeWavHeader(fs.readFileSync(path.join(ziel, 'willkommen.wav'))).sampleRate, 16_000);
+  assert.equal(decodeWavHeader(fs.readFileSync(path.join(ziel, 'zwischen-1.wav'))).sampleRate, 16_000);
 });
 
 test('Fällt die Sprachausgabe mittendrin aus, wird nichts geschrieben, und die Meldung nennt die Datei, nicht den Text', async () => {
@@ -112,9 +108,9 @@ test('Fällt die Sprachausgabe mittendrin aus, wird nichts geschrieben, und die 
       },
     }),
     (fehler: Error) => {
-      assert.match(fehler.message, /zwischen-2\.wav/);
+      assert.match(fehler.message, /zwischen-3\.wav/);
       assert.match(fehler.message, /nichts geschrieben/);
-      assert.ok(!fehler.message.includes('Lass mich kurz nachdenken'), 'der Text steht nicht in der Meldung');
+      assert.ok(!fehler.message.includes('Hmm, einen Augenblick'), 'der Text steht nicht in der Meldung');
       return true;
     }
   );
@@ -125,7 +121,7 @@ test('Falsches Format (24 kHz) wird abgelehnt, mit Hinweis auf die Einstellung, 
   const ziel = path.join(tempOrdner(), 'neu');
   await assert.rejects(
     erzeugeAnsagen({ liste: loadAnsagenListe(STANDARD_LISTE), zielordner: ziel, synthesize: async () => kurzesWav(24_000) }),
-    /willkommen\.wav.*24000 Hz.*KUNIBERT_AUDIO_SAMPLE_RATE/
+    /zwischen-1\.wav.*24000 Hz.*KUNIBERT_AUDIO_SAMPLE_RATE/
   );
   assert.equal(fs.existsSync(ziel), false);
   await assert.rejects(
@@ -142,10 +138,10 @@ test('Eine unvollständige, doppelte oder fremde Textliste wird abgelehnt', () =
     fs.writeFileSync(datei, JSON.stringify({ ansagen }));
     return datei;
   };
-  assert.throws(() => loadAnsagenListe(schreibe('fehlt.json', gueltig.slice(1))), /fehlen: willkommen\.wav/);
+  assert.throws(() => loadAnsagenListe(schreibe('fehlt.json', gueltig.slice(1))), /fehlen: zwischen-1\.wav/);
   assert.throws(() => loadAnsagenListe(schreibe('doppelt.json', [...gueltig, gueltig[0]])), /mehrfach/);
   assert.throws(() => loadAnsagenListe(schreibe('fremd.json', [...gueltig, { datei: 'extra.wav', text: 'Hallo' }])), /Unbekannte Dateien.*extra\.wav/);
-  assert.throws(() => loadAnsagenListe(schreibe('leer.json', gueltig.map((e, i) => (i === 2 ? { ...e, text: '  ' } : e)))), /zwischen-2\.wav ist leer/);
+  assert.throws(() => loadAnsagenListe(schreibe('leer.json', gueltig.map((e, i) => (i === 2 ? { ...e, text: '  ' } : e)))), /zwischen-3\.wav ist leer/);
   assert.throws(() => loadAnsagenListe(path.join(ordner, 'gibt-es-nicht.json')), /nicht lesbar/);
   fs.writeFileSync(path.join(ordner, 'kaputt.json'), '{kaputt');
   assert.throws(() => loadAnsagenListe(path.join(ordner, 'kaputt.json')), /nicht lesbar/);
