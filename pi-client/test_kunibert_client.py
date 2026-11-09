@@ -99,6 +99,52 @@ class StopRequestedDuringRecordingAudio:
         return self.wav_bytes
 
 
+class FakeClock:
+    """Uhr, die nur vorgestellt wird, wenn der Test es sagt."""
+
+    def __init__(self):
+        self.now = 100.0
+
+    def __call__(self):
+        return self.now
+
+    def advance(self, seconds):
+        self.now += seconds
+
+
+class ClockedRecordingAudio(DryRunAudio):
+    """Aufnahme, die `seconds` dauert (auf der Test-Uhr)."""
+
+    def __init__(self, config, clock, seconds):
+        super().__init__(config)
+        self.clock = clock
+        self.seconds = seconds
+
+    def record_while_pressed(self, is_pressed, max_seconds):
+        self.clock.advance(self.seconds)
+        return super().record_while_pressed(is_pressed, max_seconds)
+
+
+class SlowApi(FakeApi):
+    """Server, der `seconds` für die Antwort braucht (auf der Test-Uhr)."""
+
+    def __init__(self, clock, seconds, fail=False):
+        super().__init__()
+        self.clock = clock
+        self.seconds = seconds
+        self.fail = fail
+
+    def ask_question(self, wav):
+        self.clock.advance(self.seconds)
+        if self.fail:
+            raise ApiError("API-Fehler (HTTP 503)", status=503, retryable=True)
+        return super().ask_question(wav)
+
+    def request_story(self):
+        self.clock.advance(self.seconds)
+        return super().request_story()
+
+
 class CaptureAudioOutput:
     def __init__(self):
         self.played = []
@@ -135,6 +181,75 @@ class KunibertClientTests(unittest.TestCase):
         self.assertEqual(client.api.stories, 1)
         self.assertIn(ClientState.REQUESTING_STORY, client.state_history)
         self.assertIn(ClientState.PLAYING, client.state_history)
+
+    def _timed_client(self, clock, recording_seconds=3.0, api_seconds=7.4, fail=False, speech=True, story=False):
+        config = ClientConfig(dry_run=True, min_record_seconds=0.1, device_token="geheim-token-0815")
+        buttons = PressedButtons(speech=speech, story=story)
+        client = KunibertClient(
+            config,
+            SlowApi(clock, api_seconds, fail=fail),
+            ClockedRecordingAudio(config, clock, recording_seconds),
+            CaptureAudioOutput(),
+            buttons,
+            DryRunLed(),
+            clock=clock,
+        )
+        client.transition(ClientState.WIFI_CONNECTING)
+        client.transition(ClientState.READY)
+        return client
+
+    def test_question_logs_wait_from_end_of_recording_to_start_of_playback(self):
+        clock = FakeClock()
+        client = self._timed_client(clock, recording_seconds=3.0, api_seconds=7.4)
+
+        with self.assertLogs("kunibert", level="INFO") as logs:
+            client.handle_question()
+
+        timing = [line for line in logs.output if "Zeitmessung" in line]
+        # Die 3,0 s Aufnahme zählen nicht mit; gemessen wird erst ab dem Loslassen der Taste.
+        self.assertEqual(timing, ["INFO:kunibert:Zeitmessung modus=frage wartezeit_s=7.4"])
+        self.assertEqual(client.state, ClientState.READY)
+        self.assertEqual(len(client.audio_out.played), 1)
+
+    def test_story_button_logs_wait_from_button_press_to_start_of_playback(self):
+        clock = FakeClock()
+        client = self._timed_client(clock, api_seconds=18.2, speech=False, story=True)
+
+        with self.assertLogs("kunibert", level="INFO") as logs:
+            client.handle_story()
+
+        timing = [line for line in logs.output if "Zeitmessung" in line]
+        self.assertEqual(timing, ["INFO:kunibert:Zeitmessung modus=erzaehltaste wartezeit_s=18.2"])
+
+    def test_timing_line_contains_only_keyword_and_number_never_content_or_token(self):
+        clock = FakeClock()
+        client = self._timed_client(clock)
+
+        with self.assertLogs("kunibert", level="DEBUG") as logs:
+            client.handle_question()
+
+        timing = [line for line in logs.output if "Zeitmessung" in line]
+        self.assertEqual(len(timing), 1)
+        self.assertRegex(timing[0], r"^INFO:kunibert:Zeitmessung modus=(frage|erzaehltaste) wartezeit_s=\d+\.\d$")
+        everything = "\n".join(logs.output)
+        self.assertNotIn("geheim-token-0815", everything)
+        self.assertNotIn(client.config.device_id, timing[0])
+        self.assertNotIn("http", timing[0].lower())
+
+    def test_no_timing_line_when_request_fails_or_recording_is_too_short(self):
+        clock = FakeClock()
+        failing = self._timed_client(clock, fail=True)
+        with self.assertLogs("kunibert", level="INFO") as logs, patch("kunibert_client.time.sleep"):
+            failing.handle_question()
+        self.assertEqual([line for line in logs.output if "Zeitmessung" in line], [])
+        self.assertIn(ClientState.ERROR, failing.state_history)
+
+        short = self._timed_client(clock)
+        short.config = ClientConfig(dry_run=True, min_record_seconds=5.0)
+        with self.assertLogs("kunibert", level="INFO") as logs:
+            short.handle_question()
+        self.assertEqual([line for line in logs.output if "Zeitmessung" in line], [])
+        self.assertEqual(short.api.questions, 0)
 
     def test_mic_off_blocks_actions(self):
         buttons = PressedButtons(story=True, mic_off=True)
