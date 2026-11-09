@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Ritter Kunibert client for Raspberry Pi (Pi 5 for the first build, Pi Zero 2 W later).
+"""Ritter Kunibert client for Raspberry Pi (Pi 5 for the prototype; the final device is planned as ESP32-S3).
 
 The client deliberately keeps device responsibilities small:
 - buttons and microphone are handled locally;

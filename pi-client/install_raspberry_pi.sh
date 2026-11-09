@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Install Ritter Kunibert Pi client on a fresh Raspberry Pi OS installation.
-# Target: Raspberry Pi OS Lite on a Raspberry Pi 5 (first build, USB audio) or a
-# Raspberry Pi Zero 2 W (later, small device). Not yet run on real Pi hardware.
+# Target: Raspberry Pi OS Lite on a Raspberry Pi 5 (prototype, USB audio; the final
+# device is planned as ESP32-S3). Not yet run on real Pi hardware.
 # Run as root: sudo bash pi-client/install_raspberry_pi.sh --api-token '...'
 
 set -Eeuo pipefail
