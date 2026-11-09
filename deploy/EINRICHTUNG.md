@@ -31,7 +31,7 @@ sudo install -d -o root -g root -m 700 /etc/kunibert
 # read-only Deploy-Key verwenden, kein persönliches Token auf dem Server.
 sudo git clone git@github.com:manuelpicard/picastAI.com.git /opt/kunibert/app
 cd /opt/kunibert/app
-sudo npm install        # im Repo liegt kein Lockfile; tsx (devDependency) wird zur Laufzeit gebraucht
+sudo npm ci             # genau die Versionen aus package-lock.json; tsx (devDependency) wird zur Laufzeit gebraucht
 sudo npm run build      # Typprüfung und Weboberfläche nach dist/
 ```
 
@@ -139,7 +139,7 @@ Auf dem Pi (siehe [`pi-client/README.md`](../pi-client/README.md)) `PICASTAI_API
 
 ## Betrieb
 
-- **Update:** neuen Stand holen (`git pull`), `npm install`, `npm run build`, `sudo systemctl restart kunibert-server`, Abnahme wiederholen. Ein Neustart verwirft laufende Folgen und nicht abgeholtes Audio (nur im Arbeitsspeicher).
+- **Update:** neuen Stand holen (`git pull`), `npm ci`, `npm run build`, `sudo systemctl restart kunibert-server`, Abnahme wiederholen. Ein Neustart verwirft laufende Folgen und nicht abgeholtes Audio (nur im Arbeitsspeicher).
 - **Gerät sperren:** bei Umgebungs-Gerät Token in der env-Datei ändern und neu starten; bei Geräten aus der Admin-API `POST /api/devices/<id>/revoke` von lokal.
 - **Schlüssel tauschen:** env-Datei ändern, Dienst neu starten, alten Schlüssel beim Anbieter widerrufen.
 - **Logs:** Das Journal enthält Fehlermeldungen, aber keine Aufnahmen und keine Antworttexte (`KUNIBERT_DIAGNOSTIC_TEXT` wirkt in Produktion nicht).

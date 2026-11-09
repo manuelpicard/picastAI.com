@@ -1,6 +1,11 @@
 # Raspberry-Pi-Client für Ritter Kunibert
 
-Der Client ist für einen **Raspberry Pi Zero 2 W** mit Audio-HAT, Mikrofon, aktivem Lautsprecher, zwei Tastern, Status-LED und Mikrofon-Aus-Schalter ausgelegt.
+Der Client läuft auf zwei Geräten, mit demselben Code:
+
+- **Erster Aufbau: Raspberry Pi 5 (4 GB)** mit Raspberry Pi OS Lite, USB-Mikrofon und getrenntem USB-Lautsprecher, zwei Tastern und Status-LED. Siehe [Erster Aufbau](#erster-aufbau-pi-5-mit-usb-mikrofon-und-usb-lautsprecher).
+- **Endgerät (Serie): ESP32-S3** (Entscheidung des Betreibers, 7. bis 9.11.2026). Dieser Python-Client läuft dort nicht; er dient als Vorlage für den Ablauf (`docs/picastAI-Pi-API.md`). Der Pi Zero 2 W mit Audio-HAT ist nicht mehr geplant; die Hinweise zu WM8960-/ReSpeaker-HATs unten bleiben für den Fall, dass jemand einen Pi mit HAT nutzt.
+
+> **Stand:** Weder der Client noch das Installationsskript wurden bisher auf echter Pi-Hardware ausgeführt. Getestet sind die Python-Unit-Tests, der Client gegen einen lokalen Server und das Installationsskript in einem Debian-Container. Was am echten Pi noch zu prüfen ist, steht am Ende des Abschnitts zum ersten Aufbau.
 
 ## Automatische Installation auf frischem Raspberry Pi OS
 
@@ -10,7 +15,7 @@ Auf dem Pi nach dem Kopieren oder Klonen des Repositories:
 
 ```bash
 sudo bash pi-client/install_raspberry_pi.sh \
-  --device-id pi-zero-001 \
+  --device-id pi5-001 \
   --api-token 'TOKEN_AUS_SECRET_MANAGER'
 ```
 
@@ -19,7 +24,7 @@ Für automatisierte Provisionierung ohne Eingabeaufforderung `--non-interactive`
 ```bash
 sudo bash pi-client/install_raspberry_pi.sh \
   --non-interactive \
-  --device-id pi-zero-001 \
+  --device-id pi5-001 \
   --api-token "$PICASTAI_DEVICE_TOKEN"
 ```
 
@@ -29,13 +34,13 @@ Vor einer echten Installation kann die Auflösung der Quelle und Optionen geprü
 sudo bash pi-client/install_raspberry_pi.sh --dry-run --non-interactive
 ```
 
-Für einen WM8960-HAT kann die erkannte ALSA-Karte explizit gesetzt werden:
+Für einen WM8960-HAT (Zero 2 W) kann die erkannte ALSA-Karte explizit gesetzt werden:
 
 ```bash
 aplay -l
 arecord -l
 sudo bash pi-client/install_raspberry_pi.sh \
-  --device-id pi-zero-001 \
+  --device-id pi5-001 \
   --api-token 'TOKEN_AUS_SECRET_MANAGER' \
   --audio-card 'hw:wm8960soundcard,0'
 ```
@@ -50,6 +55,47 @@ journalctl -u kunibert.service -f
 ```
 
 Die geheime Konfiguration liegt danach in `/etc/kunibert/kunibert.env` und wird nicht in Git gespeichert.
+
+## Erster Aufbau: Pi 5 mit USB-Mikrofon und USB-Lautsprecher
+
+Teileliste und Begründung: [`docs/Ritter Kunibert_ Hardware für den ersten Audiogeräte-Prototyp.md`](<../docs/Ritter Kunibert_ Hardware für den ersten Audiogeräte-Prototyp.md>). Beim ersten Test sind Taster an GPIO 17 und 27 und die LED an GPIO 23 (über 330 Ω) angeschlossen. Den Mikrofon-Aus-Schalter an GPIO 22 gibt es noch nicht. Ohne Schalter liest der Eingang durch den internen Pull-up „nicht gedrückt“ (so im Code, `Button(..., pull_up=True)`); der Client läuft dann normal. Das ist nur für den Tischtest gedacht: **ohne Schalter gibt es keine Mikrofon-Abschaltung.**
+
+**Mikrofon und Lautsprecher sind zwei getrennte USB-Geräte.** Der Client nimmt auf und spielt ab über `sounddevice` (PortAudio). Ohne Angabe nimmt PortAudio für beide Richtungen das ALSA-Gerät `default` (Quelle: PortAudio `pa_linux_alsa.c`, Auswahl des Standardgeräts). Das ist ein einziges Gerät. Damit Aufnahme und Wiedergabe auf verschiedenen USB-Geräten laufen, gibt es zwei Einstellungen:
+
+| Einstellung | Bedeutung |
+|---|---|
+| `KUNIBERT_INPUT_DEVICE` | Mikrofon: Gerätenummer oder Namensteil wie in der `sounddevice`-Liste. Leer = Standardgerät. |
+| `KUNIBERT_OUTPUT_DEVICE` | Lautsprecher, gleiche Schreibweise. Leer = Standardgerät. |
+
+Vorgehen auf dem Pi:
+
+```bash
+arecord -l        # Aufnahmekarten
+aplay -l          # Wiedergabekarten
+sudo bash pi-client/install_raspberry_pi.sh --non-interactive --device-id pi5-001 --api-token "$PICASTAI_DEVICE_TOKEN"
+/opt/kunibert/.venv/bin/python -m sounddevice     # Liste der Geräte, wie der Client sie sieht
+```
+
+Aus der Liste je einen eindeutigen Namensteil für Mikrofon und Lautsprecher nehmen und eintragen (Namen sind stabiler als Nummern, weil sich die Kartennummern von USB-Geräten ändern können):
+
+```bash
+sudo bash pi-client/install_raspberry_pi.sh --non-interactive --device-id pi5-001 \
+  --api-token "$PICASTAI_DEVICE_TOKEN" \
+  --capture-device 'NAMENSTEIL_MIKROFON' --playback-device 'NAMENSTEIL_LAUTSPRECHER'
+```
+
+Das schreibt `KUNIBERT_INPUT_DEVICE` und `KUNIBERT_OUTPUT_DEVICE` in `/etc/kunibert/kunibert.env`. Nachträglich geht es mit `sudoedit /etc/kunibert/kunibert.env` und `sudo systemctl restart kunibert.service`. Trifft ein Namensteil auf mehrere Geräte zu, besser einen längeren Namensteil oder die Nummer nehmen (das Verhalten von `sounddevice` bei mehrdeutigen Namen wurde nicht geprüft).
+
+**GPIO auf dem Pi 5:** gpiozero kann dort nur das Backend `lgpio` benutzen (gpiozero-Dokumentation, „Changing the pin factory“). Das Paket `python3-gpiozero` empfiehlt `python3-lgpio` nur (`Recommends`, Raspberry-Pi-OS-Archiv). Das Installationsskript lässt Empfehlungen aus und installiert `python3-lgpio` deshalb ausdrücklich, wenn die Paketquellen es kennen. Außerdem wird der Dienstnutzer in die Gruppe `gpio` aufgenommen, und der Dienst läuft in `/var/lib/kunibert` statt in `/opt/kunibert` (dort ist wegen `ProtectSystem=strict` nichts beschreibbar, und `lgpio` legt laut Dokumentation Hilfsdateien im Arbeitsverzeichnis an).
+
+**Am echten Pi selbst prüfen (nicht aus Dokumentation oder Containertest ableitbar):**
+
+1. `aplay -l`: Stehen auf dem Pi 5 die HDMI-Karten vor den USB-Karten? Dann zeigt `default` ohne Einstellung auf HDMI. Erst `test_alsa_audio.sh` (siehe unten) mit den USB-Geräten, dann den Client.
+2. Spielt der USB-Lautsprecher die 16-kHz-Antworten ab? Der Client fordert 16 kHz an (`KUNIBERT_SAMPLE_RATE`). Viele USB-Geräte können nativ nur 44,1 oder 48 kHz; das klappt nur, wenn ALSA umrechnet. Bei Fehlern wie „Invalid sample rate“ in `journalctl -u kunibert.service` einen anderen Eintrag aus der `sounddevice`-Liste für dasselbe Gerät wählen (zum Beispiel `sysdefault:CARD=…` statt `hw:…`).
+3. Haben `/dev/gpiochip*` die Gruppe `gpio` (`ls -l /dev/gpiochip*`), und startet der Dienst ohne GPIO-Fehler im Journal?
+4. Funktionieren Taster und LED (Sprechtaste, Erzähltaste, Dauerlicht in `READY`)?
+5. Reagiert der Client mit offenem GPIO 22 wie erwartet (kein Dauer-`MIC_OFF`)?
+6. Ohne Sprachserver antwortet der Server mit Tönen statt Sprache (Glockenton bzw. Fanfare); damit lässt sich die Audiokette (Mikrofon, Server, Lautsprecher) schon vor dem Sprachserver prüfen.
 
 ## Zustandsautomat
 
@@ -143,6 +189,9 @@ KUNIBERT_REQUEST_TIMEOUT=30
 KUNIBERT_PIPELINE_TIMEOUT=140
 KUNIBERT_AUDIO_TIMEOUT=45
 KUNIBERT_RETRY_COUNT=2
+# Leer = Standardgerät; bei zwei USB-Geräten getrennt setzen (siehe "Erster Aufbau")
+KUNIBERT_INPUT_DEVICE=
+KUNIBERT_OUTPUT_DEVICE=
 ```
 
 Zeitgrenzen in Sekunden: `KUNIBERT_REQUEST_TIMEOUT` gilt für den Health-Check, `KUNIBERT_PIPELINE_TIMEOUT` für Frage und Geschichte, `KUNIBERT_AUDIO_TIMEOUT` für den Abruf der WAV-Antwort. Frage und Geschichte laufen auf dem Server durch Spracherkennung, Sprachmodell und Sprachsynthese (Standardgrenzen 45 + 30 + 45 s). Der Client muss länger warten als diese Kette, sonst bricht er ab und schickt die Anfrage erneut, und der Server erzeugt die Antwort ein zweites Mal (bei der Geschichte rückt die Folge dabei weiter). Die abgestimmte Zeitkette mit dem Reverse Proxy steht in [`deploy/EINRICHTUNG.md`](../deploy/EINRICHTUNG.md).
@@ -167,13 +216,24 @@ Nur Health prüfen:
 /opt/kunibert/.venv/bin/python pi-client/kunibert_client.py --once health
 ```
 
-Ohne Pi-Hardware im Dry-Run starten:
+Ohne Pi-Hardware gibt es zwei Prüfungen:
+
+`--dry-run` startet den Zustandsautomaten mit Attrappen für Taster, Mikrofon, Lautsprecher und LED. Es sendet **keine** Anfrage an den Server (auch keinen Health-Check), und die Attrappen drücken nie eine Taste. Der Lauf zeigt nur, dass der Client startet und `READY` erreicht; Server-Adresse und Token spielen dabei keine Rolle:
+
+```bash
+python3 pi-client/kunibert_client.py --dry-run --debug
+```
+
+Gegen einen lokalen Server (zum Beispiel `PORT=3187 HOST=127.0.0.1 npm start` im Repository, ohne `NODE_ENV=production`) prüfen `--once health` und `--once story` den echten HTTP-Weg ohne GPIO und Audio. Der eingebaute Entwicklungs-Zugang hat die Geräte-ID `prototype-1`, nicht die Client-Standard-ID `prototype-001`, die der Server mit HTTP 401 ablehnt:
 
 ```bash
 PICASTAI_API_BASE_URL=http://127.0.0.1:3187 \
+PICASTAI_DEVICE_ID=prototype-1 \
 PICASTAI_DEVICE_TOKEN=test-token-kunibert-2026 \
-/opt/kunibert/.venv/bin/python pi-client/kunibert_client.py --dry-run --debug
+python3 pi-client/kunibert_client.py --once story --debug
 ```
+
+Ohne konfigurierten Sprachserver liefert der Server dabei kurze Töne statt Sprache (Glockenton, Fanfare).
 
 ## systemd
 
@@ -189,7 +249,7 @@ Wants=network-online.target
 Type=simple
 User=kunibert
 Group=audio
-WorkingDirectory=/opt/kunibert
+WorkingDirectory=/var/lib/kunibert
 EnvironmentFile=/etc/kunibert/kunibert.env
 ExecStart=/opt/kunibert/.venv/bin/python /opt/kunibert/pi-client/kunibert_client.py
 Restart=on-failure
