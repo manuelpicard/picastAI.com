@@ -17,13 +17,19 @@
 static const char *TAG = "kb_wifi";
 static EventGroupHandle_t s_events;
 static int s_retries;
+static bool s_connected_once;
 
 static void on_event(void *arg, esp_event_base_t base, int32_t id, void *data)
 {
     if (base == WIFI_EVENT && id == WIFI_EVENT_STA_START) {
         esp_wifi_connect();
     } else if (base == WIFI_EVENT && id == WIFI_EVENT_STA_DISCONNECTED) {
-        if (s_retries < CONFIG_KB_WIFI_MAX_RETRY) {
+        if (s_connected_once) {
+            // Im Betrieb: immer wieder verbinden. Anfragen scheitern solange mit einem
+            // Netzfehler (LED zeigt Fehler), das Gerät muss aber nicht neu gestartet werden.
+            ESP_LOGW(TAG, "WLAN getrennt, verbinde neu");
+            esp_wifi_connect();
+        } else if (s_retries < CONFIG_KB_WIFI_MAX_RETRY) {
             s_retries++;
             ESP_LOGW(TAG, "WLAN getrennt, Versuch %d von %d", s_retries, CONFIG_KB_WIFI_MAX_RETRY);
             esp_wifi_connect();
@@ -34,6 +40,7 @@ static void on_event(void *arg, esp_event_base_t base, int32_t id, void *data)
         const ip_event_got_ip_t *event = (const ip_event_got_ip_t *)data;
         ESP_LOGI(TAG, "IP-Adresse: " IPSTR, IP2STR(&event->ip_info.ip));
         s_retries = 0;
+        s_connected_once = true;
         xEventGroupSetBits(s_events, KB_WIFI_CONNECTED_BIT);
     }
 }
