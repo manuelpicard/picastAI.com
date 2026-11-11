@@ -1,0 +1,33 @@
+menu "Ritter Kunibert"
+
+    config KB_WIFI_SSID
+        string "WLAN-Name (SSID)"
+        default ""
+        help
+            Nur für die Entwicklung. Steht in sdkconfig (nicht im Repo).
+            Die Einrichtung ohne Rechner kommt in Stufe M6.
+
+    config KB_WIFI_PASSWORD
+        string "WLAN-Passwort"
+        default ""
+        help
+            Nur für die Entwicklung. Steht in sdkconfig (nicht im Repo).
+
+    config KB_API_BASE_URL
+        string "Adresse des Kunibert-Servers"
+        default "https://kunibert.example"
+        help
+            Muss mit https:// beginnen und ohne Schrägstrich enden,
+            gleiche Schreibweise wie PICASTAI_PUBLIC_BASE_URL auf dem Server.
+
+    config KB_WIFI_MAX_RETRY
+        int "WLAN: Verbindungsversuche"
+        default 10
+        range 1 100
+
+    config KB_HEALTH_TIMEOUT_MS
+        int "Zeitgrenze für /health in Millisekunden"
+        default 10000
+        range 1000 60000
+
+endmenu

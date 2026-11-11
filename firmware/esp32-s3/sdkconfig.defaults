@@ -1,0 +1,7 @@
+# Ziel: ESP32-S3 (Entwicklungsboard noch nicht festgelegt, siehe README.md)
+CONFIG_IDF_TARGET="esp32s3"
+# TLS: Zertifikate der üblichen Zertifizierungsstellen (für Let's Encrypt hinter Caddy)
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE=y
+CONFIG_ESP_TLS_INSECURE=n
+# Genug Stack für TLS im Haupt-Task
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
