@@ -1,0 +1,36 @@
+name: Firmware
+
+# Baut die ESP32-S3-Firmware, wenn sich etwas im Ordner firmware/ ändert.
+on:
+  push:
+    branches: [main]
+    paths: ["firmware/**", ".github/workflows/firmware.yml"]
+  pull_request:
+    paths: ["firmware/**", ".github/workflows/firmware.yml"]
+
+jobs:
+  host-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prüfung der Server-Adresse (Rechner-Test)
+        working-directory: firmware/esp32-s3
+        run: cc -Wall -Wextra -Werror -I main -o /tmp/kb_test test/test_base_url.c main/kb_url.c && /tmp/kb_test
+      - name: Zustandsautomat, WAV-Kopf, Ursprung, Wiederholung (Rechner-Test)
+        working-directory: firmware/esp32-s3
+        run: >
+          cc -std=c11 -Wall -Wextra -Werror -pedantic -fsanitize=address,undefined -I main -o /tmp/kb_logic
+          test/test_logic.c main/kb_state.c main/kb_wav.c main/kb_url.c && /tmp/kb_logic
+
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Firmware bauen (ESP-IDF)
+        uses: espressif/esp-idf-ci-action@v1
+        with:
+          esp_idf_version: v5.5
+          target: esp32s3
+          path: firmware/esp32-s3

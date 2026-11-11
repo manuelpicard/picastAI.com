@@ -1,0 +1,100 @@
+menu "Ritter Kunibert"
+
+    config KB_WIFI_SSID
+        string "WLAN-Name (SSID)"
+        default ""
+        help
+            Nur für die Entwicklung. Steht in sdkconfig (nicht im Repo).
+            Die Einrichtung ohne Rechner kommt in Stufe M6.
+
+    config KB_WIFI_PASSWORD
+        string "WLAN-Passwort"
+        default ""
+        help
+            Nur für die Entwicklung. Steht in sdkconfig (nicht im Repo).
+
+    config KB_API_BASE_URL
+        string "Adresse des Kunibert-Servers"
+        default "https://kunibert.example"
+        help
+            Muss mit https:// beginnen und ohne Schrägstrich enden,
+            gleiche Schreibweise wie PICASTAI_PUBLIC_BASE_URL auf dem Server.
+
+    config KB_WIFI_MAX_RETRY
+        int "WLAN: Verbindungsversuche"
+        default 10
+        range 1 100
+
+    config KB_HEALTH_TIMEOUT_MS
+        int "Zeitgrenze für /health in Millisekunden"
+        default 10000
+        range 1000 60000
+
+    config KB_DEVICE_ID
+        string "Geräte-ID (X-Device-ID)"
+        default ""
+        help
+            Wie auf dem Server eingetragen (PICASTAI_DEVICE_ID).
+
+    config KB_DEVICE_TOKEN
+        string "Gerätetoken (nur Entwicklung)"
+        default ""
+        help
+            Nur für die Entwicklung. Steht in sdkconfig (nicht im Repo) und damit
+            unverschlüsselt im Flash. Stufe M6 ersetzt das durch den verschlüsselten
+            Speicher. Nie ein Token eines Geräts verwenden, das Kinder benutzen.
+
+    menu "Anschlüsse (allgemeiner I2S-Aufbau)"
+
+        config KB_PIN_BTN_SPEAK
+            int "Sprechtaste (GPIO, gegen Masse)"
+            default 4
+
+        config KB_PIN_BTN_STORY
+            int "Erzähltaste (GPIO, gegen Masse)"
+            default 5
+
+        config KB_PIN_MIC_OFF
+            int "Mikrofon-Aus-Schalter (GPIO, gegen Masse = aus; -1 = kein Schalter)"
+            default -1
+            range -1 48
+
+        config KB_PIN_LED
+            int "Status-LED (GPIO, an = High)"
+            default 6
+
+        config KB_PIN_MIC_BCLK
+            int "Mikrofon I2S BCLK/SCK"
+            default 12
+
+        config KB_PIN_MIC_WS
+            int "Mikrofon I2S WS/LRCLK"
+            default 11
+
+        config KB_PIN_MIC_DIN
+            int "Mikrofon I2S Daten (SD)"
+            default 10
+
+        config KB_MIC_SHIFT
+            int "Mikrofon: Rechtsverschiebung von 32 auf 16 Bit"
+            default 14
+            range 8 16
+            help
+                Kleinere Zahl = lauter. 14 passt nach Datenblatt-Faustregel für das INMP441;
+                am Gerät einstellen.
+
+        config KB_PIN_SPK_BCLK
+            int "Verstärker I2S BCLK"
+            default 15
+
+        config KB_PIN_SPK_WS
+            int "Verstärker I2S LRC"
+            default 16
+
+        config KB_PIN_SPK_DOUT
+            int "Verstärker I2S Daten (DIN am Verstärker)"
+            default 17
+
+    endmenu
+
+endmenu
