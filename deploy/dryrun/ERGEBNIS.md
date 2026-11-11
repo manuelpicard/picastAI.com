@@ -46,7 +46,7 @@ Stand: ✓ stimmt, ✗ war falsch und ist korrigiert, „offen“ nicht prüfbar
 | Image `ghcr.io/speaches-ai/speaches:latest-cpu`, Volume-Pfad | ✓ Image gezogen und gestartet; Pfad `/home/ubuntu/.cache/huggingface/hub` existiert im Container | Trockenlauf |
 | Modellnamen für Piper („nicht gegengeprüft“) | ✓ jetzt geprüft: `speaches-ai/piper-de_DE-thorsten-medium`, Stimme `thorsten` | Speaches-Registry |
 | Meldung „Feste Sprechtexte vorbereitet (3 von 3)“ | ✓ | `server.ts:521-525`, Start-Log |
-| Zeitgrenze Server 120 s | ✗ gilt nur bei einem Sprachmodell-Aufruf; Worst Case 150 s (jetzt im Text, Entscheidung **offen**) | `server-api/config.ts:225,241`, `server-api/brain.ts:231,247,368`, `server-api/voice.ts:160,200`, `server-api/llm.ts:80` |
+| Zeitgrenze Server 120 s | ✗ galt nur bei einem Sprachmodell-Aufruf; Worst Case 150 s. **Seit 11.11.2026 (vorläufig):** gemeinsames Zeitbudget von 120 s für die ganze Anfrage, Tests in `server-api/timing.test.ts` (Zeilen unter „Zeitbudget“); die Quellenzeilen in dieser Zeile gelten für den Code vor der Änderung | `server-api/config.ts:225,241`, `server-api/brain.ts:231,247,368`, `server-api/voice.ts:160,200`, `server-api/llm.ts:80` |
 | Caddy 130 s | ✓ im Caddyfile; Wirkung bei echten Wartezeiten nicht gemessen | `deploy/Caddyfile:26` |
 | Pi-Client 140 s | ✓ | `pi-client/kunibert_client.py:70,115`, Test `pi-client/test_kunibert_client.py:624-626` |
 | Caddy begrenzt den Body auf 3 MB, Server auf 2 MiB | ✓ 2,5 MB und 4 MB ergaben je 413 (welche der beiden Stellen bei 4 MB ablehnt, ist am Status nicht zu sehen) | `deploy/Caddyfile:19-21`, `server.ts:47-52`, `:456-461` |

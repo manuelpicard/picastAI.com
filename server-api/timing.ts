@@ -7,17 +7,39 @@ import { decodeWavHeader } from './audio.js';
 export const TIMED_STAGES = ['erkennung', 'weiche', 'sprachmodell', 'ausgabecheck', 'sprachausgabe'] as const;
 export type TimedStage = (typeof TIMED_STAGES)[number];
 
+/**
+ * Gemeinsames Zeitbudget für eine ganze Anfrage (Erkennung, Sprachmodell-Aufrufe, Sprachausgabe
+ * zusammen). Es liegt unter der Caddy-Grenze (130 s) und der Geräte-Grenze (140 s), siehe
+ * docs/picastAI-Pi-API.md und deploy/EINRICHTUNG.md.
+ */
+export const TURN_BUDGET_MS = 120_000;
+/** Zeit, die ein Sprachmodell-Aufruf für die Sprachausgabe übrig lassen muss. */
+export const TTS_RESERVE_MS = 15_000;
+/** Weniger Zeit als das lohnt für einen Sprachmodell-Aufruf nicht; dann greift der feste Fallback-Text. */
+export const MIN_LLM_MS = 3_000;
+/** So viel Zeit bekommt die Sprachausgabe mindestens, auch wenn das Budget schon aufgebraucht ist. */
+export const MIN_TTS_MS = 5_000;
+
 /** Das, was die Pipeline zum Messen braucht. Brain bekommt nur diese Schnittstelle zu sehen. */
 export interface StageTimer {
   time<T>(stage: TimedStage, fn: () => Promise<T>): Promise<T>;
   timeSync<T>(stage: TimedStage, fn: () => T): T;
+  /** Verbleibende Zeit im Zeitbudget der Anfrage in Millisekunden (kann 0 sein; ohne Budget unendlich). */
+  remainingMs(): number;
 }
 
-/** Misst nichts. Standard für Aufrufer ohne Zeitmessung (Tests, eval-llm). */
+/** Misst nichts und kennt kein Budget. Standard für Aufrufer ohne Zeitmessung (Tests, eval-llm). */
 export const NO_TIMER: StageTimer = {
   time: (_stage, fn) => fn(),
   timeSync: (_stage, fn) => fn(),
+  remainingMs: () => Number.POSITIVE_INFINITY,
 };
+
+/** Zeit in ms für einen Aufruf, oder undefined, wenn es kein Budget gibt (dann gilt nur die eigene Grenze des Aufrufs). */
+export function budgetTimeoutMs(timer: StageTimer, reserveMs = 0): number | undefined {
+  const left = timer.remainingMs() - reserveMs;
+  return Number.isFinite(left) ? Math.max(0, Math.floor(left)) : undefined;
+}
 
 /** Länge einer WAV-Datei in Sekunden; null, wenn es keine auswertbare WAV-Datei ist. */
 export function wavSeconds(wav: Buffer | null | undefined): number | null {
@@ -45,9 +67,17 @@ export class TurnTimer implements StageTimer {
   private readonly durations = new Map<TimedStage, number>();
   private readonly calls = new Map<TimedStage, number>();
 
-  constructor(private readonly now: () => number = () => performance.now(), id: string = randomBytes(4).toString('hex')) {
+  constructor(
+    private readonly now: () => number = () => performance.now(),
+    id: string = randomBytes(4).toString('hex'),
+    private readonly budgetMs: number = TURN_BUDGET_MS
+  ) {
     this.id = id;
     this.startedAt = now();
+  }
+
+  remainingMs(): number {
+    return Math.max(0, this.budgetMs - (this.now() - this.startedAt));
   }
 
   async time<T>(stage: TimedStage, fn: () => Promise<T>): Promise<T> {

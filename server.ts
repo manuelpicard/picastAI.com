@@ -13,7 +13,7 @@ import { VoicePipeline, VoiceProviderError } from './server-api/voice.js';
 import { FirestoreDeviceStore } from './server-api/firestore-service.js';
 import { buildAudioUrl } from './server-api/http-utils.js';
 import { ERROR_RESPONSE_DE, SAFETY_RESPONSE_DE, UNCLEAR_RESPONSE_DE } from './server-api/safety.js';
-import { NO_TIMER, TurnTimer, type StageTimer } from './server-api/timing.js';
+import { budgetTimeoutMs, MIN_TTS_MS, NO_TIMER, TurnTimer, type StageTimer } from './server-api/timing.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -143,7 +143,7 @@ function rememberDeviceStoryState(deviceId: string, state: StoryState): void {
 
 async function transcribeOrEmpty(wav: Buffer, timer: StageTimer = NO_TIMER): Promise<string> {
   if (!voice.sttConfigured) return '';
-  return timer.time('erkennung', () => voice.transcribe(wav));
+  return timer.time('erkennung', () => voice.transcribe(wav, budgetTimeoutMs(timer)));
 }
 
 // Zeitmessung pro Anfrage: eine Logzeile mit Anfrage-ID, Modus, Dauer je Stufe und Länge des
@@ -165,10 +165,10 @@ async function synthesizeTimed(
   timer: StageTimer
 ): Promise<typeof result> {
   if (!voice.ttsConfigured || !result.speech) return result;
-  return timer.time('sprachausgabe', () => synthesizeIfConfigured(result));
+  return timer.time('sprachausgabe', () => synthesizeIfConfigured(result, timer));
 }
 
-async function synthesizeIfConfigured(result: Awaited<ReturnType<Brain['handle']>>): Promise<typeof result> {
+async function synthesizeIfConfigured(result: Awaited<ReturnType<Brain['handle']>>, timer: StageTimer = NO_TIMER): Promise<typeof result> {
   if (!voice.ttsConfigured || !result.speech) return result;
   // Kein stiller Fallback: Schlägt die Sprachsynthese fehl, fliegt ein
   // VoiceProviderError (HTTP 503 bzw. 502 durch die Routen). So wird der
@@ -177,9 +177,12 @@ async function synthesizeIfConfigured(result: Awaited<ReturnType<Brain['handle']
   // Feste Texte (Sicherheitshinweis, "nicht verstanden", Fehlerhinweis) kommen nach dem
   // ersten Mal aus dem Speicher: schneller, billiger, und der Sicherheitshinweis bleibt
   // auch bei einem Anbieter-Ausfall hörbar, wenn er vorher aufgewärmt wurde.
+  // Zeit für die Sprachausgabe: der Rest des Zeitbudgets, mindestens MIN_TTS_MS (auch wenn es schon aufgebraucht ist).
+  const left = budgetTimeoutMs(timer);
+  const timeoutMs = left === undefined ? undefined : Math.max(MIN_TTS_MS, left);
   result.wav = result.fixed
-    ? await voice.synthesizeCached(result.speech)
-    : await voice.synthesize(result.speech);
+    ? await voice.synthesizeCached(result.speech, timeoutMs)
+    : await voice.synthesize(result.speech, timeoutMs);
   return result;
 }
 

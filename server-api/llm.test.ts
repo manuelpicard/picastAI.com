@@ -117,3 +117,21 @@ test('createLlmProvider: liefert den Anbieter nur mit passendem Key', () => {
   assert.equal(claude?.name, 'anthropic');
   assert.equal(claude?.model, 'a-model');
 });
+
+test('AnthropicProvider: eine kürzere Frist aus dem Zeitbudget der Anfrage gilt vor der eigenen Grenze', async () => {
+  const provider = new AnthropicProvider({
+    apiKey: 'k',
+    model: 'm',
+    timeoutMs: 60_000,
+    fetchImpl: ((_url: string, init: RequestInit) =>
+      new Promise((_resolve, reject) => {
+        init.signal!.addEventListener('abort', () => reject(Object.assign(new Error('abgebrochen'), { name: 'AbortError' })));
+      })) as unknown as typeof fetch,
+  });
+  const started = Date.now();
+  await assert.rejects(
+    () => provider.generateJson({ ...REQUEST, timeoutMs: 20 }),
+    (error: unknown) => error instanceof LlmError && /Zeitüberschreitung/.test(error.message)
+  );
+  assert.ok(Date.now() - started < 5_000);
+});

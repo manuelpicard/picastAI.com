@@ -543,3 +543,33 @@ test('Google: Text über 12.000 Zeichen wird wie bei der anderen Sprachausgabe b
     assert.ok(spoken.length > 11_000);
   });
 });
+
+/** Ein Dienst, der nie antwortet, bis die Anfrage abgebrochen wird. */
+async function withHangingFetch<T>(fn: () => Promise<T>): Promise<T> {
+  const original = globalThis.fetch;
+  globalThis.fetch = ((_url: string, init: RequestInit) =>
+    new Promise((_resolve, reject) => {
+      init.signal!.addEventListener('abort', () => reject(Object.assign(new Error('abgebrochen'), { name: 'AbortError' })));
+    })) as unknown as typeof fetch;
+  try {
+    return await fn();
+  } finally {
+    globalThis.fetch = original;
+  }
+}
+
+test('STT und TTS: eine kürzere Frist aus dem Zeitbudget gilt vor der eigenen Grenze und ist wiederholbar (-> 503)', async () => {
+  await withHangingFetch(async () => {
+    const p = pipeline({ voiceTimeoutMs: 60_000 });
+    const started = Date.now();
+    await assert.rejects(
+      () => p.transcribe(silentWav(), 20),
+      (error: unknown) => error instanceof VoiceProviderError && error.retryable && /STT-Timeout/.test(error.message)
+    );
+    await assert.rejects(
+      () => p.synthesize('Hallo', 20),
+      (error: unknown) => error instanceof VoiceProviderError && error.retryable && /TTS-Timeout/.test(error.message)
+    );
+    assert.ok(Date.now() - started < 5_000);
+  });
+});
