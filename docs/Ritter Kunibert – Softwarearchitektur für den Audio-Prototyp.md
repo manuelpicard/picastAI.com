@@ -2,16 +2,16 @@
 
 > **Aktualisierung (November 2026):** Dies ist der ursprüngliche Architekturvorschlag. Inzwischen gibt es einen Pi-Client (`pi-client/`) und einen Node-Server (`server.ts`, `server-api/`) mit Spracherkennung, Sicherheitsweiche, Erzählmotor und Sprachsynthese. Die Plattform heißt **picastAI.com** (nicht `picast.com`, siehe unten). Maßgeblich für die aktuelle Schnittstelle ist `docs/picastAI-Pi-API.md`, für das Sprachmodell `docs/LLM-Anbieter.md`.
 
-**Stand: 2. Oktober 2026 · Architekturvorschlag, noch keine implementierte Geräte-Software.** Die Adressierung über `picast.com` ist ein gewünschtes Ziel, keine bereits vorhandene Schnittstelle: [picast.com](https://picast.com) zeigt zurzeit eine Domain-Verkaufsseite. Die folgende Architektur setzt voraus, dass die Domain später kontrolliert und mit einem eigenen HTTPS-Dienst verbunden wird. **Kein Erwerb ist erfolgt.**
+**Stand: 2. Oktober 2026 · Architekturvorschlag, noch keine implementierte Geräte-Software.** Die Adressierung über `picast.com` ist ein gewünschtes Ziel, keine bereits vorhandene Schnittstelle *(veraltet: Die Plattform heißt inzwischen picastAI.com, siehe Hinweis oben)*: [picast.com](https://picast.com) zeigte damals eine Domain-Verkaufsseite. Die folgende Architektur setzt voraus, dass die Domain später kontrolliert und mit einem eigenen HTTPS-Dienst verbunden wird. **Kein Erwerb ist erfolgt.**
 
 ## Leitentscheidung: Das Gerät ist eine Stimme, kein kleiner KI-Server
 
-Der Raspberry Pi übernimmt **nur Bedienung, Aufnahme, Wiedergabe und ein wenig flüchtigen Sitzungszustand**. Hinter `picast.com` laufen Spracherkennung (STT), Antwort-/Geschichtenerzeugung (LLM), Sicherheitslogik und Sprachsynthese (TTS). Der Pi spricht für Online-Antworten ausschließlich mit dieser eigenen HTTPS-Schnittstelle; die Zugangsschlüssel zu externen KI-Diensten liegen **nur auf dem Server**. Das ist für einen ersten Prototypen einfacher zu warten und ermöglicht eine gute deutsche Erzählstimme ohne großes Gerät. Nachteil: Internet und Backend sind für neue Antworten erforderlich.
+Der Raspberry Pi übernimmt **nur Bedienung, Aufnahme, Wiedergabe und ein wenig flüchtigen Sitzungszustand**. Hinter `picastAI.com` (im Entwurf: `picast.com`, veraltet) laufen Spracherkennung (STT), Antwort-/Geschichtenerzeugung (LLM), Sicherheitslogik und Sprachsynthese (TTS). Der Pi spricht für Online-Antworten ausschließlich mit dieser eigenen HTTPS-Schnittstelle; die Zugangsschlüssel zu externen KI-Diensten liegen **nur auf dem Server**. Das ist für einen ersten Prototypen einfacher zu warten und ermöglicht eine gute deutsche Erzählstimme ohne großes Gerät. Nachteil: Internet und Backend sind für neue Antworten erforderlich.
 
 ```mermaid
 flowchart LR
     C[Kind: Sprechtaste oder Erzähltaste] --> P[Raspberry Pi: GPIO + Mikrofon + Lautsprecher]
-    P -->|Audio und kurzer Gesprächskontext, HTTPS| B[picast.com: Geräte-API]
+    P -->|Audio und kurzer Gesprächskontext, HTTPS| B[picastAI.com: Geräte-API]
     B --> S[Spracherkennung]
     S --> G[Antwort- und Geschichtenlogik]
     G --> V[Sprachsynthese]
@@ -35,7 +35,7 @@ flowchart LR
 
 **Zustandsautomat:** `BEREIT → AUFNAHME → VERARBEITUNG → WIEDERGABE → BEREIT`. Mit Mikrofon-Aus: `BEREIT → MIKROFON_AUS`; bei Fehler: `VERARBEITUNG → OFFLINE_HINWEIS → BEREIT`. Die Aufnahme-LED muss den tatsächlichen Mikrofonzustand widerspiegeln. Für einen späteren Kinder-Prototypen sollte ihr Wahrheitsgehalt elektrisch mit der Mikrofonfreigabe abgesichert werden, nicht nur durch eine UI-Variable.
 
-## Hinter picast.com
+## Hinter picastAI.com
 
 Ein kleiner API-Server (beispielsweise TypeScript/Node oder Python/FastAPI) kapselt die Anbieter. Damit können Erzählmodell und Stimme gewechselt werden, ohne Geräte neu zu verkabeln.
 
@@ -66,4 +66,4 @@ Die erste Version ist **halbduplex**: Das Kind spricht, wartet, hört zu. Kein d
 
 **Durchstich 1:** Taste → wenige Sekunden Aufnahme → Test-API → kurze Antwort → Lautsprecher. **Durchstich 2:** zwei Modi (Frage/Geschichte), kurze Kunibert-Episode und „weiter“. **Durchstich 3:** Mikrofon-Aus, Offline-Fallback, Geräteauthentifizierung, Löschung und Tests schwieriger Kinderfragen. Erst danach Gehäuse, Akku und unbeaufsichtigte Nutzung beurteilen.
 
-**Offene Voraussetzung:** Ist `picast.com` eine noch zu erwerbende/zu kontrollierende Domain für euren eigenen Dienst, oder war ein anderer bestehender Anbieter gemeint? Bis das geklärt ist, implementieren wir die API gegen eine austauschbare lokale Testadresse – nicht gegen eine fiktive Picast-API.
+**Offene Voraussetzung (veraltet, Stand 2. Oktober 2026; die Plattform heißt inzwischen picastAI.com):** Ist `picast.com` eine noch zu erwerbende/zu kontrollierende Domain für euren eigenen Dienst, oder war ein anderer bestehender Anbieter gemeint? Bis das geklärt ist, implementieren wir die API gegen eine austauschbare lokale Testadresse – nicht gegen eine fiktive Picast-API.

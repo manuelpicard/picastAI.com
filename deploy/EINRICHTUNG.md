@@ -2,7 +2,25 @@
 
 Diese Anleitung installiert den Kunibert-Server (Node 22, Express) hinter Caddy. Der Pi bleibt Client. Die abhakbare Abnahme samt erstem Durchlauf mit echtem Pi steht in [`CHECKLISTE.md`](CHECKLISTE.md).
 
-> **Stand:** Die Dateien in diesem Ordner sind vorbereitet, aber nicht auf einem echten Server ausgeführt. Die systemd-Datei ist mit `systemd-analyze verify` geprüft, das Caddyfile **nicht** (kein Caddy in der Entwicklungsumgebung): vor dem Start `caddy validate` ausführen. Die Zeitkette und die Starttests laufen in der CI.
+> **Stand (11.11.2026):** Die Dateien in diesem Ordner sind noch auf keinem echten Server ausgeführt. Geprüft ist: die systemd-Datei mit `systemd-analyze verify`; das Caddyfile mit `caddy validate` (Caddy 2.11.9 im Docker-Container) und im Betrieb gegen den lokalen Server (404 für `/` und `/api/*`, Weiterleitung auf HTTPS, 413 bei zu großer Datei); der Server mit Speaches (faster-whisper-small, Piper) und einer Sprachmodell-Attrappe (`deploy/dryrun/`, Ergebnis in [`dryrun/ERGEBNIS.md`](dryrun/ERGEBNIS.md)). **Nicht** geprüft: echte Anthropic-Aufrufe, Zeiten auf dem Hetzner-Server, Zertifikat von Let's Encrypt. Die Starttests, die Pi-Zeitgrenze (140 s) und das Zeitbudget des Servers (120 s, `server-api/timing.test.ts`) laufen in der CI; die Grenze von Caddy prüft keine Testdatei (siehe „Zeitkette“).
+
+## Nach der Bestellung (Reihenfolge)
+
+Der Server wird erst bestellt, wenn der Pi da ist: Hetzner rechnet stundenweise ab. Dann der Reihe nach. **Du selbst** (nicht Claude, nicht ein Skript) machst die mit 👤 markierten Schritte. Zeiten sind **Schätzungen**, nicht gemessen.
+
+1. 👤 **Vorher, ohne Kosten:** Hostname festlegen (und wo sein DNS liegt), SSH-Schlüssel erzeugen, Passwortmanager bereithalten. *(ca. 15 Minuten)*
+2. 👤 **Hetzner Console:** Server CCX13, Standort Nürnberg, Image „Docker CE“, den SSH-Schlüssel hinterlegen. Dazu eine **Cloud Firewall** anlegen: eingehend nur TCP 22 (am besten nur von deiner IP), 80 und 443. Öffentliche IPv4 notieren. *(ca. 15 Minuten)*
+3. 👤 **DNS:** A-Eintrag für den Hostnamen auf die IPv4 setzen und warten, bis `dig +short kunibert.example` sie zurückgibt. Erst danach Caddy starten, sonst scheitert das Zertifikat. *(5 Minuten Arbeit, Wartezeit von Minuten bis Stunden)*
+4. 👤 **AV-Vertrag** (Auftragsverarbeitung) mit Hetzner abschließen, bevor Daten auf dem Server liegen. Wo genau im Kundenkonto, ist nicht geprüft. Rechtliche Bewertung bleibt geparkt.
+5. **Auf dem Server (per SSH):** Node.js 22 installieren, dann Abschnitt 2 (Benutzer, Code, `npm ci`, `npm run build`). *(ca. 15 bis 20 Minuten)*
+6. **Sprachserver:** Abschnitt 4 (Docker-Container, Modelle laden). Das Laden der Modelle dauert am längsten. *(ca. 15 bis 30 Minuten)*
+7. 👤 **Schlüssel und Tokens, nur auf dem Server:** Abschnitt 3. `ANTHROPIC_API_KEY` mit `sudoedit` in `/etc/kunibert/kunibert.env` eintragen: nie in Chat, Git, Skript oder Shell-Historie. Admin- und Geräte-Token dort mit `openssl rand -hex 32` erzeugen; das Geräte-Token brauchst du später auf dem Pi und für das Prüfskript (aus dem Passwortmanager, nicht aus Chats).
+8. **Dienst starten** (Abschnitt 5), dann **Caddy** (Abschnitt 6, `caddy validate` vor dem Neuladen). *(ca. 15 Minuten)*
+9. 👤 **Prüfskript von deinem Rechner aus** (Abschnitt 7): `deploy/smoke-test.sh` gegen die echte Domain. Alles muss „OK“ sein. *(5 Minuten)*
+10. 👤 **Pi anbinden** (Abschnitt 8) und die [`CHECKLISTE.md`](CHECKLISTE.md) abarbeiten. Dabei die Zeiten aus [`docs/Zeitmessung.md`](../docs/Zeitmessung.md) notieren: die Wartezeit auf der CCX13 ist **offen** (siehe `dryrun/ERGEBNIS.md`).
+11. 👤 **Nach dem Test:** Wird der Server nicht weiter gebraucht, in der Console **löschen** (nur Ausschalten beendet nach Hetzners Preisregeln die Kosten wahrscheinlich nicht; vor Ort in der Hetzner-Dokumentation prüfen). Testschlüssel beim Anbieter widerrufen.
+
+Gesamt bis zum ersten Pi-Durchlauf grob **2 bis 3 Stunden** reine Arbeitszeit (Schätzung).
 
 ```text
 Pi --HTTPS :443--> Caddy --HTTP lokal--> 127.0.0.1:3000 Kunibert-Server
@@ -14,9 +32,9 @@ Pi --HTTPS :443--> Caddy --HTTP lokal--> 127.0.0.1:3000 Kunibert-Server
 
 ## 1. Voraussetzungen
 
-- Debian 12 oder Ubuntu 24.04 mit systemd, `sudo`-Zugang, Node.js 22 (wie in der CI; Installation nach [nodejs.org](https://nodejs.org/en/download)), `git`, `openssl`.
+- Debian 12 oder Ubuntu 24.04 mit systemd (das Hetzner-Image „Docker CE“ ist ein Ubuntu mit installiertem Docker, aber **ohne** Node.js), `sudo`-Zugang, Node.js 22 (wie in der CI; Installation nach [nodejs.org](https://nodejs.org/en/download)), `git`, `openssl`. Docker wird nur für den Sprachserver gebraucht; für den Node-Server gibt es in diesem Repo kein Dockerfile und keine Compose-Datei, er läuft als systemd-Dienst.
 - Ein Hostname, dessen DNS du kontrollierst, mit A-Eintrag auf die öffentliche IP (AAAA nur, wenn IPv6 wirklich geht). `kunibert.example` unten durch deinen Namen ersetzen, **überall gleich**.
-- Eingehend TCP 80 und 443 offen. Port 3000 nie nach außen freigeben.
+- Eingehend TCP 80 und 443 offen (bei Hetzner zusätzlich in der Cloud Firewall der Console). Port 3000 und 8000 nie nach außen freigeben: `HOST=127.0.0.1` in der env-Datei und `--publish 127.0.0.1:8000:8000` beim Sprachserver sorgen dafür. Ohne `HOST` lauscht der Server auf allen Adressen (`server-api/config.ts:219`). Vorsicht bei Docker: Ein Port, der ohne `127.0.0.1` veröffentlicht wird, umgeht eine `ufw`-Firewall.
 - Schlüssel: `ANTHROPIC_API_KEY` (Sprachmodell). Spracherkennung und Sprachausgabe laufen auf einem eigenen Sprachserver (Abschnitt 4) und brauchen keinen Schlüssel.
 - Die Kinderstimme bleibt auf deinem Server und dem Sprachserver; nur der erkannte Text geht an Anthropic (Sprachmodell, Verarbeitung in den USA). OpenAI und Gemini sind für den Kinderbetrieb ausgeschlossen. Bis zur Datenschutzprüfung nur Erwachsene als Tester.
 
@@ -31,7 +49,7 @@ sudo install -d -o root -g root -m 700 /etc/kunibert
 # read-only Deploy-Key verwenden, kein persönliches Token auf dem Server.
 sudo git clone git@github.com:manuelpicard/picastAI.com.git /opt/kunibert/app
 cd /opt/kunibert/app
-sudo npm install        # im Repo liegt kein Lockfile; tsx (devDependency) wird zur Laufzeit gebraucht
+sudo npm ci             # genau die Versionen aus package-lock.json; tsx (devDependency) wird zur Laufzeit gebraucht
 sudo npm run build      # Typprüfung und Weboberfläche nach dist/
 ```
 
@@ -72,8 +90,10 @@ uvx speaches-cli model download Systran/faster-whisper-small      # Beispiel aus
 uvx speaches-cli registry ls --task text-to-speech                # verfügbare Stimmenmodelle (Piper, Kokoro)
 ```
 
-- **Erkennung:** `Systran/faster-whisper-small` ist das Beispiel der Dokumentation und klein. In der Studie [Kid-Whisper](https://arxiv.org/html/2309.07927) erkennt ein größeres Whisper-Modell Kinderstimmen etwas besser, kostet aber mehr Rechenzeit. Welches Modell reicht, entscheidet der Test in Schritt 11 der Checkliste.
-- **Stimme:** Piper hat deutsche Stimmen (`eva_k`, `karlsson`, `kerstin`, `mls`, `pavoque`, `ramona`, `thorsten`, `thorsten_emotional`). Welche Modellnamen Speaches dafür anbietet und wie die Stimme angesprochen wird, zeigt `registry ls` und die Speaches-Dokumentation; nicht gegengeprüft. Jede Stimme hat eine eigene Lizenz: vor dem Einsatz mit Kindern prüfen.
+- **Erkennung:** `Systran/faster-whisper-small` ist das Beispiel der Dokumentation und klein. In der Studie [Kid-Whisper](https://arxiv.org/html/2309.07927) erkennt ein größeres Whisper-Modell Kinderstimmen etwas besser, kostet aber mehr Rechenzeit. Welches Modell reicht, entscheidet der Test in Schritt 11 der Checkliste. Das Modell ist über die Umgebungsvariable `PICASTAI_STT_MODEL` wählbar (`server-api/config.ts:231`); es muss vorher in Speaches heruntergeladen sein (siehe unten). Ein Wechsel (zum Beispiel auf `Systran/faster-whisper-base`) braucht also keine Codeänderung. Gemessen ist das nicht.
+- **Stimme:** Piper hat deutsche Stimmen (`eva_k`, `karlsson`, `kerstin`, `mls`, `pavoque`, `ramona`, `thorsten`, `thorsten_emotional`). Am 11.11.2026 gegen die Speaches-Registry geprüft (Image `latest-cpu`): Das Modell heißt z. B. `speaches-ai/piper-de_DE-thorsten-medium` und die Stimme darin `thorsten` (also `PICASTAI_TTS_MODEL=speaches-ai/piper-de_DE-thorsten-medium`, `PICASTAI_TTS_VOICE=thorsten`). Es gibt dieselbe Stimme auch als `-low` und `-high`. Die Namen der anderen Stimmen: `registry ls` oder `curl -s "http://127.0.0.1:8000/v1/registry?task=text-to-speech"`. Jede Stimme hat eine eigene Lizenz: vor dem Einsatz mit Kindern prüfen.
+- **Ohne `uv`:** Die Modelle lassen sich auch direkt über die Schnittstelle laden (so im Trockenlauf getestet): `curl -X POST http://127.0.0.1:8000/v1/models/Systran/faster-whisper-small` und `curl -X POST http://127.0.0.1:8000/v1/models/speaches-ai/piper-de_DE-thorsten-medium`. Antwort: `Model '…' downloaded`. Der Cache liegt im Volume `hf-hub-cache` (Pfad im Container `/home/ubuntu/.cache/huggingface/hub`, geprüft) und übersteht ein Neuanlegen des Containers.
+- **Erkennung geprüft:** Eine mit Piper erzeugte Frage („Warum ist der Himmel blau?“) wurde mit `faster-whisper-small`, `language=de` und `prompt=Ritter Kunibert` richtig erkannt; der Parameter `language=de` wird von dieser Speaches-Version nicht abgelehnt.
 - **Klingt keine Piper-Stimme gut genug:** Im Hörtest vom 6.11.2026 klangen die Piper-Stimmen auch mit abgesenkter Tonhöhe unnatürlich. Die Sprachausgabe lässt sich allein auf Google Cloud Text-to-Speech umstellen (`PICASTAI_TTS_PROVIDER=google`, Chirp 3 HD, siehe `docs/LLM-Anbieter.md`). Die Spracherkennung bleibt auf dem eigenen Server; zu Google geht dann nur der Antworttext. Für den Kinderbetrieb rechtlich prüfen.
 - Die Namen in `/etc/kunibert/kunibert.env` eintragen (`PICASTAI_STT_MODEL`, `PICASTAI_TTS_MODEL`, `PICASTAI_TTS_VOICE`) und den Kunibert-Dienst neu starten.
 
@@ -116,13 +136,33 @@ Frage und Geschichte laufen durch Spracherkennung, Sprachmodell und Sprachausgab
 
 | Stelle | Grenze | Einstellung |
 | --- | --- | --- |
-| Server (Summe) | 45 + 30 + 45 = 120 s | `PICASTAI_VOICE_TIMEOUT_MS`, `PICASTAI_LLM_TIMEOUT_MS` |
+| Server (gemeinsames Zeitbudget der ganzen Anfrage) | 120 s | fest im Code (`TURN_BUDGET_MS`, `server-api/timing.ts`); die Grenzen je Aufruf `PICASTAI_VOICE_TIMEOUT_MS` (Spracherkennung und Sprachausgabe, 45 s) und `PICASTAI_LLM_TIMEOUT_MS` (30 s) gelten zusätzlich |
 | Caddy | 130 s | `response_header_timeout` im Caddyfile |
 | Pi-Client | 140 s | `KUNIBERT_PIPELINE_TIMEOUT` |
 
-Wer die Server-Grenzen ändert, passt die beiden anderen an.
+Die 120 s gelten **für die ganze Anfrage zusammen** (Entscheidung vom 11.11.2026, vorläufig). Ohne gemeinsames Budget wären es bei einem Geschichtenwunsch bis zu 45 + 30 + 30 + 45 = 150 s gewesen, denn dann fragt der Server Claude **zweimal** (erst die Einordnung, dann die Geschichte; siehe `docs/Zeitmessung.md`, Feld `sprachmodell_aufrufe`). Das wäre mehr als Caddy (130 s) und Pi (140 s) gewesen. So arbeitet der Server jetzt:
+
+- Die Frist beginnt, wenn die Anfrage beim Server ankommt und angemeldet ist (`startTurnTimer` in `server.ts`). Die Zeit für das Hochladen der Aufnahme davor zählt nicht mit; deshalb liegt zwischen 120 s und den 130 s von Caddy ein Puffer.
+- Jeder Sprachmodell-Aufruf bekommt höchstens den Rest des Budgets **minus 15 s für die Sprachausgabe** (`TTS_RESERVE_MS`), und höchstens seine eigenen 30 s.
+- Bleiben für einen Aufruf weniger als 3 s, wird er nicht mehr gestartet. Dann greift der feste Fallback-Text (derselbe Weg wie bei einem Fehler des Sprachmodells), und die Sprachausgabe läuft wie gewohnt.
+- Die Sprachausgabe bekommt den Rest des Budgets, mindestens 5 s. Läuft sie in die Frist, antwortet der Server mit 503 `voice_provider_failed` (`retryable: true`), wie bisher bei einem Sprachdienst-Fehler. Die Erkennung kann nur die 45 s je Aufruf überschreiten, nicht das Budget; auch ihr Timeout ergibt 503.
+- Die Sicherheitsweiche läuft vor dem Sprachmodell, braucht keinen Aufruf und wird vom Budget nicht berührt.
+- Obergrenze: höchstens 120 s plus die 5 s Mindestzeit für die Sprachausgabe, also unter den 130 s von Caddy.
+
+Offen: ob 120 s die richtige Größe sind, und die echten Zeiten auf der CCX13 (Schritt 10 oben).
+
+Wer die Server-Grenzen ändert, passt die beiden anderen an. Quellen: `server-api/timing.ts:15-21` (Budget, Reserve, Mindestzeiten), `server-api/brain.ts:169`, `:243-248` und `:381-387` (Frist je Sprachmodell-Aufruf), `server.ts:146` und `:181-186` (Erkennung und Sprachausgabe), `server-api/config.ts:225` und `:241` (Grenzen je Aufruf, 3 bis 120 s), `deploy/Caddyfile:26`, `pi-client/kunibert_client.py:70` und `:115`.
 
 ## 7. Abnahme von außen
+
+Alle Prüfungen dieses Abschnitts (und mehr: Zertifikat, falscher Token gibt 401, zu große Datei gibt 413) macht das Skript `deploy/smoke-test.sh`. Es läuft auf deinem Rechner (Linux oder macOS mit `bash`, `curl` und `openssl`; unter Windows in WSL, in Git Bash mit dem Windows-`curl` ging es im Test nicht), ruft weder Spracherkennung noch Sprachmodell auf und liest Adresse und Gerätetoken nur aus der Umgebung:
+
+```bash
+read -rs PICASTAI_DEVICE_TOKEN; export PICASTAI_DEVICE_TOKEN     # Token einfügen, Eingabe bleibt unsichtbar
+PICASTAI_API_BASE_URL=https://kunibert.example PICASTAI_DEVICE_ID=pi-zero-001 ./deploy/smoke-test.sh
+```
+
+Ausgang 0 heißt: alles bestanden. Einzelne Prüfungen von Hand:
 
 ```bash
 curl -i https://kunibert.example/health        # 200
@@ -139,7 +179,7 @@ Auf dem Pi (siehe [`pi-client/README.md`](../pi-client/README.md)) `PICASTAI_API
 
 ## Betrieb
 
-- **Update:** neuen Stand holen (`git pull`), `npm install`, `npm run build`, `sudo systemctl restart kunibert-server`, Abnahme wiederholen. Ein Neustart verwirft laufende Folgen und nicht abgeholtes Audio (nur im Arbeitsspeicher).
+- **Update:** neuen Stand holen (`git pull`), `npm ci`, `npm run build`, `sudo systemctl restart kunibert-server`, Abnahme wiederholen. Ein Neustart verwirft laufende Folgen und nicht abgeholtes Audio (nur im Arbeitsspeicher).
 - **Gerät sperren:** bei Umgebungs-Gerät Token in der env-Datei ändern und neu starten; bei Geräten aus der Admin-API `POST /api/devices/<id>/revoke` von lokal.
 - **Schlüssel tauschen:** env-Datei ändern, Dienst neu starten, alten Schlüssel beim Anbieter widerrufen.
 - **Logs:** Das Journal enthält Fehlermeldungen, aber keine Aufnahmen und keine Antworttexte (`KUNIBERT_DIAGNOSTIC_TEXT` wirkt in Produktion nicht).

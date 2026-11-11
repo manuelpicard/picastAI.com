@@ -9,11 +9,12 @@ import {
 } from './google-speech.js';
 
 export interface SpeechToTextProvider {
-  transcribe(wav: Buffer): Promise<string>;
+  /** timeoutMs: Obergrenze aus dem Zeitbudget der Anfrage; die eigene Grenze des Dienstes gilt zusätzlich. */
+  transcribe(wav: Buffer, timeoutMs?: number): Promise<string>;
 }
 
 export interface TextToSpeechProvider {
-  synthesize(text: string): Promise<Buffer>;
+  synthesize(text: string, timeoutMs?: number): Promise<Buffer>;
 }
 
 export class VoiceProviderError extends Error {
@@ -142,7 +143,7 @@ function requestHeaders(endpoint: SpeechEndpoint): Record<string, string> {
 export class OpenAiCompatibleSpeechToText implements SpeechToTextProvider {
   constructor(private readonly endpoint: SpeechEndpoint, private readonly prompt = '') {}
 
-  async transcribe(wav: Buffer): Promise<string> {
+  async transcribe(wav: Buffer, timeoutMs?: number): Promise<string> {
     try {
       decodeWavHeader(wav);
     } catch {
@@ -157,7 +158,7 @@ export class OpenAiCompatibleSpeechToText implements SpeechToTextProvider {
     if (this.prompt) form.append('prompt', this.prompt);
     form.append('response_format', 'json');
 
-    const timeout = withTimeout(this.endpoint.timeoutMs);
+    const timeout = withTimeout(Math.min(this.endpoint.timeoutMs, timeoutMs ?? Infinity));
     try {
       const response = await fetch(`${this.endpoint.url}/audio/transcriptions`, {
         method: 'POST',
@@ -196,8 +197,8 @@ export class OpenAiCompatibleTextToSpeech implements TextToSpeechProvider {
     private readonly targetSampleRate: number
   ) {}
 
-  async synthesize(text: string): Promise<Buffer> {
-    const timeout = withTimeout(this.endpoint.timeoutMs);
+  async synthesize(text: string, timeoutMs?: number): Promise<Buffer> {
+    const timeout = withTimeout(Math.min(this.endpoint.timeoutMs, timeoutMs ?? Infinity));
     try {
       const response = await fetch(`${this.endpoint.url}/audio/speech`, {
         method: 'POST',
@@ -241,18 +242,20 @@ export class GoogleTextToSpeech implements TextToSpeechProvider {
     private readonly targetSampleRate: number
   ) {}
 
-  async synthesize(text: string): Promise<Buffer> {
+  async synthesize(text: string, timeoutMs?: number): Promise<Buffer> {
     const chunks = splitSpeechText(text.slice(0, 12_000));
     if (chunks.length === 0) throw new VoiceProviderError('TTS: kein Text zum Sprechen');
     const wavs: Buffer[] = [];
-    for (const chunk of chunks) wavs.push(await this.synthesizeChunk(chunk));
+    // Die Frist aus dem Zeitbudget gilt für alle Teilstücke zusammen, nicht je Teilstück.
+    const deadline = timeoutMs === undefined ? Infinity : Date.now() + timeoutMs;
+    for (const chunk of chunks) wavs.push(await this.synthesizeChunk(chunk, Math.max(1, deadline - Date.now())));
     if (wavs.length === 1) return wavs[0];
     // normalizePcmWav liefert immer ein WAV mit kanonischem 44-Byte-Kopf in der Zielrate.
     return encodeWav(Buffer.concat(wavs.map((wav) => wav.subarray(44))), this.targetSampleRate, 1, 16);
   }
 
-  private async synthesizeChunk(text: string): Promise<Buffer> {
-    const timeout = withTimeout(this.timeoutMs);
+  private async synthesizeChunk(text: string, budgetMs: number): Promise<Buffer> {
+    const timeout = withTimeout(Math.min(this.timeoutMs, budgetMs));
     try {
       const response = await fetch(GOOGLE_TTS_ENDPOINT, {
         method: 'POST',
@@ -327,14 +330,14 @@ export class VoicePipeline {
     return Boolean(this.tts);
   }
 
-  async transcribe(wav: Buffer): Promise<string> {
+  async transcribe(wav: Buffer, timeoutMs?: number): Promise<string> {
     if (!this.stt) throw new VoiceProviderError('Kein STT-Provider konfiguriert');
-    return this.stt.transcribe(wav);
+    return this.stt.transcribe(wav, timeoutMs);
   }
 
-  async synthesize(text: string): Promise<Buffer> {
+  async synthesize(text: string, timeoutMs?: number): Promise<Buffer> {
     if (!this.tts) throw new VoiceProviderError('Kein TTS-Provider konfiguriert');
-    return this.tts.synthesize(text);
+    return this.tts.synthesize(text, timeoutMs);
   }
 
   /**
@@ -345,10 +348,10 @@ export class VoicePipeline {
    * hörbar. Gleichzeitige Abrufe teilen sich eine Anfrage, Fehler werden nicht
    * gespeichert. Das zurückgegebene Buffer-Objekt darf nicht verändert werden.
    */
-  synthesizeCached(text: string): Promise<Buffer> {
+  synthesizeCached(text: string, timeoutMs?: number): Promise<Buffer> {
     const cached = this.fixedCache.get(text);
     if (cached) return cached;
-    const pending = this.synthesize(text);
+    const pending = this.synthesize(text, timeoutMs);
     if (this.fixedCache.size < MAX_FIXED_CACHE_ENTRIES) {
       this.fixedCache.set(text, pending);
       pending.catch(() => {
