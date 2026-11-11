@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
+    "test:firestore": "node --import tsx --test server-api/firestore.integration.test.ts",
     "build": "tsc && vite build",
     "start": "tsx server.ts",
     "lint": "tsc --noEmit",
