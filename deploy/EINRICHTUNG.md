@@ -22,6 +22,24 @@ Der Server wird erst bestellt, wenn der Pi da ist: Hetzner rechnet stundenweise 
 
 Gesamt bis zum ersten Pi-Durchlauf grob **2 bis 3 Stunden** reine Arbeitszeit (Schätzung).
 
+### Kürzer mit dem Skript
+
+Die Schritte 5, 6 und 8 und die Vorbereitung von Schritt 7 erledigt [`setup-server.sh`](setup-server.sh) in einem Lauf (Pakete, Node.js 22, Docker, Caddy, Benutzer, Code, Build, env-Datei, Sprachserver mit Modellen, Dienst, Caddyfile). Es ist mehrfach ausführbar. **Stand: auf keinem echten Server gelaufen.** Geprüft sind `bash -n`, `shellcheck` und die Hilfsfunktionen (`bash deploy/setup-server.test.sh`). Bricht es ab, geht es von Hand mit den Abschnitten 1 bis 6 weiter.
+
+```bash
+# von deinem Rechner (im Repo-Ordner; unter Windows in PowerShell mit OpenSSH)
+scp deploy/setup-server.sh root@<IPv4>:
+ssh root@<IPv4>
+# auf dem Server
+bash setup-server.sh --hostname kunibert.example
+```
+
+- 👤 Beim **ersten Lauf** hält das Skript an und zeigt einen öffentlichen Deploy-Key. Den trägst du bei GitHub ein (Repo → Settings → Deploy keys, **ohne** Schreibrecht) und startest das Skript noch einmal.
+- Admin- und Geräte-Token erzeugt das Skript selbst und schreibt sie nur in `/etc/kunibert/kunibert.env` (nicht auf den Bildschirm). 👤 Den `ANTHROPIC_API_KEY` trägst du danach selbst mit `sudoedit` ein; das Skript kennt ihn nicht.
+- Zeigt der Hostname noch nicht auf den Server, stoppt das Skript Caddy und sagt es. So gibt es keine Fehlversuche beim Zertifikat. Nach dem DNS-Eintrag: `sudo systemctl start caddy`.
+- **Wartezeit messen:** Gleich nach dem Lauf `bash /opt/kunibert/app/deploy/stt-messung.sh` starten. Es misst die Spracherkennung mit `tiny`, `base` und `small` auf diesem Server und zeigt, was erkannt wurde (auch nicht auf einem echten Server gelaufen). Damit ist die offene Frage zur Wartezeit auf der CCX13 in ein paar Minuten beantwortet.
+- Anderes Erkennungsmodell: `--stt-model Systran/faster-whisper-base`. Alle Optionen: `bash setup-server.sh --help`.
+
 ```text
 Pi --HTTPS :443--> Caddy --HTTP lokal--> 127.0.0.1:3000 Kunibert-Server
                                               |

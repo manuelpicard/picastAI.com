@@ -27,6 +27,8 @@ jobs:
         run: python -m unittest discover -s pi-client -p "test_*.py"
       - name: Build & Typecheck
         run: npm run build
+      - name: Einrichtungsskript (Hilfsfunktionen)
+        run: bash deploy/setup-server.test.sh
 
   # Gerätespeicher in Firestore gegen den lokalen Firestore-Emulator (siehe docs/Firestore-Emulator-Test.md).
   # Der Emulator wird nur hier installiert, nicht als Abhängigkeit in package.json/package-lock.json.
