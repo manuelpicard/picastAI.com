@@ -17,6 +17,11 @@ jobs:
       - name: Prüfung der Server-Adresse (Rechner-Test)
         working-directory: firmware/esp32-s3
         run: cc -Wall -Wextra -Werror -I main -o /tmp/kb_test test/test_base_url.c main/kb_url.c && /tmp/kb_test
+      - name: Zustandsautomat, WAV-Kopf, Ursprung, Wiederholung (Rechner-Test)
+        working-directory: firmware/esp32-s3
+        run: >
+          cc -std=c11 -Wall -Wextra -Werror -pedantic -fsanitize=address,undefined -I main -o /tmp/kb_logic
+          test/test_logic.c main/kb_state.c main/kb_wav.c main/kb_url.c && /tmp/kb_logic
 
   build:
     runs-on: ubuntu-latest

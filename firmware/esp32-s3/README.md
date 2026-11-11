@@ -35,7 +35,25 @@ idf.py -p <Port> flash monitor
 
 **Abnahme M1:** Im Monitor erscheint alle 30 Sekunden `M1 bestanden: Server über HTTPS erreichbar`. Mit einer falschen Adresse oder einem Server ohne gültiges Zertifikat erscheint stattdessen eine Warnung; das Gerät stürzt nicht ab.
 
+## Schon vorbereitet für M2 bis M5 (ohne Gerät testbar)
+
+Diese Teile brauchen kein ESP-IDF und sind auf dem Rechner getestet. Die Firmware benutzt sie ab M2:
+
+| Datei | Inhalt | Vorbild im Pi-Client |
+| --- | --- | --- |
+| `main/kb_state.c` | Zustände, erlaubte Wechsel, LED-Muster, Regel „Aufnahme senden?“ (mindestens 0,35 s, nie nach Mikrofon-Aus) | `ClientState`, `KunibertClient.transition`, `GpioStatusLed._PATTERNS` |
+| `main/kb_wav.c` | WAV-Kopf schreiben (Aufnahme) und prüfen (Antwort: mono, 16 Bit, 16 kHz, nicht leer) | `encode_wav`, Prüfung der Antwort |
+| `main/kb_url.c` | Server-Adresse prüfen; `audio_url` muss denselben Ursprung haben; Wiederholungsregeln | `same_origin`, `PicastApi._with_retries` |
+
+Abweichung vom Pi-Client (vorläufig): höchstens **ein** Wiederholungsversuch statt zwei, und keiner nach 140 s.
+
 ## Test auf dem Rechner
+
+```bash
+cc -std=c11 -Wall -Wextra -Werror -pedantic -fsanitize=address,undefined -I main -o /tmp/kb_logic \
+  test/test_logic.c main/kb_state.c main/kb_wav.c main/kb_url.c && /tmp/kb_logic
+```
+
 
 ```bash
 cc -Wall -Wextra -Werror -I main -o /tmp/kb_test test/test_base_url.c main/kb_url.c && /tmp/kb_test
