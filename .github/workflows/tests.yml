@@ -27,3 +27,5 @@ jobs:
         run: python -m unittest discover -s pi-client -p "test_*.py"
       - name: Build & Typecheck
         run: npm run build
+      - name: Einrichtungsskript (Hilfsfunktionen)
+        run: bash deploy/setup-server.test.sh
