@@ -361,7 +361,7 @@ export function App() {
       <footer className="border-t border-stone-800 bg-stone-900/60 py-4 text-xs text-stone-400 text-center">
         <div className="max-w-6xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
           <span>
-            Ritter Kunibert – Prototyp eines kindgerechten Zuhör- und Erzählgeräts (picast.com)
+            Ritter Kunibert – Prototyp eines kindgerechten Zuhör- und Erzählgeräts (picastAI.com)
           </span>
           <span className="text-stone-500">
             Datensparsam • Ohne Display • Deterministische Schutzweiche

@@ -125,6 +125,16 @@ describe('picastAI-API (echter Server)', () => {
   const fetchAudio = (device: { id: string; token: string }, audioUrl: string) =>
     fetch(base + new URL(audioUrl).pathname, { headers: deviceHeaders(device.id, device.token) });
 
+  /** Die Zeitmessungs-Zeilen im Protokoll des Servers ab einer Position. Der Server schreibt sie erst nach der Antwort, daher wird kurz gewartet. */
+  async function timingLinesSince(since: number, expected: number): Promise<string[]> {
+    const deadline = Date.now() + 5_000;
+    for (;;) {
+      const lines = output.slice(since).split('\n').map((line) => line.trim()).filter((line) => line.startsWith('Zeitmessung '));
+      if (lines.length >= expected || Date.now() > deadline) return lines;
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+  }
+
   before(async () => {
     fake = await startFakeSpeechService();
     const port = await freePort();
@@ -335,6 +345,94 @@ describe('picastAI-API (echter Server)', () => {
     assert.equal(res.status, 400);
     assert.equal(((await res.json()) as { error: string }).error, 'bad_request');
     assert.ok(!output.slice(logged).includes('Unbehandelter Fehler'), output.slice(logged));
+  });
+
+  it('Zeitmessung: je Anfrage eine Zeile mit allen Werten, aber ohne Texte, Geräte-ID oder Token', async () => {
+    const device = await registerDevice();
+    const original = fake.state.transcript;
+    // Dieser Satz landet im festen Antworttext ("Das ist eine spannende Frage zu ..."): er wird also gesprochen, darf aber nicht ins Protokoll.
+    fake.state.transcript = 'Geheimwort-Quokka was ist das';
+    const since = output.length;
+    try {
+      const question = await postQuestion(device, questionForm(wav16k(1.5)));
+      assert.equal(question.status, 200, await question.clone().text());
+    } finally {
+      fake.state.transcript = original;
+    }
+    const story = await postStory(device);
+    assert.equal(story.status, 200, await story.clone().text());
+    assert.ok(
+      fake.state.speechInputs.some((text) => text.includes('Geheimwort-Quokka')),
+      'Vorbedingung: der Satz des Kindes wird tatsächlich gesprochen'
+    );
+
+    const lines = await timingLinesSince(since, 2);
+    assert.equal(lines.length, 2, `Zeilen: ${lines.join(' | ')}\nProtokoll: ${output.slice(since)}`);
+    const [questionLine, storyLine] = lines;
+
+    // Frage über Spracherkennung: alle Stufen außer dem Sprachmodell (ohne Schlüssel greift der feste Text).
+    assert.match(questionLine, /^Zeitmessung id=[0-9a-f]{8} modus=frage status=200 /);
+    for (const key of ['erkennung_ms', 'weiche_ms', 'sprachausgabe_ms', 'gesamt_ms']) {
+      assert.match(questionLine, new RegExp(` ${key}=\\d+ ?`), `${key} fehlt: ${questionLine}`);
+    }
+    assert.match(questionLine, / sprachmodell_ms=- ausgabecheck_ms=- /);
+    assert.match(questionLine, / sprachmodell_aufrufe=0 audio_s=\d+\.\d$/);
+    assert.ok(Number(/ audio_s=([\d.]+)$/.exec(questionLine)![1]) > 0, 'Audiolänge muss größer als 0 sein');
+
+    // Erzähltaste: keine Erkennung, keine Weiche (es gibt keinen Kindertext).
+    assert.match(storyLine, /^Zeitmessung id=[0-9a-f]{8} modus=weiter status=200 erkennung_ms=- weiche_ms=- /);
+    assert.match(storyLine, / sprachausgabe_ms=\d+ gesamt_ms=\d+ /);
+    assert.match(storyLine, / audio_s=\d+\.\d$/);
+    assert.notEqual(questionLine.split(' ')[1], storyLine.split(' ')[1], 'jede Anfrage hat ihre eigene ID');
+
+    // Keine Inhalte: weder Satz des Kindes noch gesprochener Text noch Geräte-ID oder Token irgendwo im neuen Protokoll.
+    const newOutput = output.slice(since);
+    for (const secret of ['Quokka', 'spannende Frage', 'Dachzimmer', 'Kunibert erwachte', device.id, device.token]) {
+      assert.ok(!newOutput.includes(secret), `"${secret}" darf nicht im Protokoll stehen`);
+    }
+  });
+
+  it('Zeitmessung: Notlage ergibt eine Zeile, in der der Wortlaut fehlt', async () => {
+    const device = await registerDevice();
+    const since = output.length;
+    const res = await postQuestion(device, questionForm(wav16k(), { transcript: 'ich will nicht mehr leben, sagt Geheimwort-Okapi' }));
+    assert.equal(res.status, 200, await res.clone().text());
+    const [line] = await timingLinesSince(since, 1);
+    assert.ok(line, `keine Zeile im Protokoll: ${output.slice(since)}`);
+    assert.match(line, / modus=frage status=200 erkennung_ms=- weiche_ms=\d+ sprachmodell_ms=- ausgabecheck_ms=- sprachausgabe_ms=\d+ /);
+    const newOutput = output.slice(since);
+    for (const secret of ['Okapi', 'nicht mehr leben', SAFETY_START, device.token]) {
+      assert.ok(!newOutput.includes(secret), `"${secret}" darf nicht im Protokoll stehen`);
+    }
+  });
+
+  it('Zeitmessung: abgewiesene Anfragen erzeugen keine Zeile, ein Ausfall der Sprachausgabe erscheint mit Status 503', async () => {
+    const device = await registerDevice();
+    const since = output.length;
+    const unauthorized = await fetch(`${base}/v1/device/kunibert-story`, { method: 'POST' });
+    assert.equal(unauthorized.status, 401);
+    const noAudio = await postQuestion(device, questionForm(null, { transcript: 'hallo' }));
+    assert.equal(noAudio.status, 400);
+    const badMode = await fetch(`${base}/v1/turn`, {
+      method: 'POST',
+      headers: deviceHeaders(device.id, device.token),
+      body: questionForm(null, { mode: 'unsinn' }),
+    });
+    assert.equal(badMode.status, 400);
+
+    fake.state.speechFails = true;
+    try {
+      const failed = await postStory(device);
+      assert.equal(failed.status, 503);
+    } finally {
+      fake.state.speechFails = false;
+    }
+
+    const lines = await timingLinesSince(since, 1);
+    assert.equal(lines.length, 1, `nur die Anfrage mit Ausfall darf eine Zeile erzeugen: ${lines.join(' | ')}`);
+    assert.match(lines[0], / modus=weiter status=503 /);
+    assert.match(lines[0], / sprachausgabe_ms=\d+ /);
+    assert.match(lines[0], / audio_s=-$/);
   });
 
   it('Admin-Routen verlangen das Admin-Token; kaputtes JSON ergibt 400', async () => {
