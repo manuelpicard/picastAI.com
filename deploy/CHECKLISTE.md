@@ -13,7 +13,7 @@ Ausführliche Befehle: [`EINRICHTUNG.md`](EINRICHTUNG.md). Nur mit **erwachsenen
 
 ## B. Pi vorbereiten
 
-- [ ] Audio-HAT, Mikrofon, Lautsprecher mit `pi-client/test_alsa_audio.sh` einzeln geprüft.
+- [ ] Audio-HAT (Zero 2 W) bzw. USB-Mikrofon und USB-Lautsprecher (Pi 5) mit `pi-client/test_alsa_audio.sh` einzeln geprüft; bei zwei USB-Geräten `KUNIBERT_INPUT_DEVICE`/`KUNIBERT_OUTPUT_DEVICE` gesetzt (siehe `pi-client/README.md`, „Erster Aufbau“).
 - [ ] `/etc/kunibert/kunibert.env` auf dem Pi: richtige URL, Geräte-ID, Token (Modus 600).
 - [ ] `python pi-client/kunibert_client.py --once health` gibt `OK`.
 - [ ] Mikrofon-Aus-Schalter trennt das Mikrofon **elektrisch** (separat geprüft, nicht nur GPIO 22).

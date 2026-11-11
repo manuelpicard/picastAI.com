@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Ritter Kunibert client for Raspberry Pi Zero 2 W.
+"""Ritter Kunibert client for Raspberry Pi (Pi 5 for the prototype; the final device is planned as ESP32-S3).
 
 The client deliberately keeps device responsibilities small:
 - buttons and microphone are handled locally;
@@ -74,6 +74,11 @@ class ClientConfig:
     story_button_gpio: int = 27
     mic_off_gpio: int = 22
     status_led_gpio: int = 23
+    # Optionale Audiogeräte (sounddevice-Angabe: Nummer oder Namensteil, siehe
+    # "python3 -m sounddevice"). None = Standardgerät von PortAudio/ALSA. Mit zwei
+    # getrennten USB-Geräten (Mikrofon und Lautsprecher) getrennt setzen.
+    input_device: Optional[int | str] = None
+    output_device: Optional[int | str] = None
     poll_interval_seconds: float = 0.04
     cache_dir: Path = Path("/var/lib/kunibert/audio")
     dry_run: bool = False
@@ -91,6 +96,9 @@ class ClientConfig:
                 return float(os.getenv(name, str(default)))
             except ValueError:
                 return default
+
+        def device(name: str) -> Optional[int | str]:
+            return parse_audio_device(os.getenv(name))
 
         return cls(
             api_base_url=os.getenv("PICASTAI_API_BASE_URL", "https://picastAI.com").rstrip("/"),
@@ -111,9 +119,19 @@ class ClientConfig:
             story_button_gpio=integer("KUNIBERT_STORY_BUTTON_GPIO", 27),
             mic_off_gpio=integer("KUNIBERT_MIC_OFF_GPIO", 22),
             status_led_gpio=integer("KUNIBERT_STATUS_LED_GPIO", 23),
+            input_device=device("KUNIBERT_INPUT_DEVICE"),
+            output_device=device("KUNIBERT_OUTPUT_DEVICE"),
             cache_dir=Path(os.getenv("KUNIBERT_CACHE_DIR", "/var/lib/kunibert/audio")),
             dry_run=dry_run,
         )
+
+
+def parse_audio_device(value: Optional[str]) -> Optional[int | str]:
+    """Audiogerät aus der Umgebung: leer = Standard, nur Ziffern = Gerätenummer, sonst Namensteil."""
+    text = (value or "").strip()
+    if not text:
+        return None
+    return int(text) if text.isdigit() else text
 
 
 class HardwareError(RuntimeError):
@@ -297,6 +315,7 @@ class SoundDeviceAudio:
                 channels=self.config.channels,
                 dtype="int16",
                 blocksize=block_frames,
+                device=self.config.input_device,
             ) as stream:
                 while is_pressed() and time.monotonic() - started < max_seconds:
                     data, _overflowed = stream.read(block_frames)
@@ -313,7 +332,14 @@ class SoundDeviceAudio:
                 rate = wav.getframerate()
                 width = wav.getsampwidth()
                 frames = wav.readframes(wav.getnframes())
-            self.sd.play(frames, samplerate=rate, blocking=True, channels=channels, dtype=f"int{width * 8}")
+            self.sd.play(
+                frames,
+                samplerate=rate,
+                blocking=True,
+                channels=channels,
+                dtype=f"int{width * 8}",
+                device=self.config.output_device,
+            )
         except Exception as exc:
             raise HardwareError(f"Audioausgabe fehlgeschlagen: {exc}") from exc
 
@@ -538,6 +564,8 @@ class KunibertClient:
     stop_requested: bool = False
     last_error: Optional[str] = None
     state_history: list[ClientState] = field(default_factory=list)
+    # Uhr für die Zeitmessung (Tests setzen eine eigene).
+    clock: Callable[[], float] = time.monotonic
 
     def transition(self, new_state: ClientState) -> None:
         allowed = {
@@ -617,6 +645,7 @@ class KunibertClient:
                 lambda: self.buttons.speech_pressed and not self.buttons.mic_off and not self.stop_requested,
                 self.config.max_record_seconds,
             )
+            recording_ended = self.clock()
         except HardwareError as exc:
             if self.stop_requested:
                 LOG.info("Shutdown während der Aufnahme; Audiopuffer verworfen")
@@ -648,20 +677,29 @@ class KunibertClient:
         try:
             response_wav = self.api.ask_question(wav_bytes)
             self.transition(ClientState.PLAYING)
+            self._log_wait("frage", recording_ended)
             self.audio_out.play_wav(response_wav)
             self.transition(ClientState.MIC_OFF if self.buttons.mic_off else ClientState.READY)
         except Exception as exc:
             self.handle_error(exc)
 
     def handle_story(self) -> None:
+        button_pressed = self.clock()
         self.transition(ClientState.REQUESTING_STORY)
         try:
             response_wav = self.api.request_story()
             self.transition(ClientState.PLAYING)
+            self._log_wait("erzaehltaste", button_pressed)
             self.audio_out.play_wav(response_wav)
             self.transition(ClientState.MIC_OFF if self.buttons.mic_off else ClientState.READY)
         except Exception as exc:
             self.handle_error(exc)
+
+    def _log_wait(self, mode: str, since: float) -> None:
+        """Loggt, wie lange das Kind gewartet hat: bei einer Frage vom Ende der Aufnahme, bei der
+        Erzähltaste vom Tastendruck, jeweils bis unmittelbar vor dem Abspielen. Die Zeile enthält
+        nur ein Schlüsselwort und eine Zahl, nie Text, Adresse oder Token (siehe docs/Zeitmessung.md)."""
+        LOG.info("Zeitmessung modus=%s wartezeit_s=%.1f", mode, max(0.0, self.clock() - since))
 
     def handle_error(self, exc: Exception) -> None:
         self.last_error = str(exc)

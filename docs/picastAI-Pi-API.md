@@ -170,6 +170,8 @@ curl -fsS -X POST http://127.0.0.1:3000/v1/device/kunibert-story \
 
 Die `audio_url` aus der Antwort mit denselben Authentifizierungsheadern abrufen. Da der AudioStore einmalig ausliefert, den Audioabruf nicht mehrfach wiederholen. Mit konfiguriertem TTS-Provider enthält die WAV-Antwort echte Sprachsynthese; ohne Provider wird für lokale Tests das deterministische Fallback-Signal ausgeliefert. Schlägt die Synthese bei konfiguriertem Provider fehl, liefert der Server kein Ersatzsignal, sondern `503 {"error":"voice_provider_failed","retryable":true}` (vorübergehender Fehler, der Client wiederholt) bzw. `502` mit `retryable:false`. Der Story-Zustand rückt in diesem Fall nicht vor.
 
+**Zeitbudget:** Der Server hält für eine Anfrage (Erkennung, bis zu zwei Sprachmodell-Aufrufe, Sprachausgabe) ein gemeinsames Budget von 120 Sekunden ein. Das gilt auch, wenn eine Frage als Geschichtenwunsch erkannt wird und deshalb zwei Sprachmodell-Aufrufe nötig sind. Ist das Budget knapp, startet der Server keinen weiteren Sprachmodell-Aufruf mehr und spricht den festen Ersatztext; läuft die Sprachausgabe in die Frist, folgt `503 voice_provider_failed` mit `retryable: true` (siehe Fehlertabelle oben). Die Grenzen davor und danach (Caddy 130 s, Pi-Client 140 s) bleiben unverändert (`deploy/EINRICHTUNG.md`, „Zeitkette“). Die Sicherheitsweiche bleibt vom Budget unberührt.
+
 ## Sicherheitsgrenzen des Prototyps
 
 - Rate-Limit pro Gerät: standardmäßig 30 Anfragen pro 10 Minuten.
