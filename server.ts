@@ -228,7 +228,12 @@ app.post(
       if (err instanceof VoiceProviderError) {
         return res.status(err.retryable ? 503 : 502).json({ error: 'voice_provider_failed', retryable: err.retryable });
       }
-      return res.status(400).json({ error: 'bad_audio' });
+      // Nur eine kaputte Aufnahme ist "bad_audio" (400, der Pi wiederholt nicht). Alles andere
+      // ist ein Fehler des Servers (500, der Pi wiederholt), ohne Fehlertext nach außen.
+      if (err instanceof AudioError) {
+        return res.status(400).json({ error: 'bad_audio' });
+      }
+      return res.status(500).json({ error: 'internal_error' });
     }
   }
 );
