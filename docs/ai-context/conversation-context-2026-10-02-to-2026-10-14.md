@@ -2,7 +2,7 @@
 
 > **Archiv (veraltet in einigen Punkten), Stand 14. Oktober 2026.** Diese Datei wird nicht fortgeschrieben. Überholt sind besonders:
 > - **`picast.com`** als Plattformadresse: Die Plattform heißt **picastAI.com** (`README.md`, `ORGANIZATION.md`). Ob und wem `picast.com` gehört, ist hier nur als Nutzerangabe festgehalten und wurde nie von Dritten bestätigt.
-> - **Raspberry Pi 5** als Hardware: Der Client im Repository zielt auf den Raspberry Pi Zero 2 W. Die Plattformfrage ist offen und hier nicht entschieden.
+> - **Hardware:** Der **Pi 5** ist inzwischen die Wahl für den ersten Aufbau (Betreiber, November 2026); das Endgerät soll ein **ESP32-S3** werden. Der Pi Zero 2 W ist nicht mehr als späteres Gerät geplant. Stand: `docs/Ritter Kunibert_ Hardware für den ersten Audiogeräte-Prototyp.md`.
 > - **`firmware/arduino-giga/`**: Diesen Ordner gibt es in diesem Repository nicht mehr (hinzugefügt in `a9fb68a`, entfernt in `e0784a6`). Die Zielplattform ist der Pi, nicht Arduino.
 > - Maßgeblich für den heutigen Stand sind `README.md`, `handoff-2026-11-01.md` und der Code.
 
