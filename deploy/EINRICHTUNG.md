@@ -2,7 +2,7 @@
 
 Diese Anleitung installiert den Kunibert-Server (Node 22, Express) hinter Caddy. Der Pi bleibt Client. Die abhakbare Abnahme samt erstem Durchlauf mit echtem Pi steht in [`CHECKLISTE.md`](CHECKLISTE.md).
 
-> **Stand (11.11.2026):** Die Dateien in diesem Ordner sind noch auf keinem echten Server ausgeführt. Geprüft ist: die systemd-Datei mit `systemd-analyze verify`; das Caddyfile mit `caddy validate` (Caddy 2.11.9 im Docker-Container) und im Betrieb gegen den lokalen Server (404 für `/` und `/api/*`, Weiterleitung auf HTTPS, 413 bei zu großer Datei); der Server mit Speaches (faster-whisper-small, Piper) und einer Sprachmodell-Attrappe (`deploy/dryrun/`, Ergebnis in [`dryrun/ERGEBNIS.md`](dryrun/ERGEBNIS.md)). **Nicht** geprüft: echte Anthropic-Aufrufe, Zeiten auf dem Hetzner-Server, Zertifikat von Let's Encrypt. Die Starttests und die Pi-Zeitgrenze (140 s) laufen in der CI; die Grenzen von Server und Caddy prüft keine Testdatei (siehe „Zeitkette“).
+> **Stand (11.11.2026):** Die Dateien in diesem Ordner sind noch auf keinem echten Server ausgeführt. Geprüft ist: die systemd-Datei mit `systemd-analyze verify`; das Caddyfile mit `caddy validate` (Caddy 2.11.9 im Docker-Container) und im Betrieb gegen den lokalen Server (404 für `/` und `/api/*`, Weiterleitung auf HTTPS, 413 bei zu großer Datei); der Server mit Speaches (faster-whisper-small, Piper) und einer Sprachmodell-Attrappe (`deploy/dryrun/`, Ergebnis in [`dryrun/ERGEBNIS.md`](dryrun/ERGEBNIS.md)). **Nicht** geprüft: echte Anthropic-Aufrufe, Zeiten auf dem Hetzner-Server, Zertifikat von Let's Encrypt. Die Starttests, die Pi-Zeitgrenze (140 s) und das Zeitbudget des Servers (120 s, `server-api/timing.test.ts`) laufen in der CI; die Grenze von Caddy prüft keine Testdatei (siehe „Zeitkette“).
 
 ## Nach der Bestellung (Reihenfolge)
 
@@ -90,7 +90,7 @@ uvx speaches-cli model download Systran/faster-whisper-small      # Beispiel aus
 uvx speaches-cli registry ls --task text-to-speech                # verfügbare Stimmenmodelle (Piper, Kokoro)
 ```
 
-- **Erkennung:** `Systran/faster-whisper-small` ist das Beispiel der Dokumentation und klein. In der Studie [Kid-Whisper](https://arxiv.org/html/2309.07927) erkennt ein größeres Whisper-Modell Kinderstimmen etwas besser, kostet aber mehr Rechenzeit. Welches Modell reicht, entscheidet der Test in Schritt 11 der Checkliste.
+- **Erkennung:** `Systran/faster-whisper-small` ist das Beispiel der Dokumentation und klein. In der Studie [Kid-Whisper](https://arxiv.org/html/2309.07927) erkennt ein größeres Whisper-Modell Kinderstimmen etwas besser, kostet aber mehr Rechenzeit. Welches Modell reicht, entscheidet der Test in Schritt 11 der Checkliste. Das Modell ist über die Umgebungsvariable `PICASTAI_STT_MODEL` wählbar (`server-api/config.ts:231`); es muss vorher in Speaches heruntergeladen sein (siehe unten). Ein Wechsel (zum Beispiel auf `Systran/faster-whisper-base`) braucht also keine Codeänderung. Gemessen ist das nicht.
 - **Stimme:** Piper hat deutsche Stimmen (`eva_k`, `karlsson`, `kerstin`, `mls`, `pavoque`, `ramona`, `thorsten`, `thorsten_emotional`). Am 11.11.2026 gegen die Speaches-Registry geprüft (Image `latest-cpu`): Das Modell heißt z. B. `speaches-ai/piper-de_DE-thorsten-medium` und die Stimme darin `thorsten` (also `PICASTAI_TTS_MODEL=speaches-ai/piper-de_DE-thorsten-medium`, `PICASTAI_TTS_VOICE=thorsten`). Es gibt dieselbe Stimme auch als `-low` und `-high`. Die Namen der anderen Stimmen: `registry ls` oder `curl -s "http://127.0.0.1:8000/v1/registry?task=text-to-speech"`. Jede Stimme hat eine eigene Lizenz: vor dem Einsatz mit Kindern prüfen.
 - **Ohne `uv`:** Die Modelle lassen sich auch direkt über die Schnittstelle laden (so im Trockenlauf getestet): `curl -X POST http://127.0.0.1:8000/v1/models/Systran/faster-whisper-small` und `curl -X POST http://127.0.0.1:8000/v1/models/speaches-ai/piper-de_DE-thorsten-medium`. Antwort: `Model '…' downloaded`. Der Cache liegt im Volume `hf-hub-cache` (Pfad im Container `/home/ubuntu/.cache/huggingface/hub`, geprüft) und übersteht ein Neuanlegen des Containers.
 - **Erkennung geprüft:** Eine mit Piper erzeugte Frage („Warum ist der Himmel blau?“) wurde mit `faster-whisper-small`, `language=de` und `prompt=Ritter Kunibert` richtig erkannt; der Parameter `language=de` wird von dieser Speaches-Version nicht abgelehnt.
@@ -136,13 +136,22 @@ Frage und Geschichte laufen durch Spracherkennung, Sprachmodell und Sprachausgab
 
 | Stelle | Grenze | Einstellung |
 | --- | --- | --- |
-| Server (Summe, Normalfall) | 45 + 30 + 45 = 120 s | `PICASTAI_VOICE_TIMEOUT_MS` (je Aufruf, Spracherkennung und Sprachausgabe), `PICASTAI_LLM_TIMEOUT_MS` (je Aufruf) |
+| Server (gemeinsames Zeitbudget der ganzen Anfrage) | 120 s | fest im Code (`TURN_BUDGET_MS`, `server-api/timing.ts`); die Grenzen je Aufruf `PICASTAI_VOICE_TIMEOUT_MS` (Spracherkennung und Sprachausgabe, 45 s) und `PICASTAI_LLM_TIMEOUT_MS` (30 s) gelten zusätzlich |
 | Caddy | 130 s | `response_header_timeout` im Caddyfile |
 | Pi-Client | 140 s | `KUNIBERT_PIPELINE_TIMEOUT` |
 
-Die Grenzen gelten **je Aufruf**, nicht für die ganze Anfrage. Die 120 s stimmen nur, wenn das Sprachmodell einmal gefragt wird. Erkennt Claude bei einer Frage einen Geschichtenwunsch, sind es **zwei** Aufrufe (`server-api/brain.ts:231` und `:368`, siehe auch `docs/Zeitmessung.md`, Feld `sprachmodell_aufrufe`). Im schlimmsten Fall ist die Summe dann 45 + 30 + 30 + 45 = **150 s**, also mehr als Caddy (130 s) und Pi (140 s). Das tritt nur ein, wenn Dienste fast bis zur Grenze hängen. **Offen:** ob die Grenzen für diesen Fall angepasst werden (zum Beispiel Caddy 160 s und Pi 170 s). Bis dahin: Server-Grenzen nicht erhöhen.
+Die 120 s gelten **für die ganze Anfrage zusammen** (Entscheidung vom 11.11.2026, vorläufig). Ohne gemeinsames Budget wären es bei einem Geschichtenwunsch bis zu 45 + 30 + 30 + 45 = 150 s gewesen, denn dann fragt der Server Claude **zweimal** (erst die Einordnung, dann die Geschichte; siehe `docs/Zeitmessung.md`, Feld `sprachmodell_aufrufe`). Das wäre mehr als Caddy (130 s) und Pi (140 s) gewesen. So arbeitet der Server jetzt:
 
-Wer die Server-Grenzen ändert, passt die beiden anderen an. Quellen: `server-api/config.ts:225` und `:241` (Voreinstellungen und Grenzen 3 bis 120 s), `deploy/Caddyfile:26`, `pi-client/kunibert_client.py:70` und `:115`.
+- Die Frist beginnt, wenn die Anfrage beim Server ankommt und angemeldet ist (`startTurnTimer` in `server.ts`). Die Zeit für das Hochladen der Aufnahme davor zählt nicht mit; deshalb liegt zwischen 120 s und den 130 s von Caddy ein Puffer.
+- Jeder Sprachmodell-Aufruf bekommt höchstens den Rest des Budgets **minus 15 s für die Sprachausgabe** (`TTS_RESERVE_MS`), und höchstens seine eigenen 30 s.
+- Bleiben für einen Aufruf weniger als 3 s, wird er nicht mehr gestartet. Dann greift der feste Fallback-Text (derselbe Weg wie bei einem Fehler des Sprachmodells), und die Sprachausgabe läuft wie gewohnt.
+- Die Sprachausgabe bekommt den Rest des Budgets, mindestens 5 s. Läuft sie in die Frist, antwortet der Server mit 503 `voice_provider_failed` (`retryable: true`), wie bisher bei einem Sprachdienst-Fehler. Die Erkennung kann nur die 45 s je Aufruf überschreiten, nicht das Budget; auch ihr Timeout ergibt 503.
+- Die Sicherheitsweiche läuft vor dem Sprachmodell, braucht keinen Aufruf und wird vom Budget nicht berührt.
+- Obergrenze: höchstens 120 s plus die 5 s Mindestzeit für die Sprachausgabe, also unter den 130 s von Caddy.
+
+Offen: ob 120 s die richtige Größe sind, und die echten Zeiten auf der CCX13 (Schritt 10 oben).
+
+Wer die Server-Grenzen ändert, passt die beiden anderen an. Quellen: `server-api/timing.ts:15-21` (Budget, Reserve, Mindestzeiten), `server-api/brain.ts:169`, `:243-248` und `:381-387` (Frist je Sprachmodell-Aufruf), `server.ts:146` und `:181-186` (Erkennung und Sprachausgabe), `server-api/config.ts:225` und `:241` (Grenzen je Aufruf, 3 bis 120 s), `deploy/Caddyfile:26`, `pi-client/kunibert_client.py:70` und `:115`.
 
 ## 7. Abnahme von außen
 

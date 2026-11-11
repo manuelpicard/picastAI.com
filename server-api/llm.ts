@@ -20,6 +20,8 @@ export interface LlmJsonRequest {
   schemaName: string;
   schema: JsonSchema;
   maxOutputTokens?: number;
+  /** Obergrenze für diesen Aufruf aus dem Zeitbudget der Anfrage; die eigene Grenze des Anbieters gilt zusätzlich. */
+  timeoutMs?: number;
 }
 
 export interface LlmProvider {
@@ -77,7 +79,7 @@ export class AnthropicProvider implements LlmProvider {
   async generateJson(request: LlmJsonRequest): Promise<Record<string, unknown>> {
     const fetchFn = this.options.fetchImpl ?? fetch;
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), this.options.timeoutMs ?? 30_000);
+    const timer = setTimeout(() => controller.abort(), Math.min(request.timeoutMs ?? Infinity, this.options.timeoutMs ?? 30_000));
     try {
       const response = await fetchFn(`${this.baseUrl}/v1/messages`, {
         method: 'POST',

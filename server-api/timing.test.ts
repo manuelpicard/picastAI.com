@@ -4,7 +4,7 @@ import { encodeWav } from './audio.js';
 import { Brain } from './brain.js';
 import type { LlmJsonRequest, LlmProvider } from './llm.js';
 import { SAFETY_RESPONSE_DE } from './safety.js';
-import { NO_TIMER, TIMED_STAGES, TurnTimer, wavSeconds } from './timing.js';
+import { budgetTimeoutMs, NO_TIMER, TIMED_STAGES, TTS_RESERVE_MS, TurnTimer, wavSeconds } from './timing.js';
 
 /** Alle Zeilen müssen genau dieser Form folgen: feste Schlüssel, Zahlen oder "-", sonst nichts. */
 const LINE_FORMAT = new RegExp(
@@ -213,3 +213,116 @@ test('Ausgabe-Check lehnt die Modellantwort ab: Fallback greift, beide Stufen bl
   assert.match(line, / ausgabecheck_ms=\d+ /);
   assert.ok(!line.includes('beispiel'));
 }));
+
+// ---------------------------------------------------------------------------
+// Gemeinsames Zeitbudget der Anfrage (120 s für alle Stufen zusammen)
+// ---------------------------------------------------------------------------
+
+/** Sprachmodell-Attrappe, die die Anfragen merkt und pro Aufruf Zeit auf der Uhr verbraucht. */
+class RecordingLlm implements LlmProvider {
+  readonly name = 'anthropic' as const;
+  readonly model = 'fake';
+  requests: LlmJsonRequest[] = [];
+  constructor(
+    private readonly clock: ReturnType<typeof fakeClock>,
+    private readonly msPerCall: number[],
+    private readonly responses: Array<Record<string, unknown>>
+  ) {}
+  async generateJson(request: LlmJsonRequest): Promise<Record<string, unknown>> {
+    this.requests.push(request);
+    this.clock.advance(this.msPerCall.shift() ?? 0);
+    const next = this.responses.shift();
+    if (!next) throw new Error('keine Antwort vorbereitet');
+    return next;
+  }
+}
+
+const STORY_RESPONSE = {
+  text: 'Kunibert ging über die Brücke.',
+  summary: 'Zusammenfassung',
+  open_threads: 'Faden',
+  next_hook: 'Anknüpfung',
+  episode_finished: false,
+};
+
+test('Zeitbudget: 120 s ab Beginn, Rest sinkt mit der Uhr und wird nie negativ', () => {
+  const clock = fakeClock();
+  const timer = new TurnTimer(clock.now, 'a0a0a0a0');
+  assert.equal(timer.remainingMs(), 120_000);
+  clock.advance(45_000);
+  assert.equal(timer.remainingMs(), 75_000);
+  clock.advance(200_000);
+  assert.equal(timer.remainingMs(), 0);
+  assert.equal(NO_TIMER.remainingMs(), Number.POSITIVE_INFINITY);
+  assert.equal(budgetTimeoutMs(NO_TIMER, 15_000), undefined);
+  assert.equal(budgetTimeoutMs(timer, 15_000), 0);
+});
+
+test('Zeitbudget: ein Sprachmodell-Aufruf bekommt Budget minus Reserve für die Sprachausgabe', async () => {
+  const clock = fakeClock();
+  const timer = new TurnTimer(clock.now, 'b0b0b0b0');
+  const llm = new RecordingLlm(clock, [4_000], [{ category: 'frage', speech: 'Der Himmel ist blau.' }]);
+  const result = await new Brain(llm).handle('frage', 'Warum ist der Himmel blau?', {}, timer);
+  assert.equal(result.kind, 'frage');
+  assert.equal(llm.requests.length, 1);
+  assert.equal(llm.requests[0].timeoutMs, 120_000 - TTS_RESERVE_MS);
+});
+
+test('Zeitbudget: ohne Zeitmesser (Tests, eval-llm) setzt Brain keine Frist', async () => {
+  const llm = new RecordingLlm(fakeClock(), [0], [{ category: 'frage', speech: 'Der Himmel ist blau.' }]);
+  await new Brain(llm).handle('frage', 'Warum ist der Himmel blau?', {});
+  assert.equal(llm.requests[0].timeoutMs, undefined);
+});
+
+test('Zeitbudget: zwei Sprachmodell-Aufrufe teilen sich das Budget; der zweite bekommt nur den Rest', async () => {
+  const clock = fakeClock();
+  const timer = new TurnTimer(clock.now, 'c0c0c0c0');
+  // Erster Aufruf: Frage wird als Geschichtenwunsch erkannt und braucht 80 s; es bleiben 40 s.
+  const llm = new RecordingLlm(clock, [80_000, 5_000], [{ category: 'geschichte', speech: '' }, STORY_RESPONSE]);
+  const result = await new Brain(llm).handle('frage', 'Erzähl mir eine Geschichte', {}, timer);
+  assert.equal(result.kind, 'geschichte');
+  assert.equal(llm.requests.length, 2);
+  assert.equal(llm.requests[0].timeoutMs, 105_000);
+  assert.equal(llm.requests[1].timeoutMs, 40_000 - TTS_RESERVE_MS);
+  assert.ok(result.speech.includes('Kunibert ging über die Brücke.'));
+});
+
+test(
+  'Zeitbudget: ist nach dem ersten Aufruf zu wenig übrig, kommt kein zweiter Aufruf; es greift der feste Geschichten-Text',
+  silent(async () => {
+    const clock = fakeClock();
+    const timer = new TurnTimer(clock.now, 'd0d0d0d0');
+    // 108 s verbraucht: 12 s Rest, 15 s davon sind für die Sprachausgabe reserviert, also nichts für Aufruf 2.
+    const llm = new RecordingLlm(clock, [108_000], [{ category: 'geschichte', speech: '' }, STORY_RESPONSE]);
+    const result = await new Brain(llm).handle('frage', 'Erzähl mir eine Geschichte', {}, timer);
+    assert.equal(llm.requests.length, 1);
+    assert.equal(result.kind, 'geschichte');
+    assert.ok(result.speech.length > 0);
+    assert.ok(!result.speech.includes('Kunibert ging über die Brücke.'));
+  })
+);
+
+test(
+  'Zeitbudget: schon der erste Aufruf wird bei aufgebrauchtem Budget nicht mehr gestartet (fester Fallback-Text)',
+  silent(async () => {
+    const clock = fakeClock();
+    const timer = new TurnTimer(clock.now, 'e0e0e0e0');
+    clock.advance(119_000); // zum Beispiel eine sehr lange Erkennung
+    const llm = new RecordingLlm(clock, [0], [{ category: 'frage', speech: 'nicht gebraucht' }]);
+    const result = await new Brain(llm).handle('frage', 'Wer ist Ritter Kunibert?', {}, timer);
+    assert.equal(llm.requests.length, 0);
+    assert.equal(result.kind, 'frage');
+    assert.ok(result.speech.length > 0);
+  })
+);
+
+test('Zeitbudget: die Sicherheitsweiche läuft unabhängig vom Budget und antwortet auch bei aufgebrauchter Zeit', async () => {
+  const clock = fakeClock();
+  const timer = new TurnTimer(clock.now, 'f0f0f0f0');
+  clock.advance(500_000);
+  const llm = new RecordingLlm(clock, [0], []);
+  const result = await new Brain(llm).handle('frage', 'ich will nicht mehr leben', {}, timer);
+  assert.equal(result.fixed, 'sicherheit');
+  assert.equal(result.speech, SAFETY_RESPONSE_DE);
+  assert.equal(llm.requests.length, 0);
+});

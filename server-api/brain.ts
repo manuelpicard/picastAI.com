@@ -16,7 +16,7 @@ import {
 } from './safety.js';
 import { generateMelodyWav, generateToneWav } from './audio.js';
 import { config, type KunibertConfig } from './config.js';
-import { NO_TIMER, type StageTimer } from './timing.js';
+import { budgetTimeoutMs, MIN_LLM_MS, NO_TIMER, TTS_RESERVE_MS, type StageTimer } from './timing.js';
 
 export interface StoryState {
   v: number;
@@ -160,6 +160,18 @@ export class Brain {
     this.answerMaxWords = settings.answerMaxWords ?? config.answerMaxWords;
   }
 
+  /**
+   * Zeit für den nächsten Sprachmodell-Aufruf aus dem gemeinsamen Zeitbudget der Anfrage, mit Reserve
+   * für die Sprachausgabe. Bleibt zu wenig übrig, wird kein Aufruf mehr gestartet (der Aufrufer
+   * fängt den Fehler und nimmt den festen Fallback-Text). Ohne Budget (undefined) gilt nur die
+   * eigene Grenze des Anbieters.
+   */
+  private llmTimeoutMs(timer: StageTimer): number | undefined {
+    const left = budgetTimeoutMs(timer, TTS_RESERVE_MS);
+    if (left !== undefined && left < MIN_LLM_MS) throw new Error('Zeitbudget der Anfrage aufgebraucht, kein weiterer Sprachmodell-Aufruf');
+    return left;
+  }
+
   /** Für Statusanzeige und Logs, z. B. "anthropic:claude-sonnet-5-5". */
   public get llmName(): string {
     return this.llm ? `${this.llm.name}:${this.llm.model}` : 'none';
@@ -233,6 +245,7 @@ export class Brain {
           user: userPrompt,
           schemaName: 'kunibert_antwort',
           schema: QUESTION_SCHEMA,
+          timeoutMs: this.llmTimeoutMs(timer),
         })) as { category?: string; speech?: string };
         if (parsed.category === 'sicherheit') {
           return {
@@ -371,6 +384,7 @@ export class Brain {
           schemaName: 'kunibert_geschichte',
           schema: STORY_SCHEMA,
           maxOutputTokens: 1500,
+          timeoutMs: this.llmTimeoutMs(timer),
         })) as { text?: string; summary?: string; open_threads?: string; next_hook?: string; episode_finished?: boolean };
         const text = trimWords(String(parsed.text || ''), this.storyMaxWords + 50);
         // Ausgabe-Check: bei Treffer greift der Fallback unten (catch-Pfad).
