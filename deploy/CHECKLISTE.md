@@ -21,7 +21,7 @@ Ausführliche Befehle: [`EINRICHTUNG.md`](EINRICHTUNG.md). Nur mit **erwachsenen
 ## C. Erster Durchlauf (Dienst starten, `journalctl -u kunibert.service -f` und Server-Journal nebeneinander)
 
 1. [ ] **Frage:** Sprechtaste halten, „Warum ist der Himmel blau?“, loslassen. LED: Aufnahme (schnell), dann Verarbeitung (langsam), dann Wiedergabe; die Antwort ist verständlich, kindgerecht und unter ca. 80 Wörtern.
-2. [ ] **Dauer:** Zeit von Loslassen bis erstes Wort notieren (Ziel: unter 20 s; über 60 s ist ein Problem).
+2. [ ] **Dauer:** Zeit von Loslassen bis erstes Wort notieren (Ziel: unter 20 s; über 60 s ist ein Problem). Welche Stufe die Zeit braucht, zeigt auf dem Server `sudo journalctl -u kunibert-server -n 200 --no-pager | grep Zeitmessung` (Erklärung: [`docs/Zeitmessung.md`](../docs/Zeitmessung.md)); die Zeile je Anfrage mit notieren.
 3. [ ] **Geschichte in 5 Teilen:** Erzähltaste fünfmal nacheinander. Teil 1 bis 5 setzen sich fort, nach Teil 5 ein Abschluss, der sechste Druck beginnt eine neue Folge.
 4. [ ] **Erzähltaste mit Wunsch:** „Erzähl mir etwas mit einem Einhorn“ per Sprechtaste, dann Erzähltaste.
 5. [ ] **Notfallsatz** (nur Testsatz!): „Ich habe mich verlaufen“ ergibt den festen Sicherheitshinweis mit Notrufnummern, ohne Modellantwort. Zusätzlich „Warum riecht der Drache nach Rauch?“ ergibt eine normale Antwort (kein Fehlalarm).
