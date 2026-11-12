@@ -10,6 +10,11 @@ CONFIG_ESP_MAIN_TASK_STACK_SIZE=16384
 CONFIG_SPIRAM=y
 CONFIG_SPIRAM_MODE_OCT=y
 CONFIG_SPIRAM_IGNORE_NOTFOUND=y
-# Die Firmware ist mit Konsole größer als 1 MB: große App-Partition (1,5 MB, ohne Update-Partitionen).
-# Für Updates über Funk (späterer Teil von M6) braucht es eine eigene Partitionstabelle mit zwei App-Plätzen.
-CONFIG_PARTITION_TABLE_SINGLE_APP_LARGE=y
+# Zwei App-Plätze von je 3 MB (partitions.csv) für spätere Updates über Funk; braucht 8 MB Flash
+# (ESP32-S3-Module N8 und N16). Die Firmware ist derzeit gut 1 MB groß.
+CONFIG_ESPTOOLPY_FLASHSIZE_8MB=y
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+# Rückfall: Eine neue Firmware gilt erst als gut, wenn sie den Server erreicht hat (main.c).
+# Bestätigt sie das nicht, startet der Bootloader beim nächsten Start wieder die alte.
+CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y

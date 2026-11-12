@@ -3,5 +3,5 @@ idf_component_register(
          "kb_settings.c" "kb_settings_rules.c" "kb_console.c"
     INCLUDE_DIRS "."
     PRIV_REQUIRES esp_wifi esp_netif esp_event nvs_flash esp_http_client esp-tls mbedtls json
-                  esp_driver_i2s esp_driver_gpio esp_timer console
+                  esp_driver_i2s esp_driver_gpio esp_timer console app_update
 )

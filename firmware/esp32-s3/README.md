@@ -13,7 +13,7 @@ Das Seriengerät soll ein ESP32-S3 werden; der erste Aufbau läuft auf dem Raspb
 | M3 | Antwort abrufen und beim Laden abspielen | Entwurf, baut in der CI |
 | M4 | Tasten, LED, Zustandsautomat wie im Pi-Client | Entwurf, baut in der CI |
 | M5 | Fehler, Wiederholung, Zeitgrenzen | Entwurf, baut in der CI |
-| M6 | WLAN-Einrichtung ohne Rechner, Updates mit Rückfall, Schutz des Tokens | begonnen: Einstellungen im Gerät und serielle Konsole (Entwurf); offen: Einrichtung ohne Kabel, Updates, Verschlüsselung |
+| M6 | WLAN-Einrichtung ohne Rechner, Updates mit Rückfall, Schutz des Tokens | begonnen: Einstellungen im Gerät, serielle Konsole, Flash-Aufteilung für Updates mit Rückfall (Entwurf); offen: Einrichtung ohne Kabel, das Update selbst, Verschlüsselung |
 
 **Aufbau, für den der Entwurf geschrieben ist (allgemein, Variante B):** ESP32-S3-Modul mit PSRAM, I2S-Mikrofon (z. B. INMP441), I2S-Verstärker (z. B. MAX98357A) mit Lautsprecher, zwei Taster gegen Masse, eine LED, optional ein Schalter für „Mikrofon aus“. Alle Pins stehen in `idf.py menuconfig` (Menü „Ritter Kunibert“ → „Anschlüsse“); die Vorgaben sind Platzhalter. Für das ESP32-S3-BOX-3 (Codec-Chips ES7210/ES8311) braucht `main/kb_audio.c` und `main/kb_board.c` eine eigene Fassung.
 
@@ -51,6 +51,8 @@ kunibert> neustart
 - WLAN-Daten, Adresse, Geräte-ID und Token können für die Entwicklung auch in der Datei `sdkconfig` stehen (Menü „Ritter Kunibert“). Sie landen dann in der Datei `sdkconfig`. Sie steht in `.gitignore` und gehört **nicht** ins Repo.
 - **Token:** Für die Entwicklung steht das Gerätetoken in `sdkconfig` und damit unverschlüsselt im Flash. Nur ein Test-Token verwenden. Stufe M6 legt es verschlüsselt ab.
 - Die Adresse muss mit `https://` beginnen und ohne Schrägstrich enden, gleiche Schreibweise wie `PICASTAI_PUBLIC_BASE_URL` auf dem Server. `http://` lehnt die Firmware ab.
+
+**Flash-Aufteilung:** `partitions.csv` legt zwei App-Plätze von je 3 MB an (braucht 8 MB Flash, also Module N8 oder N16). Damit sind später Updates über Funk möglich, ohne das Gerät neu aufzuteilen. Der Rückfall ist eingeschaltet: Eine neue Firmware gilt erst als gut, wenn sie WLAN und Server erreicht hat; sonst startet beim nächsten Start wieder die alte. **Das Update selbst gibt es noch nicht** (es braucht signierte Firmware und eine Stelle auf dem Server; nicht entworfen). Wer von einer älteren Fassung kommt: einmal `idf.py erase-flash`, dann neu aufspielen und einrichten.
 
 **Was die Firmware tut (wie der Pi-Client):**
 - Start: WLAN, dann `/health`. Erst danach leuchtet die LED dauerhaft (bereit).
