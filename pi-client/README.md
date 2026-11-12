@@ -15,7 +15,7 @@ Auf dem Pi nach dem Kopieren oder Klonen des Repositories:
 
 ```bash
 sudo bash pi-client/install_raspberry_pi.sh \
-  --device-id pi5-001 \
+  --device-id prototype-001 \
   --api-token 'TOKEN_AUS_SECRET_MANAGER'
 ```
 
@@ -24,7 +24,7 @@ Für automatisierte Provisionierung ohne Eingabeaufforderung `--non-interactive`
 ```bash
 sudo bash pi-client/install_raspberry_pi.sh \
   --non-interactive \
-  --device-id pi5-001 \
+  --device-id prototype-001 \
   --api-token "$PICASTAI_DEVICE_TOKEN"
 ```
 
@@ -40,7 +40,7 @@ Für einen WM8960-HAT (Zero 2 W) kann die erkannte ALSA-Karte explizit gesetzt w
 aplay -l
 arecord -l
 sudo bash pi-client/install_raspberry_pi.sh \
-  --device-id pi5-001 \
+  --device-id prototype-001 \
   --api-token 'TOKEN_AUS_SECRET_MANAGER' \
   --audio-card 'hw:wm8960soundcard,0'
 ```
@@ -72,14 +72,14 @@ Vorgehen auf dem Pi:
 ```bash
 arecord -l        # Aufnahmekarten
 aplay -l          # Wiedergabekarten
-sudo bash pi-client/install_raspberry_pi.sh --non-interactive --device-id pi5-001 --api-token "$PICASTAI_DEVICE_TOKEN"
+sudo bash pi-client/install_raspberry_pi.sh --non-interactive --device-id prototype-001 --api-token "$PICASTAI_DEVICE_TOKEN"
 /opt/kunibert/.venv/bin/python -m sounddevice     # Liste der Geräte, wie der Client sie sieht
 ```
 
 Aus der Liste je einen eindeutigen Namensteil für Mikrofon und Lautsprecher nehmen und eintragen (Namen sind stabiler als Nummern, weil sich die Kartennummern von USB-Geräten ändern können):
 
 ```bash
-sudo bash pi-client/install_raspberry_pi.sh --non-interactive --device-id pi5-001 \
+sudo bash pi-client/install_raspberry_pi.sh --non-interactive --device-id prototype-001 \
   --api-token "$PICASTAI_DEVICE_TOKEN" \
   --capture-device 'NAMENSTEIL_MIKROFON' --playback-device 'NAMENSTEIL_LAUTSPRECHER'
 ```
