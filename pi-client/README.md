@@ -281,7 +281,24 @@ $env:PICASTAI_DEVICE_TOKEN = "test-token-kunibert-2026"
 py pi-client\kunibert_client.py --keyboard
 ```
 
-Danach: Fenster 1 schließen (der Schlüssel steht in seinem Verlauf) und `docker stop speaches`. Kommt später der Pi, kann der Server im selben WLAN auf diesem Rechner bleiben (nächster Abschnitt).
+Danach: Fenster 1 schließen (der Schlüssel steht in seinem Verlauf) und `docker stop speaches`. Kommt später der Pi, kann der Server im selben WLAN auf diesem Rechner bleiben (Abschnitt „Später: der Pi im selben WLAN“ weiter unten).
+
+`--dry-run` startet den Zustandsautomaten mit Attrappen für Taster, Mikrofon, Lautsprecher und LED. Es sendet **keine** Anfrage an den Server (auch keinen Health-Check), und die Attrappen drücken nie eine Taste. Der Lauf zeigt nur, dass der Client startet und `READY` erreicht; Server-Adresse und Token spielen dabei keine Rolle:
+
+```bash
+python3 pi-client/kunibert_client.py --dry-run --debug
+```
+
+Gegen einen lokalen Server (zum Beispiel `PORT=3187 HOST=127.0.0.1 npm start` im Repository, ohne `NODE_ENV=production`) prüfen `--once health` und `--once story` den echten HTTP-Weg ohne GPIO und Audio. Der eingebaute Entwicklungs-Zugang hat die Geräte-ID `prototype-1`, nicht die Client-Standard-ID `prototype-001`, die der Server mit HTTP 401 ablehnt:
+
+```bash
+PICASTAI_API_BASE_URL=http://127.0.0.1:3187 \
+PICASTAI_DEVICE_ID=prototype-1 \
+PICASTAI_DEVICE_TOKEN=test-token-kunibert-2026 \
+python3 pi-client/kunibert_client.py --once story --debug
+```
+
+Ohne konfigurierten Sprachserver liefert der Server dabei kurze Töne statt Sprache (Glockenton, Fanfare).
 
 #### Später: der Pi im selben WLAN, der Server bleibt auf deinem Rechner
 
@@ -321,23 +338,6 @@ New-NetFirewallRule -DisplayName "Kunibert-Server (Heimnetz)" -Direction Inbound
 **5. Am Pi:** Installation wie oben („Automatische Installation“) mit `--api-url http://192.168.178.20:3000 --device-id prototype-001` (deine Adresse); das Token fragt der Installer verdeckt ab. Danach `--once health` (muss `OK` melden), dann `deploy/CHECKLISTE.md`, Teil C.
 
 **Grenzen:** Zwischen Pi und Rechner läuft http, also unverschlüsselt im eigenen WLAN (das WLAN selbst ist verschlüsselt). Für Tests mit Erwachsenen im eigenen Netz in Ordnung (Einschätzung); für Geräte außerhalb deines WLANs braucht es HTTPS (Tailscale Funnel oder ein Server, siehe Projektliste, Punkt 65). Der Rechner muss laufen, solange der Pi arbeiten soll. Aufräumen: Fenster 1 schließen, `docker stop speaches`; die Firewall-Regel entfernst du mit `Remove-NetFirewallRule -DisplayName "Kunibert-Server (Heimnetz)"` (als Administrator).
-
-`--dry-run` startet den Zustandsautomaten mit Attrappen für Taster, Mikrofon, Lautsprecher und LED. Es sendet **keine** Anfrage an den Server (auch keinen Health-Check), und die Attrappen drücken nie eine Taste. Der Lauf zeigt nur, dass der Client startet und `READY` erreicht; Server-Adresse und Token spielen dabei keine Rolle:
-
-```bash
-python3 pi-client/kunibert_client.py --dry-run --debug
-```
-
-Gegen einen lokalen Server (zum Beispiel `PORT=3187 HOST=127.0.0.1 npm start` im Repository, ohne `NODE_ENV=production`) prüfen `--once health` und `--once story` den echten HTTP-Weg ohne GPIO und Audio. Der eingebaute Entwicklungs-Zugang hat die Geräte-ID `prototype-1`, nicht die Client-Standard-ID `prototype-001`, die der Server mit HTTP 401 ablehnt:
-
-```bash
-PICASTAI_API_BASE_URL=http://127.0.0.1:3187 \
-PICASTAI_DEVICE_ID=prototype-1 \
-PICASTAI_DEVICE_TOKEN=test-token-kunibert-2026 \
-python3 pi-client/kunibert_client.py --once story --debug
-```
-
-Ohne konfigurierten Sprachserver liefert der Server dabei kurze Töne statt Sprache (Glockenton, Fanfare).
 
 ## systemd
 
