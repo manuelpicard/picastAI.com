@@ -27,8 +27,9 @@ npm test                 # Server-Tests (node:test)
 npm run lint             # tsc --noEmit
 npm run build
 npm run test:e2e         # echter Pi-Client gegen echten Server, Dienste als Attrappen
-python3 -m unittest discover -s pi-client -p "test_*.py"
+python3 -m unittest discover -s pi-client -p "test_*.py"   # mit sounddevice und libportaudio2 auch gegen die echte Audio-Bibliothek (CI: ALSA-Nullgerät)
 bash deploy/setup-server.test.sh
+shellcheck -S warning deploy/*.sh pi-client/*.sh
 # Firmware-Logik auf dem Rechner (der ESP-IDF-Build läuft nur in der CI):
 cd firmware/esp32-s3 && cc -std=c11 -Wall -Wextra -Werror -pedantic -fsanitize=address,undefined -I main \
   -o /tmp/kb_logic test/test_logic.c main/kb_state.c main/kb_wav.c main/kb_url.c main/kb_settings_rules.c && /tmp/kb_logic
@@ -37,7 +38,8 @@ cd firmware/esp32-s3 && cc -std=c11 -Wall -Wextra -Werror -pedantic -fsanitize=a
 ## Feste Regeln
 
 - Sprachmodell ist Claude. Kein OpenAI, kein Gemini, auch nicht als Abhängigkeit oder Beispiel.
-- Kinderstimmen gehen nur an den eigenen Sprachserver. Protokolle enthalten nie Äußerungen, Antworttexte, Geräte-IDs oder Tokens (dafür gibt es Tests; bei neuen Logzeilen mitprüfen).
+- Kinderstimmen gehen nur an den eigenen Sprachserver. Protokolle enthalten nie Äußerungen, Antworttexte, Geräte-IDs oder Tokens (dafür gibt es Tests; bei neuen Logzeilen mitprüfen). Fehlerantworten fremder Dienste nur als Status und Fehlercode weitergeben (`server-api/provider-errors.ts`), nie mit Fließtext.
+- Attrappen für Bibliotheken (zum Beispiel `sounddevice`) mit `spec` bauen und, wo es geht, zusätzlich gegen die echte Bibliothek testen: Die Wiedergabe am Pi war bis zum 12.11.2026 kaputt, und nur die Attrappe merkte es nicht.
 - Kunibert spricht nie nach, was das Kind gesagt hat, ohne Ausgabe-Check (`screenOutput`).
 - Änderungen an `safety.ts` immer mit Sätzen in beiden Listen von `safety.test.ts` (muss anschlagen, darf nicht anschlagen). Lieber ein Fehlalarm als eine Lücke.
 - Server, Pi-Client und Firmware müssen zur Schnittstellen-Doku passen; Zeitkette Server 120 s, Caddy 130 s, Gerät 140 s.

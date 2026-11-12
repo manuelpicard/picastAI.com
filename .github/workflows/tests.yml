@@ -46,6 +46,9 @@ jobs:
         run: npm run test:e2e
       - name: Einrichtungsskript (Hilfsfunktionen)
         run: bash deploy/setup-server.test.sh
+      # shellcheck ist auf den GitHub-Runnern vorinstalliert.
+      - name: Shell-Skripte (shellcheck)
+        run: shellcheck -S warning deploy/*.sh pi-client/*.sh
 
   # Gerätespeicher in Firestore gegen den lokalen Firestore-Emulator (siehe docs/Firestore-Emulator-Test.md).
   # Der Emulator wird nur hier installiert, nicht als Abhängigkeit in package.json/package-lock.json.
