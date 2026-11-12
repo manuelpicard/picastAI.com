@@ -35,7 +35,7 @@ Stand: ✓ stimmt, ✗ war falsch und ist korrigiert, „offen“ nicht prüfbar
 | Aussage | Ergebnis | Quelle |
 | --- | --- | --- |
 | Nur 80/443 öffentlich, nur Caddy | ✓ (Firewall selbst: offen, erst auf dem Server prüfbar) | `deploy/Caddyfile:13` (nur Hostname lauscht), `:16-17` |
-| Caddy reicht nur `/health` und `/v1/*` durch, sonst 404 | ✓ im Test gegen echtes Caddy: `/`, `/api/status`, `/api/devices` je 404 | `deploy/Caddyfile:16-17`, `:30-32` |
+| Caddy reicht nur `/health` und `/v1/device/*` durch, sonst 404 (seit 12.11.2026 enger: vorher `/v1/*`; `/v1/turn` der Weboberfläche ist damit von außen gesperrt) | ✓ im Test vom 11.11. gegen echtes Caddy mit `/v1/*`: `/`, `/api/status`, `/api/devices` je 404; die engere Regel ist **nicht** neu gegen Caddy getestet | `deploy/Caddyfile:16-17`, `:30-32` |
 | Port 3000 nie nach außen | ✓ per Konfiguration: `HOST=127.0.0.1`. ✗ Ohne `HOST` lauscht der Server auf `0.0.0.0` (jetzt im Text) | `deploy/kunibert.env.example:9`, `server-api/config.ts:219`, `server.ts:516` |
 | Port 8000 nie nach außen | ✓ `--publish 127.0.0.1:8000:8000`. Hinweis zu Docker und `ufw` ergänzt | `deploy/EINRICHTUNG.md` Abschnitt 4 |
 | `PICASTAI_PUBLIC_BASE_URL` bestimmt die `audio_url` | ✓ im Test (Antwort enthielt die eingestellte Adresse) | `server.ts:112-119`, `server-api/http-utils.ts:36-63` |
