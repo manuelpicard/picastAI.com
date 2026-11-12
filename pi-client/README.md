@@ -281,7 +281,46 @@ $env:PICASTAI_DEVICE_TOKEN = "test-token-kunibert-2026"
 py pi-client\kunibert_client.py --keyboard
 ```
 
-Danach: Fenster 1 schließen (der Schlüssel steht in seinem Verlauf) und `docker stop speaches`. Kommt später der Pi, kann der Server im selben WLAN auf diesem Rechner bleiben; dafür braucht es ein eigenes Token statt des Entwicklungs-Zugangs und eine Freigabe in der Windows-Firewall (Anleitung folgt, wenn der Pi da ist).
+Danach: Fenster 1 schließen (der Schlüssel steht in seinem Verlauf) und `docker stop speaches`. Kommt später der Pi, kann der Server im selben WLAN auf diesem Rechner bleiben (nächster Abschnitt).
+
+#### Später: der Pi im selben WLAN, der Server bleibt auf deinem Rechner
+
+Für den ersten Durchlauf mit dem Pi (`deploy/CHECKLISTE.md`) ohne gemieteten Server. Stand: **nicht getestet** (kein Pi da); geschrieben nach dem Code (`server.ts`, `server-api/devices.ts`, `server-api/http-utils.ts`). Nur Erwachsene als Tester.
+
+Was anders ist als im Probelauf oben: Der Server läuft mit `NODE_ENV=production` (dann gibt es den öffentlich bekannten Entwicklungs-Zugang nicht), er lauscht im Heimnetz statt nur auf deinem Rechner, und der Pi bekommt ein eigenes Token.
+
+**1. Token erzeugen (PowerShell, einmal).** Das Token gibst du nur hier, im Server-Fenster und am Pi ein; nicht in Chats, Dateien oder Git:
+
+```powershell
+$b = New-Object byte[] 32; [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b); -join ($b | ForEach-Object { $_.ToString('x2') })
+```
+
+**2. Adresse deines Rechners im WLAN:** `ipconfig`, Zeile „IPv4-Adresse“ des WLAN- oder LAN-Adapters, zum Beispiel `192.168.178.20`. Damit sie gleich bleibt, kannst du im Router (zum Beispiel FRITZ!Box: Heimnetz, Netzwerk, „Diesem Netzwerkgerät immer die gleiche IPv4-Adresse zuweisen“) eine feste Adresse vergeben.
+
+**3. Server (PowerShell-Fenster 1, im Ordner des Repos):** wie oben Schritt 2, aber so:
+
+```powershell
+npm ci
+npm run build
+$env:NODE_ENV = "production"
+$env:HOST = "0.0.0.0"
+$env:PICASTAI_DEVICE_ID = "prototype-001"
+$env:PICASTAI_DEVICE_TOKEN = "<Token aus Schritt 1>"
+# dazu dieselben Zeilen für Sprachserver und Stimme wie oben (PICASTAI_STT_…, PICASTAI_TTS_…) und ANTHROPIC_API_KEY
+npm start
+```
+
+Ohne `PICASTAI_PUBLIC_BASE_URL` baut der Server die `audio_url` aus der Adresse, die der Pi aufruft; das passt im Heimnetz. Der Sprachserver bleibt auf `127.0.0.1:8000`, er ist nur für deinen Rechner da.
+
+**4. Windows-Firewall:** Beim ersten Start fragt Windows, ob Node.js im Netzwerk erreichbar sein darf. Nur „Private Netzwerke“ erlauben, nicht „Öffentliche Netzwerke“. Dein WLAN muss in Windows als „Privates Netzwerk“ eingestellt sein (Einstellungen, Netzwerk und Internet, WLAN, Netzwerkprofiltyp). Kommt keine Frage, legt diese Zeile in einer PowerShell **als Administrator** die Regel an (nur Port 3000, nur aus dem eigenen Netz):
+
+```powershell
+New-NetFirewallRule -DisplayName "Kunibert-Server (Heimnetz)" -Direction Inbound -Protocol TCP -LocalPort 3000 -Profile Private -RemoteAddress LocalSubnet -Action Allow
+```
+
+**5. Am Pi:** Installation wie oben („Automatische Installation“) mit `--api-url http://192.168.178.20:3000 --device-id prototype-001` (deine Adresse); das Token fragt der Installer verdeckt ab. Danach `--once health` (muss `OK` melden), dann `deploy/CHECKLISTE.md`, Teil C.
+
+**Grenzen:** Zwischen Pi und Rechner läuft http, also unverschlüsselt im eigenen WLAN (das WLAN selbst ist verschlüsselt). Für Tests mit Erwachsenen im eigenen Netz in Ordnung (Einschätzung); für Geräte außerhalb deines WLANs braucht es HTTPS (Tailscale Funnel oder ein Server, siehe Projektliste, Punkt 65). Der Rechner muss laufen, solange der Pi arbeiten soll. Aufräumen: Fenster 1 schließen, `docker stop speaches`; die Firewall-Regel entfernst du mit `Remove-NetFirewallRule -DisplayName "Kunibert-Server (Heimnetz)"` (als Administrator).
 
 `--dry-run` startet den Zustandsautomaten mit Attrappen für Taster, Mikrofon, Lautsprecher und LED. Es sendet **keine** Anfrage an den Server (auch keinen Health-Check), und die Attrappen drücken nie eine Taste. Der Lauf zeigt nur, dass der Client startet und `READY` erreicht; Server-Adresse und Token spielen dabei keine Rolle:
 
