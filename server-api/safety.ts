@@ -298,7 +298,8 @@ const PATTERNS_2026_11_C: RegExp[] = [
   // Fremde: ruft, lockt, spricht an, verfolgt
   new RegExp(`${L}(ein mann|eine frau|ein fremder|eine fremde|ein typ|jemand fremdes)( ${WORD}){0,5} (ruft|lockt|winkt) mich${R}(?! (an|zurück)${R})`),
   new RegExp(`${L}(ein fremder|eine fremde|ein fremder mann|eine fremde frau|ein unbekannter|eine unbekannte|fremde leute)( ${WORD}){0,4} (hat|haben) mich (${WORD} ){0,2}angesprochen${R}`),
-  new RegExp(`${L}(verfolgt|verfolgen|verfolgte) mich${R}`),
+  // Nicht: "Warum verfolgt mich der Mond beim Autofahren?" (typische Kinderfrage)
+  new RegExp(`^(?!.*${L}(mond|sonne|schatten|stern|sterne|wolke|wolken|traum|albtraum|pech|glück|lied|ohrwurm)${R}).*${L}(verfolgt|verfolgen|verfolgte) mich${R}`),
   new RegExp(`${L}(mann|frau|typ|fremder|fremde|jemand|auto|wagen|einer) (${WORD} ){0,3}(läuft|lief|fährt|fuhr|ist|geht|ging|kommt|kam) mir (${WORD} ){0,4}(hinterher|hinterhergelaufen|hinterhergefahren|nachgelaufen|nachgefahren|gefolgt)${R}`),
 
   // Wasser. Schiffe, Sonne und Mond ausgenommen ("Warum ist die Titanic untergegangen?").
