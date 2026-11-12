@@ -1,4 +1,4 @@
-import { decodeWavHeader, encodeWav, resampleMono16 } from './audio.js';
+import { decodeWavHeader, encodeWav, isPcmFormat, parseWav, resampleMono16, type WavInfo } from './audio.js';
 import type { KunibertConfig } from './config.js';
 import { summarizeErrorResponse } from './provider-errors.js';
 import {
@@ -32,57 +32,27 @@ function withTimeout(timeoutMs: number): { signal: AbortSignal; cancel: () => vo
 }
 
 
-interface PcmWavInfo {
-  formatTag: number;
-  channels: number;
-  sampleRate: number;
-  bitsPerSample: number;
-  dataOffset: number;
-  dataLength: number;
-}
-
 /**
- * Liest ein WAV chunkweise. Anbieter liefern nicht immer den kanonischen 44-Byte-Kopf
- * (zusätzliche Chunks, Streaming-Kopf mit Länge 0 oder 0xFFFFFFFF); feste Offsets würden
- * dann Header-Bytes als Ton lesen.
+ * Liest das WAV des Anbieters chunkweise (parseWav in audio.ts). Anbieter liefern nicht immer
+ * den kanonischen 44-Byte-Kopf (zusätzliche Chunks, Streaming-Kopf mit Länge 0 oder
+ * 0xFFFFFFFF); feste Offsets würden dann Header-Bytes als Ton lesen.
  */
-function parsePcmWav(audio: Buffer): PcmWavInfo {
-  if (audio.length < 12 || audio.toString('ascii', 0, 4) !== 'RIFF' || audio.toString('ascii', 8, 12) !== 'WAVE') {
-    throw new VoiceProviderError('TTS-Provider lieferte kein WAV');
+function parsePcmWav(audio: Buffer): WavInfo {
+  try {
+    return parseWav(audio);
+  } catch {
+    // Nur ein fester Text: Die Meldung landet im Protokoll.
+    throw new VoiceProviderError('TTS-Provider lieferte kein lesbares WAV');
   }
-  let format: Omit<PcmWavInfo, 'dataOffset' | 'dataLength'> | null = null;
-  let offset = 12;
-  while (offset + 8 <= audio.length) {
-    const id = audio.toString('ascii', offset, offset + 4);
-    const size = audio.readUInt32LE(offset + 4);
-    const body = offset + 8;
-    if (id === 'fmt ') {
-      if (size < 16 || body + 16 > audio.length) throw new VoiceProviderError('TTS-Provider lieferte ein WAV mit defektem Formatblock');
-      format = {
-        formatTag: audio.readUInt16LE(body),
-        channels: audio.readUInt16LE(body + 2),
-        sampleRate: audio.readUInt32LE(body + 4),
-        bitsPerSample: audio.readUInt16LE(body + 14),
-      };
-    } else if (id === 'data') {
-      if (!format) throw new VoiceProviderError('TTS-Provider lieferte ein WAV ohne Formatblock');
-      const available = audio.length - body;
-      const dataLength = size === 0 || size === 0xffffffff || size > available ? available : size;
-      return { ...format, dataOffset: body, dataLength };
-    }
-    offset = body + size + (size % 2);
-  }
-  throw new VoiceProviderError('TTS-Provider lieferte ein WAV ohne Audiodaten');
 }
 
 function normalizePcmWav(audio: Buffer, targetRate: number): Buffer {
   const wav = parsePcmWav(audio);
-  const pcmFormat = wav.formatTag === 1 || wav.formatTag === 0xfffe;
-  if (!pcmFormat || wav.bitsPerSample !== 16 || (wav.channels !== 1 && wav.channels !== 2) || wav.sampleRate <= 0) {
+  if (!isPcmFormat(wav.formatTag) || wav.bitsPerSample !== 16 || (wav.channels !== 1 && wav.channels !== 2) || wav.sampleRate <= 0) {
     throw new VoiceProviderError('TTS-Provider lieferte kein unterstütztes PCM-WAV');
   }
   const bytesPerFrame = wav.channels * 2;
-  const availableFrames = Math.floor(wav.dataLength / bytesPerFrame);
+  const availableFrames = Math.floor(wav.dataSize / bytesPerFrame);
   if (availableFrames <= 0) throw new VoiceProviderError('TTS-Provider lieferte ein leeres WAV');
 
   if (wav.channels === 1 && wav.sampleRate === targetRate) {

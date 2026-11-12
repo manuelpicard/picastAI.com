@@ -3,10 +3,12 @@ import test from 'node:test';
 import {
   getSafeConfigSummary,
   isDiagnosticTextEnabled,
+  isTestTranscriptEnabled,
   llmConfigWarnings,
   loadConfig,
   normalizeServiceUrl,
   resolveTtsProvider,
+  testSwitchWarnings,
   ttsProviderWarnings,
   voiceConfigWarnings,
 } from './config.js';
@@ -165,4 +167,21 @@ test('getSafeConfigSummary: bei Google Host und Stimme, nie der Schlüssel', () 
   assert.equal(summary.ttsVoice, 'de-DE-Chirp3-HD-Algenib');
   assert.equal(summary.ttsModel, '');
   assert.equal(JSON.stringify(summary).includes('google-geheim'), false);
+});
+
+test('Testfeld transcript: in Entwicklung an, im Betrieb nur mit KUNIBERT_TEST_TRANSCRIPT=1', () => {
+  assert.equal(isTestTranscriptEnabled({}), true, 'ohne NODE_ENV (Probelauf am Rechner)');
+  assert.equal(isTestTranscriptEnabled({ NODE_ENV: 'development' }), true);
+  assert.equal(isTestTranscriptEnabled({ NODE_ENV: 'production' }), false, 'Betrieb: aus');
+  assert.equal(isTestTranscriptEnabled({ NODE_ENV: 'production', KUNIBERT_TEST_TRANSCRIPT: '0' }), false);
+  assert.equal(isTestTranscriptEnabled({ NODE_ENV: 'production', KUNIBERT_TEST_TRANSCRIPT: 'ja' }), false, 'nur genau 1 schaltet ein');
+  assert.equal(isTestTranscriptEnabled({ NODE_ENV: 'production', KUNIBERT_TEST_TRANSCRIPT: ' 1 ' }), true);
+});
+
+test('Startwarnung nur, wenn das Testfeld im Betrieb an ist', () => {
+  assert.deepEqual(testSwitchWarnings({ NODE_ENV: 'production' }), []);
+  assert.deepEqual(testSwitchWarnings({ NODE_ENV: 'development', KUNIBERT_TEST_TRANSCRIPT: '1' }), []);
+  const [warning] = testSwitchWarnings({ NODE_ENV: 'production', KUNIBERT_TEST_TRANSCRIPT: '1' });
+  assert.match(warning, /KUNIBERT_TEST_TRANSCRIPT=1/);
+  assert.match(warning, /vor dem ersten Kind/);
 });
