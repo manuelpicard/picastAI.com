@@ -75,3 +75,10 @@ node deploy/dryrun/mock-anthropic.mjs &       # Attrappe, Port 8099
 BASE_URL=http://127.0.0.1:3000 DEVICE_ID=… DEVICE_TOKEN=… SPEACHES_URL=http://127.0.0.1:8000 \
   TTS_MODEL=speaches-ai/piper-de_DE-thorsten-medium TTS_VOICE=thorsten node deploy/dryrun/dryrun.mjs
 ```
+
+## Nachtrag 12.11.2026: Pi-Client gegen den Server in der CI
+
+`npm run test:e2e` (`deploy/dryrun/pi-e2e.test.mjs`) startet den echten Server und lässt den echten Pi-Client (`pi-client/kunibert_client.py`) dagegen laufen: `/health`, Geschichte, Frage mit Aufnahme, Abruf über die `audio_url`, Ablehnung bei falschem Token. Spracherkennung, Sprachausgabe und Sprachmodell sind lokale Attrappen; es geht nichts nach außen. Der Test läuft bei jedem Push in der CI.
+
+- **Zeigt:** Client und Server passen zusammen (Adressen, Header, Formularfelder, `audio_url`); im Server-Protokoll stehen weder Token noch erkannter Text.
+- **Zeigt nicht:** Ton, Tasten, LED, WLAN, Wartezeiten, echte Sprachdienste, echtes Claude.
