@@ -245,14 +245,14 @@ Einmal vorher installieren: Git, Node.js 22, Python 3.10 oder neuer und Docker D
 **1. Sprachserver (PowerShell, einmal):**
 
 ```powershell
-docker run -d --name speaches --restart unless-stopped -p 127.0.0.1:8000:8000 -v hf-hub-cache:/home/ubuntu/.cache/huggingface/hub ghcr.io/speaches-ai/speaches:latest-cpu
+docker run -d --name speaches --restart unless-stopped -p 127.0.0.1:8000:8000 -v hf-hub-cache:/home/ubuntu/.cache/huggingface/hub ghcr.io/speaches-ai/speaches:0.8.3-cpu
 # warten, bis das ok liefert (kann eine Minute dauern):
 curl.exe -fsS http://127.0.0.1:8000/health
 curl.exe -fsS -X POST http://127.0.0.1:8000/v1/models/Systran/faster-whisper-small
 curl.exe -fsS -X POST http://127.0.0.1:8000/v1/models/speaches-ai/piper-de_DE-thorsten-medium
 ```
 
-`curl.exe` mit `.exe`: In Windows PowerShell ist `curl` ein anderer Befehl. Später genügt `docker start speaches`.
+`curl.exe` mit `.exe`: In Windows PowerShell ist `curl` ein anderer Befehl. Später genügt `docker start speaches`. Das Image ist bewusst eine feste Version (`0.8.3-cpu`, am 12.11.2026 dieselbe wie `latest-cpu`), damit dein Rechner und ein späterer Server gleich arbeiten. Hast du den Container schon mit `latest-cpu` angelegt, ist das derzeit dasselbe Image; nichts zu tun.
 
 **2. Kunibert-Server (PowerShell-Fenster 1, im Ordner des Repos, Stand von `main`):**
 
@@ -350,7 +350,9 @@ aplay /tmp/mic.wav
 
 Wenn die HAT-Treiber nicht geladen sind, muss zuerst die Dokumentation des konkreten WM8960- oder ReSpeaker-HATs befolgt werden. Der Client setzt ein funktionierendes ALSA-/PortAudio-Gerät voraus.
 
-Meldet der Client beim Start „Kunibert kann nicht starten: Audio-Bibliothek startet nicht … PulseAudio_Initialize: Can't connect to server“, ist eine neuere PortAudio-Fassung (19.7) installiert, die ohne laufenden PulseAudio- oder PipeWire-Server nicht startet. So war es am 12.11.2026 auf dem CI-Rechner mit Ubuntu (`libportaudio2` 19.7.0+git20260206). Mit PortAudio 19.6 (Ubuntu 24.04; laut Suchergebnis auch Debian) tritt das nicht auf. Ob Raspberry Pi OS 19.6 oder 19.7 mitbringt, ist offen: `dpkg -l libportaudio2` auf dem Pi zeigt es.
+Meldet der Client beim Start „Kunibert kann nicht starten: Audio-Bibliothek startet nicht … PulseAudio_Initialize: Can't connect to server“, ist eine neuere PortAudio-Fassung (19.7) installiert, die ohne laufenden PulseAudio- oder PipeWire-Server nicht startet. So war es am 12.11.2026 auf dem CI-Rechner mit Ubuntu (`libportaudio2` 19.7.0+git20260206). Mit PortAudio 19.6 tritt das nicht auf.
+
+Raspberry Pi OS bringt 19.6 mit (geprüft am 12.11.2026): Raspberry Pi OS „Trixie“ beruht auf Debian 13, und Debian 13 hat `libportaudio2` 19.6.0-1.2+b3 (Debian-Archiv, `https://api.ftp-master.debian.org/madison?package=libportaudio2`; erst Debian „testing“ hat 19.7.0-1+b1). Das Archiv von Raspberry Pi (`archive.raspberrypi.com/debian`, `trixie`, arm64) enthält kein eigenes PortAudio-Paket, also gilt das von Debian. Prüfen am Pi: `dpkg -l libportaudio2`. Steht dort einmal 19.7, hilft ein laufender PipeWire- oder PulseAudio-Server für den Benutzer `kunibert` (Anleitung folgt dann).
 
 ### Direkter ALSA-Test ohne Python-Client
 

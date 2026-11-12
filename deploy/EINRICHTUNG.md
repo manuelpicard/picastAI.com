@@ -38,7 +38,7 @@ bash setup-server.sh --hostname kunibert.example
 - Admin- und Geräte-Token erzeugt das Skript selbst und schreibt sie nur in `/etc/kunibert/kunibert.env` (nicht auf den Bildschirm). 👤 Den `ANTHROPIC_API_KEY` trägst du danach selbst mit `sudoedit` ein; das Skript kennt ihn nicht.
 - Zeigt der Hostname noch nicht auf den Server, stoppt das Skript Caddy und sagt es. So gibt es keine Fehlversuche beim Zertifikat. Nach dem DNS-Eintrag: `sudo systemctl start caddy`.
 - **Wartezeit messen:** Gleich nach dem Lauf `bash /opt/kunibert/app/deploy/stt-messung.sh` starten. Es misst die Spracherkennung mit `tiny`, `base` und `small` auf diesem Server und zeigt, was erkannt wurde (auch nicht auf einem echten Server gelaufen). Damit ist die offene Frage zur Wartezeit auf der CCX13 in ein paar Minuten beantwortet.
-- Anderes Erkennungsmodell: `--stt-model Systran/faster-whisper-base`. Festes Image des Sprachservers: `--speaches-image ghcr.io/speaches-ai/speaches:<Version>-cpu` (Standard `latest-cpu`; die Zusammenfassung nennt die Kennung des Images, das tatsächlich läuft). Alle Optionen: `bash setup-server.sh --help`.
+- Anderes Erkennungsmodell: `--stt-model Systran/faster-whisper-base`. Image des Sprachservers: Standard ist die feste Version `0.8.3-cpu` (am 12.11.2026 dieselbe Kennung wie `latest-cpu`); eine andere mit `--speaches-image ghcr.io/speaches-ai/speaches:<Version>-cpu`. Die Zusammenfassung nennt die Kennung des Images, das tatsächlich läuft. Alle Optionen: `bash setup-server.sh --help`.
 - Das Skript schaltet automatische Sicherheitsupdates des Betriebssystems ein (`unattended-upgrades`, ohne automatischen Neustart).
 
 ```text
@@ -96,7 +96,7 @@ Spracherkennung und Sprachausgabe laufen auf einem eigenen Server, hier [Speache
 sudo docker run --detach --name speaches --restart unless-stopped \
   --publish 127.0.0.1:8000:8000 \
   --volume hf-hub-cache:/home/ubuntu/.cache/huggingface/hub \
-  ghcr.io/speaches-ai/speaches:latest-cpu
+  ghcr.io/speaches-ai/speaches:0.8.3-cpu
 ```
 
 `127.0.0.1` ist Absicht: der Sprachserver lauscht nur lokal und braucht deshalb keinen Schlüssel. Port 8000 nie nach außen freigeben. Mit NVIDIA-Grafikkarte stattdessen `latest-cuda` und `--gpus=all`. Liegt der Sprachserver auf einem anderen Rechner, nur per `https` und mit Schlüssel (`PICASTAI_STT_API_KEY`, `PICASTAI_TTS_API_KEY`) ansprechen; der Server warnt beim Start vor `http` zu fremden Rechnern.

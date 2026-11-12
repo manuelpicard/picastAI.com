@@ -25,9 +25,11 @@ APP_DIR=/opt/kunibert/app
 ENV_FILE=/etc/kunibert/kunibert.env
 REPO_SSH=git@github.com:manuelpicard/picastAI.com.git
 DEPLOY_KEY=/root/.ssh/kunibert_deploy
-# latest-cpu ist laut Build-Workflow von Speaches die neueste stabile Version (am 12.11.2026: 0.8.3;
-# neuere Tags sind nur Vorabversionen). Ein festes Image: --speaches-image ghcr.io/speaches-ai/speaches:<Version>-cpu
-SPEACHES_IMAGE=ghcr.io/speaches-ai/speaches:latest-cpu
+# Feste Version statt latest-cpu, damit ein neuer Server dieselbe Version bekommt wie die Tests.
+# Am 12.11.2026 in der Registry geprüft: latest-cpu und 0.8.3-cpu haben dieselbe Kennung
+# (sha256:21e3df06d842…); neuere Tags (0.9.0-rc.1 bis rc.3) sind nur Vorabversionen.
+# Eine andere Version: --speaches-image ghcr.io/speaches-ai/speaches:<Version>-cpu
+SPEACHES_IMAGE=ghcr.io/speaches-ai/speaches:0.8.3-cpu
 SPEACHES_URL=http://127.0.0.1:8000
 
 HOSTNAME_ARG=""
@@ -51,7 +53,7 @@ Aufruf: sudo bash deploy/setup-server.sh --hostname <name> [Optionen]
   --stt-model <name>  Erkennungsmodell (Standard: Systran/faster-whisper-small)
   --tts-model <name>  Stimmenmodell (Standard: speaches-ai/piper-de_DE-thorsten-medium)
   --tts-voice <name>  Stimme (Standard: thorsten)
-  --speaches-image <name>  Image des Sprachservers (Standard: ghcr.io/speaches-ai/speaches:latest-cpu)
+  --speaches-image <name>  Image des Sprachservers (Standard: ghcr.io/speaches-ai/speaches:0.8.3-cpu)
   --skip-speaches     Sprachserver nicht einrichten
   --skip-caddy        Caddy nicht einrichten
   -h, --help          Diese Hilfe
