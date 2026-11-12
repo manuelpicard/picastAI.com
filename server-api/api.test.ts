@@ -691,4 +691,16 @@ describe('picastAI-API im Betrieb ohne Testschalter', () => {
     );
     assert.ok(!output.includes('KUNIBERT_TEST_TRANSCRIPT'), 'ohne Schalter keine Startwarnung');
   });
+
+  it('auch die alte Route /v1/turn nimmt im Betrieb keinen Text statt Aufnahme', async () => {
+    // Im Heimnetz ohne Caddy (Pi im selben WLAN) ist /v1/turn erreichbar.
+    const headers = { Authorization: `Bearer ${ENV_DEVICE_TOKEN}`, 'X-Device-ID': ENV_DEVICE_ID };
+    const res = await fetch(`${base}/v1/turn`, {
+      method: 'POST',
+      headers,
+      body: questionForm(null, { mode: 'frage', text: 'ich will nicht mehr leben' }),
+    });
+    assert.equal(res.status, 400);
+    assert.equal(((await res.json()) as { error: string }).error, 'audio_required');
+  });
 });

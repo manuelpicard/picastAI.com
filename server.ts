@@ -342,14 +342,17 @@ app.post(
         }
       }
 
-      // Transcript ermitteln
+      // Transcript ermitteln. Text statt Aufnahme (Felder text und transcript, für den
+      // Web-Simulator) gilt wie bei /v1/device/question nur mit config.testTranscript: Im
+      // Heimnetz ohne Caddy ist diese Route sonst ein Weg an der Spracherkennung vorbei.
       let transcript = '';
-      if (req.body.text) {
+      if (config.testTranscript && req.body.text) {
         transcript = String(req.body.text);
       } else if (req.file) {
         try {
-          const header = decodeWavHeader(req.file.buffer);
-          transcript = req.body.transcript || await transcribeOrEmpty(req.file.buffer, timer) || 'Frage von Ritter Kunibert Kind';
+          decodeWavHeader(req.file.buffer);
+          const typed = config.testTranscript && typeof req.body.transcript === 'string' ? req.body.transcript : '';
+          transcript = typed || await transcribeOrEmpty(req.file.buffer, timer) || 'Frage von Ritter Kunibert Kind';
         } catch (wavErr) {
           if (mode === 'frage') {
             return res.status(400).json({ error: 'bad_audio' });
