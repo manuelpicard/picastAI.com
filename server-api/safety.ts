@@ -189,14 +189,18 @@ const W = '(?<![a-zäöüß])';
 const E = '(?![a-zäöüß])';
 
 const OUTPUT_PATTERNS_COMMON: RegExp[] = [
-  new RegExp(`${W}(blut|blutet|blutete|bluteten|bluten|blutig\\w*|blutend\\w*|verblutet)${E}`, 'i'),
+  // Ausgemaltes Bluten ist nie erlaubt. "Blut", "blutet" und "bluten" allein sperrt nur die
+  // Erzählregel (unten): In Sachantworten gehören sie dazu ("Warum ist Blut rot?"). Bis zum
+  // 12.11.2026 lehnte der Check auch solche Antworten ab, und das Kind hörte den Ersatztext.
+  new RegExp(`${W}(blutete|bluteten|blutig\\w*|blutend\\w*|blutüberströmt\\w*|verblut\\w*)${E}`, 'i'),
   new RegExp(`${W}(töte|tötet|töten|tötete|getötet|ermordet|mord|mörder|umgebracht|erschlagen|erstochen|erhängt)${E}`, 'i'),
   new RegExp(`${W}(selbstmord|suizid|selbstverletzung)${E}`, 'i'),
   new RegExp(`${W}(sex|sexuell|nackt|porno|pornos)${E}`, 'i'),
 ];
 
-// Erzählregel: niemand stirbt, keine Angst-Enden
+// Erzählregel: kein Blut, niemand stirbt, keine Angst-Enden
 const OUTPUT_PATTERNS_STORY: RegExp[] = [
+  new RegExp(`${W}(blut|blutet|bluten)${E}`, 'i'),
   new RegExp(`${W}(tot|tote[nrms]?|tod|stirbt|starb|gestorben|sterben)${E}`, 'i'),
 ];
 

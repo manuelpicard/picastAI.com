@@ -283,6 +283,31 @@ test('Ausgabe-Check weist ungeeignete Texte ab', () => {
   assert.equal(screenOutput('Wie heißt du eigentlich?', 'answer'), true);
 });
 
+test('Ausgabe-Check: Blut ist in Sachantworten erlaubt, in Geschichten nicht (Punkt 55, 12.11.2026)', () => {
+  // Darf nicht anschlagen: typische Kinderfragen, sachlich beantwortet.
+  for (const answer of [
+    'Blut ist rot, weil in den roten Blutkörperchen ein Stoff mit Eisen steckt.',
+    'Wenn du dich schneidest, blutet es kurz. Dann wird das Blut fest, und es bildet sich Schorf.',
+    'Mücken stechen, weil die Weibchen ein bisschen Blut für ihre Eier brauchen.',
+    'Kleine Wunden bluten oft stark, hören aber meistens schnell wieder auf.',
+  ]) {
+    assert.equal(screenOutput(answer, 'answer'), false, answer);
+  }
+  // Muss anschlagen: ausgemaltes Bluten, auch in Antworten, und Blut in Geschichten.
+  for (const [text, kind] of [
+    ['Überall war blutiger Schlamm.', 'answer'],
+    ['Der Ritter verblutete im Wald.', 'answer'],
+    ['Er lag blutend am Boden.', 'answer'],
+    ['Die Ritter bluteten nach der Schlacht.', 'answer'],
+    ['Am Schwert klebte Blut.', 'story'],
+    ['Kuniberts Arm blutet ein wenig.', 'story'],
+    ['Die Wunden bluten.', 'story'],
+    ['Der Ritter blutete am Arm.', 'story'],
+  ] as const) {
+    assert.equal(screenOutput(text, kind), true, `${kind}: ${text}`);
+  }
+});
+
 test('Ausgabe-Check lässt kindgerechte Texte durch', () => {
   assert.equal(screenOutput('Kunibert ging über die Brücke und sah den Drachen.', 'story'), false);
   assert.equal(screenOutput('Der Drache war müde und schlief ein.', 'story'), false);
