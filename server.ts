@@ -6,8 +6,8 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { DeviceRegistry, DeviceStoreError, RateLimiter, AudioStore } from './server-api/devices.js';
 import { Brain, FALLBACK_ANSWER_DE, StoryState } from './server-api/brain.js';
-import { AudioError, decodeWavHeader, isSilentPcm16 } from './server-api/audio.js';
-import { config, getSafeConfigSummary, llmConfigWarnings, ttsProviderWarnings, voiceConfigWarnings } from './server-api/config.js';
+import { AudioError, decodeWavHeader, isPcmFormat, isSilentPcm16 } from './server-api/audio.js';
+import { config, getSafeConfigSummary, llmConfigWarnings, testSwitchWarnings, ttsProviderWarnings, voiceConfigWarnings } from './server-api/config.js';
 import { isAdminTokenConfigured, verifyAdminAuthorization } from './server-api/admin-auth.js';
 import { VoicePipeline, VoiceProviderError } from './server-api/voice.js';
 import { FirestoreDeviceStore } from './server-api/firestore-service.js';
@@ -209,11 +209,12 @@ app.post(
 
     try {
       const header = decodeWavHeader(req.file.buffer);
-      if (header.channels !== 1 || header.bitsPerSample !== 16 || header.sampleRate !== config.audioSampleRate) {
+      if (!isPcmFormat(header.formatTag) || header.channels !== 1 || header.bitsPerSample !== 16 || header.sampleRate !== config.audioSampleRate) {
         return res.status(400).json({ error: 'unsupported_audio_format' });
       }
 
-      let transcript = typeof req.body.transcript === 'string'
+      // Testfeld: Text statt Aufnahme. Im Betrieb nur mit KUNIBERT_TEST_TRANSCRIPT=1 (config.ts).
+      let transcript = config.testTranscript && typeof req.body.transcript === 'string'
         ? req.body.transcript.slice(0, 1000)
         : '';
       // Eine stumme Aufnahme geht nicht erst an die Spracherkennung: Sie ergibt den Hinweis
@@ -341,14 +342,17 @@ app.post(
         }
       }
 
-      // Transcript ermitteln
+      // Transcript ermitteln. Text statt Aufnahme (Felder text und transcript, für den
+      // Web-Simulator) gilt wie bei /v1/device/question nur mit config.testTranscript: Im
+      // Heimnetz ohne Caddy ist diese Route sonst ein Weg an der Spracherkennung vorbei.
       let transcript = '';
-      if (req.body.text) {
+      if (config.testTranscript && req.body.text) {
         transcript = String(req.body.text);
       } else if (req.file) {
         try {
-          const header = decodeWavHeader(req.file.buffer);
-          transcript = req.body.transcript || await transcribeOrEmpty(req.file.buffer, timer) || 'Frage von Ritter Kunibert Kind';
+          decodeWavHeader(req.file.buffer);
+          const typed = config.testTranscript && typeof req.body.transcript === 'string' ? req.body.transcript : '';
+          transcript = typed || await transcribeOrEmpty(req.file.buffer, timer) || 'Frage von Ritter Kunibert Kind';
         } catch (wavErr) {
           if (mode === 'frage') {
             return res.status(400).json({ error: 'bad_audio' });
@@ -525,7 +529,7 @@ async function startServer() {
 
   app.listen(PORT, HOST, () => {
     console.log(`🏰 Ritter Kunibert Server läuft auf http://${HOST}:${PORT}`);
-    for (const warning of [...llmConfigWarnings(), ...ttsProviderWarnings(), ...voiceConfigWarnings(config)]) console.warn(`⚠️ ${warning}`);
+    for (const warning of [...llmConfigWarnings(), ...ttsProviderWarnings(), ...voiceConfigWarnings(config), ...testSwitchWarnings()]) console.warn(`⚠️ ${warning}`);
     // Feste Sprechtexte vorab synthetisieren (Produktion), damit der Sicherheitshinweis
     // schon beim ersten Kind ohne Wartezeit und ohne Anbieter-Anfrage gesprochen wird.
     // Mit neuen Versuchen, falls der Sprachserver nach einem Neustart noch nicht bereit ist.

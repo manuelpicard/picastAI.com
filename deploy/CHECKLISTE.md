@@ -40,4 +40,4 @@ Ausführliche Befehle: [`EINRICHTUNG.md`](EINRICHTUNG.md). Nur mit **erwachsenen
 
 ## Go / No-Go
 
-**Go für Tests mit Kindern** erst nach: abgeschlossener fachlicher Prüfung der Sicherheitsweiche, Datenschutz- und Einwilligungskonzept (Kinderstimme nur an den eigenen Sprachserver, erkannter Text an Anthropic, bei Google-Sprachausgabe auch der Antworttext an Google), Einwilligung der Erziehungsberechtigten und einem fehlerfreien Durchlauf aller Punkte oben.
+**Go für Tests mit Kindern** erst nach: abgeschlossener fachlicher Prüfung der Sicherheitsweiche, Datenschutz- und Einwilligungskonzept (Kinderstimme nur an den eigenen Sprachserver, erkannter Text an Anthropic, bei Google-Sprachausgabe auch der Antworttext an Google), Einwilligung der Erziehungsberechtigten und einem fehlerfreien Durchlauf aller Punkte oben. Außerdem ist auf dem Server `KUNIBERT_TEST_TRANSCRIPT` nicht gesetzt (beim Start erscheint keine Warnung dazu), damit nur die Aufnahme zählt.

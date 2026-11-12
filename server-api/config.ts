@@ -75,6 +75,8 @@ export interface KunibertConfig {
 
   // Diagnose & Protokollierung
   diagnosticText: boolean;
+  /** Testfeld `transcript` bei POST /v1/device/question (Text statt Spracherkennung), siehe isTestTranscriptEnabled. */
+  testTranscript: boolean;
 
   // Geräteliste: 'memory' (flüchtig, Standard) oder 'firestore' (dauerhaft)
   deviceStore: 'memory' | 'firestore';
@@ -84,6 +86,31 @@ export function isDiagnosticTextEnabled(
   env: { NODE_ENV?: string; KUNIBERT_DIAGNOSTIC_TEXT?: string } = process.env
 ): boolean {
   return env.NODE_ENV !== 'production' && env.KUNIBERT_DIAGNOSTIC_TEXT?.trim() === '1';
+}
+
+/**
+ * Testfeld `transcript` (Text statt Aufnahme) bei POST /v1/device/question.
+ *
+ * Damit lassen sich Sicherheitsweiche und Antworten am Server prüfen, ohne zu sprechen. Geräte
+ * senden das Feld nie. Bis zum 12.11.2026 wirkte es auch im Betrieb; seitdem gilt es mit
+ * NODE_ENV=production nur, wenn KUNIBERT_TEST_TRANSCRIPT=1 ausdrücklich gesetzt ist (für
+ * Testtage mit Erwachsenen). Vor dem ersten Kind bleibt die Variable weg.
+ */
+export function isTestTranscriptEnabled(
+  env: { NODE_ENV?: string; KUNIBERT_TEST_TRANSCRIPT?: string } = process.env
+): boolean {
+  if (env.NODE_ENV !== 'production') return true;
+  return env.KUNIBERT_TEST_TRANSCRIPT?.trim() === '1';
+}
+
+/** Hinweise beim Start: Testschalter, die im Betrieb mit Kindern aus sein müssen. */
+export function testSwitchWarnings(
+  env: { NODE_ENV?: string; KUNIBERT_TEST_TRANSCRIPT?: string } = process.env
+): string[] {
+  if (env.NODE_ENV === 'production' && isTestTranscriptEnabled(env)) {
+    return ['KUNIBERT_TEST_TRANSCRIPT=1: Das Testfeld transcript ist aktiv (Text statt Aufnahme). Nur für Tests mit Erwachsenen; vor dem ersten Kind entfernen.'];
+  }
+  return [];
 }
 
 /**
@@ -255,6 +282,7 @@ export function loadConfig(): KunibertConfig {
     rateLimitWindowSeconds: parseNum(process.env.KUNIBERT_RATE_LIMIT_WINDOW, 600),
 
     diagnosticText: isDiagnosticTextEnabled(),
+    testTranscript: isTestTranscriptEnabled(),
     deviceStore: process.env.PICASTAI_DEVICE_STORE?.trim() === 'firestore' ? 'firestore' : 'memory',
   };
 }
@@ -288,6 +316,7 @@ export function getSafeConfigSummary(config: KunibertConfig) {
     audioSampleRate: `${config.audioSampleRate} Hz (16-bit PCM)`,
     rateLimit: `${config.rateLimitMaxTurns} Turns pro ${Math.round(config.rateLimitWindowSeconds / 60)} Minuten`,
     diagnosticText: config.diagnosticText,
+    testTranscript: config.testTranscript,
     deviceStore: config.deviceStore,
   };
 }

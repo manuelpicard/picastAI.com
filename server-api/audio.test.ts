@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { encodeWav, isSilentPcm16, resampleMono16, SILENCE_PEAK } from './audio.js';
+import { AudioError, decodeWavHeader, encodeWav, isPcmFormat, isSilentPcm16, parseWav, resampleMono16, SILENCE_PEAK } from './audio.js';
 
 function sine(frequency: number, rate: number, seconds: number, amplitude = 10_000): Int16Array {
   const samples = new Int16Array(Math.round(rate * seconds));
@@ -77,4 +77,68 @@ test('Stille: nur eine praktisch stumme Aufnahme gilt als stumm', () => {
   assert.equal(isSilentPcm16(wavOf([])), false, 'leer ist kein Fall für die Stille-Regel');
   assert.equal(isSilentPcm16(Buffer.from('kein wav')), false);
   assert.equal(isSilentPcm16(encodeWav(Buffer.alloc(100), 16_000, 1, 8)), false, 'nur 16 Bit');
+});
+
+/** Fügt vor dem data-Block einen weiteren Block ein (wie der LIST-Block, den ffmpeg schreibt). */
+function withExtraChunk(wav: Buffer, id: string, body: Buffer): Buffer {
+  const pad = body.length % 2 ? Buffer.alloc(1) : Buffer.alloc(0);
+  const chunk = Buffer.concat([Buffer.from(id, 'ascii'), Buffer.alloc(4), body, pad]);
+  chunk.writeUInt32LE(body.length, 4);
+  const out = Buffer.concat([wav.subarray(0, 36), chunk, wav.subarray(36)]);
+  out.writeUInt32LE(out.length - 8, 4);
+  return out;
+}
+
+test('WAV-Kopf: zusätzliche Blöcke vor den Daten werden übersprungen', () => {
+  const pcm = Buffer.alloc(3_200);
+  pcm.writeInt16LE(1_000, 100);
+  // Ungerade Länge (5 Byte) mit Füllbyte, wie es RIFF verlangt.
+  const wav = withExtraChunk(withExtraChunk(encodeWav(pcm, 16_000, 1, 16), 'LIST', Buffer.from('INFOx')), 'junk', Buffer.alloc(30));
+  const info = parseWav(wav);
+  assert.equal(info.channels, 1);
+  assert.equal(info.sampleRate, 16_000);
+  assert.equal(info.bitsPerSample, 16);
+  assert.equal(info.formatTag, 1);
+  assert.equal(info.dataSize, 3_200);
+  assert.equal(info.dataOffset, wav.length - 3_200);
+  assert.equal(info.duration, 0.1);
+  assert.deepEqual(decodeWavHeader(wav), { formatTag: 1, channels: 1, sampleRate: 16_000, bitsPerSample: 16, dataSize: 3_200, duration: 0.1 });
+});
+
+test('Stille: auch mit zusätzlichem Block vor den Daten erkannt (Fund im Probelauf vom 12.11.2026)', () => {
+  const silent = withExtraChunk(encodeWav(Buffer.alloc(16_000), 16_000, 1, 16), 'LIST', Buffer.from('INFOISFT\x0e\x00\x00\x00Lavf61.7.100\x00\x00'));
+  assert.equal(isSilentPcm16(silent), true, 'die Kopf-Bytes des LIST-Blocks sind kein Ton');
+  const loud = Buffer.alloc(16_000);
+  loud.writeInt16LE(5_000, 8_000);
+  assert.equal(isSilentPcm16(withExtraChunk(encodeWav(loud, 16_000, 1, 16), 'LIST', Buffer.from('INFO'))), false);
+});
+
+test('WAV-Kopf: Länge 0, 0xFFFFFFFF oder zu groß heißt "bis zum Ende der Datei"', () => {
+  for (const declared of [0, 0xffff_ffff, 1_000_000]) {
+    const wav = encodeWav(Buffer.alloc(640), 16_000, 1, 16);
+    wav.writeUInt32LE(declared, 40);
+    assert.equal(parseWav(wav).dataSize, 640, `angegeben ${declared}`);
+  }
+});
+
+test('WAV-Kopf: kaputte Dateien ergeben einen AudioError', () => {
+  assert.throws(() => parseWav(Buffer.from('kein wav')), AudioError);
+  const noFormat = encodeWav(Buffer.alloc(100), 16_000, 1, 16);
+  noFormat.write('xxxx', 12, 'ascii');
+  assert.throws(() => parseWav(noFormat), AudioError, 'ohne fmt-Block');
+  const noData = encodeWav(Buffer.alloc(100), 16_000, 1, 16);
+  noData.write('xxxx', 36, 'ascii');
+  assert.throws(() => parseWav(noData), AudioError, 'ohne data-Block');
+  const shortFormat = encodeWav(Buffer.alloc(100), 16_000, 1, 16);
+  shortFormat.writeUInt32LE(8, 16);
+  assert.throws(() => parseWav(shortFormat), AudioError, 'fmt-Block zu kurz');
+});
+
+test('Formatkennung: PCM und WAVE_FORMAT_EXTENSIBLE sind PCM, Gleitkomma nicht', () => {
+  assert.equal(isPcmFormat(1), true);
+  assert.equal(isPcmFormat(0xfffe), true);
+  assert.equal(isPcmFormat(3), false);
+  const float = encodeWav(Buffer.alloc(100), 16_000, 1, 16);
+  float.writeUInt16LE(3, 20);
+  assert.equal(isSilentPcm16(float), false, 'kein PCM: keine Stille-Regel');
 });

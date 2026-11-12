@@ -146,43 +146,98 @@ export function resampleMono16(source: Int16Array, fromRate: number, toRate: num
   return out;
 }
 
-export function decodeWavHeader(buffer: Buffer) {
+/** Formatkennung im fmt-Block: PCM (1) oder WAVE_FORMAT_EXTENSIBLE (0xFFFE, bei 16 Bit ebenfalls PCM). */
+export const WAV_FORMAT_PCM = 1;
+export const WAV_FORMAT_EXTENSIBLE = 0xfffe;
+
+export interface WavInfo {
+  formatTag: number;
+  channels: number;
+  sampleRate: number;
+  bitsPerSample: number;
+  /** Beginn der Audiodaten (nach dem Kopf des data-Blocks). */
+  dataOffset: number;
+  /** Länge der Audiodaten in Byte, höchstens so viel, wie wirklich in der Datei steht. */
+  dataSize: number;
+  /** Dauer in Sekunden (0, wenn das Format keine Rechnung erlaubt). */
+  duration: number;
+}
+
+/**
+ * Liest ein RIFF/WAVE chunkweise statt mit festen Abständen.
+ *
+ * Bis 12.11.2026 las der Server Format und Länge immer an den Stellen des 44-Byte-Kopfs der
+ * Geräte. Eine WAV mit zusätzlichem Block vor den Daten (ffmpeg schreibt zum Beispiel einen
+ * LIST-Block) hatte dann eine falsche Länge, und die Stille-Prüfung las Kopf-Bytes als Ton:
+ * Eine stumme Aufnahme ging deshalb im Probelauf vom 12.11. doch an die Spracherkennung.
+ * Längenangaben 0 oder 0xFFFFFFFF (Streaming) und zu große Angaben gelten als "bis zum Ende".
+ */
+export function parseWav(buffer: Buffer): WavInfo {
   if (buffer.length < 44) {
     throw new AudioError('WAV-Datei zu kurz');
   }
   if (buffer.toString('ascii', 0, 4) !== 'RIFF' || buffer.toString('ascii', 8, 12) !== 'WAVE') {
     throw new AudioError('Keine gültige RIFF/WAVE Datei');
   }
-  const channels = buffer.readUInt16LE(22);
-  const sampleRate = buffer.readUInt32LE(24);
-  const bitsPerSample = buffer.readUInt16LE(34);
-  const dataSize = buffer.readUInt32LE(40);
-  const duration = dataSize / ((sampleRate * channels * bitsPerSample) / 8);
+  let format: Pick<WavInfo, 'formatTag' | 'channels' | 'sampleRate' | 'bitsPerSample'> | null = null;
+  let offset = 12;
+  while (offset + 8 <= buffer.length) {
+    const id = buffer.toString('ascii', offset, offset + 4);
+    const size = buffer.readUInt32LE(offset + 4);
+    const body = offset + 8;
+    if (id === 'fmt ') {
+      if (size < 16 || body + 16 > buffer.length) throw new AudioError('WAV mit defektem Formatblock');
+      format = {
+        formatTag: buffer.readUInt16LE(body),
+        channels: buffer.readUInt16LE(body + 2),
+        sampleRate: buffer.readUInt32LE(body + 4),
+        bitsPerSample: buffer.readUInt16LE(body + 14),
+      };
+    } else if (id === 'data') {
+      if (!format) throw new AudioError('WAV ohne Formatblock vor den Daten');
+      const available = buffer.length - body;
+      const dataSize = size === 0 || size === 0xffffffff || size > available ? available : size;
+      const bytesPerSecond = (format.sampleRate * format.channels * format.bitsPerSample) / 8;
+      return { ...format, dataOffset: body, dataSize, duration: bytesPerSecond > 0 ? dataSize / bytesPerSecond : 0 };
+    }
+    // Blöcke mit ungerader Länge haben ein Füllbyte.
+    offset = body + size + (size % 2);
+  }
+  throw new AudioError('WAV ohne Audiodaten');
+}
 
-  return { channels, sampleRate, bitsPerSample, dataSize, duration };
+/** Format und Länge einer WAV-Datei (chunkweise gelesen, siehe parseWav). */
+export function decodeWavHeader(buffer: Buffer) {
+  const { formatTag, channels, sampleRate, bitsPerSample, dataSize, duration } = parseWav(buffer);
+  return { formatTag, channels, sampleRate, bitsPerSample, dataSize, duration };
+}
+
+/** true für unkomprimiertes PCM (Formatkennung 1 oder 0xFFFE). */
+export function isPcmFormat(formatTag: number): boolean {
+  return formatTag === WAV_FORMAT_PCM || formatTag === WAV_FORMAT_EXTENSIBLE;
 }
 
 /** Spitzenwert, unter dem eine 16-Bit-Aufnahme als stumm gilt (32 von 32767, etwa -60 dBFS). */
 export const SILENCE_PEAK = 32;
 
 /**
- * true, wenn eine Aufnahme (16 Bit PCM mit dem 44-Byte-Kopf der Geräte) praktisch stumm ist:
- * Mikrofon aus oder defekt, falsches Gerät, unter Windows der Zugriff gesperrt. Dann gibt es
- * nichts zu erkennen, und Whisper erfindet bei Stille gern Text. Der Wert ist bewusst niedrig
- * (Einschätzung, nicht gemessen: auch leises Sprechen in ein ungeregeltes I2S-Mikrofon liegt
- * deutlich darüber). Andere Formate gelten nicht als stumm.
+ * true, wenn eine Aufnahme (16 Bit PCM) praktisch stumm ist: Mikrofon aus oder defekt, falsches
+ * Gerät, unter Windows der Zugriff gesperrt. Dann gibt es nichts zu erkennen, und Whisper
+ * erfindet bei Stille gern Text. Der Wert ist bewusst niedrig (Einschätzung, nicht gemessen:
+ * auch leises Sprechen in ein ungeregeltes I2S-Mikrofon liegt deutlich darüber). Andere
+ * Formate und leere Aufnahmen gelten nicht als stumm.
  */
 export function isSilentPcm16(wav: Buffer, peakLimit: number = SILENCE_PEAK): boolean {
-  let header: ReturnType<typeof decodeWavHeader>;
+  let info: WavInfo;
   try {
-    header = decodeWavHeader(wav);
+    info = parseWav(wav);
   } catch {
     return false;
   }
-  if (header.bitsPerSample !== 16) return false;
-  const end = Math.min(wav.length, 44 + header.dataSize) & ~1;
-  if (end <= 44) return false;
-  for (let offset = 44; offset + 1 < end; offset += 2) {
+  if (info.bitsPerSample !== 16 || !isPcmFormat(info.formatTag)) return false;
+  const end = info.dataOffset + info.dataSize - (info.dataSize % 2);
+  if (end <= info.dataOffset) return false;
+  for (let offset = info.dataOffset; offset + 1 < end; offset += 2) {
     const sample = wav.readInt16LE(offset);
     if (sample >= peakLimit || sample <= -peakLimit) return false;
   }

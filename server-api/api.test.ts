@@ -170,6 +170,8 @@ describe('picastAI-API (echter Server)', () => {
       PICASTAI_TTS_MODEL: 'test-tts',
       PICASTAI_TTS_VOICE: 'test-voice',
       KUNIBERT_RATE_LIMIT: '500',
+      // Testfeld transcript (Text statt Aufnahme) ist im Betrieb nur mit diesem Schalter an.
+      KUNIBERT_TEST_TRANSCRIPT: '1',
     };
     if (process.env.HOME) env.HOME = process.env.HOME;
     if (process.env.TMPDIR) env.TMPDIR = process.env.TMPDIR;
@@ -318,6 +320,21 @@ describe('picastAI-API (echter Server)', () => {
     assert.match(line, / modus=frage status=200 erkennung_ms=- weiche_ms=- sprachmodell_ms=- /);
   });
 
+  it('Stumme Aufnahme mit zusätzlichem Block vor den Daten (wie von ffmpeg) geht auch nicht an die Erkennung', async () => {
+    // Fund im Probelauf vom 12.11.2026: Der Server las die Länge an der festen Stelle des
+    // 44-Byte-Kopfs und hielt die Kopf-Bytes des LIST-Blocks für Ton.
+    const device = await registerDevice();
+    const plain = silentWav16k();
+    const list = Buffer.from('LIST\x1a\x00\x00\x00INFOISFT\x0e\x00\x00\x00Lavf61.7.100\x00\x00', 'latin1');
+    const wav = Buffer.concat([plain.subarray(0, 36), list, plain.subarray(36)]);
+    wav.writeUInt32LE(wav.length - 8, 4);
+    const before = fake.state.transcriptions;
+    const res = await postQuestion(device, questionForm(wav));
+    assert.equal(res.status, 200, await res.clone().text());
+    assert.equal(fake.state.transcriptions, before, 'Stille geht nicht an die Spracherkennung');
+    assert.equal((await fetchAudio(device, ((await res.json()) as { audio_url: string }).audio_url)).status, 200);
+  });
+
   it('Untertitel-Abspann aus der Erkennung (Whisper bei Rauschen) ergibt "nicht verstanden"', async () => {
     const device = await registerDevice();
     const original = fake.state.transcript;
@@ -426,6 +443,13 @@ describe('picastAI-API (echter Server)', () => {
     const wrongRate = await postQuestion(device, questionForm(encodeWav(Buffer.alloc(8_000), 44_100, 1, 16)));
     assert.equal(wrongRate.status, 400);
     assert.equal(((await wrongRate.json()) as { error: string }).error, 'unsupported_audio_format');
+
+    // 16 Bit, aber kein PCM (Formatkennung 3 = Gleitkomma): wird nicht als Ton gelesen.
+    const notPcm = encodeWav(Buffer.alloc(8_000), 16_000, 1, 16);
+    notPcm.writeUInt16LE(3, 20);
+    const wrongFormat = await postQuestion(device, questionForm(notPcm));
+    assert.equal(wrongFormat.status, 400);
+    assert.equal(((await wrongFormat.json()) as { error: string }).error, 'unsupported_audio_format');
   });
 
   it('zu große Aufnahme ergibt 413 als JSON statt 500', async () => {
@@ -591,5 +615,92 @@ describe('picastAI-API (echter Server)', () => {
       headers: deviceHeaders('simulator-web', 'sim-web-token-xyz-123'),
     });
     assert.equal(res.status, 401);
+  });
+});
+
+// Ohne KUNIBERT_TEST_TRANSCRIPT=1 überhört der Server im Betrieb das Testfeld transcript
+// (Punkt 60 der Aufgabenliste, seit 12.11.2026). Eigener Server mit eigener Attrappe.
+describe('picastAI-API im Betrieb ohne Testschalter', () => {
+  let child: ChildProcess;
+  let fake: { server: http.Server; state: FakeSpeechService; port: number };
+  let base = '';
+  let output = '';
+
+  before(async () => {
+    fake = await startFakeSpeechService();
+    const port = await freePort();
+    base = `http://127.0.0.1:${port}`;
+    const env: Record<string, string> = {
+      PATH: process.env.PATH || '',
+      NODE_ENV: 'production',
+      HOST: '127.0.0.1',
+      PORT: String(port),
+      PICASTAI_DEVICE_ID: ENV_DEVICE_ID,
+      PICASTAI_DEVICE_TOKEN: ENV_DEVICE_TOKEN,
+      PICASTAI_PUBLIC_BASE_URL: PUBLIC_BASE_URL,
+      PICASTAI_STT_URL: `http://127.0.0.1:${fake.port}`,
+      PICASTAI_STT_MODEL: 'test-stt',
+      PICASTAI_TTS_URL: `http://127.0.0.1:${fake.port}`,
+      PICASTAI_TTS_MODEL: 'test-tts',
+      PICASTAI_TTS_VOICE: 'test-voice',
+    };
+    if (process.env.HOME) env.HOME = process.env.HOME;
+    if (process.env.TMPDIR) env.TMPDIR = process.env.TMPDIR;
+    child = spawn(process.execPath, ['--import', 'tsx', 'server.ts'], { cwd: ROOT, env, stdio: ['ignore', 'pipe', 'pipe'] });
+    child.stdout?.on('data', (chunk: Buffer) => (output += chunk));
+    child.stderr?.on('data', (chunk: Buffer) => (output += chunk));
+    const deadline = Date.now() + 60_000;
+    for (;;) {
+      if (child.exitCode !== null) throw new Error(`Server vorzeitig beendet (Code ${child.exitCode}):\n${output}`);
+      try {
+        if ((await fetch(`${base}/health`)).ok) break;
+      } catch {
+        // noch nicht bereit
+      }
+      if (Date.now() > deadline) throw new Error(`Server nicht rechtzeitig bereit:\n${output}`);
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+  });
+
+  after(async () => {
+    if (child && child.exitCode === null) {
+      const exited = new Promise((resolve) => child.once('exit', resolve));
+      child.kill('SIGTERM');
+      await exited;
+    }
+    if (fake) await new Promise<void>((resolve) => fake.server.close(() => resolve()));
+  });
+
+  it('das Feld transcript wird überhört: Es zählt, was die Spracherkennung aus der Aufnahme macht', async () => {
+    const headers = { Authorization: `Bearer ${ENV_DEVICE_TOKEN}`, 'X-Device-ID': ENV_DEVICE_ID };
+    const res = await fetch(`${base}/v1/device/question`, {
+      method: 'POST',
+      headers,
+      body: questionForm(wav16k(), { transcript: 'ich will nicht mehr leben' }),
+    });
+    assert.equal(res.status, 200, await res.clone().text());
+    assert.equal(fake.state.transcriptions, 1, 'die Aufnahme ging an die Spracherkennung');
+    const audio = await fetch(base + new URL(((await res.json()) as { audio_url: string }).audio_url).pathname, { headers });
+    assert.equal(audio.status, 200);
+    // Der Sicherheitshinweis wird beim Start ohnehin vorbereitet (steht deshalb auch in den
+    // Eingaben der Attrappe). Entscheidend: Gesprochen wurde die Antwort auf das, was die
+    // Spracherkennung geliefert hat ("warum ist der himmel blau"), nicht auf den Testtext.
+    assert.ok(
+      fake.state.speechInputs.some((text) => text.startsWith('Der Himmel wirkt blau')),
+      `gesprochen wurde: ${fake.state.speechInputs.join(' | ').slice(0, 300)}`
+    );
+    assert.ok(!output.includes('KUNIBERT_TEST_TRANSCRIPT'), 'ohne Schalter keine Startwarnung');
+  });
+
+  it('auch die alte Route /v1/turn nimmt im Betrieb keinen Text statt Aufnahme', async () => {
+    // Im Heimnetz ohne Caddy (Pi im selben WLAN) ist /v1/turn erreichbar.
+    const headers = { Authorization: `Bearer ${ENV_DEVICE_TOKEN}`, 'X-Device-ID': ENV_DEVICE_ID };
+    const res = await fetch(`${base}/v1/turn`, {
+      method: 'POST',
+      headers,
+      body: questionForm(null, { mode: 'frage', text: 'ich will nicht mehr leben' }),
+    });
+    assert.equal(res.status, 400);
+    assert.equal(((await res.json()) as { error: string }).error, 'audio_required');
   });
 });

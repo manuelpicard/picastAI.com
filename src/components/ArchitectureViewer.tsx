@@ -12,13 +12,13 @@ export const ArchitectureViewer: React.FC = () => {
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h3 className="text-lg font-bold text-stone-100">Raspberry Pi Zero 2 W Architektur</h3>
+              <h3 className="text-lg font-bold text-stone-100">Raspberry Pi 5 – Prototyp</h3>
               <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded-full bg-rose-950 text-rose-300 border border-rose-800">
-                Primäre Ziel-Hardware
+                Endgerät später: ESP32-S3
               </span>
             </div>
             <p className="text-xs text-stone-400">
-              Kompakte 64-Bit Linux-Audio-Plattform für bildschirmlosen Kinderschutz und robuste Zuverlässigkeit
+              Erster Aufbau mit USB-Mikrofon und USB-Lautsprecher. Das Endgerät bekommt eine eigene Firmware (firmware/esp32-s3, Entwurf).
             </p>
           </div>
         </div>
@@ -28,19 +28,19 @@ export const ArchitectureViewer: React.FC = () => {
             Raspberry Pi OS Lite (64-Bit)
           </span>
           <span className="px-2.5 py-1 bg-amber-950/60 border border-amber-800 text-amber-300 rounded-lg font-mono text-[11px]">
-            ALSA / I2S Audio
+            ALSA / USB-Audio
           </span>
         </div>
       </div>
 
       {/* Hauptgitter: Hardware-Pins & Datenschutz */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-        {/* Hardware-Architektur Pi Zero 2 W */}
+        {/* Hardware-Architektur Pi 5 (Prototyp) */}
         <div className="bg-stone-950 p-4 rounded-xl border border-stone-800 space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-2 text-stone-200 font-bold">
               <Radio className="w-4 h-4 text-rose-400" />
-              <span>Pi Zero 2 W – GPIO Pinbelegung (BCM)</span>
+              <span>Pi 5 – GPIO-Belegung (BCM)</span>
             </div>
             <span className="text-[10px] font-mono text-stone-500">40-Pin Header</span>
           </div>
@@ -53,7 +53,7 @@ export const ArchitectureViewer: React.FC = () => {
               <div>
                 <strong className="text-stone-200">Sprechtaste (Push-to-Talk):</strong>
                 <p className="text-[11px] text-stone-400 mt-0.5">
-                  Pin 11 nach GND mit internem <code className="text-amber-300">INPUT_PULLUP</code>. Aufnahme läuft nur, solange physisch gedrückt (max. 15–20 s, 16 kHz Mono).
+                  Pin 11 nach GND mit internem <code className="text-amber-300">INPUT_PULLUP</code>. Aufnahme läuft nur, solange gedrückt (höchstens 15 s, 16 kHz, mono).
                 </p>
               </div>
             </li>
@@ -77,7 +77,7 @@ export const ArchitectureViewer: React.FC = () => {
               <div>
                 <strong className="text-stone-200">Mikrofon-Aus (Hardware-Sense &amp; Trennung):</strong>
                 <p className="text-[11px] text-stone-400 mt-0.5">
-                  Pin 15 Schalter nach GND. Trennt softwareseitig die Erkennung und schaltet über mechanischen DPST-Schalter die Mikrofon-Stromversorgung physisch ab.
+                  Pin 15, Schalter nach GND. Der Client nimmt dann nicht auf und verwirft eine laufende Aufnahme. Im ersten Aufbau noch nicht verbaut.
                 </p>
               </div>
             </li>
@@ -89,7 +89,7 @@ export const ArchitectureViewer: React.FC = () => {
               <div>
                 <strong className="text-stone-200">Status-LED:</strong>
                 <p className="text-[11px] text-stone-400 mt-0.5">
-                  Pin 16 über 330Ω nach GND. Langsam pulsierend (Bereit), dauerhaft leuchtend (Aufnahme), schnell blinkend (Netzwerk-Abruf), erloschen bei Mic-Aus.
+                  Pin 16 über 330 Ω nach GND. Dauerlicht: bereit. Schnelles Blinken: Aufnahme. Langsames Blinken: Kunibert arbeitet oder spricht. Sehr schnelles Blinken: Fehler. Doppelblitz: Mikrofon aus.
                 </p>
               </div>
             </li>
@@ -112,7 +112,7 @@ export const ArchitectureViewer: React.FC = () => {
             <li className="flex items-start gap-2">
               <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
               <span>
-                <strong className="text-stone-200">Keine MicroSD-Speicherung:</strong> Audio-Puffer liegen ausschließlich im flüchtigen RAM (<code className="text-amber-300">/dev/shm</code> oder <code className="text-amber-300">/tmp</code>). Nach dem Abspielen wird die Datei sofort per <code className="text-amber-300">os.unlink()</code> vernichtet.
+                <strong className="text-stone-200">Keine Speicherung auf der Speicherkarte:</strong> Aufnahme und Antwort liegen beim Client nur im Arbeitsspeicher und werden nie in Dateien geschrieben.
               </span>
             </li>
             <li className="flex items-start gap-2">
@@ -130,14 +130,14 @@ export const ArchitectureViewer: React.FC = () => {
             <li className="flex items-start gap-2">
               <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
               <span>
-                <strong className="text-stone-200">Deterministischer Kinderschutz:</strong> Notlagen werden vor jedem KI-Modell abgefangen und feste Notruf-Nummern (112, 116 111) ruhig vermittelt.
+                <strong className="text-stone-200">Feste Sicherheitsweiche:</strong> Erkannte Notlagen (feste Muster, vor jedem Sprachmodell) bekommen einen festen Hinweis mit 112 und 116 111. Was die Muster nicht erkennen, beurteilt das Sprachmodell.
               </span>
             </li>
           </ul>
 
           <div className="pt-2 border-t border-stone-850">
             <div className="bg-stone-900/80 p-2.5 rounded-lg border border-stone-800 text-[11px] text-stone-400">
-              <span className="text-amber-300 font-semibold">I2S Audio-HAT Unterstützung:</span> Kompatibel mit Waveshare WM8960, ReSpeaker 2-Mics oder MAX98357A I2S DAC mit hardware-beschleunigtem ALSA-Treiber.
+              <span className="text-amber-300 font-semibold">Ton:</span> Erster Aufbau mit getrenntem USB-Mikrofon und USB-Lautsprecher (einzeln wählbar). I2S-HATs sind möglich, aber nicht getestet.
             </div>
           </div>
         </div>
@@ -162,12 +162,12 @@ export const ArchitectureViewer: React.FC = () => {
               Phase 1: Reiner 5V USB-C Netzteilbetrieb
             </span>
             <p className="text-[11px] text-stone-300 leading-relaxed">
-              Für die Erprobung von Software, Audio-HAT und Spracherkennung wird der Pi Zero 2 W direkt über ein handelsübliches <strong>5V / 2.0A–2.5A USB-Netzteil</strong> versorgt.
+              Für die Erprobung von Software, Ton und Spracherkennung läuft der Pi 5 am offiziellen <strong>27-W-USB-C-Netzteil</strong>.
             </p>
             <ul className="space-y-1 text-[11px] text-stone-400">
               <li>• Keine leeren Akkus oder unvorhersehbare Spannungseinbrüche beim Testen.</li>
               <li>• Maximale Sicherheit: Kein Risiko durch überhitzende LiPo-Zellen im Bastelaufbau.</li>
-              <li>• Der 40-Pin Header bleibt mechanisch voll zugänglich für Audio-HAT und Taster.</li>
+              <li>• Der 40-Pin-Header bleibt frei für Taster und LED.</li>
               <li>• Stabile Spannungsversorgung auch bei Leistungsspitzen des Audio-Verstärkers.</li>
             </ul>
           </div>
@@ -175,25 +175,25 @@ export const ArchitectureViewer: React.FC = () => {
           <div className="bg-stone-900/60 p-3 rounded-lg border border-stone-800 space-y-2">
             <span className="font-bold text-stone-300 flex items-center gap-1.5">
               <Zap className="w-3.5 h-3.5 text-stone-400" />
-              Phase 2 (Roadmap): Mobiler Akkubetrieb (USV / UPS-HAT)
+              Phase 2: Endgerät mit ESP32-S3
             </span>
             <p className="text-[11px] text-stone-400 leading-relaxed">
-              Für das spätere tragbare Kinderzimmer-Produkt kann nahtlos ein <strong>PiSugar 3</strong> oder <strong>Waveshare Zero UPS HAT</strong> mit 1200–1800 mAh LiPo ergänzt werden.
+              Das Seriengerät wird ein <strong>ESP32-S3</strong> mit eigener Firmware (<code className="text-stone-300">firmware/esp32-s3</code>, Entwurf, auf keinem Gerät gelaufen). Board, Akku und Gehäuse sind offen.
             </p>
             <ul className="space-y-1 text-[11px] text-stone-500">
-              <li>• Pogo-Pin-Anbindung von unten (Header bleibt für Audio-HAT frei).</li>
-              <li>• I2C-Füllstandsanzeige (%) und kontrollierter Safe-Shutdown bei &lt; 5%.</li>
-              <li>• Pass-Through Charging: Spielt während des Ladens unterbrechungsfrei weiter.</li>
+              <li>• Gleiche Schnittstelle wie der Pi (docs/picastAI-Pi-API.md).</li>
+              <li>• Gleiche Zustände, LED-Muster und Fehlerregeln wie der Pi-Client.</li>
+              <li>• Einrichtung ohne Kabel und Update über Funk: geplant (Stufe M6).</li>
             </ul>
           </div>
         </div>
       </div>
 
-      {/* Vergleich: Warum Raspberry Pi Zero 2 W? */}
+      {/* Warum der Pi 5 für den Prototyp? */}
       <div className="bg-stone-950 p-4 rounded-xl border border-stone-850 space-y-3">
         <h4 className="text-xs font-semibold text-stone-200 uppercase tracking-wider flex items-center gap-2">
           <Zap className="w-4 h-4 text-amber-400" />
-          Vorteile des Raspberry Pi Zero 2 W gegenüber Mikrocontrollern
+          Warum der Pi 5 für den Prototyp
         </h4>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
@@ -234,15 +234,15 @@ export const ArchitectureViewer: React.FC = () => {
         <div className="flex items-center justify-between">
           <span className="text-xs font-bold text-stone-200 flex items-center gap-2">
             <Terminal className="w-4 h-4 text-stone-400" />
-            Provisionierung auf dem Raspberry Pi Zero 2 W:
+            Einrichtung auf dem Raspberry Pi 5:
           </span>
           <span className="text-[10px] font-mono text-stone-500">Idempotenter Installer</span>
         </div>
         <pre className="font-mono text-[11px] bg-stone-900 text-stone-300 p-2.5 rounded-lg border border-stone-800 overflow-x-auto select-all">
-sudo bash pi-client/install_raspberry_pi.sh --device-id pi-zero-001 --api-token 'TOKEN_AUS_DASHBOARD'
+sudo bash pi-client/install_raspberry_pi.sh --api-url https://dein-host.example --device-id prototype-001 --api-token 'TOKEN_AUS_DASHBOARD'
         </pre>
         <p className="text-[11px] text-stone-500">
-          Richtet Python 3, venv, ALSA-Treiber, Systemuser und <code className="text-stone-400">/etc/systemd/system/kunibert.service</code> vollständig ein.
+          Richtet Python 3, venv, Audio-Einstellungen, Systembenutzer und <code className="text-stone-400">/etc/systemd/system/kunibert.service</code> ein (Anleitung: pi-client/README.md).
         </p>
       </div>
     </div>
