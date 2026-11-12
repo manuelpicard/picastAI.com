@@ -46,7 +46,7 @@ Pi --HTTPS :443--> Caddy --HTTP lokal--> 127.0.0.1:3000 Kunibert-Server
                       Sprachserver (Speaches, nur lokal) und Claude (Sprachmodell)
 ```
 
-Öffentlich ist nur Caddy, und Caddy reicht nur `/health` und `/v1/*` durch. Admin-Routen (`/api/*`) und die Weboberfläche sind von außen nicht erreichbar.
+Öffentlich ist nur Caddy, und Caddy reicht nur `/health` und `/v1/device/*` durch. Admin-Routen (`/api/*`) und die Weboberfläche sind von außen nicht erreichbar.
 
 ## 1. Voraussetzungen
 
@@ -146,7 +146,7 @@ sudo caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
 sudo systemctl reload caddy
 ```
 
-Die Vorlage erzwingt HTTPS, reicht nur `/health` und `/v1/*` durch, begrenzt den Body auf 3 MB und schreibt keine Zugriffsprotokolle. Steht noch ein weiterer Proxy davor, zusätzlich `PICASTAI_TRUST_PROXY` setzen (siehe [`docs/picastAI-Pi-API.md`](../docs/picastAI-Pi-API.md)).
+Die Vorlage erzwingt HTTPS, reicht nur `/health` und `/v1/device/*` durch, begrenzt den Body auf 3 MB und schreibt keine Zugriffsprotokolle. Steht noch ein weiterer Proxy davor, zusätzlich `PICASTAI_TRUST_PROXY` setzen (siehe [`docs/picastAI-Pi-API.md`](../docs/picastAI-Pi-API.md)).
 
 ### Zeitkette
 

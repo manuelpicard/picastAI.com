@@ -102,6 +102,7 @@ fi
 status "GET / (Weboberfläche nicht erreichbar)" 404 "$BASE/"
 status "GET /api/status (Admin-Route nicht erreichbar)" 404 "$BASE/api/status"
 status "GET /api/devices (Admin-Route nicht erreichbar)" 404 "$BASE/api/devices"
+status "POST /v1/turn (Route der Weboberfläche nicht erreichbar)" 404 "$BASE/v1/turn" -X POST
 
 # 5. Anmeldung: falscher oder fehlender Token -> 401 --------------------------
 # Das Gerät wird vor dem Hochladen geprüft: unbekannte Absender erreichen weder Spracherkennung noch Sprachmodell.

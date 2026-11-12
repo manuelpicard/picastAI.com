@@ -13,7 +13,7 @@
 kunibert.example {
 	# Nur die Geräte-API wird durchgereicht. /api/* (Admin: Geräte anlegen, Status) und
 	# die Weboberfläche bleiben von außen unerreichbar, alles andere bekommt 404.
-	@api path /v1/* /health
+	@api path /v1/device/* /health
 	handle @api {
 		# Aufnahme höchstens 2 MiB plus Formularfelder (der Server lehnt mehr als 2 MiB ab).
 		request_body {
