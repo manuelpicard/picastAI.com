@@ -236,6 +236,53 @@ py pi-client\kunibert_client.py --keyboard
 
 Das Token steht danach im Verlauf dieses PowerShell-Fensters: Fenster am Ende schließen. Mikrofon oder Lautsprecher wählen: `KUNIBERT_INPUT_DEVICE`, `KUNIBERT_OUTPUT_DEVICE` (Liste: `py -m sounddevice`). Die Wartezeit je Anfrage steht in der Zeile `Zeitmessung ... wartezeit_s=`. Meldet der Client „Die Aufnahme ist praktisch stumm“, kommt kein Ton vom Mikrofon an: anderes Gerät wählen oder unter Windows in den Einstellungen (Datenschutz, Mikrofon) den Zugriff für Desktop-Apps erlauben.
 
+#### Ganz ohne gemieteten Server: alles auf deinem Rechner
+
+Server, Sprachserver und Client laufen dann zusammen auf deinem Windows-Rechner. Das kostet nichts außer den Aufrufen an Claude. Stand: **nicht unter Windows getestet**; derselbe Ablauf mit Attrappen statt Sprachserver und Claude läuft in der CI (`npm run test:e2e`). Nur Erwachsene als Tester.
+
+Einmal vorher installieren: Git, Node.js 22, Python 3.10 oder neuer und Docker Desktop (mit WSL 2). Docker Desktop ist laut seiner Lizenz für private Nutzung und für Firmen mit weniger als 250 Beschäftigten **und** unter 10 Mio. US-Dollar Jahresumsatz kostenlos (https://docs.docker.com/subscription/desktop-license/, Stand der Seite 28.9.2026). Einschätzung, nicht gemessen: 8 GB Arbeitsspeicher reichen; der erste Start lädt einige GB (Image und Modelle).
+
+**1. Sprachserver (PowerShell, einmal):**
+
+```powershell
+docker run -d --name speaches --restart unless-stopped -p 127.0.0.1:8000:8000 -v hf-hub-cache:/home/ubuntu/.cache/huggingface/hub ghcr.io/speaches-ai/speaches:latest-cpu
+# warten, bis das ok liefert (kann eine Minute dauern):
+curl.exe -fsS http://127.0.0.1:8000/health
+curl.exe -fsS -X POST http://127.0.0.1:8000/v1/models/Systran/faster-whisper-small
+curl.exe -fsS -X POST http://127.0.0.1:8000/v1/models/speaches-ai/piper-de_DE-thorsten-medium
+```
+
+`curl.exe` mit `.exe`: In Windows PowerShell ist `curl` ein anderer Befehl. Später genügt `docker start speaches`.
+
+**2. Kunibert-Server (PowerShell-Fenster 1, im Ordner des Repos, Stand von `main`):**
+
+```powershell
+npm ci
+$env:HOST = "127.0.0.1"
+$env:PICASTAI_STT_URL = "http://127.0.0.1:8000/v1"
+$env:PICASTAI_STT_MODEL = "Systran/faster-whisper-small"
+$env:PICASTAI_STT_PROMPT = "Ritter Kunibert"
+$env:PICASTAI_TTS_URL = "http://127.0.0.1:8000/v1"
+$env:PICASTAI_TTS_MODEL = "speaches-ai/piper-de_DE-thorsten-medium"
+$env:PICASTAI_TTS_VOICE = "thorsten"
+$env:ANTHROPIC_API_KEY = "<dein Schlüssel, nur hier eintippen>"
+npm run dev
+```
+
+Ohne `NODE_ENV=production` gibt es den eingebauten Entwicklungs-Zugang (`prototype-1`, Token `test-token-kunibert-2026`). Er steht öffentlich im Repo; deshalb lauscht der Server hier nur auf `127.0.0.1`, also nur für deinen Rechner. Die Zeilen `Zeitmessung ...` in diesem Fenster zeigen, welche Stufe wie lange braucht (`docs/Zeitmessung.md`).
+
+**3. Client (PowerShell-Fenster 2, im Ordner des Repos):**
+
+```powershell
+py -m pip install sounddevice
+$env:PICASTAI_API_BASE_URL = "http://127.0.0.1:3000"
+$env:PICASTAI_DEVICE_ID = "prototype-1"
+$env:PICASTAI_DEVICE_TOKEN = "test-token-kunibert-2026"
+py pi-client\kunibert_client.py --keyboard
+```
+
+Danach: Fenster 1 schließen (der Schlüssel steht in seinem Verlauf) und `docker stop speaches`. Kommt später der Pi, kann der Server im selben WLAN auf diesem Rechner bleiben; dafür braucht es ein eigenes Token statt des Entwicklungs-Zugangs und eine Freigabe in der Windows-Firewall (Anleitung folgt, wenn der Pi da ist).
+
 `--dry-run` startet den Zustandsautomaten mit Attrappen für Taster, Mikrofon, Lautsprecher und LED. Es sendet **keine** Anfrage an den Server (auch keinen Health-Check), und die Attrappen drücken nie eine Taste. Der Lauf zeigt nur, dass der Client startet und `READY` erreicht; Server-Adresse und Token spielen dabei keine Rolle:
 
 ```bash

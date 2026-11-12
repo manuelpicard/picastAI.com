@@ -6,7 +6,7 @@ Diese Anleitung installiert den Kunibert-Server (Node 22, Express) hinter Caddy.
 
 ## Nach der Bestellung (Reihenfolge)
 
-Der Server wird erst bestellt, wenn der Pi da ist: Hetzner rechnet stundenweise ab. Dann der Reihe nach. **Du selbst** (nicht Claude, nicht ein Skript) machst die mit 👤 markierten Schritte. Zeiten sind **Schätzungen**, nicht gemessen.
+Der Server wird erst bestellt, wenn er wirklich nötig ist (Entscheidung des Betreibers vom 12.11.2026): Hetzner rechnet stundenweise ab. Für den Probelauf genügt dein eigener Rechner, ohne Kosten außer den Aufrufen an Claude: `pi-client/README.md`, Abschnitt „Ganz ohne gemieteten Server“. Dann der Reihe nach. **Du selbst** (nicht Claude, nicht ein Skript) machst die mit 👤 markierten Schritte. Zeiten sind **Schätzungen**, nicht gemessen.
 
 1. 👤 **Vorher, ohne Kosten:** Hostname festlegen (und wo sein DNS liegt), SSH-Schlüssel erzeugen, Passwortmanager bereithalten. *(ca. 15 Minuten)*
 2. 👤 **Hetzner Console:** Server CCX13, Standort Nürnberg, Image „Docker CE“, den SSH-Schlüssel hinterlegen. Dazu eine **Cloud Firewall** anlegen: eingehend nur TCP 22 (am besten nur von deiner IP), 80 und 443. Öffentliche IPv4 notieren. *(ca. 15 Minuten)*
