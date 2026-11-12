@@ -26,7 +26,19 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      # Die Pi-Client-Tests laufen auch gegen die echte Audio-Bibliothek (ohne NumPy, wie auf
+      # dem Pi). Der Runner hat keine Soundkarte: Das ALSA-Nullgerät liefert bei der Aufnahme
+      # Stille und verwirft die Wiedergabe. Die Attrappen allein hatten übersehen, dass die
+      # Wiedergabe mit der echten Bibliothek scheiterte (12.11.2026).
+      - name: PortAudio und sounddevice für den Pi-Client
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libportaudio2
+          python -m pip install --quiet sounddevice
+          printf 'pcm.!default {\n  type null\n}\n' > ~/.asoundrc
       - name: Pi-Client-Tests
+        env:
+          KUNIBERT_REQUIRE_REAL_AUDIO: "1"
         run: python -m unittest discover -s pi-client -p "test_*.py"
       - name: Build & Typecheck
         run: npm run build

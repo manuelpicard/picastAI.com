@@ -188,7 +188,7 @@ KUNIBERT_MAX_RECORD_SECONDS=15
 KUNIBERT_REQUEST_TIMEOUT=30
 KUNIBERT_PIPELINE_TIMEOUT=140
 KUNIBERT_AUDIO_TIMEOUT=45
-KUNIBERT_RETRY_COUNT=2
+KUNIBERT_RETRY_COUNT=1
 # Leer = Standardgerät; bei zwei USB-Geräten getrennt setzen (siehe "Erster Aufbau")
 KUNIBERT_INPUT_DEVICE=
 KUNIBERT_OUTPUT_DEVICE=
@@ -222,7 +222,7 @@ Ohne Pi-Hardware gibt es zwei Prüfungen:
 
 ### Probelauf am Rechner, ohne Pi (`--keyboard`)
 
-Damit lässt sich die ganze Kette (Aufnahme, Server, Spracherkennung, Claude, Sprachausgabe, Abspielen) mit dem Mikrofon und dem Lautsprecher eines normalen Rechners ausprobieren, bevor der Pi da ist. Tastatur statt Taster: Eingabetaste beginnt die Aufnahme, noch einmal Eingabetaste sendet sie; `g` und Eingabetaste ist die Erzähltaste; `q` und Eingabetaste beendet. Stand: mit Attrappen getestet, **an keinem echten Mikrofon gelaufen**. Nur Erwachsene als Tester.
+Damit lässt sich die ganze Kette (Aufnahme, Server, Spracherkennung, Claude, Sprachausgabe, Abspielen) mit dem Mikrofon und dem Lautsprecher eines normalen Rechners ausprobieren, bevor der Pi da ist. Tastatur statt Taster: Eingabetaste beginnt die Aufnahme, noch einmal Eingabetaste sendet sie; `g` und Eingabetaste ist die Erzähltaste; `q` und Eingabetaste beendet. Stand: Aufnahme und Wiedergabe laufen in der CI gegen die echte Audio-Bibliothek (`sounddevice` mit PortAudio, ohne Soundkarte über ein ALSA-Nullgerät); **an keinem echten Mikrofon und Lautsprecher gelaufen**. Bis zum 12.11.2026 scheiterte jede Wiedergabe an der echten Bibliothek (sie verlangte NumPy); das ist behoben. Tasten, die du drückst, während Kunibert arbeitet oder spricht, zählen nicht. Nur Erwachsene als Tester.
 
 In PowerShell auf deinem Rechner, im Ordner des Repos (Python 3.10 oder neuer):
 
@@ -234,7 +234,7 @@ $env:PICASTAI_DEVICE_TOKEN = "<Geräte-Token, nur hier eintippen>"
 py pi-client\kunibert_client.py --keyboard
 ```
 
-Das Token steht danach im Verlauf dieses PowerShell-Fensters: Fenster am Ende schließen. Mikrofon oder Lautsprecher wählen: `KUNIBERT_INPUT_DEVICE`, `KUNIBERT_OUTPUT_DEVICE` (Liste: `py -m sounddevice`). Die Wartezeit je Anfrage steht in der Zeile `Zeitmessung ... wartezeit_s=`.
+Das Token steht danach im Verlauf dieses PowerShell-Fensters: Fenster am Ende schließen. Mikrofon oder Lautsprecher wählen: `KUNIBERT_INPUT_DEVICE`, `KUNIBERT_OUTPUT_DEVICE` (Liste: `py -m sounddevice`). Die Wartezeit je Anfrage steht in der Zeile `Zeitmessung ... wartezeit_s=`. Meldet der Client „Die Aufnahme ist praktisch stumm“, kommt kein Ton vom Mikrofon an: anderes Gerät wählen oder unter Windows in den Einstellungen (Datenschutz, Mikrofon) den Zugriff für Desktop-Apps erlauben.
 
 `--dry-run` startet den Zustandsautomaten mit Attrappen für Taster, Mikrofon, Lautsprecher und LED. Es sendet **keine** Anfrage an den Server (auch keinen Health-Check), und die Attrappen drücken nie eine Taste. Der Lauf zeigt nur, dass der Client startet und `READY` erreicht; Server-Adresse und Token spielen dabei keine Rolle:
 

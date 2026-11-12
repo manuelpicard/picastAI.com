@@ -7,7 +7,6 @@
 set -Eeuo pipefail
 IFS=$'\n\t'
 
-APP_NAME="kunibert"
 APP_USER="kunibert"
 APP_GROUP="audio"
 INSTALL_DIR="/opt/kunibert"
@@ -62,7 +61,7 @@ Beispiele:
 
   sudo bash pi-client/install_raspberry_pi.sh \
     --api-url http://192.168.1.20:3000 \
-    --device-id pi-zero-001 \
+    --device-id prototype-001 \
     --api-token 'lokaler-test-token' \
     --audio-card hw:wm8960soundcard,0
 
@@ -223,7 +222,7 @@ KUNIBERT_MIN_RECORD_SECONDS=0.35
 KUNIBERT_REQUEST_TIMEOUT=30
 KUNIBERT_PIPELINE_TIMEOUT=140
 KUNIBERT_AUDIO_TIMEOUT=45
-KUNIBERT_RETRY_COUNT=2
+KUNIBERT_RETRY_COUNT=1
 KUNIBERT_RETRY_BACKOFF=1.5
 # Pause zwischen zwei Versuchen, beim Start den Server zu erreichen (Sekunden).
 KUNIBERT_CONNECT_RETRY=10

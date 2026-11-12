@@ -38,7 +38,7 @@ typedef enum {
 kb_retry_t kb_retry_decide(int http_status, bool has_retryable, bool retryable,
                            int attempts_done, unsigned long elapsed_ms);
 
-/** Höchstens ein Wiederholungsversuch (vorläufig, weicht vom Pi-Client mit zwei ab). */
+/** Höchstens ein Wiederholungsversuch, wie im Pi-Client (KUNIBERT_RETRY_COUNT=1, seit 12.11.2026). */
 #define KB_MAX_ATTEMPTS 2
 /** Zeitgrenze des Geräts für Frage und Geschichte (Server 120 s, Caddy 130 s). */
 #define KB_PIPELINE_TIMEOUT_MS 140000ul

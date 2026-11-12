@@ -1,4 +1,5 @@
 import io
+import os
 import sys
 import unittest
 import wave
@@ -20,10 +21,12 @@ from kunibert_client import (
     KunibertClient,
     NoRedirectHandler,
     PicastApi,
+    SILENT_PEAK,
     SoundDeviceAudio,
     encode_wav,
     multipart_form,
     parse_audio_device,
+    pcm16_peak,
     same_origin,
     validate_wav,
 )
@@ -148,11 +151,29 @@ class SlowApi(FakeApi):
 
 
 class CaptureAudioOutput:
-    def __init__(self):
+    def __init__(self, during_playback=None):
         self.played = []
+        self.stop_checks = []
+        # Wird während des Abspielens aufgerufen (zum Beispiel ein Tastendruck in dieser Zeit).
+        self.during_playback = during_playback
 
-    def play_wav(self, wav_bytes):
+    def play_wav(self, wav_bytes, should_stop=None):
         self.played.append(wav_bytes)
+        if self.during_playback:
+            self.during_playback()
+        self.stop_checks.append(should_stop() if should_stop else None)
+
+
+class KeyboardRecordingAudio(DryRunAudio):
+    """Aufnahme wie am Rechner: Sie endet mit der zweiten Eingabetaste."""
+
+    def __init__(self, config, keys):
+        super().__init__(config)
+        self.keys = keys
+
+    def record_while_pressed(self, is_pressed, max_seconds):
+        self.keys.handle_line("\n")  # zweite Eingabetaste: Aufnahme beenden und senden
+        return super().record_while_pressed(is_pressed, max_seconds)
 
 
 class CaptureLed:
@@ -273,22 +294,50 @@ class KeyboardButtonsTests(unittest.TestCase):
         keys = KeyboardButtons(start_reader=False)
         api = FakeApi()
         out = CaptureAudioOutput()
-        client = KunibertClient(config, api, DryRunAudio(config), out, keys, ConsoleLed())
+        client = KunibertClient(config, api, KeyboardRecordingAudio(config, keys), out, keys, ConsoleLed())
         keys.on_quit = lambda: setattr(client, "stop_requested", True)
         client.transition(ClientState.WIFI_CONNECTING)
         client.transition(ClientState.READY)
-        keys.handle_line("\n")   # Aufnahme an (die Attrappe nimmt sofort 0,5 s auf)
+        keys.handle_line("\n")   # Aufnahme an; die Attrappe drückt beim Aufnehmen die zweite Eingabetaste
         client.step()
         self.assertEqual(api.questions, 1)
-        keys.handle_line("\n")   # Aufnahme aus
+        self.assertFalse(keys.speech_pressed)
         keys.handle_line("g\n")
         client.step()
         self.assertEqual(api.stories, 1)
         client.step()
         self.assertEqual(api.stories, 1)
+        self.assertEqual(api.questions, 1)
         self.assertEqual(len(out.played), 2)
         keys.handle_line("q\n")
         self.assertTrue(client.stop_requested)
+
+    def test_keys_pressed_while_kunibert_talks_are_ignored(self):
+        # Früher begann nach der Antwort sofort eine neue Aufnahme (oder eine Geschichte),
+        # wenn während des Wartens oder Abspielens eine Taste gedrückt wurde.
+        config = ClientConfig(dry_run=True, min_record_seconds=0.1)
+        keys = KeyboardButtons(start_reader=False)
+        api = FakeApi()
+        out = CaptureAudioOutput(during_playback=lambda: (keys.handle_line("\n"), keys.handle_line("g\n")))
+        client = KunibertClient(config, api, KeyboardRecordingAudio(config, keys), out, keys, ConsoleLed())
+        client.transition(ClientState.WIFI_CONNECTING)
+        client.transition(ClientState.READY)
+        keys.handle_line("\n")
+        client.step()
+        self.assertEqual(client.state, ClientState.READY)
+        self.assertFalse(keys.speech_pressed)
+        self.assertFalse(keys.story_pressed)
+        client.step()
+        client.step()
+        self.assertEqual((api.questions, api.stories), (1, 0))
+
+    def test_discard_pending_forgets_speech_and_story(self):
+        keys = KeyboardButtons(start_reader=False)
+        keys.handle_line("\n")
+        keys.handle_line("g\n")
+        keys.discard_pending()
+        self.assertFalse(keys.speech_pressed)
+        self.assertFalse(keys.story_pressed)
 
 
 class KunibertClientTests(unittest.TestCase):
@@ -530,6 +579,25 @@ class KunibertClientTests(unittest.TestCase):
         self.assertEqual(led.modes[-1], "off")
         self.assertTrue(buttons.closed)
         self.assertTrue(led.closed)
+
+    def test_silent_recording_is_sent_but_logged_as_hint_with_only_a_number(self):
+        config = self.config()
+        out = CaptureAudioOutput()
+        client = KunibertClient(config, FakeApi(), DryRunAudio(config), out, PressedButtons(speech=True), CaptureLed())
+        client.state = ClientState.READY
+        with self.assertLogs("kunibert", level="WARNING") as logs:
+            client.handle_question()
+        self.assertEqual(len(out.played), 1, "die Anfrage geht trotzdem an den Server")
+        hint = [line for line in logs.output if "praktisch stumm" in line]
+        self.assertEqual(len(hint), 1)
+        self.assertIn("Spitzenwert 0 von 32767", hint[0])
+
+    def test_pcm16_peak(self):
+        loud = encode_wav((1000).to_bytes(2, "little", signed=True) + (-2000).to_bytes(2, "little", signed=True), 16000, 1, 2)
+        self.assertEqual(pcm16_peak(loud), 2000)
+        self.assertEqual(pcm16_peak(encode_wav(b"\x00\x00" * 10, 16000, 1, 2)), 0)
+        self.assertIsNone(pcm16_peak(b"kein wav"))
+        self.assertGreater(2000, SILENT_PEAK)
 
     def test_led_modes_have_distinct_patterns(self):
         recording = GpioStatusLed.pattern_for_mode("recording")
@@ -785,6 +853,41 @@ class KunibertClientTests(unittest.TestCase):
                 api._with_retries("POST", "/v1/device/question", b"", {})
         self.assertEqual(request.call_count, 3)
 
+    def test_default_is_at_most_one_retry_like_the_firmware(self):
+        config = ClientConfig(api_base_url="https://picastAI.com", device_token="device-test-token")
+        self.assertEqual(config.retry_count, 1)
+        with patch.dict("os.environ", {}, clear=True):
+            self.assertEqual(ClientConfig.from_env().retry_count, 1)
+        api = PicastApi(config)
+        with patch.object(api, "_request", return_value=(503, {}, b"{}")) as request, patch("kunibert_client.time.sleep"):
+            with self.assertRaises(ApiError):
+                api._with_retries("POST", "/v1/device/question", b"", {}, timeout=140.0)
+        self.assertEqual(request.call_count, 2)
+
+    def test_no_retry_after_the_whole_time_limit_was_used(self):
+        # Ein hängender Server: Die erste Anfrage braucht die ganzen 140 s. Ein zweiter
+        # Versuch hieße noch einmal 140 s Warten für das Kind (Regel wie kb_retry_decide).
+        api = self._retry_api()
+        clock = FakeClock()
+        api.clock = clock
+
+        def hang(*_args, **_kwargs):
+            clock.advance(140.0)
+            raise TimeoutError("timed out")
+
+        with patch.object(api, "_request", side_effect=hang) as request, patch("kunibert_client.time.sleep"):
+            with self.assertRaises(TimeoutError):
+                api._with_retries("POST", "/v1/device/kunibert-story", b"", {}, timeout=140.0)
+        self.assertEqual(request.call_count, 1)
+
+    def test_fast_network_error_is_retried_once(self):
+        api = PicastApi(ClientConfig(api_base_url="https://picastAI.com", device_token="device-test-token"))
+        responses = [OSError("Connection refused"), (200, {}, b'{"audio_url":"/v1/device/audio/x"}')]
+        with patch.object(api, "_request", side_effect=responses) as request, patch("kunibert_client.time.sleep"):
+            result = api._with_retries("POST", "/v1/device/question", b"", {}, timeout=140.0)
+        self.assertEqual(result["audio_url"], "/v1/device/audio/x")
+        self.assertEqual(request.call_count, 2)
+
     def test_does_not_retry_client_errors_413_and_401(self):
         for status in (401, 413):
             api = self._retry_api()
@@ -799,10 +902,14 @@ class SoundDeviceSelectionTests(unittest.TestCase):
 
     @staticmethod
     def _fake_sd():
-        sd = MagicMock()
+        # spec: Nur was es in sounddevice wirklich gibt. Ohne spec hätte die Attrappe auch
+        # sd.play mit Bytes angenommen, was die echte Bibliothek ablehnt (Fehler bis 12.11.2026).
+        sd = MagicMock(spec=["RawInputStream", "RawOutputStream", "play", "query_devices"])
         stream = MagicMock()
         stream.read.return_value = (b"\x00\x00" * 1024, False)
         sd.RawInputStream.return_value.__enter__.return_value = stream
+        out = MagicMock()
+        sd.RawOutputStream.return_value.__enter__.return_value = out
         return sd
 
     def _audio(self, **config_values):
@@ -816,14 +923,44 @@ class SoundDeviceSelectionTests(unittest.TestCase):
         audio.record_while_pressed(iter([True, False]).__next__, 1.0)
         audio.play_wav(encode_wav(b"\x00\x00" * 160, 16000, 1, 2))
         self.assertIsNone(sd.RawInputStream.call_args.kwargs["device"])
-        self.assertIsNone(sd.play.call_args.kwargs["device"])
+        self.assertIsNone(sd.RawOutputStream.call_args.kwargs["device"])
 
     def test_input_and_output_device_are_passed_separately(self):
         audio, sd = self._audio(input_device="USB Mini Microphone", output_device=3)
         audio.record_while_pressed(iter([True, False]).__next__, 1.0)
         audio.play_wav(encode_wav(b"\x00\x00" * 160, 16000, 1, 2))
         self.assertEqual(sd.RawInputStream.call_args.kwargs["device"], "USB Mini Microphone")
-        self.assertEqual(sd.play.call_args.kwargs["device"], 3)
+        self.assertEqual(sd.RawOutputStream.call_args.kwargs["device"], 3)
+
+    def test_playback_writes_raw_bytes_without_numpy_and_without_sd_play(self):
+        # 0,25 s bei 16 kHz: drei Stücke zu höchstens 0,1 s, zusammen genau die PCM-Daten.
+        pcm = bytes(range(256)) * 31 + bytes(64)
+        audio, sd = self._audio()
+        audio.play_wav(encode_wav(pcm[: 4000 * 2], 16000, 1, 2))
+        sd.play.assert_not_called()
+        kwargs = sd.RawOutputStream.call_args.kwargs
+        self.assertEqual((kwargs["samplerate"], kwargs["channels"], kwargs["dtype"]), (16000, 1, "int16"))
+        stream = sd.RawOutputStream.return_value.__enter__.return_value
+        written = [call.args[0] for call in stream.write.call_args_list]
+        self.assertEqual(len(written), 3)
+        self.assertTrue(all(len(chunk) <= 1600 * 2 for chunk in written))
+        self.assertEqual(b"".join(written), pcm[: 4000 * 2])
+        stream.abort.assert_not_called()
+
+    def test_playback_stops_when_asked(self):
+        audio, sd = self._audio()
+        checks = iter([False, True])
+        audio.play_wav(encode_wav(b"\x00\x00" * 8000, 16000, 1, 2), should_stop=lambda: next(checks))
+        stream = sd.RawOutputStream.return_value.__enter__.return_value
+        self.assertEqual(stream.write.call_count, 1)
+        stream.abort.assert_called_once()
+
+    def test_playback_errors_become_hardware_errors(self):
+        audio, sd = self._audio()
+        sd.RawOutputStream.side_effect = RuntimeError("Invalid sample rate")
+        with self.assertRaises(HardwareError) as caught:
+            audio.play_wav(encode_wav(b"\x00\x00" * 160, 16000, 1, 2))
+        self.assertIn("Invalid sample rate", str(caught.exception))
 
     def test_parse_audio_device(self):
         self.assertIsNone(parse_audio_device(None))
@@ -840,6 +977,47 @@ class SoundDeviceSelectionTests(unittest.TestCase):
             config = ClientConfig.from_env()
         self.assertIsNone(config.input_device)
         self.assertIsNone(config.output_device)
+
+
+def _real_sounddevice():
+    """Die echte Bibliothek samt PortAudio, oder None (dann werden die Tests übersprungen)."""
+    try:
+        import sounddevice  # noqa: F401
+    except (ImportError, OSError):
+        return None
+    try:
+        sounddevice.query_devices(kind="output")
+        sounddevice.query_devices(kind="input")
+    except Exception:
+        return None
+    return sounddevice
+
+
+@unittest.skipIf(_real_sounddevice() is None, "sounddevice mit PortAudio und Audiogerät nicht vorhanden")
+class RealSoundDeviceTests(unittest.TestCase):
+    """Gegen die echte Bibliothek, ohne NumPy. In der CI über ein ALSA-Nullgerät (.github/workflows/tests.yml).
+
+    Die Attrappen oben hätten den Fehler vom 12.11.2026 nicht gefunden: sd.play() mit Bytes
+    scheitert erst in der echten Bibliothek.
+    """
+
+    def test_play_and_record_with_the_real_library(self):
+        audio = SoundDeviceAudio(ClientConfig())
+        audio.play_wav(encode_wav(b"\x00\x00" * 3200, 16000, 1, 2))  # 0,2 s Stille
+        presses = iter([True, True, False])
+        wav_bytes = audio.record_while_pressed(lambda: next(presses), 1.0)
+        validate_wav(wav_bytes, ClientConfig())
+
+    def test_stop_request_ends_playback_early(self):
+        audio = SoundDeviceAudio(ClientConfig())
+        audio.play_wav(encode_wav(b"\x00\x00" * 16000 * 30, 16000, 1, 2), should_stop=lambda: True)
+
+
+class RealSoundDeviceRequiredTest(unittest.TestCase):
+    @unittest.skipUnless(os.environ.get("KUNIBERT_REQUIRE_REAL_AUDIO") == "1", "nur in der CI verlangt")
+    def test_real_library_is_available(self):
+        # Damit die Tests oben in der CI nicht unbemerkt übersprungen werden.
+        self.assertIsNotNone(_real_sounddevice(), "sounddevice mit PortAudio fehlt in der CI")
 
 
 if __name__ == "__main__":
