@@ -10,3 +10,6 @@ CONFIG_ESP_MAIN_TASK_STACK_SIZE=16384
 CONFIG_SPIRAM=y
 CONFIG_SPIRAM_MODE_OCT=y
 CONFIG_SPIRAM_IGNORE_NOTFOUND=y
+# Die Firmware ist mit Konsole größer als 1 MB: große App-Partition (1,5 MB, ohne Update-Partitionen).
+# Für Updates über Funk (späterer Teil von M6) braucht es eine eigene Partitionstabelle mit zwei App-Plätzen.
+CONFIG_PARTITION_TABLE_SINGLE_APP_LARGE=y

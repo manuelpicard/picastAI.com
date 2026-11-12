@@ -1,9 +1,10 @@
 // Rechner-Tests für die Teile der Firmware ohne ESP-IDF: Zustandsautomat, LED-Muster,
 // WAV-Kopf, gleicher Ursprung, Wiederholungsregeln.
-//   cc -Wall -Wextra -Werror -I main -o /tmp/kb_logic test/test_logic.c main/kb_state.c main/kb_wav.c main/kb_url.c && /tmp/kb_logic
+//   cc -Wall -Wextra -Werror -I main -o /tmp/kb_logic test/test_logic.c main/kb_state.c main/kb_wav.c main/kb_url.c main/kb_settings_rules.c && /tmp/kb_logic
 #include <stdio.h>
 #include <string.h>
 
+#include "kb_settings_rules.h"
 #include "kb_state.h"
 #include "kb_url.h"
 #include "kb_wav.h"
@@ -179,8 +180,56 @@ static void test_retry(void)
     CHECK(kb_retry_decide(503, true, true, 1, 139999) == KB_RETRY_ONCE);
 }
 
+static void test_settings_rules(void)
+{
+    const kb_setting_def_t *wlan = kb_settings_find("wlan");
+    const kb_setting_def_t *pass = kb_settings_find("wlan-passwort");
+    const kb_setting_def_t *server = kb_settings_find("server");
+    const kb_setting_def_t *device = kb_settings_find("geraet");
+    const kb_setting_def_t *token = kb_settings_find("token");
+    CHECK(wlan && pass && server && device && token);
+    CHECK(kb_settings_find("Token") == NULL);
+    CHECK(kb_settings_find("") == NULL);
+    CHECK(kb_settings_find(NULL) == NULL);
+    CHECK(kb_settings_def(KB_SETTING_COUNT) == NULL);
+    if (!(wlan && pass && server && device && token)) {
+        return;
+    }
+    // Geheimnisse sind als solche markiert, alles andere nicht.
+    CHECK(pass->secret && token->secret);
+    CHECK(!wlan->secret && !server->secret && !device->secret);
+    // Schlüssel im Speicher: höchstens 15 Zeichen, alle verschieden.
+    for (int i = 0; i < KB_SETTING_COUNT; i++) {
+        const kb_setting_def_t *a = kb_settings_def((kb_setting_id_t)i);
+        CHECK(a != NULL && a->id == (kb_setting_id_t)i);
+        CHECK(strlen(a->nvs_key) > 0 && strlen(a->nvs_key) <= 15);
+        CHECK(a->max_len <= KB_SETTING_VALUE_MAX);
+        for (int j = i + 1; j < KB_SETTING_COUNT; j++) {
+            CHECK(strcmp(a->nvs_key, kb_settings_def((kb_setting_id_t)j)->nvs_key) != 0);
+        }
+    }
+    // Werte
+    CHECK(kb_settings_value_ok(wlan, "Mein WLAN 5G"));
+    CHECK(kb_settings_value_ok(wlan, ""));
+    CHECK(!kb_settings_value_ok(wlan, NULL));
+    CHECK(!kb_settings_value_ok(NULL, "x"));
+    CHECK(!kb_settings_value_ok(wlan, "123456789012345678901234567890123")); // 33 Zeichen
+    CHECK(kb_settings_value_ok(wlan, "12345678901234567890123456789012"));   // 32 Zeichen
+    CHECK(!kb_settings_value_ok(wlan, "a\nb"));
+    CHECK(kb_settings_value_ok(pass, "geheim mit Leerzeichen"));
+    CHECK(kb_settings_value_ok(server, "https://kunibert.example"));
+    CHECK(!kb_settings_value_ok(server, "http://kunibert.example"));
+    CHECK(!kb_settings_value_ok(server, "https://kunibert.example/"));
+    CHECK(kb_settings_value_ok(device, "esp-001"));
+    CHECK(!kb_settings_value_ok(device, "esp 001"));
+    CHECK(kb_settings_value_ok(token, "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"));
+    CHECK(!kb_settings_value_ok(token, "abc def"));
+    CHECK(!kb_settings_value_ok(token, "abc\x7f"));
+}
+
 int main(void)
 {
+    test_settings_rules();
     test_state();
     test_led();
     test_record();

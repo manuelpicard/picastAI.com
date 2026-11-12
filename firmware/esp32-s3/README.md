@@ -13,7 +13,7 @@ Das Seriengerät soll ein ESP32-S3 werden; der erste Aufbau läuft auf dem Raspb
 | M3 | Antwort abrufen und beim Laden abspielen | Entwurf, baut in der CI |
 | M4 | Tasten, LED, Zustandsautomat wie im Pi-Client | Entwurf, baut in der CI |
 | M5 | Fehler, Wiederholung, Zeitgrenzen | Entwurf, baut in der CI |
-| M6 | WLAN-Einrichtung ohne Rechner, Updates mit Rückfall, Schutz des Tokens | offen |
+| M6 | WLAN-Einrichtung ohne Rechner, Updates mit Rückfall, Schutz des Tokens | begonnen: Einstellungen im Gerät und serielle Konsole (Entwurf); offen: Einrichtung ohne Kabel, Updates, Verschlüsselung |
 
 **Aufbau, für den der Entwurf geschrieben ist (allgemein, Variante B):** ESP32-S3-Modul mit PSRAM, I2S-Mikrofon (z. B. INMP441), I2S-Verstärker (z. B. MAX98357A) mit Lautsprecher, zwei Taster gegen Masse, eine LED, optional ein Schalter für „Mikrofon aus“. Alle Pins stehen in `idf.py menuconfig` (Menü „Ritter Kunibert“ → „Anschlüsse“); die Vorgaben sind Platzhalter. Für das ESP32-S3-BOX-3 (Codec-Chips ES7210/ES8311) braucht `main/kb_audio.c` und `main/kb_board.c` eine eigene Fassung.
 
@@ -29,7 +29,26 @@ idf.py build
 idf.py -p <Port> flash monitor
 ```
 
-- WLAN-Daten, Adresse, Geräte-ID und Token landen in der Datei `sdkconfig`. Sie steht in `.gitignore` und gehört **nicht** ins Repo.
+### Einrichten ohne neuen Build (serielle Konsole, Teil von M6)
+
+WLAN, Adresse des Servers, Geräte-ID und Token lassen sich über das USB-Kabel setzen. Sie liegen dann im Speicher des Geräts (NVS) und haben Vorrang vor `sdkconfig`. In `idf.py monitor`:
+
+```text
+kunibert> zeige
+kunibert> setze wlan "Mein WLAN"
+kunibert> setze wlan-passwort "..."
+kunibert> setze server https://kunibert.example
+kunibert> setze geraet esp-001
+kunibert> setze token <Gerätetoken vom Server>
+kunibert> neustart
+```
+
+- Neue Werte gelten nach `neustart`. `setze <name>` ohne Wert löscht einen Eintrag, `loesche` löscht alle.
+- `zeige` gibt Passwort und Token nie aus, nur „gesetzt“. Die Konsole merkt sich keine Befehle.
+- **Grenzen:** Der Speicher ist noch **nicht verschlüsselt**. Wer das Gerät öffnet und den Flash ausliest, bekommt WLAN-Passwort und Token. Das behebt erst die Flash-Verschlüsselung (späterer Teil von M6). Das Token steht beim Eintippen im Fenster deines Rechners: Fenster danach schließen, nichts davon in Chats kopieren.
+- Auf keinem Gerät gelaufen. Die Regeln für die Werte sind auf dem Rechner getestet (`test/test_logic.c`).
+
+- WLAN-Daten, Adresse, Geräte-ID und Token können für die Entwicklung auch in der Datei `sdkconfig` stehen (Menü „Ritter Kunibert“). Sie landen dann in der Datei `sdkconfig`. Sie steht in `.gitignore` und gehört **nicht** ins Repo.
 - **Token:** Für die Entwicklung steht das Gerätetoken in `sdkconfig` und damit unverschlüsselt im Flash. Nur ein Test-Token verwenden. Stufe M6 legt es verschlüsselt ab.
 - Die Adresse muss mit `https://` beginnen und ohne Schrägstrich enden, gleiche Schreibweise wie `PICASTAI_PUBLIC_BASE_URL` auf dem Server. `http://` lehnt die Firmware ab.
 

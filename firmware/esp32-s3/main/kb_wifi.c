@@ -11,6 +11,8 @@
 #include "freertos/event_groups.h"
 #include "sdkconfig.h"
 
+#include "kb_settings.h"
+
 #define KB_WIFI_CONNECTED_BIT BIT0
 #define KB_WIFI_FAILED_BIT    BIT1
 
@@ -47,8 +49,10 @@ static void on_event(void *arg, esp_event_base_t base, int32_t id, void *data)
 
 esp_err_t kb_wifi_connect(void)
 {
-    if (strlen(CONFIG_KB_WIFI_SSID) == 0) {
-        ESP_LOGE(TAG, "Kein WLAN-Name gesetzt (idf.py menuconfig, Menü \"Ritter Kunibert\")");
+    const char *ssid = kb_settings_get(KB_SETTING_WIFI_SSID);
+    const char *password = kb_settings_get(KB_SETTING_WIFI_PASSWORD);
+    if (strlen(ssid) == 0) {
+        ESP_LOGE(TAG, "Kein WLAN-Name gesetzt (Konsole: setze wlan <Name>, oder idf.py menuconfig)");
         return ESP_ERR_INVALID_ARG;
     }
 
@@ -67,10 +71,10 @@ esp_err_t kb_wifi_connect(void)
     ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &on_event, NULL, NULL));
 
     wifi_config_t config = {0};
-    strlcpy((char *)config.sta.ssid, CONFIG_KB_WIFI_SSID, sizeof(config.sta.ssid));
-    strlcpy((char *)config.sta.password, CONFIG_KB_WIFI_PASSWORD, sizeof(config.sta.password));
+    strlcpy((char *)config.sta.ssid, ssid, sizeof(config.sta.ssid));
+    strlcpy((char *)config.sta.password, password, sizeof(config.sta.password));
     // Kein offenes oder WEP/WPA1-Netz annehmen, wenn ein Passwort gesetzt ist.
-    config.sta.threshold.authmode = strlen(CONFIG_KB_WIFI_PASSWORD) > 0 ? WIFI_AUTH_WPA2_PSK : WIFI_AUTH_OPEN;
+    config.sta.threshold.authmode = strlen(password) > 0 ? WIFI_AUTH_WPA2_PSK : WIFI_AUTH_OPEN;
 
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &config));
