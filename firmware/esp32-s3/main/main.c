@@ -189,16 +189,20 @@ void app_main(void)
     kb_api_new_session();
 
     go(KB_STATE_WIFI_CONNECTING);
-    // Ohne WLAN oder Server gibt es keinen Betrieb: Fehler zeigen und alle 30 s neu prüfen.
-    bool wifi_up = kb_wifi_connect() == ESP_OK;
-    while (!wifi_up || kb_api_health(kb_settings_get(KB_SETTING_API_BASE_URL)) != ESP_OK) {
+    // Ohne WLAN oder Server gibt es keinen Betrieb: Fehler zeigen und alle 30 s neu versuchen.
+    // Das WLAN wird dabei immer wieder neu gesucht. Früher blieb das Gerät bis zum Neustart
+    // stehen, wenn der Router beim Einschalten noch nicht bereit war (z. B. nach Stromausfall).
+    if (kb_wifi_connect() != ESP_OK) {
+        ESP_LOGE(TAG, "Kein WLAN. Zugangsdaten prüfen (Konsole: zeige); das Gerät versucht es weiter.");
+    }
+    while (!kb_wifi_is_connected() || kb_api_health(kb_settings_get(KB_SETTING_API_BASE_URL)) != ESP_OK) {
         if (s_state != KB_STATE_ERROR) {
             go(KB_STATE_ERROR);
         }
-        vTaskDelay(pdMS_TO_TICKS(30000));
-        if (!wifi_up) {
-            ESP_LOGE(TAG, "Kein WLAN. Bitte Zugangsdaten prüfen und neu starten.");
+        if (!kb_wifi_is_connected()) {
+            kb_wifi_retry();
         }
+        vTaskDelay(pdMS_TO_TICKS(30000));
     }
     confirm_firmware();
     go(kb_board_mic_off() ? KB_STATE_MIC_OFF : KB_STATE_READY);

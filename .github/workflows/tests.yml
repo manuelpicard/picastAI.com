@@ -1,7 +1,10 @@
 name: Tests
 
+# Pull Requests und main. Ohne die Einschränkung liefen bei jedem PR-Branch zwei gleiche Läufe
+# (einmal für den Push, einmal für den PR).
 on:
   push:
+    branches: [main]
   pull_request:
 
 permissions:
@@ -17,7 +20,7 @@ jobs:
         with:
           node-version: "22"
       - name: Install dependencies
-        run: npm ci || npm install
+        run: npm ci
       - name: Tests
         run: npm test
       - uses: actions/setup-python@v5
@@ -48,7 +51,7 @@ jobs:
           distribution: temurin
           java-version: "21"
       - name: Install dependencies
-        run: npm ci || npm install
+        run: npm ci
       - name: Firestore-Emulator installieren
         run: npm install --global firebase-tools@15.34.2
       - name: Gerätespeicher gegen den Emulator testen

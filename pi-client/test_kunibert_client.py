@@ -165,6 +165,80 @@ class CaptureLed:
         self.closed = True
 
 
+class FlakyHealthApi(FakeApi):
+    """Server, der beim Start erst nach einigen Versuchen erreichbar ist."""
+
+    def __init__(self, outcomes):
+        super().__init__()
+        self.outcomes = list(outcomes)
+        self.health_calls = 0
+
+    def health(self):
+        self.health_calls += 1
+        outcome = self.outcomes.pop(0) if self.outcomes else True
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+
+
+class StartupTests(unittest.TestCase):
+    def client(self, api, buttons=None):
+        config = ClientConfig(dry_run=False, device_token="t", connect_retry_seconds=1.0)
+        led = CaptureLed()
+        audio = DryRunAudio(config)
+        client = KunibertClient(config, api, audio, audio, buttons or PressedButtons(), led)
+        client.slept = []
+        client.sleep = client.slept.append
+        return client, led
+
+    def test_startup_keeps_trying_until_the_server_answers(self):
+        api = FlakyHealthApi([OSError("Temporary failure in name resolution"), False, TimeoutError("timed out"), True])
+        client, led = self.client(api)
+        client.transition(ClientState.WIFI_CONNECTING)
+        self.assertTrue(client.wait_for_server())
+        self.assertEqual(api.health_calls, 4)
+        # Fehler-LED während des Wartens, kein Absturz, kein Ende des Programms.
+        self.assertEqual(client.state, ClientState.ERROR)
+        self.assertIn("error", led.modes)
+        self.assertAlmostEqual(sum(client.slept), 3.0)
+        client.transition(ClientState.READY)
+
+    def test_startup_goes_straight_to_ready_when_server_is_up(self):
+        api = FlakyHealthApi([True])
+        client, led = self.client(api)
+        client.transition(ClientState.WIFI_CONNECTING)
+        self.assertTrue(client.wait_for_server())
+        self.assertEqual(client.state, ClientState.WIFI_CONNECTING)
+        self.assertEqual(client.slept, [])
+
+    def test_startup_wait_ends_quickly_on_shutdown_request(self):
+        api = FlakyHealthApi([OSError("kein Netz")] * 50)
+        client, _led = self.client(api)
+
+        def sleep_then_stop(seconds):
+            client.stop_requested = True
+
+        client.sleep = sleep_then_stop
+        client.transition(ClientState.WIFI_CONNECTING)
+        self.assertFalse(client.wait_for_server())
+        self.assertEqual(api.health_calls, 1)
+
+    def test_run_survives_unreachable_server_and_shuts_down_cleanly(self):
+        api = FlakyHealthApi([OSError("kein Netz")] * 50)
+        buttons = PressedButtons()
+        client, led = self.client(api, buttons)
+
+        def sleep_then_stop(seconds):
+            client.stop_requested = True
+
+        client.sleep = sleep_then_stop
+        client.run()
+        self.assertEqual(client.state, ClientState.SHUTDOWN)
+        self.assertIsNone(client.last_error)
+        self.assertTrue(buttons.closed)
+        self.assertTrue(led.closed)
+
+
 class KunibertClientTests(unittest.TestCase):
     def config(self):
         return ClientConfig(dry_run=True, min_record_seconds=0.1)

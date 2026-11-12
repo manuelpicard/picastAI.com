@@ -65,11 +65,14 @@ class ClientConfig:
     audio_timeout_seconds: float = 45.0
     request_timeout_seconds: float = 30.0
     # Frage und Geschichte laufen auf dem Server durch Spracherkennung, Sprachmodell
-    # und Sprachsynthese (Standardgrenzen 45 + 30 + 45 s). Der Client muss länger
+    # und Sprachsynthese (gemeinsames Zeitbudget 120 s). Der Client muss länger
     # warten als der Server, sonst bricht er ab und wiederholt die ganze Kette.
     pipeline_timeout_seconds: float = 140.0
     retry_count: int = 2
     retry_backoff_seconds: float = 1.5
+    # Pause zwischen zwei Versuchen, beim Start den Server zu erreichen (WLAN oder Router
+    # sind nach einem Stromausfall oft später da als das Gerät).
+    connect_retry_seconds: float = 10.0
     speech_button_gpio: int = 17
     story_button_gpio: int = 27
     mic_off_gpio: int = 22
@@ -115,6 +118,7 @@ class ClientConfig:
             pipeline_timeout_seconds=number("KUNIBERT_PIPELINE_TIMEOUT", 140.0),
             retry_count=integer("KUNIBERT_RETRY_COUNT", 2),
             retry_backoff_seconds=number("KUNIBERT_RETRY_BACKOFF", 1.5),
+            connect_retry_seconds=number("KUNIBERT_CONNECT_RETRY", 10.0),
             speech_button_gpio=integer("KUNIBERT_SPEECH_BUTTON_GPIO", 17),
             story_button_gpio=integer("KUNIBERT_STORY_BUTTON_GPIO", 27),
             mic_off_gpio=integer("KUNIBERT_MIC_OFF_GPIO", 22),
@@ -566,6 +570,8 @@ class KunibertClient:
     state_history: list[ClientState] = field(default_factory=list)
     # Uhr für die Zeitmessung (Tests setzen eine eigene).
     clock: Callable[[], float] = time.monotonic
+    # Warten zwischen Verbindungsversuchen (Tests setzen eine eigene Funktion).
+    sleep: Callable[[float], None] = time.sleep
 
     def transition(self, new_state: ClientState) -> None:
         allowed = {
@@ -604,8 +610,8 @@ class KunibertClient:
     def run(self) -> None:
         try:
             self.transition(ClientState.WIFI_CONNECTING)
-            if not self.config.dry_run and not self.api.health():
-                raise ApiError("picastAI Health-Endpunkt nicht erreichbar", retryable=True)
+            if not self.wait_for_server():
+                return
             self.transition(ClientState.MIC_OFF if self.buttons.mic_off else ClientState.READY)
             LOG.info("Kunibert bereit. Sprechtaste gedrückt halten oder Erzähltaste drücken.")
             while not self.stop_requested:
@@ -623,6 +629,34 @@ class KunibertClient:
                     pass
         finally:
             self.shutdown()
+
+    def wait_for_server(self) -> bool:
+        """Wartet beim Start, bis der Server antwortet. False nur, wenn das Beenden verlangt wurde.
+
+        Früher beendete sich der Client, wenn der Server beim Start nicht erreichbar war
+        (WLAN noch nicht da, Router startet noch). Jetzt zeigt die LED den Fehler, und der
+        Client versucht es alle ``connect_retry_seconds`` wieder, ohne Neustart des Dienstes.
+        """
+        if self.config.dry_run:
+            return True
+        while not self.stop_requested:
+            try:
+                if self.api.health():
+                    return True
+                reason = "Health-Endpunkt meldet nicht ok"
+            except (ApiError, OSError) as exc:
+                reason = str(exc)
+            LOG.warning("Server nicht erreichbar (%s); neuer Versuch in %.0f s",
+                        reason, self.config.connect_retry_seconds)
+            if self.state != ClientState.ERROR:
+                self.transition(ClientState.ERROR)
+            # In kleinen Schritten warten, damit ein Beenden (SIGTERM) schnell greift.
+            waited = 0.0
+            while waited < self.config.connect_retry_seconds and not self.stop_requested:
+                step = min(0.5, self.config.connect_retry_seconds - waited)
+                self.sleep(step)
+                waited += step
+        return False
 
     def step(self) -> None:
         if self.buttons.mic_off:

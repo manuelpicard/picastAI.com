@@ -194,7 +194,7 @@ KUNIBERT_INPUT_DEVICE=
 KUNIBERT_OUTPUT_DEVICE=
 ```
 
-Zeitgrenzen in Sekunden: `KUNIBERT_REQUEST_TIMEOUT` gilt für den Health-Check, `KUNIBERT_PIPELINE_TIMEOUT` für Frage und Geschichte, `KUNIBERT_AUDIO_TIMEOUT` für den Abruf der WAV-Antwort. Frage und Geschichte laufen auf dem Server durch Spracherkennung, Sprachmodell und Sprachsynthese (Standardgrenzen 45 + 30 + 45 s). Der Client muss länger warten als diese Kette, sonst bricht er ab und schickt die Anfrage erneut, und der Server erzeugt die Antwort ein zweites Mal (bei der Geschichte rückt die Folge dabei weiter). Die abgestimmte Zeitkette mit dem Reverse Proxy steht in [`deploy/EINRICHTUNG.md`](../deploy/EINRICHTUNG.md).
+Zeitgrenzen in Sekunden: `KUNIBERT_REQUEST_TIMEOUT` gilt für den Health-Check, `KUNIBERT_PIPELINE_TIMEOUT` für Frage und Geschichte, `KUNIBERT_AUDIO_TIMEOUT` für den Abruf der WAV-Antwort. Frage und Geschichte laufen auf dem Server durch Spracherkennung, Sprachmodell und Sprachsynthese; der Server hält dafür ein gemeinsames Zeitbudget von 120 s ein. Der Client muss länger warten als diese Kette, sonst bricht er ab und schickt die Anfrage erneut, und der Server erzeugt die Antwort ein zweites Mal (bei der Geschichte rückt die Folge dabei weiter). Die abgestimmte Zeitkette mit dem Reverse Proxy steht in [`deploy/EINRICHTUNG.md`](../deploy/EINRICHTUNG.md).
 
 ```bash
 sudo install -d -m 0750 /etc/kunibert /var/lib/kunibert/audio
@@ -209,6 +209,8 @@ set -a
 set +a
 /opt/kunibert/.venv/bin/python pi-client/kunibert_client.py --debug
 ```
+
+Beim Start wartet der Client, bis der Server antwortet: Ist er nicht erreichbar (WLAN noch nicht da, Router startet noch), blinkt die LED schnell (Fehler), und der Client versucht es alle `KUNIBERT_CONNECT_RETRY` Sekunden (Standard 10) wieder. Er beendet sich dabei nicht.
 
 Nur Health prüfen:
 

@@ -20,12 +20,14 @@ static const char *TAG = "kb_wifi";
 static EventGroupHandle_t s_events;
 static int s_retries;
 static bool s_connected_once;
+static volatile bool s_connected;
 
 static void on_event(void *arg, esp_event_base_t base, int32_t id, void *data)
 {
     if (base == WIFI_EVENT && id == WIFI_EVENT_STA_START) {
         esp_wifi_connect();
     } else if (base == WIFI_EVENT && id == WIFI_EVENT_STA_DISCONNECTED) {
+        s_connected = false;
         if (s_connected_once) {
             // Im Betrieb: immer wieder verbinden. Anfragen scheitern solange mit einem
             // Netzfehler (LED zeigt Fehler), das Gerät muss aber nicht neu gestartet werden.
@@ -43,6 +45,7 @@ static void on_event(void *arg, esp_event_base_t base, int32_t id, void *data)
         ESP_LOGI(TAG, "IP-Adresse: " IPSTR, IP2STR(&event->ip_info.ip));
         s_retries = 0;
         s_connected_once = true;
+        s_connected = true;
         xEventGroupSetBits(s_events, KB_WIFI_CONNECTED_BIT);
     }
 }
@@ -88,4 +91,23 @@ esp_err_t kb_wifi_connect(void)
     }
     ESP_LOGE(TAG, "WLAN-Verbindung gescheitert");
     return ESP_FAIL;
+}
+
+bool kb_wifi_is_connected(void)
+{
+    return s_connected;
+}
+
+void kb_wifi_retry(void)
+{
+    // Nur sinnvoll, wenn kb_wifi_connect() den Treiber gestartet hat und gerade keine
+    // Verbindung besteht. Die Versuche zählen neu; nach einem Erfolg verbindet der
+    // Ereignis-Handler im Betrieb von selbst wieder.
+    if (s_events == NULL || s_connected) {
+        return;
+    }
+    s_retries = 0;
+    xEventGroupClearBits(s_events, KB_WIFI_FAILED_BIT);
+    ESP_LOGI(TAG, "WLAN: neuer Verbindungsversuch");
+    esp_wifi_connect();
 }
