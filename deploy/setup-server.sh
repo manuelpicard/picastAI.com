@@ -25,6 +25,8 @@ APP_DIR=/opt/kunibert/app
 ENV_FILE=/etc/kunibert/kunibert.env
 REPO_SSH=git@github.com:manuelpicard/picastAI.com.git
 DEPLOY_KEY=/root/.ssh/kunibert_deploy
+# latest-cpu ist laut Build-Workflow von Speaches die neueste stabile Version (am 12.11.2026: 0.8.3;
+# neuere Tags sind nur Vorabversionen). Ein festes Image: --speaches-image ghcr.io/speaches-ai/speaches:<Version>-cpu
 SPEACHES_IMAGE=ghcr.io/speaches-ai/speaches:latest-cpu
 SPEACHES_URL=http://127.0.0.1:8000
 
@@ -49,6 +51,7 @@ Aufruf: sudo bash deploy/setup-server.sh --hostname <name> [Optionen]
   --stt-model <name>  Erkennungsmodell (Standard: Systran/faster-whisper-small)
   --tts-model <name>  Stimmenmodell (Standard: speaches-ai/piper-de_DE-thorsten-medium)
   --tts-voice <name>  Stimme (Standard: thorsten)
+  --speaches-image <name>  Image des Sprachservers (Standard: ghcr.io/speaches-ai/speaches:latest-cpu)
   --skip-speaches     Sprachserver nicht einrichten
   --skip-caddy        Caddy nicht einrichten
   -h, --help          Diese Hilfe
@@ -91,6 +94,11 @@ env_set_if_empty() { # Datei Schlüssel Wert
   return 1
 }
 
+# Schaltet die täglichen automatischen Updates von apt ein (wie dpkg-reconfigure unattended-upgrades).
+write_auto_upgrades() { # Datei
+  printf '%s\n' 'APT::Periodic::Update-Package-Lists "1";' 'APT::Periodic::Unattended-Upgrade "1";' > "$1"
+}
+
 # Schreibt das Caddyfile mit dem echten Hostnamen (Vorlage: deploy/Caddyfile).
 render_caddyfile() { # Vorlage Hostname
   sed "s/kunibert\.example/$2/g" "$1"
@@ -108,6 +116,12 @@ install_packages() {
     apt-get install -y -qq docker.io >/dev/null
   fi
   note "Docker: $(docker --version 2>/dev/null || echo fehlt)"
+
+  # Sicherheitsupdates des Betriebssystems automatisch einspielen (Debian und Ubuntu:
+  # Paket unattended-upgrades, Standard nur Sicherheitsquellen; kein automatischer Neustart).
+  apt-get install -y -qq unattended-upgrades >/dev/null
+  write_auto_upgrades /etc/apt/apt.conf.d/20auto-upgrades
+  note "Automatische Sicherheitsupdates: an"
 
   local node_major=0
   if command -v node >/dev/null; then node_major=$(node -p 'process.versions.node.split(".")[0]'); fi
@@ -207,6 +221,9 @@ setup_speaches() {
     note "lade Modell $model (kann einige Minuten dauern)"
     curl -fsS -X POST "$SPEACHES_URL/v1/models/$model" >/dev/null || die "Modell $model ließ sich nicht laden"
   done
+  # Welche Version genau läuft (für ein späteres festes Image mit --speaches-image).
+  SPEACHES_DIGEST=$(docker inspect --format '{{.Image}}' speaches 2>/dev/null || true)
+  note "Sprachserver-Image: $SPEACHES_IMAGE (${SPEACHES_DIGEST:-Kennung unbekannt})"
 }
 
 start_service() {
@@ -274,6 +291,7 @@ main() {
       --stt-model) STT_MODEL=${2:-}; shift 2 ;;
       --tts-model) TTS_MODEL=${2:-}; shift 2 ;;
       --tts-voice) TTS_VOICE=${2:-}; shift 2 ;;
+      --speaches-image) SPEACHES_IMAGE=${2:-}; shift 2 ;;
       --skip-speaches) SKIP_SPEACHES=1; shift ;;
       --skip-caddy) SKIP_CADDY=1; shift ;;
       -h|--help) usage; exit 0 ;;
