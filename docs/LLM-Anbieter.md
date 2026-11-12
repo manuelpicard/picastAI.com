@@ -46,7 +46,7 @@ EVAL_MODELS="anthropic:claude-sonnet-5-5,anthropic:claude-haiku-5-5" npm run eva
 - **Ohne `ANTHROPIC_API_KEY`** bricht das Skript sofort mit einer Meldung ab. Es ruft nichts auf und schreibt nichts. Das gilt auch, wenn `EVAL_MODELS` gesetzt ist.
 - Der Ablauf ist mit einer Attrappe getestet (`server-api/eval-llm.test.ts`, läuft in `npm test`): beide Modelle, alle Prompts, Blind-Blatt ohne Modellnamen, Schlüssel passt zu den Texten. **Live gegen Claude wurde der Vergleich noch nicht ausgeführt.**
 
-Es schickt 30 Kinder-Prompts (Wissensfragen, Gefühle, Ablehnungen, Namens-Köder, Geschichten mit Wünschen, Sicherheitsfälle; `server-api/eval-prompts.json`) durch die echte Kette aus Sicherheitsweiche, Modell und Ausgabe-Check. Ergebnis in `eval-out/<Zeitstempel>/` (der Ordner ist von Git ausgeschlossen):
+Es schickt 32 Kinder-Prompts (Wissensfragen, darunter zwei zu Blut und Schorf seit dem 12.11.2026, Gefühle, Ablehnungen, Namens-Köder, Geschichten mit Wünschen, Sicherheitsfälle; `server-api/eval-prompts.json`) durch die echte Kette aus Sicherheitsweiche, Modell und Ausgabe-Check. Ergebnis in `eval-out/<Zeitstempel>/` (der Ordner ist von Git ausgeschlossen):
 
 | Datei | Inhalt | Wer sie sehen darf |
 | --- | --- | --- |
