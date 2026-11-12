@@ -273,7 +273,7 @@ esp_err_t kb_api_story(kb_api_turn_t *out)
     return err;
 }
 
-esp_err_t kb_api_play_audio(const char *audio_url)
+esp_err_t kb_api_play_audio(const char *audio_url, bool (*should_stop)(void))
 {
     if (audio_url == NULL || !kb_url_same_origin(kb_settings_get(KB_SETTING_API_BASE_URL), audio_url)) {
         return ESP_ERR_INVALID_ARG;
@@ -319,6 +319,11 @@ esp_err_t kb_api_play_audio(const char *audio_url)
             uint32_t left = data_bytes;
             size_t carry = 0; // ein einzelnes Byte, wenn ein Block mitten in einem Sample endet
             while (err == ESP_OK && left > 0) {
+                if (should_stop != NULL && should_stop()) {
+                    // Tastendruck während der Wiedergabe: sofort aufhören (kein Fehler).
+                    ESP_LOGI(TAG, "Audio: Wiedergabe gestoppt");
+                    break;
+                }
                 size_t want = sizeof(block) - carry;
                 if (want > left) {
                     want = left;

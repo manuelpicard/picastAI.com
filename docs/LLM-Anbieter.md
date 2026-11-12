@@ -46,7 +46,7 @@ EVAL_MODELS="anthropic:claude-sonnet-5-5,anthropic:claude-haiku-5-5" npm run eva
 - **Ohne `ANTHROPIC_API_KEY`** bricht das Skript sofort mit einer Meldung ab. Es ruft nichts auf und schreibt nichts. Das gilt auch, wenn `EVAL_MODELS` gesetzt ist.
 - Der Ablauf ist mit einer Attrappe getestet (`server-api/eval-llm.test.ts`, läuft in `npm test`): beide Modelle, alle Prompts, Blind-Blatt ohne Modellnamen, Schlüssel passt zu den Texten. **Live gegen Claude wurde der Vergleich noch nicht ausgeführt.**
 
-Es schickt 30 Kinder-Prompts (Wissensfragen, Gefühle, Ablehnungen, Namens-Köder, Geschichten mit Wünschen, Sicherheitsfälle; `server-api/eval-prompts.json`) durch die echte Kette aus Sicherheitsweiche, Modell und Ausgabe-Check. Ergebnis in `eval-out/<Zeitstempel>/` (der Ordner ist von Git ausgeschlossen):
+Es schickt 32 Kinder-Prompts (Wissensfragen, darunter zwei zu Blut und Schorf seit dem 12.11.2026, Gefühle, Ablehnungen, Namens-Köder, Geschichten mit Wünschen, Sicherheitsfälle; `server-api/eval-prompts.json`) durch die echte Kette aus Sicherheitsweiche, Modell und Ausgabe-Check. Ergebnis in `eval-out/<Zeitstempel>/` (der Ordner ist von Git ausgeschlossen):
 
 | Datei | Inhalt | Wer sie sehen darf |
 | --- | --- | --- |
@@ -103,4 +103,4 @@ Spracherkennung und Sprachausgabe sind zwei getrennte Dienste mit je einer Adres
 
   Nicht live getestet: Die Tests laufen mit ersetzten Netzwerkaufrufen. Anfrageform, EU-Adresse, Kopf `X-Goog-Api-Key` und die Rückgabe von LINEAR16 mit WAV-Kopf stammen aus der Google-Dokumentation. Offen bis zum ersten echten Aufruf: ob die Cloud-Text-to-Speech-API den API-Schlüssel (statt eines Dienstkontos) annimmt, ob Chirp 3 HD am EU-Endpunkt tatsächlich antwortet und mit welcher Abtastrate. Vor dem Kinderbetrieb prüfen: Bedingungen für Anwendungen, die sich an Kinder richten (in den allgemeinen Cloud-Bedingungen und der Nutzungsrichtlinie fand sich keine Klausel dazu, die produktspezifischen Bedingungen wurden nicht gelesen), Vertrag zur Auftragsverarbeitung und Aufbewahrung der Texte.
 - Die Dienste sind unabhängig: Erkennung und Sprachausgabe können auf verschiedenen Servern laufen, jeweils mit eigener Adresse und eigenem Schlüssel.
-- Ob die Erkennung bei deutschen Kinderstimmen reicht und welche Stimme gut klingt, zeigt Schritt 11 der Checkliste (`deploy/CHECKLISTE.md`); dafür habe ich keine veröffentlichten Messwerte gefunden.
+- Ob die Erkennung bei deutschen Kinderstimmen reicht und welche Stimme gut klingt, zeigt Schritt 12 der Checkliste (`deploy/CHECKLISTE.md`); dafür habe ich keine veröffentlichten Messwerte gefunden.

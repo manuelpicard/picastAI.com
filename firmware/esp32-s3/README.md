@@ -10,7 +10,7 @@ Das Seriengerät soll ein ESP32-S3 werden; der erste Aufbau läuft auf dem Raspb
 | --- | --- | --- |
 | M1 | WLAN verbinden, Server über HTTPS erreichen (`GET /health`), Zertifikat prüfen | Entwurf, baut in der CI |
 | M2 | Aufnahme vom Mikrofon, `POST /v1/device/question` | Entwurf, baut in der CI |
-| M3 | Antwort abrufen und beim Laden abspielen | Entwurf, baut in der CI |
+| M3 | Antwort abrufen und beim Laden abspielen; ein neuer Tastendruck stoppt die Wiedergabe (wie im Pi-Client, seit 12.11.2026) | Entwurf, baut in der CI |
 | M4 | Tasten, LED, Zustandsautomat wie im Pi-Client | Entwurf, baut in der CI |
 | M5 | Fehler, Wiederholung, Zeitgrenzen | Entwurf, baut in der CI |
 | M6 | WLAN-Einrichtung ohne Rechner, Updates mit Rückfall, Schutz des Tokens | begonnen: Einstellungen im Gerät, serielle Konsole, Flash-Aufteilung für Updates mit Rückfall (Entwurf); offen: Einrichtung ohne Kabel, das Update selbst, Verschlüsselung |
