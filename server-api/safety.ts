@@ -150,6 +150,37 @@ const PATTERNS_2026_11: RegExp[] = [
   new RegExp(`^(hilfe ?){1,5}$`),
 ];
 
+// Zweite Probe vom 12.11.2026 (47 Notfall-Sätze in Kindersprache, wie die Erkennung sie liefert;
+// 13 davon unerkannt). Wieder bewusst großzügig, mit Gegenprobe in safety.test.ts. Ohne
+// Sprachmodell (Ausfall, kein Schlüssel) sind diese Muster der einzige Schutz.
+const PATTERNS_2026_11_B: RegExp[] = [
+  // Gewalt im Nebensatz, Verb am Ende ("weil Papa mich haut"). Nicht: "mich haut das nicht um".
+  new RegExp(`${L}mich (schlägt|schlagen|haut|hauen|tritt|treten|würgt|würgen|verprügelt|verprügeln|verhaut|verhauen|misshandelt)${R}(?!( ${WORD}){0,3} um${R})`),
+  // Tierbiss
+  new RegExp(`${L}(hund|katze|schlange|ratte)( ${WORD}){0,3} (hat|hatte) mich (${WORD} ){0,2}gebissen${R}`),
+  new RegExp(`${L}ich (bin|wurde) (${WORD} ){0,3}(von|vom) (${WORD} ){0,2}(hund|katze|schlange|ratte) gebissen${R}`),
+  // Nach einem Sturz: Körperteil lässt sich nicht bewegen
+  new RegExp(`${L}(ich )?kann (mein|meinen|meine) (arm|bein|fuß|fuss|hand|finger|kopf|hals|knie) (gar )?nicht (mehr )?bewegen${R}`),
+  // Person wacht nicht auf, auch wenn sie weiter vorn im Satz steht ("Papa ist ganz heiß und zittert und wacht nicht auf")
+  new RegExp(`${L}${POSS}${PERSON}( ${WORD}){1,8} (wacht|wachte) (einfach |gar |immer noch )?nicht (mehr )?auf${R}`),
+  // Person liegt am Boden und antwortet nicht
+  new RegExp(`${L}(${POSS}${PERSON}|er|sie|jemand) (liegt|liegen) (einfach |ganz |da )?(am|auf dem) boden( ${WORD}){0,4} (sagt|antwortet|redet|spricht) (gar )?(nichts|nicht)${R}`),
+  // Herz, Schlaganfall, Krampfanfall
+  new RegExp(`${L}(schmerzen|weh) (${WORD} ){0,2}(in der|an der|in seiner|in ihrer) brust${R}`),
+  new RegExp(`${L}(hat|hatte|kriegt|bekommt) (gerade )?(einen |nen )?(herzinfarkt|schlaganfall|krampfanfall|epileptischen anfall)${R}`),
+  // Atemwege schwellen zu (Allergie)
+  new RegExp(`${L}(mein hals ist (ganz |so )?(zu|zugeschwollen)|ich kann (gar |überhaupt )?nicht (mehr )?schlucken)${R}`),
+  // Fremde Person will das Kind mitnehmen, als Nebensatz ("ein Mann, der will, dass ich mitkomme")
+  new RegExp(`${L}(mann|frau|typ|fremder|fremde|fremden)( ${WORD}){0,3} (will|wollte|möchte|sagt|sagte|hat gesagt) (${WORD} ){0,1}dass ich (mit ihm |mit ihr )?(mitkomme|mitgehe|einsteige|ins auto steige|in sein auto steige|in das auto steige)${R}`),
+  // Jemand Fremdes im Haus, und das Kind hat Angst
+  new RegExp(`^(?=.*${L}angst${R}).*${L}(jemand|einer|ein fremder|ein mann|eine frau|ein einbrecher) ist (${WORD} )?(im haus|in der wohnung|in unserem haus|in unserer wohnung|im keller|bei uns)${R}`),
+  // Erwachsener außerhalb der Familie verlangt Geheimhaltung
+  new RegExp(`${L}(mann|onkel|trainer|trainerin|lehrer|lehrerin|nachbar|nachbarin|fremder|fremde|babysitter|babysitterin|erzieher|erzieherin)( ${WORD}){0,4} (sagt|sagte|hat gesagt|meint)( ${WORD}){0,3} (unser|ein) geheimnis${R}`),
+  // Kind allein, Eltern kommen nicht
+  new RegExp(`${L}${POSS}${PARENTS} (kommt|kommen) (einfach |immer noch |noch immer |gar )?nicht (mehr )?(nach hause|heim|zurück)${R}`),
+  new RegExp(`${L}(allein|alleine) (zu hause|daheim)( ${WORD}){0,4} ${POSS}${PARENTS} (kommt|kommen) (${WORD} )?nicht(?= *$| ${CONTINUATION}${R})`),
+];
+
 // Ausgabe-Check: deterministische Prüfung der vom Sprachmodell erzeugten Texte,
 // bevor sie vorgelesen werden. Ergänzt die Eingabeprüfung (screen), ersetzt
 // aber keine fachliche Prüfung vor dem Kinderbetrieb. JavaScript-\b kennt keine
@@ -191,7 +222,7 @@ export function normalize(text: string): string {
   return cleaned.replace(/\s+/g, ' ').trim() + ' ';
 }
 
-const ALL_PATTERNS: RegExp[] = [...PATTERNS, ...PATTERNS_EXTRA, ...PATTERNS_2026_11];
+const ALL_PATTERNS: RegExp[] = [...PATTERNS, ...PATTERNS_EXTRA, ...PATTERNS_2026_11, ...PATTERNS_2026_11_B];
 
 export function screen(transcript: string): boolean {
   if (!transcript) return false;
