@@ -25,6 +25,8 @@ interface FakeSpeechService {
   /** Antwortet wie ein FastAPI-Prüffehler (422) und gibt dabei den Eingabetext zurück. */
   speechRejectsWithInput: boolean;
   transcript: string;
+  /** Spracherkennung antwortet mit HTTP 500. */
+  transcriptionFails: boolean;
 }
 
 function freePort(): Promise<number> {
@@ -46,6 +48,7 @@ function startFakeSpeechService(): Promise<{ server: http.Server; state: FakeSpe
     speechFails: false,
     speechRejectsWithInput: false,
     transcript: 'warum ist der himmel blau',
+    transcriptionFails: false,
   };
   const server = http.createServer((req, res) => {
     const chunks: Buffer[] = [];
@@ -71,6 +74,11 @@ function startFakeSpeechService(): Promise<{ server: http.Server; state: FakeSpe
       }
       if (req.url === '/audio/transcriptions') {
         state.transcriptions++;
+        if (state.transcriptionFails) {
+          res.writeHead(500);
+          res.end('absichtlicher Testfehler');
+          return;
+        }
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ text: state.transcript }));
         return;
@@ -333,6 +341,29 @@ describe('picastAI-API (echter Server)', () => {
     assert.equal(res.status, 200, await res.clone().text());
     assert.equal(fake.state.transcriptions, before, 'Stille geht nicht an die Spracherkennung');
     assert.equal((await fetchAudio(device, ((await res.json()) as { audio_url: string }).audio_url)).status, 200);
+  });
+
+  it('/v1/turn: Ausfall der Spracherkennung ist 503, keine kaputte Aufnahme (400)', async () => {
+    const device = await registerDevice();
+    fake.state.transcriptionFails = true;
+    try {
+      const res = await fetch(`${base}/v1/turn`, {
+        method: 'POST',
+        headers: deviceHeaders(device.id, device.token),
+        body: questionForm(wav16k(), { mode: 'frage' }),
+      });
+      assert.equal(res.status, 503, await res.clone().text());
+      assert.equal(((await res.json()) as { error: string }).error, 'voice_provider_failed');
+    } finally {
+      fake.state.transcriptionFails = false;
+    }
+    const broken = await fetch(`${base}/v1/turn`, {
+      method: 'POST',
+      headers: deviceHeaders(device.id, device.token),
+      body: questionForm(Buffer.from('kein wav '.repeat(10)), { mode: 'frage' }),
+    });
+    assert.equal(broken.status, 400);
+    assert.equal(((await broken.json()) as { error: string }).error, 'bad_audio');
   });
 
   it('Untertitel-Abspann aus der Erkennung (Whisper bei Rauschen) ergibt "nicht verstanden"', async () => {
