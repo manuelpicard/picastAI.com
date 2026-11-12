@@ -289,6 +289,67 @@ describe('picastAI-API (echter Server)', () => {
     }
   });
 
+  // Vertrag mit der ESP32-Firmware (firmware/esp32-s3/main/kb_api.c): Sie baut den multipart-Body
+  // von Hand und prüft die Antwort strenger als der Pi-Client. Ändert der Server eines dieser
+  // Details, läuft die Firmware nicht mehr; dieser Test schlägt dann vorher an.
+  it('Firmware-Format: von Hand gebauter multipart-Body wird angenommen, Antwort hat den WAV-Kopf, den die Firmware verlangt', async () => {
+    const device = await registerDevice();
+    const boundary = '----kunibert7f3a9c1e5b2d';
+    const part = (name: string, value: string) =>
+      `--${boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`;
+    const head =
+      part('locale', 'de-DE') +
+      part('age_band', '6-10') +
+      part('session_id', '0123456789abcdef0123456789abcdef') +
+      `--${boundary}\r\nContent-Disposition: form-data; name="audio"; filename="frage.wav"\r\nContent-Type: audio/wav\r\n\r\n`;
+    const body = Buffer.concat([Buffer.from(head, 'utf8'), wav16k(), Buffer.from(`\r\n--${boundary}--\r\n`, 'utf8')]);
+
+    const res = await fetch(`${base}/v1/device/question`, {
+      method: 'POST',
+      headers: {
+        ...deviceHeaders(device.id, device.token),
+        'Content-Type': `multipart/form-data; boundary=${boundary}`,
+        'Content-Length': String(body.length),
+      },
+      body,
+    });
+    assert.equal(res.status, 200, await res.clone().text());
+    const turn = (await res.json()) as { audio_url: string; session_end: boolean };
+    assert.equal(typeof turn.session_end, 'boolean');
+    // Die Firmware lehnt eine audio_url mit anderem Ursprung als ihre API-Adresse ab.
+    assert.equal(new URL(turn.audio_url).origin, new URL(PUBLIC_BASE_URL).origin);
+    assert.ok(turn.audio_url.length < 256, 'audio_url passt in den Puffer der Firmware (KB_URL_MAX)');
+
+    const audio = await fetchAudio(device, turn.audio_url);
+    assert.equal(audio.status, 200);
+    assert.ok((audio.headers.get('content-type') || '').toLowerCase().startsWith('audio/wav'));
+    const wav = Buffer.from(await audio.arrayBuffer());
+    // kb_wav_check_header: einfacher 44-Byte-Kopf, fmt-Block mit 16 Byte, PCM, mono, 16 Bit, 16 kHz, nicht leer.
+    assert.equal(wav.toString('ascii', 0, 4), 'RIFF');
+    assert.equal(wav.toString('ascii', 8, 16), 'WAVEfmt ');
+    assert.equal(wav.readUInt32LE(16), 16);
+    assert.equal(wav.readUInt16LE(20), 1);
+    assert.equal(wav.readUInt16LE(22), 1);
+    assert.equal(wav.readUInt32LE(24), 16_000);
+    assert.equal(wav.readUInt16LE(34), 16);
+    assert.equal(wav.toString('ascii', 36, 40), 'data');
+    assert.ok(wav.readUInt32LE(40) > 0);
+    assert.equal(wav.readUInt32LE(40), wav.length - 44, 'Länge im Kopf passt zur Datei (die Firmware liest genau so viele Byte)');
+  });
+
+  it('Firmware-Format: Geschichte mit session_id im JSON wird angenommen', async () => {
+    const device = await registerDevice();
+    const res = await fetch(`${base}/v1/device/kunibert-story`, {
+      method: 'POST',
+      headers: { ...deviceHeaders(device.id, device.token), 'Content-Type': 'application/json' },
+      body: '{"locale":"de-DE","age_band":"6-10","length":"short","session_id":"0123456789abcdef0123456789abcdef"}',
+    });
+    assert.equal(res.status, 200, await res.clone().text());
+    const turn = (await res.json()) as { audio_url: string; session_end: boolean };
+    assert.equal(new URL(turn.audio_url).origin, new URL(PUBLIC_BASE_URL).origin);
+    assert.equal(turn.session_end, false);
+  });
+
   it('fehlerhafte Aufnahmen ergeben 400 mit klarem Fehlercode', async () => {
     const device = await registerDevice();
     const noAudio = await postQuestion(device, questionForm(null, { transcript: 'hallo' }));
