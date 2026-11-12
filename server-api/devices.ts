@@ -22,6 +22,18 @@ export class DeviceStoreError extends Error {
   }
 }
 
+/**
+ * Fehlercode eines Speicherfehlers für Meldungen und Protokoll, ohne den Fehlertext: Meldungen
+ * von Firestore können den Dokumentpfad und damit die Geräte-ID enthalten (z. B. bei NOT_FOUND).
+ */
+export function storeErrorCode(err: unknown): string {
+  const code = (err as { code?: unknown } | null)?.code;
+  if (typeof code === 'number' && Number.isInteger(code)) return String(code);
+  if (typeof code === 'string' && /^[A-Za-z][A-Za-z0-9_.-]{0,63}$/.test(code)) return code;
+  const name = (err as Error | null)?.name;
+  return typeof name === 'string' && /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(name) ? name : 'unbekannt';
+}
+
 export class DeviceRegistry {
   private devices: Map<string, DeviceEntry> = new Map();
 
@@ -118,7 +130,7 @@ export class DeviceRegistry {
       } catch (err) {
         if (previous) this.devices.set(deviceId, previous);
         else this.devices.delete(deviceId);
-        throw new DeviceStoreError(`Gerät konnte nicht gespeichert werden: ${(err as Error)?.message || 'unbekannt'}`);
+        throw new DeviceStoreError(`Gerät konnte nicht gespeichert werden (${storeErrorCode(err)})`);
       }
     }
     return created;
@@ -136,7 +148,8 @@ export class DeviceRegistry {
       await this.store.markRevoked(deviceId);
       return { success, persisted: true };
     } catch (err) {
-      console.warn(`Widerruf von ${deviceId} konnte nicht dauerhaft gespeichert werden:`, err);
+      // Ohne Geräte-ID und ohne Fehlertext im Protokoll (der Text kann den Dokumentpfad enthalten).
+      console.warn(`Ein Widerruf konnte nicht dauerhaft gespeichert werden (${storeErrorCode(err)}).`);
       return { success, persisted: false };
     }
   }

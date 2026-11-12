@@ -22,6 +22,8 @@ interface FakeSpeechService {
   speechInputs: string[];
   transcriptions: number;
   speechFails: boolean;
+  /** Antwortet wie ein FastAPI-Prüffehler (422) und gibt dabei den Eingabetext zurück. */
+  speechRejectsWithInput: boolean;
   transcript: string;
 }
 
@@ -42,6 +44,7 @@ function startFakeSpeechService(): Promise<{ server: http.Server; state: FakeSpe
     speechInputs: [],
     transcriptions: 0,
     speechFails: false,
+    speechRejectsWithInput: false,
     transcript: 'warum ist der himmel blau',
   };
   const server = http.createServer((req, res) => {
@@ -55,6 +58,11 @@ function startFakeSpeechService(): Promise<{ server: http.Server; state: FakeSpe
           return;
         }
         const { input } = JSON.parse(Buffer.concat(chunks).toString('utf8')) as { input: string };
+        if (state.speechRejectsWithInput) {
+          res.writeHead(422, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ detail: [{ type: 'string_too_long', loc: ['body', 'input'], msg: 'String should have at most 10 characters', input }] }));
+          return;
+        }
         state.speechInputs.push(input);
         // 24 kHz wie bei echten TTS-Diensten: der Server muss auf 16 kHz umrechnen.
         res.writeHead(200, { 'Content-Type': 'audio/wav' });
@@ -78,7 +86,15 @@ function startFakeSpeechService(): Promise<{ server: http.Server; state: FakeSpe
   });
 }
 
-const wav16k = (seconds = 0.5) => encodeWav(Buffer.alloc(Math.round(16_000 * 2 * seconds)), 16_000, 1, 16);
+/** Leiser Ton (440 Hz): klingt für den Server wie eine Aufnahme mit Inhalt. */
+const wav16k = (seconds = 0.5) => {
+  const frames = Math.round(16_000 * seconds);
+  const pcm = Buffer.alloc(frames * 2);
+  for (let i = 0; i < frames; i++) pcm.writeInt16LE(Math.round(2000 * Math.sin((2 * Math.PI * 440 * i) / 16_000)), i * 2);
+  return encodeWav(pcm, 16_000, 1, 16);
+};
+/** Digitale Stille: Mikrofon aus oder Zugriff gesperrt. */
+const silentWav16k = (seconds = 0.5) => encodeWav(Buffer.alloc(Math.round(16_000 * 2 * seconds)), 16_000, 1, 16);
 
 function questionForm(wav: Buffer | null, fields: Record<string, string> = {}): FormData {
   const form = new FormData();
@@ -287,6 +303,53 @@ describe('picastAI-API (echter Server)', () => {
     } finally {
       fake.state.transcript = original;
     }
+  });
+
+  it('Stumme Aufnahme: keine Spracherkennung, sofort "nicht verstanden"', async () => {
+    const device = await registerDevice();
+    const before = fake.state.transcriptions;
+    const since = output.length;
+    const res = await postQuestion(device, questionForm(silentWav16k()));
+    assert.equal(res.status, 200, await res.clone().text());
+    assert.equal(fake.state.transcriptions, before, 'Stille geht nicht an die Spracherkennung');
+    const body = (await res.json()) as { audio_url: string };
+    assert.equal((await fetchAudio(device, body.audio_url)).status, 200);
+    const [line] = await timingLinesSince(since, 1);
+    assert.match(line, / modus=frage status=200 erkennung_ms=- weiche_ms=- sprachmodell_ms=- /);
+  });
+
+  it('Untertitel-Abspann aus der Erkennung (Whisper bei Rauschen) ergibt "nicht verstanden"', async () => {
+    const device = await registerDevice();
+    const original = fake.state.transcript;
+    fake.state.transcript = 'Untertitel im Auftrag des ZDF, 2017';
+    const spokenBefore = fake.state.speechInputs.length;
+    try {
+      const res = await postQuestion(device, questionForm(wav16k()));
+      assert.equal(res.status, 200, await res.clone().text());
+      await fetchAudio(device, ((await res.json()) as { audio_url: string }).audio_url);
+    } finally {
+      fake.state.transcript = original;
+    }
+    const spoken = fake.state.speechInputs.slice(spokenBefore);
+    assert.ok(!spoken.some((text) => text.startsWith('Das ist eine gute Frage')), 'kein Ersatztext auf einen Abspann');
+  });
+
+  it('Fehlertext des Sprachservers mit dem Antworttext (Prüffehler 422) kommt nicht ins Protokoll', async () => {
+    const device = await registerDevice();
+    const since = output.length;
+    fake.state.speechRejectsWithInput = true;
+    try {
+      const res = await postStory(device);
+      assert.equal(res.status, 502, 'ein 4xx des Sprachservers ist nicht wiederholbar');
+      assert.equal(((await res.json()) as { retryable: boolean }).retryable, false);
+    } finally {
+      fake.state.speechRejectsWithInput = false;
+    }
+    const newOutput = output.slice(since);
+    for (const secret of ['Kunibert erwachte', 'Dachzimmer', 'Erzähltaste', device.id, device.token]) {
+      assert.ok(!newOutput.includes(secret), `"${secret}" darf nicht im Protokoll stehen`);
+    }
+    assert.match(newOutput, /HTTP 422 \(string_too_long\)/, `Status und Code gehören ins Protokoll: ${newOutput}`);
   });
 
   // Vertrag mit der ESP32-Firmware (firmware/esp32-s3/main/kb_api.c): Sie baut den multipart-Body

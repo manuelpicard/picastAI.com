@@ -2,6 +2,7 @@
 // Beide Aufrufstellen in brain.ts fragen strukturiertes JSON an; die Schicht bleibt
 // austauschbar, damit ein anderer zulässiger Anbieter ohne Umbau von brain.ts möglich ist.
 import type { KunibertConfig } from './config.js';
+import { summarizeErrorResponse } from './provider-errors.js';
 
 /** Schema in Standard-JSON-Schema-Schreibweise (Kleinbuchstaben-Typen). */
 export interface JsonSchema {
@@ -133,9 +134,10 @@ export class AnthropicProvider implements LlmProvider {
         signal: controller.signal,
       });
       if (!response.ok) {
-        const detail = (await response.text().catch(() => '')).slice(0, 300);
+        // Nur Status und Fehlercode (z. B. "overloaded_error"), nie der Fließtext der Antwort:
+        // Die Meldung landet im Protokoll, und das darf keine Äußerungen enthalten.
         throw new LlmError(
-          `Anthropic antwortete mit HTTP ${response.status}: ${detail || response.statusText}`,
+          `Anthropic antwortete mit ${await summarizeErrorResponse(response)}`,
           response.status === 429 || response.status >= 500
         );
       }

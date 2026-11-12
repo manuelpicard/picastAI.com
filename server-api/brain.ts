@@ -9,6 +9,7 @@ import {
 } from './prompts.js';
 import {
   ERROR_RESPONSE_DE,
+  normalize,
   SAFETY_RESPONSE_DE,
   screen,
   screenOutput,
@@ -59,6 +60,36 @@ export function cleanText(text: unknown, maxChars: number): string {
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, maxChars);
+}
+
+/**
+ * Typische Fehlerkennungen von Whisper bei Stille oder Rauschen: Untertitel-Abspänne aus den
+ * Trainingsdaten. Belegt: „Untertitel im Auftrag des ZDF, 2017“ bei 23 s Stille
+ * (https://gist.github.com/riotbib/3b3c5f817b55b68801d14b8bdb02df09) und die deutsche Liste in
+ * scraibe (https://huggingface.co/spaces/Hyathi/Stem-Extractor/blob/main/scraibe/hallucinations.py).
+ * Geprüft wird nach normalize(): klein, ohne Satzzeichen. Nur ganze Äußerungen, die genau so
+ * aussehen; eine Kinderfrage wie „Was sind Untertitel?“ trifft keines der Muster.
+ */
+const STT_ARTIFACTS: RegExp[] = [
+  /^untertitel(ung)? (im auftrag des zdf|aufgrund der amara org community|der amara org community|von stephanie geiges)( für funk)?( \d{4})?$/,
+  /^copyright wdr( \d{4})?$/,
+  /^swr \d{4}$/,
+];
+
+/**
+ * true, wenn die Erkennung sehr wahrscheinlich nichts Gesprochenes enthält: ein bekannter
+ * Untertitel-Abspann oder nur der Erkennungshinweis selbst (PICASTAI_STT_PROMPT, zum Beispiel
+ * „Ritter Kunibert“), den Whisper bei Rauschen nachsprechen kann. Dann bittet Kunibert um
+ * Wiederholung, statt auf etwas zu antworten, das das Kind nicht gesagt hat.
+ */
+export function isLikelySttArtifact(transcript: string, sttPrompt = ''): boolean {
+  const text = normalize(transcript).trim();
+  if (!text) return false;
+  if (STT_ARTIFACTS.some((pattern) => pattern.test(text))) return true;
+  const prompt = normalize(sttPrompt).trim();
+  if (!prompt) return false;
+  // Auch mehrfach hintereinander („Ritter Kunibert. Ritter Kunibert.“).
+  return text.split(prompt).every((rest) => rest.trim() === '');
 }
 
 const WISH_FILLER = new Set([
@@ -145,7 +176,7 @@ export const STORY_SCHEMA: JsonSchema = {
   required: ['text', 'summary', 'open_threads', 'next_hook', 'episode_finished'],
 };
 
-export type BrainSettings = Pick<KunibertConfig, 'ageBracket' | 'partsPerEpisode' | 'storyMinWords' | 'storyMaxWords' | 'answerMaxWords'>;
+export type BrainSettings = Pick<KunibertConfig, 'ageBracket' | 'partsPerEpisode' | 'storyMinWords' | 'storyMaxWords' | 'answerMaxWords' | 'sttPrompt'>;
 
 export class Brain {
   private readonly age: string;
@@ -153,6 +184,7 @@ export class Brain {
   private readonly storyMinWords: number;
   private readonly storyMaxWords: number;
   private readonly answerMaxWords: number;
+  private readonly sttPrompt: string;
 
   /**
    * Ohne Anbieter (kein Key) greifen die festen Fallback-Texte. Die Einstellungen
@@ -164,6 +196,7 @@ export class Brain {
     this.storyMinWords = settings.storyMinWords ?? config.storyMinWords;
     this.storyMaxWords = settings.storyMaxWords ?? config.storyMaxWords;
     this.answerMaxWords = settings.answerMaxWords ?? config.answerMaxWords;
+    this.sttPrompt = settings.sttPrompt ?? config.sttPrompt;
   }
 
   /**
@@ -229,7 +262,9 @@ export class Brain {
   }
 
   private async handleQuestion(transcript: string, state: StoryState, timer: StageTimer): Promise<TurnResult> {
-    if (!transcript) {
+    // Die Sicherheitsweiche lief schon (handle). Ein Abspann oder nur der Erkennungshinweis
+    // ist keine Äußerung des Kindes: wie eine leere Erkennung behandeln.
+    if (!transcript || isLikelySttArtifact(transcript, this.sttPrompt)) {
       return {
         kind: 'hinweis',
         speech: UNCLEAR_RESPONSE_DE,
@@ -346,6 +381,9 @@ export class Brain {
       kind: 'frage',
       speech,
       story_state: state,
+      // Alle Texte hier sind fest: Die Sprachausgabe kommt nach dem ersten Mal aus dem
+      // Zwischenspeicher. Das hilft gerade dann, wenn das Sprachmodell ausfällt.
+      fixed: 'ersatz',
       wav: this.synthesizeWav(speech, 'frage'),
     };
   }

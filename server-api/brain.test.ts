@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { Brain, cleanState, cleanText, extractWishKeyword, FALLBACK_ANSWER_DE, MAX_UTTERANCE_CHARS, trimWords } from './brain.js';
+import { Brain, cleanState, cleanText, extractWishKeyword, FALLBACK_ANSWER_DE, isLikelySttArtifact, MAX_UTTERANCE_CHARS, trimWords } from './brain.js';
 import type { LlmJsonRequest, LlmProvider } from './llm.js';
 import { EPISODE_CLOSING, STORY_CLOSING } from './prompts.js';
 import { SAFETY_RESPONSE_DE, UNCLEAR_RESPONSE_DE } from './safety.js';
@@ -307,3 +307,60 @@ test('Ersatzantwort erkennt ganze Wörter: "Schwein" ist nicht "weinen", "Weiter
   const more = await brain.handle('frage', 'bitte weiter', {});
   assert.equal(more.story_state.part, 1);
 });
+
+test('Erkennungs-Artefakte: Untertitel-Abspann und der Erkennungshinweis allein', () => {
+  for (const text of [
+    'Untertitel im Auftrag des ZDF, 2017',
+    'Untertitel im Auftrag des ZDF für funk, 2017',
+    'Untertitelung im Auftrag des ZDF, 2021',
+    'Untertitelung aufgrund der Amara.org-Community',
+    'Untertitel der Amara.org-Community',
+    'Untertitel von Stephanie Geiges',
+    'Copyright WDR 2021',
+    'SWR 2020',
+  ]) {
+    assert.equal(isLikelySttArtifact(text), true, text);
+  }
+  assert.equal(isLikelySttArtifact('Ritter Kunibert.', 'Ritter Kunibert'), true);
+  assert.equal(isLikelySttArtifact(' ritter kunibert, Ritter Kunibert! ', 'Ritter Kunibert'), true);
+  for (const text of [
+    'Was sind Untertitel?',
+    'Untertitel im Fernsehen sind doof',
+    'Ich mag das ZDF',
+    'Hallo Ritter Kunibert',
+    'Ritter Kunibert, wo wohnt der Drache?',
+    'Kunibert',
+  ]) {
+    assert.equal(isLikelySttArtifact(text, 'Ritter Kunibert'), false, text);
+  }
+  assert.equal(isLikelySttArtifact('Ritter Kunibert', ''), false, 'ohne Erkennungshinweis zählt nur der Abspann');
+  assert.equal(isLikelySttArtifact('', 'Ritter Kunibert'), false);
+});
+
+test('Erkennungs-Artefakt: Kunibert bittet um Wiederholung und fragt das Sprachmodell nicht', async () => {
+  const llm = new FakeLlm([]);
+  const brain = new Brain(llm, { sttPrompt: 'Ritter Kunibert' });
+  for (const text of ['Untertitel im Auftrag des ZDF, 2017', 'Ritter Kunibert.']) {
+    const result = await brain.handle('frage', text, {});
+    assert.equal(result.fixed, 'unklar', text);
+    assert.equal(result.speech, UNCLEAR_RESPONSE_DE);
+  }
+  assert.equal(llm.calls.length, 0);
+});
+
+test('Erkennungs-Artefakt: die Sicherheitsweiche läuft trotzdem zuerst', async () => {
+  const brain = new Brain(new FakeLlm([]), { sttPrompt: 'Ritter Kunibert' });
+  const result = await brain.handle('frage', 'Ritter Kunibert, ich will nicht mehr leben', {});
+  assert.equal(result.fixed, 'sicherheit');
+});
+
+test('Feste Ersatzantworten sind als fest markiert (Sprachausgabe aus dem Zwischenspeicher)', silent(async () => {
+  const brain = new Brain(null);
+  const generic = await brain.handle('frage', 'wie viele beine hat ein tausendfüßler', {});
+  assert.equal(generic.speech, FALLBACK_ANSWER_DE);
+  assert.equal(generic.fixed, 'ersatz');
+  const sky = await brain.handle('frage', 'warum ist der himmel blau', {});
+  assert.equal(sky.fixed, 'ersatz');
+  const story = await brain.handle('frage', 'erzähl mir eine geschichte', {});
+  assert.equal(story.fixed, undefined, 'Geschichten sind nicht fest');
+}));
