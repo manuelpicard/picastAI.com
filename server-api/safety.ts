@@ -226,7 +226,93 @@ export function normalize(text: string): string {
   return cleaned.replace(/\s+/g, ' ').trim() + ' ';
 }
 
-const ALL_PATTERNS: RegExp[] = [...PATTERNS, ...PATTERNS_EXTRA, ...PATTERNS_2026_11, ...PATTERNS_2026_11_B];
+// Dritte Probe vom 12.11.2026, abends (57 Notfall-Sätze in Kindersprache, 48 davon unerkannt;
+// neue Bereiche: Drohung bei Verrat, Strafen, Vernachlässigung, Kontakte im Internet, Allergie,
+// Verschlucken, Strom, Wasser, Verfolgen, nicht abgeholt). Wieder mit Gegenprobe in safety.test.ts.
+// Füllwörter zwischen "ich will" und dem Kern ("ich will einfach nur noch sterben").
+const FILL = '(einfach|nur|noch|lieber|am|liebsten|jetzt|gleich|endlich|auch|bald|schon|mal|halt|echt|wirklich|so|ganz)';
+const BODY_DANGER_PLACE = '(dach|fenster|balkon|brücke|hochhaus|turm|zug|auto|bus|lkw|laster)';
+const WATER = '(pool|see|wasser|schwimmbad|fluss|teich|meer|becken|badewanne|bach|schwimmbecken)';
+
+const PATTERNS_2026_11_C: RegExp[] = [
+  // Nicht mehr leben wollen, mit Füllwörtern oder in weiteren Bildern
+  new RegExp(`${L}ich (will|möchte|mag|würde) (${FILL} ){1,4}(sterben|tot sein|nicht mehr leben)${R}`),
+  new RegExp(`${L}ich (will|möchte|mag) (${FILL} ){0,3}(nie mehr|nie wieder|nicht mehr) aufwachen${R}`),
+  new RegExp(`${L}ich (will|möchte|mag) (${FILL} ){0,2}nicht mehr (auf der welt|am leben) sein${R}`),
+  new RegExp(`${L}(am besten|am liebsten|lieber|besser) (wäre|wär) ich (${WORD} )?(tot|nicht mehr (da|hier|auf der welt)|nie geboren)${R}`),
+  new RegExp(`${L}mich (${FILL} ){1,3}(selbst |selber )?umbringen${R}`),
+  new RegExp(`${L}mich (${FILL} ){0,3}(selbst|selber) töten${R}`),
+  new RegExp(`${L}ich (will|möchte|werde|würde) (${FILL} ){0,3}(vom|von dem|aus dem|von der|vor den|vor einen|vor ein|vor das) ${BODY_DANGER_PLACE} (springen|runterspringen|hinunterspringen|stürzen|laufen|rennen)${R}`),
+  new RegExp(`${L}ich (spring|springe|stürze mich) (${FILL} ){0,2}(vom|von dem|aus dem|von der|vor den|vor einen|vor ein|vor das) ${BODY_DANGER_PLACE}${R}`),
+  // Absichtlich verletzt ("mit Absicht geschnitten"); "aus Versehen" schlägt nicht an
+  new RegExp(`^(?=.*${L}(mit absicht|absichtlich|extra)${R}).*${L}ich (habe|hab) mich (${WORD} ){0,4}(geschnitten|geritzt|verletzt|gekratzt|verbrannt|gebissen)${R}`),
+
+  // Drohung, wenn das Kind etwas verrät. Nicht: "... krieg ich Ärger" (Alltag).
+  new RegExp(`^(?=.*${L}wenn ich (es|das|was|etwas)( ${WORD}){0,3} (sage|sag|erzähle|erzähl|verrate|verrat|petze)${R}).*${L}((passiert|geschieht) (${WORD} ){0,2}(was|etwas) (${WORD} )?(schlimmes|böses)|(kriege|krieg|bekomme|bekomm) ich (prügel|schläge|haue))${R}`),
+  // Gewalt in weiteren Formen. Spiele ("beim Schach geschlagen") und "aus Versehen" ausgenommen.
+  new RegExp(`^(?!.*${L}(aus versehen|ausversehen|beim spielen|beim spiel|im spiel|beim schach|beim rennen|beim wettrennen|beim fußball|beim sport)${R}).*${L}${WHO} hat mir (${WORD} ){0,3}(weh getan|wehgetan)${R}`),
+  new RegExp(`${L}(hat|haben) mich (ganz |so |richtig )?(doll|fest|stark|heftig) (geschubst|gestoßen|geschüttelt|gekniffen|getreten|gehauen|geschlagen)${R}`),
+  new RegExp(`${L}(hat|haben) mich mit (dem|der|einem|einer|seinem|seiner|ihrem|ihrer) (${WORD} )?(gürtel|stock|kochlöffel|holzlöffel|faust|schuh|kabel|peitsche|rute|teppichklopfer|lineal|hand) (${WORD} )?(geschlagen|gehauen|verhauen|verprügelt)${R}`),
+  new RegExp(`${L}(hat|haben|hatte|gibt|gab|geben) mir (${WORD} ){0,2}(ohrfeige|ohrfeigen|backpfeife|backpfeifen|watsche|watschen)${R}`),
+  new RegExp(`${L}ich (habe|hab|kriege|krieg|bekomme|bekomm|kriegte|bekam) (${WORD} ){0,2}(ohrfeige|ohrfeigen|backpfeife|backpfeifen|watsche|watschen)${R}`),
+  // Strafen und Vernachlässigung
+  new RegExp(`^(?=.*${L}(zur strafe|als strafe)${R}).*${L}(keller|eingesperrt|einsperren|nichts (zu )?essen|kein essen|draußen schlafen|auf dem boden schlafen|im dunkeln)${R}`),
+  new RegExp(`${L}ich (kriege|krieg|bekomme|bekomm) (${WORD} ){0,2}(nichts|kein|keinen) (mehr )?(zu essen|essen)(?= *$| seit${R}| mehr${R}| (schon|nie|tagelang)${R})`),
+  new RegExp(`${L}ich darf (seit (${WORD} ){1,2}nichts (mehr )?essen|nichts (mehr )?essen (${WORD} ){0,2}seit${R})`),
+
+  // Übergriffe, auch über Spiele und Internet
+  new RegExp(`${L}(hat|haben) mir (${WORD} ){0,2}(zwischen die beine|in die hose|in die unterhose|an den po|an den penis|an den pimmel|an die scheide|an die brust|unter (das|den|die|mein|meinen|meine) (${WORD} )?(t shirt|tshirt|shirt|hemd|pulli|rock|kleid|unterhose|hose)) (gefasst|gegriffen|gelangt|gefummelt|gegrapscht|gegrabscht)${R}`),
+  new RegExp(`${L}dass ich mich (${WORD} ){0,2}vor (ihm|ihr|ihnen|denen|dem|der) (${WORD} ){0,2}(ausziehe|ausziehen|nackt)${R}`),
+  new RegExp(`${L}ich (soll|muss) mich (${WORD} ){0,2}vor (ihm|ihr|ihnen|denen|dem|der) (${WORD} ){0,2}(ausziehen|nackt machen)${R}`),
+  new RegExp(`^(?=.*${L}(im spiel|in einem spiel|im internet|im chat|online|auf dem handy|am handy|bei roblox|bei fortnite|bei minecraft|bei tiktok|bei whatsapp|bei instagram|bei snapchat|bei discord|jemand|ein fremder|eine fremde|ein mann|eine frau)${R}).*${L}(fotos|foto|bilder|bild|videos|video) von mir( ${WORD}){0,3} (schicke|schicken|schick|sende|senden|machen soll|machen darf)${R}`),
+  new RegExp(`${L}(im internet|im chat|online|im spiel|in einem spiel|auf dem handy|am handy|bei roblox|bei fortnite|bei minecraft|bei tiktok|bei whatsapp|bei instagram|bei snapchat|bei discord)( ${WORD}){0,6} (will|wollte|möchte) mich (treffen|besuchen|abholen|sehen)${R}`),
+
+  // Medizinische Notfälle
+  new RegExp(`${L}(gesicht|lippe|lippen|zunge|hals|auge|augen) (ist|sind|wird|werden) (ganz |so |total |voll )?(dick|geschwollen|angeschwollen)${R}`),
+  new RegExp(`${L}(ist|sind|wird|werden) (sein|seine|ihr|ihre|mein|meine|das|die|der) (gesicht|lippe|lippen|zunge|hals|auge|augen) (ganz |so |total |voll )?(dick|geschwollen|angeschwollen)${R}`),
+  new RegExp(`${L}(ist|wird|sind|werden) (ganz |so |total )?(blau|lila) (im gesicht|an den lippen)${R}`),
+  new RegExp(`${L}(lippen|gesicht) (ist|sind|wird|werden) (ganz |so |total )?(blau|lila)${R}`),
+  new RegExp(`${L}(hat|habe|hab) (sich|mich) (ganz |so |sehr |total )?(doll|dolle|schlimm|stark|heftig) (verbrannt|verbrüht|verletzt|geschnitten)${R}`),
+  new RegExp(`^(?=.*${L}(geschnitten|blut|blutet|wunde|verletzt|gestochen|gebissen|verbrannt)${R}).*${L}(es|das) hört (gar |einfach )?nicht (mehr )?auf${R}`),
+  new RegExp(`^(?=.*${L}(gefallen|gestürzt|hingefallen|runtergefallen|heruntergefallen|unfall|angefahren|verletzt)${R}).*${L}kann (gar |überhaupt )?nicht (mehr )?(aufstehen|laufen|gehen|stehen)${R}`),
+  new RegExp(`${L}(das baby|unser baby|mein baby|meine kleine schwester|mein kleiner bruder)( ${WORD}){0,5} (ganz schlapp|so schlapp|schlapp|ganz blass|bewegt sich kaum)${R}`),
+  new RegExp(`${L}(${WHO}|das baby|${POSS}baby) (kriegt|bekommt|hat) (gar |ganz )?keine luft( mehr)?${R}`),
+  new RegExp(`^(?=.*${L}(${PERSON_WIDE}|er|sie)${R}).*${L}(redet|spricht|redete|sprach) (${WORD} ){0,2}nicht mehr richtig(?= *$| ${CONTINUATION}${R})`),
+  new RegExp(`${L}(${POSS}${PERSON_WIDE}|er|sie) kann (${WORD} )?nicht mehr (richtig )?(sprechen|reden)${R}`),
+  new RegExp(`${L}${SMALL_PERSON} (habe|hab|hat) (${WORD} ){0,3}(murmel|murmeln|münze|geldstück|knopf|perle|perlen|legostein|magnet|magnete|magnetkugeln|schraube|nagel|nadel|ring|batterie|knopfbatterie) (verschluckt|geschluckt|gegessen|in die nase gesteckt)${R}`),
+  new RegExp(`^(?=.*${L}(getrunken|gegessen|geschluckt|verschluckt)${R}).*${L}(totenkopf|giftzeichen|warnzeichen)${R}`),
+
+  // Rauch, Strom
+  new RegExp(`${L}(im|in der|in unserer|in unserem|bei uns im|bei uns in der) (wohnung|haus|zimmer|kinderzimmer|küche|keller|flur|treppenhaus|bad)( ist| sind| kommt)( ${WORD}){0,3} (rauch|qualm)${R}`),
+  new RegExp(`${L}aus (der|dem|einer|einem) (${WORD} )?(steckdose|kabel|fernseher|computer|herd|ofen|backofen|toaster|lampe|ladegerät|handy|tablet|wand|decke|mikrowelle)( ${WORD})? (kommt|kommen) (${WORD} )?(rauch|qualm|feuer|funken|flammen)${R}`),
+  new RegExp(`${L}(schlag|stromschlag|elektrischen schlag) (${WORD} ){0,2}(von|an|aus) (der|dem|einer|einem) (${WORD} )?(steckdose|kabel|lampe|leitung|zaun|stromzaun|stromleitung|toaster|föhn|fön)${R}`),
+
+  // Allein, verloren, nicht abgeholt
+  new RegExp(`^(?=.*${L}ich bin (ganz |so |völlig )?(allein|alleine)${R}).*${L}(keiner|niemand) (ist|kommt) (${WORD} )?(da|hier|mehr)(?= *$| ${CONTINUATION}${R})`),
+  new RegExp(`^(?=.*${L}${PARENTS}${R}).*${L}ich (weiß|weiss) nicht (mehr )?wo (${POSS}${PARENTS}|sie|er|die beiden) (ist|sind|hin ist|hingegangen ist|hingegangen sind|geblieben ist)${R}`),
+  new RegExp(`${L}(finde|find) (den weg )?(nicht|nicht mehr) (nach hause|heim|zurück)${R}`),
+  new RegExp(`${L}ich (weiß|weiss) nicht (mehr )?wie ich (wieder )?nach hause (komme|finde)${R}`),
+  new RegExp(`${L}ich (bin|wurde) (${WORD} ){0,4}nicht abgeholt${R}`),
+  new RegExp(`${L}(keiner|niemand) hat mich (${WORD} ){0,2}abgeholt${R}`),
+
+  // Fremde: ruft, lockt, spricht an, verfolgt
+  new RegExp(`${L}(ein mann|eine frau|ein fremder|eine fremde|ein typ|jemand fremdes)( ${WORD}){0,5} (ruft|lockt|winkt) mich${R}(?! (an|zurück)${R})`),
+  new RegExp(`${L}(ein fremder|eine fremde|ein fremder mann|eine fremde frau|ein unbekannter|eine unbekannte|fremde leute)( ${WORD}){0,4} (hat|haben) mich (${WORD} ){0,2}angesprochen${R}`),
+  new RegExp(`${L}(verfolgt|verfolgen|verfolgte) mich${R}`),
+  new RegExp(`${L}(mann|frau|typ|fremder|fremde|jemand|auto|wagen|einer) (${WORD} ){0,3}(läuft|lief|fährt|fuhr|ist|geht|ging|kommt|kam) mir (${WORD} ){0,4}(hinterher|hinterhergelaufen|hinterhergefahren|nachgelaufen|nachgefahren|gefolgt)${R}`),
+
+  // Wasser. Schiffe, Sonne und Mond ausgenommen ("Warum ist die Titanic untergegangen?").
+  new RegExp(`^(?=.*${L}${WATER}${R})(?!.*${L}(schiff|boot|titanic|sonne|mond|uboot|u boot|piratenschiff|ente)${R}).*${L}(ist|sind) (${WORD} ){0,3}(untergegangen|nicht mehr aufgetaucht)${R}`),
+  new RegExp(`^(?=.*${L}${WATER}${R}).*${L}kommt (gar )?nicht (mehr )?(hoch|nach oben|raus)${R}`),
+
+  // Allgemeine Notlage
+  new RegExp(`${L}(es ist|das ist) ein notfall${R}`),
+  new RegExp(`${L}(mir|uns|bei uns|hier|gerade|zu hause|daheim) ist (${WORD} ){0,2}(was|etwas) (ganz |sehr )?(schlimmes|schreckliches|furchtbares) passiert${R}`),
+  new RegExp(`${L}es ist (gerade )?(was|etwas) (ganz |sehr )?(schlimmes|schreckliches|furchtbares) passiert${R}`),
+  new RegExp(`^(?=.*${L}angst${R}).*${L}(er|sie|der mann|die frau|der fremde|der typ) kommt (${WORD} )?(gleich |bald |heute nacht |nachher )?(wieder|zurück)${R}`),
+];
+
+const ALL_PATTERNS: RegExp[] = [...PATTERNS, ...PATTERNS_EXTRA, ...PATTERNS_2026_11, ...PATTERNS_2026_11_B, ...PATTERNS_2026_11_C];
 
 export function screen(transcript: string): boolean {
   if (!transcript) return false;
