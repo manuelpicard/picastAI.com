@@ -227,6 +227,33 @@ static void test_settings_rules(void)
     CHECK(!kb_settings_value_ok(token, "abc\x7f"));
 }
 
+static void test_press_watch(void)
+{
+    kb_press_watch_t watch;
+    // Nichts gedrückt beim Beginn: der erste Druck zählt.
+    kb_press_watch_begin(&watch, false, false);
+    CHECK(!kb_press_watch_update(&watch, false, false));
+    CHECK(kb_press_watch_update(&watch, true, false));
+    kb_press_watch_begin(&watch, false, false);
+    CHECK(kb_press_watch_update(&watch, false, true));
+
+    // Erzähltaste beim Beginn noch gehalten: zählt erst nach dem Loslassen.
+    kb_press_watch_begin(&watch, false, true);
+    CHECK(!kb_press_watch_update(&watch, false, true));
+    CHECK(!kb_press_watch_update(&watch, false, false));
+    CHECK(kb_press_watch_update(&watch, false, true));
+
+    // Die andere Taste zählt, während eine gehalten wird.
+    kb_press_watch_begin(&watch, false, true);
+    CHECK(kb_press_watch_update(&watch, true, true));
+
+    // Beide gehalten, nie losgelassen: kein Stopp.
+    kb_press_watch_begin(&watch, true, true);
+    CHECK(!kb_press_watch_update(&watch, true, true));
+    CHECK(!kb_press_watch_update(&watch, true, true));
+    CHECK(!kb_press_watch_update(NULL, true, true));
+}
+
 int main(void)
 {
     test_settings_rules();
@@ -236,6 +263,7 @@ int main(void)
     test_wav();
     test_origin();
     test_retry();
+    test_press_watch();
     if (fails > 0) {
         printf("%d Prüfung(en) fehlgeschlagen\n", fails);
         return 1;

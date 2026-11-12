@@ -116,10 +116,14 @@ READY ←──────────────┐
 
 READY ── Erzähltaste ──> REQUESTING_STORY ──> PLAYING
 
+PLAYING ── neuer Druck auf eine Taste ──> Wiedergabe stoppt ──> (Tasten los) ──> READY
+
 jeder Zustand ── MIC OFF ──> MIC_OFF ──> READY
 jeder Netzwerk-/Audiofehler ──> ERROR ──> READY
 SIGTERM/Ctrl+C ──> SHUTDOWN
 ```
+
+Während Kunibert spricht, stoppt ein **neuer** Druck auf die Sprech- oder die Erzähltaste die Wiedergabe sofort (seit 12.11.2026). Eine Taste, die beim Beginn der Wiedergabe noch gedrückt war, zählt erst nach dem Loslassen. Der Stopp-Druck startet keine neue Frage und keine Geschichte: Erst wenn beide Tasten losgelassen sind (höchstens 10 s Warten), ist Kunibert wieder bereit. Die Firmware macht es genauso.
 
 Die API-Keys und Modellaufrufe bleiben auf `picastAI.com`. Der Pi nimmt nur auf, authentifiziert sich, lädt WAV-Audio herunter und spielt es ab.
 
@@ -222,7 +226,7 @@ Ohne Pi-Hardware gibt es zwei Prüfungen:
 
 ### Probelauf am Rechner, ohne Pi (`--keyboard`)
 
-Damit lässt sich die ganze Kette (Aufnahme, Server, Spracherkennung, Claude, Sprachausgabe, Abspielen) mit dem Mikrofon und dem Lautsprecher eines normalen Rechners ausprobieren, bevor der Pi da ist. Tastatur statt Taster: Eingabetaste beginnt die Aufnahme, noch einmal Eingabetaste sendet sie; `g` und Eingabetaste ist die Erzähltaste; `q` und Eingabetaste beendet. Stand: Aufnahme und Wiedergabe laufen in der CI gegen die echte Audio-Bibliothek (`sounddevice` mit PortAudio, ohne Soundkarte über ein ALSA-Nullgerät); **an keinem echten Mikrofon und Lautsprecher gelaufen**. Bis zum 12.11.2026 scheiterte jede Wiedergabe an der echten Bibliothek (sie verlangte NumPy); das ist behoben. Tasten, die du drückst, während Kunibert arbeitet oder spricht, zählen nicht. Nur Erwachsene als Tester.
+Damit lässt sich die ganze Kette (Aufnahme, Server, Spracherkennung, Claude, Sprachausgabe, Abspielen) mit dem Mikrofon und dem Lautsprecher eines normalen Rechners ausprobieren, bevor der Pi da ist. Tastatur statt Taster: Eingabetaste beginnt die Aufnahme, noch einmal Eingabetaste sendet sie; `g` und Eingabetaste ist die Erzähltaste; `q` und Eingabetaste beendet. Stand: Aufnahme und Wiedergabe laufen in der CI gegen die echte Audio-Bibliothek (`sounddevice` mit PortAudio, ohne Soundkarte über ein ALSA-Nullgerät); **an keinem echten Mikrofon und Lautsprecher gelaufen**. Bis zum 12.11.2026 scheiterte jede Wiedergabe an der echten Bibliothek (sie verlangte NumPy); das ist behoben. Drückst du die Eingabetaste (oder `g` und Eingabetaste), während Kunibert spricht, hört er sofort auf, wie bei den Tastern am Pi; der Druck zählt nicht als neue Aufnahme. Tasten, die du drückst, während Kunibert noch arbeitet, zählen nicht. Nur Erwachsene als Tester.
 
 In PowerShell auf deinem Rechner, im Ordner des Repos (Python 3.10 oder neuer):
 

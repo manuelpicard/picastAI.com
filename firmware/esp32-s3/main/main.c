@@ -29,6 +29,8 @@ static const char *TAG = "kunibert";
 static kb_state_t s_state = KB_STATE_BOOT;
 static bool s_mic_off_seen;
 static int64_t s_record_started_us;
+static kb_press_watch_t s_press_watch;
+static bool s_stopped_by_press;
 
 static void go(kb_state_t to)
 {
@@ -64,6 +66,24 @@ static bool keep_recording(void)
         return false;
     }
     return kb_board_speak_pressed() && elapsed_ms(s_record_started_us) < KB_RECORD_MAX_MS;
+}
+
+/** Läuft während der Wiedergabe: Ein neuer Druck auf eine der beiden Tasten stoppt Kunibert. */
+static bool stop_playback(void)
+{
+    if (kb_press_watch_update(&s_press_watch, kb_board_speak_pressed(), kb_board_story_pressed())) {
+        s_stopped_by_press = true;
+    }
+    return s_stopped_by_press;
+}
+
+/** Nach einem Stopp durch Tastendruck: warten, bis beide Tasten los sind (höchstens max_ms). */
+static void wait_release_both(uint32_t max_ms)
+{
+    int64_t since = esp_timer_get_time();
+    while ((kb_board_speak_pressed() || kb_board_story_pressed()) && elapsed_ms(since) < max_ms) {
+        vTaskDelay(pdMS_TO_TICKS(KB_POLL_MS));
+    }
 }
 
 typedef esp_err_t (*turn_fn_t)(kb_api_turn_t *out, const uint8_t *pcm, size_t bytes);
@@ -105,11 +125,19 @@ static void run_turn(turn_fn_t fn, const uint8_t *pcm, size_t bytes)
         return;
     }
     go(KB_STATE_PLAYING);
-    err = kb_api_play_audio(turn.audio_url);
+    // Ein Tastendruck während der Wiedergabe stoppt sie; er zählt nicht als neue Frage oder
+    // Geschichte (gleiche Regel wie im Pi-Client, seit 12.11.2026).
+    s_stopped_by_press = false;
+    kb_press_watch_begin(&s_press_watch, kb_board_speak_pressed(), kb_board_story_pressed());
+    err = kb_api_play_audio(turn.audio_url, stop_playback);
     memset(&turn, 0, sizeof(turn));
     if (err != ESP_OK) {
         show_error_and_rest();
         return;
+    }
+    if (s_stopped_by_press) {
+        ESP_LOGI(TAG, "Wiedergabe durch Tastendruck beendet");
+        wait_release_both(KB_RELEASE_WAIT_MS);
     }
     go(kb_board_mic_off() ? KB_STATE_MIC_OFF : KB_STATE_READY);
 }

@@ -21,6 +21,8 @@ from kunibert_client import (
     KunibertClient,
     NoRedirectHandler,
     PicastApi,
+    PressWatcher,
+    RELEASE_WAIT_SECONDS,
     SILENT_PEAK,
     SoundDeviceAudio,
     encode_wav,
@@ -312,9 +314,10 @@ class KeyboardButtonsTests(unittest.TestCase):
         keys.handle_line("q\n")
         self.assertTrue(client.stop_requested)
 
-    def test_keys_pressed_while_kunibert_talks_are_ignored(self):
+    def test_keys_pressed_while_kunibert_talks_stop_him_and_start_nothing_new(self):
         # Früher begann nach der Antwort sofort eine neue Aufnahme (oder eine Geschichte),
-        # wenn während des Wartens oder Abspielens eine Taste gedrückt wurde.
+        # wenn während des Wartens oder Abspielens eine Taste gedrückt wurde. Seit dem
+        # 12.11.2026 stoppt ein Druck während der Wiedergabe Kunibert, mehr nicht.
         config = ClientConfig(dry_run=True, min_record_seconds=0.1)
         keys = KeyboardButtons(start_reader=False)
         api = FakeApi()
@@ -324,12 +327,36 @@ class KeyboardButtonsTests(unittest.TestCase):
         client.transition(ClientState.READY)
         keys.handle_line("\n")
         client.step()
+        self.assertEqual(out.stop_checks, [True], "Eingabetaste während der Wiedergabe stoppt sie")
         self.assertEqual(client.state, ClientState.READY)
         self.assertFalse(keys.speech_pressed)
         self.assertFalse(keys.story_pressed)
         client.step()
         client.step()
         self.assertEqual((api.questions, api.stories), (1, 0))
+
+    def test_keys_pressed_while_waiting_do_not_stop_the_answer(self):
+        # Ein Druck, während Kunibert noch arbeitet, zählt nicht: auch nicht als Stopp.
+        config = ClientConfig(dry_run=True, min_record_seconds=0.1)
+        keys = KeyboardButtons(start_reader=False)
+
+        class WaitingApi(FakeApi):
+            def request_story(self):
+                keys.handle_line("\n")
+                keys.handle_line("g\n")
+                return super().request_story()
+
+        api = WaitingApi()
+        out = CaptureAudioOutput()
+        client = KunibertClient(config, api, DryRunAudio(config), out, keys, ConsoleLed())
+        client.transition(ClientState.WIFI_CONNECTING)
+        client.transition(ClientState.READY)
+        keys.handle_line("g\n")
+        client.step()
+        self.assertEqual(out.stop_checks, [False])
+        self.assertEqual(client.state, ClientState.READY)
+        client.step()
+        self.assertEqual((api.questions, api.stories), (0, 1))
 
     def test_discard_pending_forgets_speech_and_story(self):
         keys = KeyboardButtons(start_reader=False)
@@ -338,6 +365,140 @@ class KeyboardButtonsTests(unittest.TestCase):
         keys.discard_pending()
         self.assertFalse(keys.speech_pressed)
         self.assertFalse(keys.story_pressed)
+
+
+class ScriptedPlayback:
+    """Wiedergabe in Stücken wie SoundDeviceAudio: Vor jedem Stück fragt sie should_stop.
+
+    ``script`` enthält je Stück eine Funktion (oder None), die vor der Frage läuft, zum
+    Beispiel ein Tastendruck. ``chunks_played`` zählt, wie viele Stücke ausgespielt wurden.
+    """
+
+    def __init__(self, script):
+        self.script = list(script)
+        self.chunks_played = 0
+        self.stopped = False
+
+    def play_wav(self, wav_bytes, should_stop=None):
+        for step in self.script:
+            if step:
+                step()
+            if should_stop is not None and should_stop():
+                self.stopped = True
+                return
+            self.chunks_played += 1
+
+
+class PressWatcherTests(unittest.TestCase):
+    def test_only_a_new_press_counts(self):
+        watcher = PressWatcher()
+        self.assertFalse(watcher.update(False, False))
+        self.assertTrue(watcher.update(True, False), "neuer Druck auf die Sprechtaste")
+        watcher = PressWatcher()
+        self.assertFalse(watcher.update(False, False))
+        self.assertTrue(watcher.update(False, True), "neuer Druck auf die Erzähltaste")
+
+    def test_a_button_held_from_before_counts_only_after_release(self):
+        watcher = PressWatcher()
+        self.assertFalse(watcher.update(False, True), "Erzähltaste noch vom Anfordern gedrückt")
+        self.assertFalse(watcher.update(False, True))
+        self.assertFalse(watcher.update(False, False), "losgelassen")
+        self.assertTrue(watcher.update(False, True), "neu gedrückt")
+
+    def test_the_other_button_counts_while_one_is_held(self):
+        watcher = PressWatcher()
+        self.assertFalse(watcher.update(False, True))
+        self.assertTrue(watcher.update(True, True), "Sprechtaste neu, Erzähltaste noch gehalten")
+
+
+class StopPlaybackByPressTests(unittest.TestCase):
+    """Punkt 56: Ein Tastendruck während der Wiedergabe stoppt Kunibert (Taster am Pi)."""
+
+    def client(self, buttons, audio_out, api=None):
+        config = ClientConfig(dry_run=True, min_record_seconds=0.1, poll_interval_seconds=0.01)
+        clock = FakeClock()
+        client = KunibertClient(config, api or FakeApi(), DryRunAudio(config), audio_out, buttons, DryRunLed(),
+                                clock=clock, sleep=clock.advance)
+        client.transition(ClientState.WIFI_CONNECTING)
+        client.transition(ClientState.READY)
+        return client, clock
+
+    def test_story_press_stops_story_and_waits_for_release_before_ready(self):
+        buttons = PressedButtons(story=True)  # Kind hält die Erzähltaste beim Anfordern noch fest
+        releases = []
+
+        def release_story():
+            buttons.story_pressed = False
+
+        def press_story_again():
+            buttons.story_pressed = True
+
+        def release_later():
+            # Losgelassen wird erst, während der Client auf das Loslassen wartet.
+            releases.append(True)
+
+        out = ScriptedPlayback([None, release_story, None, press_story_again, None, None])
+        api = FakeApi()
+        client, clock = self.client(buttons, out, api)
+        original_sleep = client.sleep
+
+        def sleep_and_release(seconds):
+            original_sleep(seconds)
+            buttons.story_pressed = False
+            release_later()
+
+        client.sleep = sleep_and_release
+        client.step()
+        self.assertTrue(out.stopped)
+        self.assertEqual(out.chunks_played, 3, "gestoppt beim neuen Druck, nicht beim gehaltenen")
+        self.assertEqual(client.state, ClientState.READY)
+        self.assertTrue(releases, "der Client hat auf das Loslassen gewartet")
+        client.step()
+        self.assertEqual(api.stories, 1, "der Stopp-Druck fordert keine neue Geschichte an")
+
+    def test_speech_press_stops_answer_without_starting_a_recording(self):
+        buttons = PressedButtons(speech=True)
+
+        class ReleaseAfterRecording(DryRunAudio):
+            def record_while_pressed(self, is_pressed, max_seconds):
+                buttons.speech_pressed = False  # Frage fertig, Taste losgelassen
+                return super().record_while_pressed(is_pressed, max_seconds)
+
+        def press():
+            buttons.speech_pressed = True
+
+        out = ScriptedPlayback([None, None, press, None])
+        api = FakeApi()
+        config = ClientConfig(dry_run=True, min_record_seconds=0.1, poll_interval_seconds=0.01)
+        clock = FakeClock()
+        client = KunibertClient(config, api, ReleaseAfterRecording(config), out, buttons, DryRunLed(),
+                                clock=clock, sleep=clock.advance)
+        client.transition(ClientState.WIFI_CONNECTING)
+        client.transition(ClientState.READY)
+        client.step()
+        self.assertTrue(out.stopped)
+        self.assertEqual(out.chunks_played, 2)
+        self.assertEqual(api.questions, 1)
+        # Taste klemmt: Nach RELEASE_WAIT_SECONDS geht es trotzdem weiter.
+        self.assertGreaterEqual(clock.now - 100.0, RELEASE_WAIT_SECONDS)
+        self.assertEqual(client.state, ClientState.READY)
+
+    def test_no_press_plays_to_the_end(self):
+        out = ScriptedPlayback([None] * 5)
+        client, _clock = self.client(PressedButtons(story=True), out)
+        client.step()
+        self.assertFalse(out.stopped, "gehaltene Taste allein stoppt nicht")
+        self.assertEqual(out.chunks_played, 5)
+        self.assertEqual(client.state, ClientState.READY)
+
+    def test_shutdown_still_wins(self):
+        buttons = PressedButtons(story=True)
+        out = ScriptedPlayback([None, None])
+        client, _clock = self.client(buttons, out)
+        out.script[1] = lambda: setattr(client, "stop_requested", True)
+        client.step()
+        self.assertTrue(out.stopped)
+        self.assertEqual(client.state, ClientState.SHUTDOWN)
 
 
 class KunibertClientTests(unittest.TestCase):

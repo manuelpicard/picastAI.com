@@ -407,6 +407,7 @@ class KeyboardButtons:
 
     Eingabetaste: Aufnahme beginnen; noch einmal Eingabetaste: Aufnahme beenden und senden.
     ``g`` + Eingabetaste: Erzähltaste. ``q`` + Eingabetaste (oder Ende der Eingabe): beenden.
+    Während Kunibert spricht, stoppt Eingabetaste oder ``g`` die Wiedergabe.
     Einen Mikrofon-Aus-Schalter gibt es hier nicht.
     """
 
@@ -477,7 +478,7 @@ class ConsoleLed:
     _TEXT = {
         "ready": "Bereit. Eingabetaste = sprechen, g = Geschichte, q = Ende",
         "recording": "Aufnahme läuft. Eingabetaste = fertig und senden",
-        "busy": "Kunibert arbeitet ...",
+        "busy": "Kunibert arbeitet ... (spricht er, stoppt ihn die Eingabetaste)",
         "error": "Fehler (siehe Meldung oben)",
     }
 
@@ -485,6 +486,32 @@ class ConsoleLed:
         text = self._TEXT.get(mode)
         if text:
             print(f"[{text}]", flush=True)
+
+
+class PressWatcher:
+    """Erkennt einen neuen Tastendruck, während Kunibert spricht.
+
+    Gezählt wird nur ein Druck, der nach dem Beginn der Wiedergabe anfängt. Eine Taste, die
+    beim Beginn schon gedrückt ist (zum Beispiel die Erzähltaste, die das Kind festhält), muss
+    erst losgelassen werden. Dieselbe Regel hat die Firmware (``kb_press_watch_update``).
+    """
+
+    def __init__(self) -> None:
+        self.speech_released = False
+        self.story_released = False
+
+    def update(self, speech: bool, story: bool) -> bool:
+        pressed = (speech and self.speech_released) or (story and self.story_released)
+        if not speech:
+            self.speech_released = True
+        if not story:
+            self.story_released = True
+        return pressed
+
+
+# Höchstens so lange wartet der Client nach einem Stopp durch Tastendruck darauf, dass alle
+# Tasten losgelassen sind. Danach geht es auch mit gedrückter Taste weiter (Taste klemmt).
+RELEASE_WAIT_SECONDS = 10.0
 
 
 # Unter diesem Spitzenpegel (etwa -54 dBFS bei 16 Bit) ist eine Aufnahme praktisch stumm:
@@ -876,13 +903,45 @@ class KunibertClient:
             self.handle_error(exc)
 
     def _play(self, response_wav: bytes) -> None:
-        """Spielt die Antwort; ein Beenden des Dienstes bricht die Wiedergabe ab."""
-        self.audio_out.play_wav(response_wav, should_stop=lambda: self.stop_requested)
+        """Spielt die Antwort ab.
+
+        Ein Beenden des Dienstes bricht die Wiedergabe ab. Ein neuer Druck auf eine der beiden
+        Tasten auch (Punkt 56, seit 12.11.2026): Kunibert hört sofort auf. Der Druck zählt nur
+        als Stopp, nicht zusätzlich als Frage oder Geschichte; erst wenn alle Tasten wieder
+        losgelassen sind, ist Kunibert wieder bereit.
+        """
+        # Drücke während des Wartens zählen nicht (nur die Tastatur im Probelauf merkt sie sich).
+        self._discard_pending_presses()
+        watcher = PressWatcher()
+        watcher.update(self.buttons.speech_pressed, self.buttons.story_pressed)
+        stopped_by_press = False
+
+        def should_stop() -> bool:
+            nonlocal stopped_by_press
+            if self.stop_requested:
+                return True
+            if watcher.update(self.buttons.speech_pressed, self.buttons.story_pressed):
+                stopped_by_press = True
+            return stopped_by_press
+
+        self.audio_out.play_wav(response_wav, should_stop=should_stop)
         if self.stop_requested:
             self.transition(ClientState.SHUTDOWN)
             return
+        if stopped_by_press:
+            LOG.info("Wiedergabe durch Tastendruck beendet")
+            self._discard_pending_presses()
+            self._wait_for_release()
         self._discard_pending_presses()
         self.transition(ClientState.MIC_OFF if self.buttons.mic_off else ClientState.READY)
+
+    def _wait_for_release(self) -> None:
+        """Wartet, bis keine Taste mehr gedrückt ist (höchstens RELEASE_WAIT_SECONDS)."""
+        deadline = self.clock() + RELEASE_WAIT_SECONDS
+        while not self.stop_requested and self.clock() < deadline:
+            if not self.buttons.speech_pressed and not self.buttons.story_pressed:
+                return
+            self.sleep(self.config.poll_interval_seconds)
 
     def _discard_pending_presses(self) -> None:
         # Nur die Tastatur im Probelauf merkt sich Drücke; echte Taster melden ihren Zustand.

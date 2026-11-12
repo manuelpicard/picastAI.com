@@ -101,3 +101,28 @@ bool kb_record_should_send(uint32_t duration_ms, bool mic_off_seen)
     }
     return duration_ms >= KB_RECORD_MIN_MS;
 }
+
+bool kb_press_watch_update(kb_press_watch_t *watch, bool speak_pressed, bool story_pressed)
+{
+    if (watch == NULL) {
+        return false;
+    }
+    bool pressed = (speak_pressed && watch->speak_released) || (story_pressed && watch->story_released);
+    if (!speak_pressed) {
+        watch->speak_released = true;
+    }
+    if (!story_pressed) {
+        watch->story_released = true;
+    }
+    return pressed;
+}
+
+void kb_press_watch_begin(kb_press_watch_t *watch, bool speak_pressed, bool story_pressed)
+{
+    if (watch == NULL) {
+        return;
+    }
+    watch->speak_released = false;
+    watch->story_released = false;
+    (void)kb_press_watch_update(watch, speak_pressed, story_pressed);
+}

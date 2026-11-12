@@ -59,3 +59,22 @@ const char *kb_state_name(kb_state_t state);
  * wird nichts gesendet. Zu kurze Aufnahmen werden auch nicht gesendet.
  */
 bool kb_record_should_send(uint32_t duration_ms, bool mic_off_seen);
+
+/**
+ * Erkennt einen neuen Tastendruck, während Kunibert spricht (wie PressWatcher im Pi-Client).
+ * Gezählt wird nur ein Druck, der nach dem Beginn der Wiedergabe anfängt; eine Taste, die
+ * beim Beginn schon gedrückt ist, muss erst losgelassen werden.
+ */
+typedef struct {
+    bool speak_released;
+    bool story_released;
+} kb_press_watch_t;
+
+/** Vor der Wiedergabe: merkt sich, welche Tasten schon gedrückt sind. */
+void kb_press_watch_begin(kb_press_watch_t *watch, bool speak_pressed, bool story_pressed);
+
+/** true bei einem neuen Druck auf eine der beiden Tasten. */
+bool kb_press_watch_update(kb_press_watch_t *watch, bool speak_pressed, bool story_pressed);
+
+/** Höchstens so lange wird nach einem Stopp durch Tastendruck auf das Loslassen gewartet. */
+#define KB_RELEASE_WAIT_MS 10000

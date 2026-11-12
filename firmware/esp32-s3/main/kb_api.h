@@ -42,5 +42,7 @@ esp_err_t kb_api_story(kb_api_turn_t *out);
 /**
  * Holt die Antwort (einmalig abrufbar) und spielt sie beim Laden ab.
  * Prüft Status 200, Content-Type audio/wav und den WAV-Kopf, bevor Ton ausgegeben wird.
+ * should_stop wird vor jedem Block gefragt (etwa alle 64 ms); true beendet die Wiedergabe
+ * sofort, das Ergebnis ist dann ESP_OK. NULL: bis zum Ende abspielen.
  */
-esp_err_t kb_api_play_audio(const char *audio_url);
+esp_err_t kb_api_play_audio(const char *audio_url, bool (*should_stop)(void));
