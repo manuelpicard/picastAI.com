@@ -303,6 +303,8 @@ aplay /tmp/mic.wav
 
 Wenn die HAT-Treiber nicht geladen sind, muss zuerst die Dokumentation des konkreten WM8960- oder ReSpeaker-HATs befolgt werden. Der Client setzt ein funktionierendes ALSA-/PortAudio-Gerät voraus.
 
+Meldet der Client beim Start „Kunibert kann nicht starten: Audio-Bibliothek startet nicht … PulseAudio_Initialize: Can't connect to server“, ist eine neuere PortAudio-Fassung (19.7) installiert, die ohne laufenden PulseAudio- oder PipeWire-Server nicht startet. So war es am 12.11.2026 auf dem CI-Rechner mit Ubuntu (`libportaudio2` 19.7.0+git20260206). Mit PortAudio 19.6 (Ubuntu 24.04; laut Suchergebnis auch Debian) tritt das nicht auf. Ob Raspberry Pi OS 19.6 oder 19.7 mitbringt, ist offen: `dpkg -l libportaudio2` auf dem Pi zeigt es.
+
 ### Direkter ALSA-Test ohne Python-Client
 
 Mit `test_alsa_audio.sh` lassen sich HAT, Mikrofon und Lautsprecher unabhängig vom Kunibert-Client prüfen:

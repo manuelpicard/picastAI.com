@@ -23,7 +23,6 @@ import os
 import secrets
 import signal
 import sys
-import tempfile
 import threading
 import time
 import wave
@@ -309,6 +308,10 @@ class SoundDeviceAudio:
             import sounddevice as sd
         except ImportError as exc:
             raise HardwareError("sounddevice fehlt; siehe pi-client/README.md") from exc
+        except Exception as exc:
+            # PortAudio startet nicht. Beispiel: Neuere PortAudio-Fassungen (19.7) brechen ab,
+            # wenn kein PulseAudio-Server läuft ("PulseAudio_Initialize: Can't connect to server").
+            raise HardwareError(f"Audio-Bibliothek startet nicht: {exc}. Siehe pi-client/README.md, Fehlersuche") from exc
         self.sd = sd
         self.config = config
 
@@ -677,7 +680,7 @@ class PicastApi:
             return exc.code, dict(exc.headers.items()), exc.read()
         except URLError as exc:
             raise OSError(str(exc.reason)) from exc
-        except OSError as exc:
+        except OSError:
             raise
 
 
@@ -983,7 +986,12 @@ def main(argv: Optional[list[str]] = None) -> int:
             wav = api.request_story()
             print(f"Story-Audio empfangen: {len(wav)} Bytes")
             return 0
-    client = build_client(config, keyboard=args.keyboard)
+    try:
+        client = build_client(config, keyboard=args.keyboard)
+    except (HardwareError, ApiError) as exc:
+        # Klare Meldung statt Traceback (zum Beispiel fehlt sounddevice oder das Token).
+        LOG.error("Kunibert kann nicht starten: %s", exc)
+        return 1
     signal.signal(signal.SIGTERM, lambda _signum, _frame: setattr(client, "stop_requested", True))
     client.run()
     return 0 if client.last_error is None else 1

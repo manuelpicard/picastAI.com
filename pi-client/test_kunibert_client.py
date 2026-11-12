@@ -962,6 +962,31 @@ class SoundDeviceSelectionTests(unittest.TestCase):
             audio.play_wav(encode_wav(b"\x00\x00" * 160, 16000, 1, 2))
         self.assertIn("Invalid sample rate", str(caught.exception))
 
+    def test_portaudio_start_error_becomes_hardware_error(self):
+        # Wie auf Ubuntu 26.04 (PortAudio 19.7) ohne PulseAudio-Server: Der Import selbst scheitert.
+        def failing_import(name, *args, **kwargs):
+            if name == "sounddevice":
+                raise RuntimeError("Error initializing PortAudio: PulseAudio_Initialize: Can't connect to server")
+            return original_import(name, *args, **kwargs)
+
+        import builtins
+        original_import = builtins.__import__
+        with patch.dict(sys.modules, {}, clear=False):
+            sys.modules.pop("sounddevice", None)
+            with patch("builtins.__import__", side_effect=failing_import):
+                with self.assertRaises(HardwareError) as caught:
+                    SoundDeviceAudio(ClientConfig())
+        self.assertIn("Audio-Bibliothek startet nicht", str(caught.exception))
+        self.assertIn("PulseAudio", str(caught.exception))
+
+    def test_main_reports_start_errors_without_traceback(self):
+        from kunibert_client import main
+        with patch("kunibert_client.build_client", side_effect=HardwareError("Audio-Bibliothek startet nicht: kaputt")), \
+                patch.dict("os.environ", {"PICASTAI_DEVICE_TOKEN": "x"}, clear=False):
+            with self.assertLogs("kunibert", level="ERROR") as logs:
+                self.assertEqual(main([]), 1)
+        self.assertIn("Kunibert kann nicht starten", logs.output[0])
+
     def test_parse_audio_device(self):
         self.assertIsNone(parse_audio_device(None))
         self.assertIsNone(parse_audio_device("  "))
@@ -983,7 +1008,7 @@ def _real_sounddevice():
     """Die echte Bibliothek samt PortAudio, oder None (dann werden die Tests übersprungen)."""
     try:
         import sounddevice  # noqa: F401
-    except (ImportError, OSError):
+    except Exception:  # ImportError, fehlende Bibliothek oder PortAudioError beim Start
         return None
     try:
         sounddevice.query_devices(kind="output")
