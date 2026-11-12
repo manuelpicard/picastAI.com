@@ -21,8 +21,9 @@ kunibert.example {
 		}
 		reverse_proxy 127.0.0.1:3000 {
 			transport http {
-				# Zeitkette: Server höchstens 45 s Spracherkennung + 30 s Sprachmodell + 45 s
-				# Sprachsynthese = 120 s, Caddy 130 s, Pi-Client 140 s (KUNIBERT_PIPELINE_TIMEOUT).
+				# Zeitkette: Der Server hält für die ganze Anfrage ein gemeinsames Budget von 120 s
+				# ein (server-api/timing.ts), Caddy wartet 130 s, das Gerät 140 s
+				# (Pi: KUNIBERT_PIPELINE_TIMEOUT).
 				response_header_timeout 130s
 			}
 		}

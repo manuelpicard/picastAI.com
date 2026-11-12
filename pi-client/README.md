@@ -188,13 +188,13 @@ KUNIBERT_MAX_RECORD_SECONDS=15
 KUNIBERT_REQUEST_TIMEOUT=30
 KUNIBERT_PIPELINE_TIMEOUT=140
 KUNIBERT_AUDIO_TIMEOUT=45
-KUNIBERT_RETRY_COUNT=2
+KUNIBERT_RETRY_COUNT=1
 # Leer = Standardgerät; bei zwei USB-Geräten getrennt setzen (siehe "Erster Aufbau")
 KUNIBERT_INPUT_DEVICE=
 KUNIBERT_OUTPUT_DEVICE=
 ```
 
-Zeitgrenzen in Sekunden: `KUNIBERT_REQUEST_TIMEOUT` gilt für den Health-Check, `KUNIBERT_PIPELINE_TIMEOUT` für Frage und Geschichte, `KUNIBERT_AUDIO_TIMEOUT` für den Abruf der WAV-Antwort. Frage und Geschichte laufen auf dem Server durch Spracherkennung, Sprachmodell und Sprachsynthese (Standardgrenzen 45 + 30 + 45 s). Der Client muss länger warten als diese Kette, sonst bricht er ab und schickt die Anfrage erneut, und der Server erzeugt die Antwort ein zweites Mal (bei der Geschichte rückt die Folge dabei weiter). Die abgestimmte Zeitkette mit dem Reverse Proxy steht in [`deploy/EINRICHTUNG.md`](../deploy/EINRICHTUNG.md).
+Zeitgrenzen in Sekunden: `KUNIBERT_REQUEST_TIMEOUT` gilt für den Health-Check, `KUNIBERT_PIPELINE_TIMEOUT` für Frage und Geschichte, `KUNIBERT_AUDIO_TIMEOUT` für den Abruf der WAV-Antwort. Frage und Geschichte laufen auf dem Server durch Spracherkennung, Sprachmodell und Sprachsynthese; der Server hält dafür ein gemeinsames Zeitbudget von 120 s ein. Der Client muss länger warten als diese Kette, sonst bricht er ab und schickt die Anfrage erneut, und der Server erzeugt die Antwort ein zweites Mal (bei der Geschichte rückt die Folge dabei weiter). Die abgestimmte Zeitkette mit dem Reverse Proxy steht in [`deploy/EINRICHTUNG.md`](../deploy/EINRICHTUNG.md).
 
 ```bash
 sudo install -d -m 0750 /etc/kunibert /var/lib/kunibert/audio
@@ -210,6 +210,8 @@ set +a
 /opt/kunibert/.venv/bin/python pi-client/kunibert_client.py --debug
 ```
 
+Beim Start wartet der Client, bis der Server antwortet: Ist er nicht erreichbar (WLAN noch nicht da, Router startet noch), blinkt die LED schnell (Fehler), und der Client versucht es alle `KUNIBERT_CONNECT_RETRY` Sekunden (Standard 10) wieder. Er beendet sich dabei nicht.
+
 Nur Health prüfen:
 
 ```bash
@@ -217,6 +219,22 @@ Nur Health prüfen:
 ```
 
 Ohne Pi-Hardware gibt es zwei Prüfungen:
+
+### Probelauf am Rechner, ohne Pi (`--keyboard`)
+
+Damit lässt sich die ganze Kette (Aufnahme, Server, Spracherkennung, Claude, Sprachausgabe, Abspielen) mit dem Mikrofon und dem Lautsprecher eines normalen Rechners ausprobieren, bevor der Pi da ist. Tastatur statt Taster: Eingabetaste beginnt die Aufnahme, noch einmal Eingabetaste sendet sie; `g` und Eingabetaste ist die Erzähltaste; `q` und Eingabetaste beendet. Stand: Aufnahme und Wiedergabe laufen in der CI gegen die echte Audio-Bibliothek (`sounddevice` mit PortAudio, ohne Soundkarte über ein ALSA-Nullgerät); **an keinem echten Mikrofon und Lautsprecher gelaufen**. Bis zum 12.11.2026 scheiterte jede Wiedergabe an der echten Bibliothek (sie verlangte NumPy); das ist behoben. Tasten, die du drückst, während Kunibert arbeitet oder spricht, zählen nicht. Nur Erwachsene als Tester.
+
+In PowerShell auf deinem Rechner, im Ordner des Repos (Python 3.10 oder neuer):
+
+```powershell
+py -m pip install sounddevice
+$env:PICASTAI_API_BASE_URL = "https://<Hostname des Servers>"
+$env:PICASTAI_DEVICE_ID = "<Geräte-ID aus /etc/kunibert/kunibert.env>"
+$env:PICASTAI_DEVICE_TOKEN = "<Geräte-Token, nur hier eintippen>"
+py pi-client\kunibert_client.py --keyboard
+```
+
+Das Token steht danach im Verlauf dieses PowerShell-Fensters: Fenster am Ende schließen. Mikrofon oder Lautsprecher wählen: `KUNIBERT_INPUT_DEVICE`, `KUNIBERT_OUTPUT_DEVICE` (Liste: `py -m sounddevice`). Die Wartezeit je Anfrage steht in der Zeile `Zeitmessung ... wartezeit_s=`. Meldet der Client „Die Aufnahme ist praktisch stumm“, kommt kein Ton vom Mikrofon an: anderes Gerät wählen oder unter Windows in den Einstellungen (Datenschutz, Mikrofon) den Zugriff für Desktop-Apps erlauben.
 
 `--dry-run` startet den Zustandsautomaten mit Attrappen für Taster, Mikrofon, Lautsprecher und LED. Es sendet **keine** Anfrage an den Server (auch keinen Health-Check), und die Attrappen drücken nie eine Taste. Der Lauf zeigt nur, dass der Client startet und `READY` erreicht; Server-Adresse und Token spielen dabei keine Rolle:
 
@@ -284,6 +302,8 @@ aplay /tmp/mic.wav
 ```
 
 Wenn die HAT-Treiber nicht geladen sind, muss zuerst die Dokumentation des konkreten WM8960- oder ReSpeaker-HATs befolgt werden. Der Client setzt ein funktionierendes ALSA-/PortAudio-Gerät voraus.
+
+Meldet der Client beim Start „Kunibert kann nicht starten: Audio-Bibliothek startet nicht … PulseAudio_Initialize: Can't connect to server“, ist eine neuere PortAudio-Fassung (19.7) installiert, die ohne laufenden PulseAudio- oder PipeWire-Server nicht startet. So war es am 12.11.2026 auf dem CI-Rechner mit Ubuntu (`libportaudio2` 19.7.0+git20260206). Mit PortAudio 19.6 (Ubuntu 24.04; laut Suchergebnis auch Debian) tritt das nicht auf. Ob Raspberry Pi OS 19.6 oder 19.7 mitbringt, ist offen: `dpkg -l libportaudio2` auf dem Pi zeigt es.
 
 ### Direkter ALSA-Test ohne Python-Client
 

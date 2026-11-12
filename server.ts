@@ -5,8 +5,8 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { DeviceRegistry, DeviceStoreError, RateLimiter, AudioStore } from './server-api/devices.js';
-import { Brain, StoryState } from './server-api/brain.js';
-import { AudioError, decodeWavHeader } from './server-api/audio.js';
+import { Brain, FALLBACK_ANSWER_DE, StoryState } from './server-api/brain.js';
+import { AudioError, decodeWavHeader, isSilentPcm16 } from './server-api/audio.js';
 import { config, getSafeConfigSummary, llmConfigWarnings, ttsProviderWarnings, voiceConfigWarnings } from './server-api/config.js';
 import { isAdminTokenConfigured, verifyAdminAuthorization } from './server-api/admin-auth.js';
 import { VoicePipeline, VoiceProviderError } from './server-api/voice.js';
@@ -187,7 +187,7 @@ async function synthesizeIfConfigured(result: Awaited<ReturnType<Brain['handle']
 }
 
 // ------------------------------------------------------------
-// picastAI.com Geräte-Schnittstelle für Raspberry Pi Zero 2 W Prototyp
+// picastAI.com Geräte-Schnittstelle (Pi-5-Prototyp und ESP32-S3-Firmware)
 // ------------------------------------------------------------
 
 app.post(
@@ -216,7 +216,9 @@ app.post(
       let transcript = typeof req.body.transcript === 'string'
         ? req.body.transcript.slice(0, 1000)
         : '';
-      if (!transcript) transcript = await transcribeOrEmpty(req.file.buffer, timer);
+      // Eine stumme Aufnahme geht nicht erst an die Spracherkennung: Sie ergibt den Hinweis
+      // "nicht verstanden" (Whisper würde bei Stille eher etwas erfinden).
+      if (!transcript && !isSilentPcm16(req.file.buffer)) transcript = await transcribeOrEmpty(req.file.buffer, timer);
       const state = deviceStoryStates.get(deviceId) || {};
       const result = await synthesizeTimed(await brain.handle('frage', transcript, state, timer), timer);
       timer.noteAudio(result.wav);
@@ -428,7 +430,7 @@ app.post('/api/devices', requireAdminAuth, async (req: Request, res: Response): 
     return res.json(await registry.register(deviceId, name));
   } catch (err: any) {
     if (err instanceof DeviceStoreError) {
-      console.error('Geräte-Store nicht erreichbar:', err);
+      console.error(`Geräte-Store nicht erreichbar: ${err.message}`);
       return res.status(503).json({ error: 'device_store_unavailable' });
     }
     return res.status(400).json({ error: err.message });
@@ -526,10 +528,12 @@ async function startServer() {
     for (const warning of [...llmConfigWarnings(), ...ttsProviderWarnings(), ...voiceConfigWarnings(config)]) console.warn(`⚠️ ${warning}`);
     // Feste Sprechtexte vorab synthetisieren (Produktion), damit der Sicherheitshinweis
     // schon beim ersten Kind ohne Wartezeit und ohne Anbieter-Anfrage gesprochen wird.
+    // Mit neuen Versuchen, falls der Sprachserver nach einem Neustart noch nicht bereit ist.
     if (isProd && voice.ttsConfigured) {
+      const fixedTexts = [SAFETY_RESPONSE_DE, UNCLEAR_RESPONSE_DE, ERROR_RESPONSE_DE, FALLBACK_ANSWER_DE];
       void voice
-        .warmUp([SAFETY_RESPONSE_DE, UNCLEAR_RESPONSE_DE, ERROR_RESPONSE_DE])
-        .then((count) => console.log(`Feste Sprechtexte vorbereitet (${count} von 3).`));
+        .warmUpWithRetry(fixedTexts)
+        .then((count) => console.log(`Feste Sprechtexte vorbereitet (${count} von ${fixedTexts.length}).`));
     }
   });
 }

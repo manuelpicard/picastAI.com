@@ -2,6 +2,7 @@
 // Beide Aufrufstellen in brain.ts fragen strukturiertes JSON an; die Schicht bleibt
 // austauschbar, damit ein anderer zulässiger Anbieter ohne Umbau von brain.ts möglich ist.
 import type { KunibertConfig } from './config.js';
+import { summarizeErrorResponse } from './provider-errors.js';
 
 /** Schema in Standard-JSON-Schema-Schreibweise (Kleinbuchstaben-Typen). */
 export interface JsonSchema {
@@ -31,11 +32,15 @@ export interface LlmProvider {
 }
 
 export class LlmError extends Error {
-  constructor(message: string) {
+  /** transient: vorübergehender Fehler, bei dem ein zweiter Versuch sinnvoll ist. */
+  constructor(message: string, public readonly transient = false) {
     super(message);
     this.name = 'LlmError';
   }
 }
+
+/** Weniger Restzeit als das lohnt für einen zweiten Versuch nicht. */
+const MIN_RETRY_MS = 3_000;
 
 /** Parst eine Modellantwort, die ein JSON-Objekt sein muss (auch in Codeblöcken). */
 export function parseJsonObject(text: string | undefined | null, source: string): Record<string, unknown> {
@@ -69,6 +74,8 @@ export class AnthropicProvider implements LlmProvider {
       model: string;
       baseUrl?: string;
       timeoutMs?: number;
+      /** Pause vor dem zweiten Versuch (Standard 700 ms; Tests setzen 0). */
+      retryDelayMs?: number;
       fetchImpl?: typeof fetch;
     }
   ) {
@@ -76,10 +83,30 @@ export class AnthropicProvider implements LlmProvider {
     this.baseUrl = (options.baseUrl || 'https://api.anthropic.com').replace(/\/$/, '');
   }
 
+  /**
+   * Ein Aufruf mit höchstens einer Wiederholung bei vorübergehenden Fehlern (überlastet,
+   * Rate-Limit, 5xx, Netzwerk). Ohne Wiederholung fiele eine Geschichte bei einem kurzen
+   * Aussetzer sofort auf den festen Ersatztext zurück. Beide Versuche teilen sich eine Frist;
+   * nach einer Zeitüberschreitung wird nicht wiederholt.
+   */
   async generateJson(request: LlmJsonRequest): Promise<Record<string, unknown>> {
+    const totalMs = Math.min(request.timeoutMs ?? Infinity, this.options.timeoutMs ?? 30_000);
+    const deadline = Date.now() + totalMs;
+    const retryDelayMs = this.options.retryDelayMs ?? 700;
+    try {
+      return await this.attempt(request, totalMs);
+    } catch (error) {
+      const left = deadline - Date.now() - retryDelayMs;
+      if (!(error instanceof LlmError) || !error.transient || left < MIN_RETRY_MS) throw error;
+      await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+      return this.attempt(request, left);
+    }
+  }
+
+  private async attempt(request: LlmJsonRequest, timeoutMs: number): Promise<Record<string, unknown>> {
     const fetchFn = this.options.fetchImpl ?? fetch;
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), Math.min(request.timeoutMs ?? Infinity, this.options.timeoutMs ?? 30_000));
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
       const response = await fetchFn(`${this.baseUrl}/v1/messages`, {
         method: 'POST',
@@ -107,8 +134,12 @@ export class AnthropicProvider implements LlmProvider {
         signal: controller.signal,
       });
       if (!response.ok) {
-        const detail = (await response.text().catch(() => '')).slice(0, 300);
-        throw new LlmError(`Anthropic antwortete mit HTTP ${response.status}: ${detail || response.statusText}`);
+        // Nur Status und Fehlercode (z. B. "overloaded_error"), nie der Fließtext der Antwort:
+        // Die Meldung landet im Protokoll, und das darf keine Äußerungen enthalten.
+        throw new LlmError(
+          `Anthropic antwortete mit ${await summarizeErrorResponse(response)}`,
+          response.status === 429 || response.status >= 500
+        );
       }
       const body = (await response.json()) as { content?: Array<{ type: string; input?: unknown }> };
       const block = body.content?.find((item) => item.type === 'tool_use');
@@ -119,7 +150,7 @@ export class AnthropicProvider implements LlmProvider {
     } catch (error) {
       if (error instanceof LlmError) throw error;
       if ((error as Error)?.name === 'AbortError') throw new LlmError('Anthropic: Zeitüberschreitung');
-      throw new LlmError(`Anthropic: Netzwerkfehler: ${(error as Error)?.message || 'unbekannt'}`);
+      throw new LlmError(`Anthropic: Netzwerkfehler: ${(error as Error)?.message || 'unbekannt'}`, true);
     } finally {
       clearTimeout(timer);
     }

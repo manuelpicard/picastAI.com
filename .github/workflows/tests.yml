@@ -1,7 +1,10 @@
 name: Tests
 
+# Pull Requests und main. Ohne die Einschränkung liefen bei jedem PR-Branch zwei gleiche Läufe
+# (einmal für den Push, einmal für den PR).
 on:
   push:
+    branches: [main]
   pull_request:
 
 permissions:
@@ -17,13 +20,13 @@ jobs:
         with:
           node-version: "22"
       - name: Install dependencies
-        run: npm ci || npm install
+        run: npm ci
       - name: Tests
         run: npm test
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Pi-Client-Tests
+      - name: Pi-Client-Tests (Attrappen; die echte Audio-Bibliothek prüft der Job pi-audio)
         run: python -m unittest discover -s pi-client -p "test_*.py"
       - name: Build & Typecheck
         run: npm run build
@@ -31,6 +34,34 @@ jobs:
         run: npm run test:e2e
       - name: Einrichtungsskript (Hilfsfunktionen)
         run: bash deploy/setup-server.test.sh
+      # shellcheck ist auf den GitHub-Runnern vorinstalliert.
+      - name: Shell-Skripte (shellcheck)
+        run: shellcheck -S warning deploy/*.sh pi-client/*.sh
+
+  # Pi-Client gegen die echte Audio-Bibliothek (sounddevice mit PortAudio, ohne NumPy, wie auf dem
+  # Pi). Die Attrappen allein hatten übersehen, dass die Wiedergabe mit der echten Bibliothek
+  # scheiterte (12.11.2026). Der Runner hat keine Soundkarte: Das ALSA-Nullgerät liefert bei der
+  # Aufnahme Stille und verwirft die Wiedergabe. Bewusst Ubuntu 24.04 mit PortAudio 19.6 (ALSA, wie
+  # auf dem Pi): Die PortAudio-Fassung 19.7 von ubuntu-latest bricht ohne laufenden PulseAudio-Server
+  # schon beim Start ab.
+  pi-audio:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: PortAudio und sounddevice
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libportaudio2
+          python -m pip install --quiet sounddevice
+          printf 'pcm.!default {\n  type null\n}\n' > ~/.asoundrc
+      - name: Pi-Client-Tests mit der echten Audio-Bibliothek
+        env:
+          KUNIBERT_REQUIRE_REAL_AUDIO: "1"
+        run: python -m unittest discover -s pi-client -p "test_*.py"
 
   # Gerätespeicher in Firestore gegen den lokalen Firestore-Emulator (siehe docs/Firestore-Emulator-Test.md).
   # Der Emulator wird nur hier installiert, nicht als Abhängigkeit in package.json/package-lock.json.
@@ -48,7 +79,7 @@ jobs:
           distribution: temurin
           java-version: "21"
       - name: Install dependencies
-        run: npm ci || npm install
+        run: npm ci
       - name: Firestore-Emulator installieren
         run: npm install --global firebase-tools@15.34.2
       - name: Gerätespeicher gegen den Emulator testen

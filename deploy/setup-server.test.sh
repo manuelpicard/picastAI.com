@@ -60,6 +60,10 @@ yes "Caddyfile: Hostname eingesetzt"   grep -q '^kunibert.picastai.com {' <<<"$o
 no  "Caddyfile: kein Platzhalter mehr" grep -q 'kunibert\.example' <<<"$out"
 yes "Caddyfile: Zeitgrenze bleibt"     grep -q 'response_header_timeout 130s' <<<"$out"
 
+write_auto_upgrades "$tmp/20auto-upgrades"
+yes "Automatische Updates: Paketlisten täglich"   grep -qx 'APT::Periodic::Update-Package-Lists "1";' "$tmp/20auto-upgrades"
+yes "Automatische Updates: Sicherheitsupdates an" grep -qx 'APT::Periodic::Unattended-Upgrade "1";' "$tmp/20auto-upgrades"
+
 # Aufruf ohne Hostname bricht ab, bevor etwas geändert wird.
 quiet() { "$@" >/dev/null 2>&1; }
 no  "ohne --hostname: Abbruch"     quiet bash "$here/setup-server.sh"

@@ -7,7 +7,6 @@
 set -Eeuo pipefail
 IFS=$'\n\t'
 
-APP_NAME="kunibert"
 APP_USER="kunibert"
 APP_GROUP="audio"
 INSTALL_DIR="/opt/kunibert"
@@ -62,7 +61,7 @@ Beispiele:
 
   sudo bash pi-client/install_raspberry_pi.sh \
     --api-url http://192.168.1.20:3000 \
-    --device-id pi-zero-001 \
+    --device-id prototype-001 \
     --api-token 'lokaler-test-token' \
     --audio-card hw:wm8960soundcard,0
 
@@ -92,8 +91,8 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-for _dev in "$CAPTURE_DEVICE" "$PLAYBACK_DEVICE"; do
-  [[ "$_dev" != *$'\n'* ]] || die "Audiogeräte-Namen dürfen keinen Zeilenumbruch enthalten."
+for _dev in "$CAPTURE_DEVICE" "$PLAYBACK_DEVICE" "$API_BASE_URL" "$DEVICE_ID" "$DEVICE_TOKEN" "$DEVICE_NAME"; do
+  [[ "$_dev" != *$'\n'* ]] || die "Werte für die Konfiguration dürfen keinen Zeilenumbruch enthalten."
 done
 
 [[ "${EUID}" -eq 0 ]] || die "Bitte mit sudo oder als root ausführen."
@@ -212,19 +211,21 @@ fi
 log "Schreibe geschützte Konfiguration …"
 cat > "$CONFIG_FILE" <<EOF
 # /etc/kunibert/kunibert.env – automatisch erzeugt; Secrets nicht committen.
-PICASTAI_API_BASE_URL=$(printf '%q' "$API_BASE_URL")
-PICASTAI_DEVICE_ID=$(printf '%q' "$DEVICE_ID")
-PICASTAI_DEVICE_TOKEN=$(printf '%q' "$DEVICE_TOKEN")
-PICASTAI_DEVICE_NAME=$(printf '%q' "$DEVICE_NAME")
-KUNIBERT_SAMPLE_RATE=$(printf '%q' "$SAMPLE_RATE")
-KUNIBERT_CACHE_DIR=$(printf '%q' "$DATA_DIR/audio")
+PICASTAI_API_BASE_URL=$(env_quote "$API_BASE_URL")
+PICASTAI_DEVICE_ID=$(env_quote "$DEVICE_ID")
+PICASTAI_DEVICE_TOKEN=$(env_quote "$DEVICE_TOKEN")
+PICASTAI_DEVICE_NAME=$(env_quote "$DEVICE_NAME")
+KUNIBERT_SAMPLE_RATE=$(env_quote "$SAMPLE_RATE")
+KUNIBERT_CACHE_DIR=$(env_quote "$DATA_DIR/audio")
 KUNIBERT_MAX_RECORD_SECONDS=15
 KUNIBERT_MIN_RECORD_SECONDS=0.35
 KUNIBERT_REQUEST_TIMEOUT=30
 KUNIBERT_PIPELINE_TIMEOUT=140
 KUNIBERT_AUDIO_TIMEOUT=45
-KUNIBERT_RETRY_COUNT=2
+KUNIBERT_RETRY_COUNT=1
 KUNIBERT_RETRY_BACKOFF=1.5
+# Pause zwischen zwei Versuchen, beim Start den Server zu erreichen (Sekunden).
+KUNIBERT_CONNECT_RETRY=10
 KUNIBERT_LOCALE=de-DE
 KUNIBERT_AGE_BAND=6-10
 KUNIBERT_SPEECH_BUTTON_GPIO=17
@@ -244,6 +245,9 @@ cat > "$SERVICE_FILE" <<EOF
 Description=Ritter Kunibert Raspberry-Pi-Client
 After=network-online.target sound.target
 Wants=network-online.target
+# Nie endgültig aufgeben: ein Spielzeug soll nach einem Stromausfall von selbst wieder laufen.
+# (Diese Einstellung gehört in [Unit]; in [Service] würde systemd sie ignorieren.)
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple
@@ -255,8 +259,6 @@ EnvironmentFile=$CONFIG_FILE
 ExecStart=$VENV_DIR/bin/python $INSTALL_DIR/pi-client/kunibert_client.py
 Restart=on-failure
 RestartSec=5
-StartLimitIntervalSec=120
-StartLimitBurst=5
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectHome=true

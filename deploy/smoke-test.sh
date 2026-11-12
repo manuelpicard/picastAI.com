@@ -11,7 +11,7 @@
 #
 # Beispiel (Token nicht in die Shell-Historie tippen: aus dem Passwortmanager einfügen, Zeile mit Leerzeichen beginnen):
 #   read -rs PICASTAI_DEVICE_TOKEN; export PICASTAI_DEVICE_TOKEN
-#   PICASTAI_API_BASE_URL=https://kunibert.example PICASTAI_DEVICE_ID=pi-zero-001 ./deploy/smoke-test.sh
+#   PICASTAI_API_BASE_URL=https://kunibert.example PICASTAI_DEVICE_ID=prototype-001 ./deploy/smoke-test.sh
 #
 # Ausgang: 0 = alles bestanden, 1 = mindestens eine Prüfung fehlgeschlagen, 2 = Aufruf falsch.
 # Fehlen Geräte-ID oder Token, werden die Prüfungen mit Anmeldung übersprungen (Ausgang dann 1).
@@ -109,9 +109,9 @@ status "POST /v1/turn (Route der Weboberfläche nicht erreichbar)" 404 "$BASE/v1
 WRONG="falscher-token-$$-$(date +%s)"
 status "POST /v1/device/question ohne Anmeldung" 401 -X POST "$BASE/v1/device/question"
 status "POST /v1/device/question mit falschem Token" 401 -X POST \
-  -H "Authorization: Bearer $WRONG" -H "X-Device-ID: ${DEVICE_ID:-pi-zero-001}" "$BASE/v1/device/question"
+  -H "Authorization: Bearer $WRONG" -H "X-Device-ID: ${DEVICE_ID:-prototype-001}" "$BASE/v1/device/question"
 status "GET /v1/device/audio/x mit falschem Token" 401 \
-  -H "Authorization: Bearer $WRONG" -H "X-Device-ID: ${DEVICE_ID:-pi-zero-001}" "$BASE/v1/device/audio/x"
+  -H "Authorization: Bearer $WRONG" -H "X-Device-ID: ${DEVICE_ID:-prototype-001}" "$BASE/v1/device/audio/x"
 
 # 6. Mit echtem Token: Anmeldung klappt, zu große Datei -> 413 ----------------
 if [ -z "$DEVICE_ID" ] || [ -z "$DEVICE_TOKEN" ]; then

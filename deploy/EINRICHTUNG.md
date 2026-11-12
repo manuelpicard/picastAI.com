@@ -38,7 +38,8 @@ bash setup-server.sh --hostname kunibert.example
 - Admin- und Geräte-Token erzeugt das Skript selbst und schreibt sie nur in `/etc/kunibert/kunibert.env` (nicht auf den Bildschirm). 👤 Den `ANTHROPIC_API_KEY` trägst du danach selbst mit `sudoedit` ein; das Skript kennt ihn nicht.
 - Zeigt der Hostname noch nicht auf den Server, stoppt das Skript Caddy und sagt es. So gibt es keine Fehlversuche beim Zertifikat. Nach dem DNS-Eintrag: `sudo systemctl start caddy`.
 - **Wartezeit messen:** Gleich nach dem Lauf `bash /opt/kunibert/app/deploy/stt-messung.sh` starten. Es misst die Spracherkennung mit `tiny`, `base` und `small` auf diesem Server und zeigt, was erkannt wurde (auch nicht auf einem echten Server gelaufen). Damit ist die offene Frage zur Wartezeit auf der CCX13 in ein paar Minuten beantwortet.
-- Anderes Erkennungsmodell: `--stt-model Systran/faster-whisper-base`. Alle Optionen: `bash setup-server.sh --help`.
+- Anderes Erkennungsmodell: `--stt-model Systran/faster-whisper-base`. Festes Image des Sprachservers: `--speaches-image ghcr.io/speaches-ai/speaches:<Version>-cpu` (Standard `latest-cpu`; die Zusammenfassung nennt die Kennung des Images, das tatsächlich läuft). Alle Optionen: `bash setup-server.sh --help`.
+- Das Skript schaltet automatische Sicherheitsupdates des Betriebssystems ein (`unattended-upgrades`, ohne automatischen Neustart).
 
 ```text
 Pi --HTTPS :443--> Caddy --HTTP lokal--> 127.0.0.1:3000 Kunibert-Server
@@ -177,7 +178,7 @@ Alle Prüfungen dieses Abschnitts (und mehr: Zertifikat, falscher Token gibt 401
 
 ```bash
 read -rs PICASTAI_DEVICE_TOKEN; export PICASTAI_DEVICE_TOKEN     # Token einfügen, Eingabe bleibt unsichtbar
-PICASTAI_API_BASE_URL=https://kunibert.example PICASTAI_DEVICE_ID=pi-zero-001 ./deploy/smoke-test.sh
+PICASTAI_API_BASE_URL=https://kunibert.example PICASTAI_DEVICE_ID=prototype-001 ./deploy/smoke-test.sh
 ```
 
 Ausgang 0 heißt: alles bestanden. Einzelne Prüfungen von Hand:

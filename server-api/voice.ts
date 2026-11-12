@@ -1,5 +1,6 @@
-import { decodeWavHeader, encodeWav } from './audio.js';
+import { decodeWavHeader, encodeWav, resampleMono16 } from './audio.js';
 import type { KunibertConfig } from './config.js';
+import { summarizeErrorResponse } from './provider-errors.js';
 import {
   GOOGLE_TTS_ENDPOINT,
   buildGoogleRequest,
@@ -30,14 +31,6 @@ function withTimeout(timeoutMs: number): { signal: AbortSignal; cancel: () => vo
   return { signal: controller.signal, cancel: () => clearTimeout(timer) };
 }
 
-async function readError(response: Response): Promise<string> {
-  try {
-    const body = await response.text();
-    return body.slice(0, 300) || response.statusText;
-  } catch {
-    return response.statusText;
-  }
-}
 
 interface PcmWavInfo {
   formatTag: number;
@@ -106,16 +99,10 @@ function normalizePcmWav(audio: Buffer, targetRate: number): Buffer {
     const right = wav.channels === 2 ? audio.readInt16LE(offset + 2) : left;
     source[index] = Math.round((left + right) / 2);
   }
-  const targetFrames = Math.max(1, Math.round(availableFrames * targetRate / wav.sampleRate));
-  const pcm = Buffer.alloc(targetFrames * 2);
-  for (let index = 0; index < targetFrames; index++) {
-    const sourcePosition = index * (availableFrames - 1) / Math.max(1, targetFrames - 1);
-    const lower = Math.floor(sourcePosition);
-    const upper = Math.min(availableFrames - 1, lower + 1);
-    const fraction = sourcePosition - lower;
-    const sample = Math.round(source[lower] * (1 - fraction) + source[upper] * fraction);
-    pcm.writeInt16LE(Math.max(-32768, Math.min(32767, sample)), index * 2);
-  }
+  // Mit Tiefpass statt linearer Interpolation (siehe resampleMono16): sonst klingen s-Laute rau.
+  const resampled = resampleMono16(source, wav.sampleRate, targetRate);
+  const pcm = Buffer.alloc(resampled.length * 2);
+  for (let index = 0; index < resampled.length; index++) pcm.writeInt16LE(resampled[index], index * 2);
   // Vierter Parameter: Bits pro Sample (16), nicht Bytes. Mit 2 entstand ein kaputter
   // Header (Bittiefe 2), den der Pi-Client als unerwartete Bittiefe ablehnt.
   return encodeWav(pcm, targetRate, 1, 16);
@@ -167,7 +154,8 @@ export class OpenAiCompatibleSpeechToText implements SpeechToTextProvider {
         signal: timeout.signal,
       });
       if (!response.ok) {
-        throw new VoiceProviderError(`STT-Provider antwortete mit HTTP ${response.status}: ${await readError(response)}`, response.status >= 500 || response.status === 429);
+        // Nur Status und Fehlercode, nie der Fließtext: Er kann gesendeten Text enthalten (provider-errors.ts).
+        throw new VoiceProviderError(`STT-Provider antwortete mit ${await summarizeErrorResponse(response)}`, response.status >= 500 || response.status === 429);
       }
       let payload: { text?: unknown };
       try {
@@ -213,7 +201,8 @@ export class OpenAiCompatibleTextToSpeech implements TextToSpeechProvider {
         signal: timeout.signal,
       });
       if (!response.ok) {
-        throw new VoiceProviderError(`TTS-Provider antwortete mit HTTP ${response.status}: ${await readError(response)}`, response.status >= 500 || response.status === 429);
+        // Ein Prüffehler (422) von Speaches enthielte sonst den Antworttext für das Kind.
+        throw new VoiceProviderError(`TTS-Provider antwortete mit ${await summarizeErrorResponse(response)}`, response.status >= 500 || response.status === 429);
       }
       const audio = Buffer.from(await response.arrayBuffer());
       // Eigene Server liefern oft 22,05 kHz; das Pi-Format ist 16 kHz Mono.
@@ -268,7 +257,7 @@ export class GoogleTextToSpeech implements TextToSpeechProvider {
         signal: timeout.signal,
       });
       if (!response.ok) {
-        throw new VoiceProviderError(`TTS-Provider (Google) antwortete mit HTTP ${response.status}: ${await readError(response)}`, response.status >= 500 || response.status === 429);
+        throw new VoiceProviderError(`TTS-Provider (Google) antwortete mit ${await summarizeErrorResponse(response)}`, response.status >= 500 || response.status === 429);
       }
       let payload: { audioContent?: unknown };
       try {
@@ -374,4 +363,35 @@ export class VoicePipeline {
     }
     return succeeded;
   }
+
+  /**
+   * Wie warmUp, aber mit neuen Versuchen, bis alle Texte im Speicher sind. Nach einem Neustart
+   * des Rechners startet der Sprachserver (Docker) oft später als dieser Dienst. Mit nur einem
+   * Versuch blieb der Sicherheitshinweis dann ungewärmt und hing beim ersten Kind an einem
+   * Sprachserver, der vielleicht gerade nicht antwortet. Schon gespeicherte Texte kosten bei
+   * jeder Runde nichts. Rückgabe: Anzahl der gespeicherten Texte nach der letzten Runde.
+   */
+  async warmUpWithRetry(
+    texts: string[],
+    options: {
+      delaysMs?: number[];
+      sleep?: (ms: number) => Promise<void>;
+      log?: (line: string) => void;
+    } = {}
+  ): Promise<number> {
+    const delays = options.delaysMs ?? WARM_UP_DELAYS_MS;
+    const sleep = options.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms).unref()));
+    const log = options.log ?? ((line: string) => console.log(line));
+    let done = await this.warmUp(texts);
+    for (const delay of delays) {
+      if (done >= texts.length) break;
+      log(`Feste Sprechtexte: ${done} von ${texts.length} vorbereitet, neuer Versuch in ${Math.round(delay / 1000)} s.`);
+      await sleep(delay);
+      done = await this.warmUp(texts);
+    }
+    return done;
+  }
 }
+
+/** Wartezeiten zwischen den Aufwärm-Runden: zusammen gut sechs Minuten, dann gibt der Dienst auf. */
+const WARM_UP_DELAYS_MS = [5_000, 10_000, 20_000, 40_000, 60_000, 60_000, 60_000, 60_000, 60_000];

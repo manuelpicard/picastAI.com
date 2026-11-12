@@ -9,6 +9,7 @@ import {
 } from './prompts.js';
 import {
   ERROR_RESPONSE_DE,
+  normalize,
   SAFETY_RESPONSE_DE,
   screen,
   screenOutput,
@@ -17,6 +18,12 @@ import {
 import { generateMelodyWav, generateToneWav } from './audio.js';
 import { config, type KunibertConfig } from './config.js';
 import { budgetTimeoutMs, MIN_LLM_MS, NO_TIMER, TTS_RESERVE_MS, type StageTimer } from './timing.js';
+
+/** Fester Ersatztext, wenn das Sprachmodell fehlt, ausfällt oder seine Antwort abgelehnt wurde. */
+export const FALLBACK_ANSWER_DE =
+  'Das ist eine gute Frage. Die kann ich dir gerade leider nicht beantworten. ' +
+  'Frag am besten deine Eltern oder eine Lehrerin, die wissen darüber oft ganz Erstaunliches. ' +
+  'Wenn du eine Geschichte hören willst, drück die Erzähltaste.';
 
 export interface StoryState {
   v: number;
@@ -53,6 +60,36 @@ export function cleanText(text: unknown, maxChars: number): string {
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, maxChars);
+}
+
+/**
+ * Typische Fehlerkennungen von Whisper bei Stille oder Rauschen: Untertitel-Abspänne aus den
+ * Trainingsdaten. Belegt: „Untertitel im Auftrag des ZDF, 2017“ bei 23 s Stille
+ * (https://gist.github.com/riotbib/3b3c5f817b55b68801d14b8bdb02df09) und die deutsche Liste in
+ * scraibe (https://huggingface.co/spaces/Hyathi/Stem-Extractor/blob/main/scraibe/hallucinations.py).
+ * Geprüft wird nach normalize(): klein, ohne Satzzeichen. Nur ganze Äußerungen, die genau so
+ * aussehen; eine Kinderfrage wie „Was sind Untertitel?“ trifft keines der Muster.
+ */
+const STT_ARTIFACTS: RegExp[] = [
+  /^untertitel(ung)? (im auftrag des zdf|aufgrund der amara org community|der amara org community|von stephanie geiges)( für funk)?( \d{4})?$/,
+  /^copyright wdr( \d{4})?$/,
+  /^swr \d{4}$/,
+];
+
+/**
+ * true, wenn die Erkennung sehr wahrscheinlich nichts Gesprochenes enthält: ein bekannter
+ * Untertitel-Abspann oder nur der Erkennungshinweis selbst (PICASTAI_STT_PROMPT, zum Beispiel
+ * „Ritter Kunibert“), den Whisper bei Rauschen nachsprechen kann. Dann bittet Kunibert um
+ * Wiederholung, statt auf etwas zu antworten, das das Kind nicht gesagt hat.
+ */
+export function isLikelySttArtifact(transcript: string, sttPrompt = ''): boolean {
+  const text = normalize(transcript).trim();
+  if (!text) return false;
+  if (STT_ARTIFACTS.some((pattern) => pattern.test(text))) return true;
+  const prompt = normalize(sttPrompt).trim();
+  if (!prompt) return false;
+  // Auch mehrfach hintereinander („Ritter Kunibert. Ritter Kunibert.“).
+  return text.split(prompt).every((rest) => rest.trim() === '');
 }
 
 const WISH_FILLER = new Set([
@@ -139,7 +176,7 @@ export const STORY_SCHEMA: JsonSchema = {
   required: ['text', 'summary', 'open_threads', 'next_hook', 'episode_finished'],
 };
 
-export type BrainSettings = Pick<KunibertConfig, 'ageBracket' | 'partsPerEpisode' | 'storyMinWords' | 'storyMaxWords' | 'answerMaxWords'>;
+export type BrainSettings = Pick<KunibertConfig, 'ageBracket' | 'partsPerEpisode' | 'storyMinWords' | 'storyMaxWords' | 'answerMaxWords' | 'sttPrompt'>;
 
 export class Brain {
   private readonly age: string;
@@ -147,6 +184,7 @@ export class Brain {
   private readonly storyMinWords: number;
   private readonly storyMaxWords: number;
   private readonly answerMaxWords: number;
+  private readonly sttPrompt: string;
 
   /**
    * Ohne Anbieter (kein Key) greifen die festen Fallback-Texte. Die Einstellungen
@@ -158,6 +196,7 @@ export class Brain {
     this.storyMinWords = settings.storyMinWords ?? config.storyMinWords;
     this.storyMaxWords = settings.storyMaxWords ?? config.storyMaxWords;
     this.answerMaxWords = settings.answerMaxWords ?? config.answerMaxWords;
+    this.sttPrompt = settings.sttPrompt ?? config.sttPrompt;
   }
 
   /**
@@ -223,7 +262,9 @@ export class Brain {
   }
 
   private async handleQuestion(transcript: string, state: StoryState, timer: StageTimer): Promise<TurnResult> {
-    if (!transcript) {
+    // Die Sicherheitsweiche lief schon (handle). Ein Abspann oder nur der Erkennungshinweis
+    // ist keine Äußerung des Kindes: wie eine leere Erkennung behandeln.
+    if (!transcript || isLikelySttArtifact(transcript, this.sttPrompt)) {
       return {
         kind: 'hinweis',
         speech: UNCLEAR_RESPONSE_DE,
@@ -262,6 +303,17 @@ export class Brain {
         if (parsed.category === 'weiter') {
           return await this.handleStory(!storyActive(state), state, '', timer);
         }
+        if (parsed.category === 'unklar') {
+          // Das Sprachmodell hat die Äußerung als leer oder unverständlich eingestuft: um
+          // Wiederholung bitten, statt mit dem Ersatztext unten auf Unverstandenes zu antworten.
+          return {
+            kind: 'hinweis',
+            speech: UNCLEAR_RESPONSE_DE,
+            story_state: state,
+            fixed: 'unklar',
+            wav: this.synthesizeWav(UNCLEAR_RESPONSE_DE, 'hinweis'),
+          };
+        }
         if (parsed.category === 'frage' && parsed.speech) {
           const speech = trimWords(parsed.speech, this.answerMaxWords + 20);
           // Ausgabe-Check: bei Treffer greift der Fallback unten (catch-Pfad).
@@ -285,50 +337,53 @@ export class Brain {
   }
 
   private fallbackQuestion(transcript: string, state: StoryState): TurnResult {
-    const lower = transcript.toLowerCase();
+    // Ganze Wörter statt Teilwörter: "Schwein" enthält "wein", "Weiterbildung" enthält "weiter".
+    const words = new Set(transcript.toLowerCase().split(/[^a-zäöüß]+/).filter(Boolean));
+    const has = (...candidates: string[]) => candidates.some((word) => words.has(word));
 
-    // Check for story requests
-    if (lower.includes('geschichte') || lower.includes('erzähl') || lower.includes('märchen')) {
+    if (has('geschichte', 'geschichten', 'märchen', 'erzähl', 'erzähle', 'erzählst', 'erzählen')) {
       return this.fallbackStory(true, state, transcript);
     }
-    if (lower.includes('weiter') || lower.includes('nochmal')) {
+    if (has('weiter', 'weitererzählen', 'nochmal')) {
       return this.fallbackStory(!storyActive(state), state, '');
     }
 
-    // Answers to common questions or Kunibert lore
+    // Feste Antworten ohne Sprachmodell. Die Äußerung des Kindes wird nie nachgesprochen:
+    // Sie käme sonst ungeprüft am Ausgabe-Check vorbei in den Lautsprecher, auch mit
+    // Erkennungsfehlern oder Wörtern, die Kunibert nicht sagen soll.
     let speech = '';
-    if (lower.includes('wer ist ritter kunibert') || lower.includes('kunibert')) {
+    if (has('kunibert', 'kuniberts')) {
       speech =
         'Ritter Kunibert ist ein mutiger, höflicher und großzügiger Ritter. ' +
         'Er wohnt im Dachzimmer eines Gasthauses, fährt mit einem Kutscher über holprige Pflastersteine, ' +
         'trifft im düsteren Wald eine geheimnisvolle Hexe und zieht immer wieder auf den Berg zum Drachen. ' +
         'Manchmal verliert er, dann isst er Suppe, schläft und versucht es am nächsten Tag wieder. ' +
         'Am Ende hilft ihm seine Klugheit. Wenn du eine Geschichte hören willst, drück die Erzähltaste.';
-    } else if (lower.includes('himmel') && lower.includes('blau')) {
+    } else if (has('himmel') && has('blau')) {
       speech =
         'Der Himmel wirkt blau, weil das weiße Sonnenlicht in der Luft auf winzig kleine Teilchen trifft ' +
         'und dabei in alle Richtungen gestreut wird. Blaues Licht wird dabei viel stärker gestreut als ' +
         'rotes Licht, deshalb sehen wir den Himmel blau leuchten.';
-    } else if (lower.includes('traurig') || lower.includes('wein') || lower.includes('allein')) {
+    } else if (has('traurig', 'weine', 'weinen', 'geweint', 'allein', 'alleine', 'einsam')) {
       speech =
         'Es ist ganz in Ordnung, manchmal traurig zu sein. Jeder von uns fühlt sich ab und zu so, ' +
         'sogar Ritter Kunibert, wenn er vom Drachenberg zurückkehrt. ' +
         'Sprich am besten mit einem Erwachsenen, den du lieb hast, oder nimm ein Kuscheltier in den Arm.';
-    } else if (lower.includes('drache')) {
+    } else if (has('drache', 'drachen')) {
       speech =
         'Der Drache wohnt oben auf dem Berg in einer dunklen Höhle. Er ist gewaltig und spuckt Rauch, ' +
         'aber Ritter Kunibert besiegt ihn nie mit Gewalt, sondern immer mit Klugheit und ein bisschen Geduld.';
     } else {
-      speech =
-        `Das ist eine spannende Frage zu «${trimWords(transcript, 12)}». ` +
-        'Ritter Kunibert lernt auch jeden Tag etwas Neues, wenn er durch den Wald reitet. ' +
-        'Frag am besten auch einmal deine Eltern oder eine Lehrerin – die wissen darüber oft ganz Erstaunliches!';
+      speech = FALLBACK_ANSWER_DE;
     }
 
     return {
       kind: 'frage',
       speech,
       story_state: state,
+      // Alle Texte hier sind fest: Die Sprachausgabe kommt nach dem ersten Mal aus dem
+      // Zwischenspeicher. Das hilft gerade dann, wenn das Sprachmodell ausfällt.
+      fixed: 'ersatz',
       wav: this.synthesizeWav(speech, 'frage'),
     };
   }

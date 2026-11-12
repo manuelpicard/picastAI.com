@@ -573,3 +573,53 @@ test('STT und TTS: eine kürzere Frist aus dem Zeitbudget gilt vor der eigenen G
     assert.ok(Date.now() - started < 5_000);
   });
 });
+
+test('Aufwärmen mit neuen Versuchen: wartet auf einen Sprachserver, der erst später startet', async () => {
+  let calls = 0;
+  const original = globalThis.fetch;
+  // Die ersten zwei Runden ist der Sprachserver nicht erreichbar (wie nach einem Neustart).
+  globalThis.fetch = (async () => {
+    calls++;
+    if (calls <= 2 * 3) throw new Error('connect ECONNREFUSED');
+    return new Response(new Uint8Array(encodeWav(Buffer.alloc(320), 16_000, 1, 16)), { status: 200 });
+  }) as unknown as typeof fetch;
+  const originalWarn = console.warn;
+  console.warn = () => {};
+  const waits: number[] = [];
+  const lines: string[] = [];
+  try {
+    const voice = pipeline();
+    const done = await voice.warmUpWithRetry(['eins', 'zwei', 'drei'], {
+      delaysMs: [5, 10, 20],
+      sleep: async (ms) => { waits.push(ms); },
+      log: (line) => lines.push(line),
+    });
+    assert.equal(done, 3);
+    assert.deepEqual(waits, [5, 10]);
+    assert.equal(lines.length, 2);
+    assert.match(lines[0], /^Feste Sprechtexte: 0 von 3 vorbereitet, neuer Versuch in 0 s\.$/);
+    // Danach kommen die Texte aus dem Speicher, ohne neue Anfrage.
+    const before = calls;
+    await voice.synthesizeCached('zwei');
+    assert.equal(calls, before);
+  } finally {
+    globalThis.fetch = original;
+    console.warn = originalWarn;
+  }
+});
+
+test('Aufwärmen mit neuen Versuchen: gibt nach der letzten Runde auf und meldet, was fehlt', async () => {
+  const original = globalThis.fetch;
+  globalThis.fetch = (async () => { throw new Error('connect ECONNREFUSED'); }) as unknown as typeof fetch;
+  const originalWarn = console.warn;
+  console.warn = () => {};
+  try {
+    const waits: number[] = [];
+    const done = await pipeline().warmUpWithRetry(['eins'], { delaysMs: [1, 2], sleep: async (ms) => { waits.push(ms); }, log: () => {} });
+    assert.equal(done, 0);
+    assert.deepEqual(waits, [1, 2]);
+  } finally {
+    globalThis.fetch = original;
+    console.warn = originalWarn;
+  }
+});

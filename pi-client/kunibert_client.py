@@ -15,6 +15,7 @@ Environment variables are documented in pi-client/README.md.
 from __future__ import annotations
 
 import argparse
+import array
 import io
 import json
 import logging
@@ -22,7 +23,6 @@ import os
 import secrets
 import signal
 import sys
-import tempfile
 import threading
 import time
 import wave
@@ -65,11 +65,16 @@ class ClientConfig:
     audio_timeout_seconds: float = 45.0
     request_timeout_seconds: float = 30.0
     # Frage und Geschichte laufen auf dem Server durch Spracherkennung, Sprachmodell
-    # und Sprachsynthese (Standardgrenzen 45 + 30 + 45 s). Der Client muss länger
+    # und Sprachsynthese (gemeinsames Zeitbudget 120 s). Der Client muss länger
     # warten als der Server, sonst bricht er ab und wiederholt die ganze Kette.
     pipeline_timeout_seconds: float = 140.0
-    retry_count: int = 2
+    # Höchstens ein Wiederholungsversuch, wie in der Firmware (kb_retry_decide). Mit zwei
+    # Wiederholungen konnte ein Kind bei einem hängenden Server über sieben Minuten warten.
+    retry_count: int = 1
     retry_backoff_seconds: float = 1.5
+    # Pause zwischen zwei Versuchen, beim Start den Server zu erreichen (WLAN oder Router
+    # sind nach einem Stromausfall oft später da als das Gerät).
+    connect_retry_seconds: float = 10.0
     speech_button_gpio: int = 17
     story_button_gpio: int = 27
     mic_off_gpio: int = 22
@@ -113,8 +118,9 @@ class ClientConfig:
             audio_timeout_seconds=number("KUNIBERT_AUDIO_TIMEOUT", 45.0),
             request_timeout_seconds=number("KUNIBERT_REQUEST_TIMEOUT", 30.0),
             pipeline_timeout_seconds=number("KUNIBERT_PIPELINE_TIMEOUT", 140.0),
-            retry_count=integer("KUNIBERT_RETRY_COUNT", 2),
+            retry_count=integer("KUNIBERT_RETRY_COUNT", 1),
             retry_backoff_seconds=number("KUNIBERT_RETRY_BACKOFF", 1.5),
+            connect_retry_seconds=number("KUNIBERT_CONNECT_RETRY", 10.0),
             speech_button_gpio=integer("KUNIBERT_SPEECH_BUTTON_GPIO", 17),
             story_button_gpio=integer("KUNIBERT_STORY_BUTTON_GPIO", 27),
             mic_off_gpio=integer("KUNIBERT_MIC_OFF_GPIO", 22),
@@ -184,7 +190,7 @@ class AudioInput(Protocol):
 
 
 class AudioOutput(Protocol):
-    def play_wav(self, wav_bytes: bytes) -> None: ...
+    def play_wav(self, wav_bytes: bytes, should_stop: Optional[Callable[[], bool]] = None) -> None: ...
 
 
 class Buttons(Protocol):
@@ -302,6 +308,10 @@ class SoundDeviceAudio:
             import sounddevice as sd
         except ImportError as exc:
             raise HardwareError("sounddevice fehlt; siehe pi-client/README.md") from exc
+        except Exception as exc:
+            # PortAudio startet nicht. Beispiel: Neuere PortAudio-Fassungen (19.7) brechen ab,
+            # wenn kein PulseAudio-Server läuft ("PulseAudio_Initialize: Can't connect to server").
+            raise HardwareError(f"Audio-Bibliothek startet nicht: {exc}. Siehe pi-client/README.md, Fehlersuche") from exc
         self.sd = sd
         self.config = config
 
@@ -325,21 +335,44 @@ class SoundDeviceAudio:
         pcm = b"".join(frames)
         return encode_wav(pcm, self.config.sample_rate, self.config.channels, self.config.sample_width)
 
-    def play_wav(self, wav_bytes: bytes) -> None:
+    # Rohformat je Sample-Breite (WAV mit 8 Bit ist vorzeichenlos).
+    _RAW_DTYPES = {1: "uint8", 2: "int16", 3: "int24", 4: "int32"}
+
+    def play_wav(self, wav_bytes: bytes, should_stop: Optional[Callable[[], bool]] = None) -> None:
+        """Spielt eine WAV-Antwort ab, ohne NumPy.
+
+        Früher lief das über ``sd.play()``. Das braucht NumPy (ist auf dem Pi nicht
+        installiert) und nimmt keine Bytes an: Mit sounddevice 0.5.6 scheiterte jede
+        Wiedergabe („NumPy must be installed“, mit NumPy „Unsupported data type“).
+        ``RawOutputStream`` nimmt die Bytes direkt. Geschrieben wird in Stücken von
+        etwa 0,1 s, damit ``should_stop`` (zum Beispiel ein Beenden des Dienstes) die
+        Wiedergabe abbrechen kann. Beim Verlassen des ``with``-Blocks wartet PortAudio,
+        bis alles ausgespielt ist.
+        """
         try:
             with wave.open(io.BytesIO(wav_bytes), "rb") as wav:
                 channels = wav.getnchannels()
                 rate = wav.getframerate()
                 width = wav.getsampwidth()
                 frames = wav.readframes(wav.getnframes())
-            self.sd.play(
-                frames,
+            dtype = self._RAW_DTYPES.get(width)
+            if dtype is None:
+                raise HardwareError(f"WAV mit {width * 8} Bit wird nicht unterstützt")
+            chunk_bytes = max(1, rate // 10) * channels * width
+            with self.sd.RawOutputStream(
                 samplerate=rate,
-                blocking=True,
                 channels=channels,
-                dtype=f"int{width * 8}",
+                dtype=dtype,
                 device=self.config.output_device,
-            )
+            ) as stream:
+                for start in range(0, len(frames), chunk_bytes):
+                    if should_stop is not None and should_stop():
+                        # Sofort abbrechen statt die gepufferten Blöcke noch auszuspielen.
+                        stream.abort()
+                        return
+                    stream.write(frames[start:start + chunk_bytes])
+        except HardwareError:
+            raise
         except Exception as exc:
             raise HardwareError(f"Audioausgabe fehlgeschlagen: {exc}") from exc
 
@@ -360,13 +393,119 @@ class DryRunAudio:
         pcm = b"\x00\x00" * int(self.config.sample_rate * 0.5)
         return encode_wav(pcm, self.config.sample_rate, self.config.channels, self.config.sample_width)
 
-    def play_wav(self, wav_bytes: bytes) -> None:
+    def play_wav(self, wav_bytes: bytes, should_stop: Optional[Callable[[], bool]] = None) -> None:
         LOG.info("Dry-run: würde WAV mit %d Bytes abspielen", len(wav_bytes))
 
 
 class DryRunLed:
     def set(self, mode: str) -> None:
         LOG.info("LED: %s", mode)
+
+
+class KeyboardButtons:
+    """Tastatur statt Taster: für einen Probelauf am Rechner ohne Pi (``--keyboard``).
+
+    Eingabetaste: Aufnahme beginnen; noch einmal Eingabetaste: Aufnahme beenden und senden.
+    ``g`` + Eingabetaste: Erzähltaste. ``q`` + Eingabetaste (oder Ende der Eingabe): beenden.
+    Einen Mikrofon-Aus-Schalter gibt es hier nicht.
+    """
+
+    mic_off = False
+
+    def __init__(self, lines: Optional[Any] = None, on_quit: Optional[Callable[[], None]] = None,
+                 start_reader: bool = True):
+        self.on_quit = on_quit
+        self._lock = threading.Lock()
+        self._speech = False
+        self._story = False
+        self._thread: Optional[threading.Thread] = None
+        if start_reader:
+            source = sys.stdin if lines is None else lines
+            self._thread = threading.Thread(target=self._read, args=(source,), name="kunibert-tastatur", daemon=True)
+            self._thread.start()
+
+    def _read(self, source: Any) -> None:
+        for line in source:
+            self.handle_line(line)
+        self._quit()
+
+    def _quit(self) -> None:
+        with self._lock:
+            self._speech = False
+        if self.on_quit:
+            self.on_quit()
+
+    def handle_line(self, line: str) -> None:
+        command = line.strip().lower()
+        if command in {"q", "quit", "ende"}:
+            self._quit()
+            return
+        with self._lock:
+            if command == "":
+                self._speech = not self._speech
+            elif command in {"g", "geschichte"}:
+                self._story = True
+            else:
+                print("Eingabetaste = sprechen/senden, g = Geschichte, q = Ende", flush=True)
+
+    @property
+    def speech_pressed(self) -> bool:
+        with self._lock:
+            return self._speech
+
+    @property
+    def story_pressed(self) -> bool:
+        # Ein Tastendruck gilt genau einmal.
+        with self._lock:
+            pressed, self._story = self._story, False
+            return pressed
+
+    def discard_pending(self) -> None:
+        """Vergisst Tastendrücke, die während Warten oder Abspielen kamen.
+
+        Sonst begann nach einer Antwort sofort eine neue Aufnahme, wenn jemand in der
+        Zwischenzeit die Eingabetaste gedrückt hatte (oder eine Geschichte nach ``g``).
+        """
+        with self._lock:
+            self._speech = False
+            self._story = False
+
+
+class ConsoleLed:
+    """Zeigt den Zustand als Textzeile statt mit einer LED (Probelauf am Rechner)."""
+
+    _TEXT = {
+        "ready": "Bereit. Eingabetaste = sprechen, g = Geschichte, q = Ende",
+        "recording": "Aufnahme läuft. Eingabetaste = fertig und senden",
+        "busy": "Kunibert arbeitet ...",
+        "error": "Fehler (siehe Meldung oben)",
+    }
+
+    def set(self, mode: str) -> None:
+        text = self._TEXT.get(mode)
+        if text:
+            print(f"[{text}]", flush=True)
+
+
+# Unter diesem Spitzenpegel (etwa -54 dBFS bei 16 Bit) ist eine Aufnahme praktisch stumm:
+# Mikrofon aus, falsches Gerät oder (unter Windows) der Zugriff auf das Mikrofon gesperrt.
+SILENT_PEAK = 64
+
+
+def pcm16_peak(wav_bytes: bytes) -> Optional[int]:
+    """Höchster Betrag der Samples einer 16-Bit-WAV-Datei; None, wenn das nicht auswertbar ist."""
+    try:
+        with wave.open(io.BytesIO(wav_bytes), "rb") as wav:
+            if wav.getsampwidth() != 2:
+                return None
+            frames = wav.readframes(wav.getnframes())
+    except wave.Error:
+        return None
+    samples = array.array("h")
+    samples.frombytes(frames[: len(frames) - len(frames) % 2])
+    if sys.byteorder == "big":
+        samples.byteswap()
+    return max((abs(value) for value in samples), default=0)
 
 
 def encode_wav(pcm: bytes, sample_rate: int, channels: int, sample_width: int) -> bytes:
@@ -400,6 +539,8 @@ class PicastApi:
             raise ApiError("PICASTAI_DEVICE_TOKEN ist nicht gesetzt")
         self.config = config
         self.session_id = secrets.token_urlsafe(12)
+        # Uhr für die Wiederholungsregel (Tests setzen eine eigene).
+        self.clock: Callable[[], float] = time.monotonic
 
     @property
     def _headers(self) -> dict[str, str]:
@@ -466,7 +607,16 @@ class PicastApi:
 
     def _with_retries(self, method: str, path: str, body: bytes, headers: dict[str, str],
                       timeout: Optional[float] = None) -> dict[str, Any]:
+        """Anfrage mit höchstens ``retry_count`` Wiederholungen (Standard 1, wie die Firmware).
+
+        Nicht wiederholt wird, wenn der Server es ausschließt (400, 401, 413, 415, 429 oder
+        ``"retryable": false``) und wenn die erste Anfrage schon die ganze Zeitgrenze
+        gebraucht hat: Dann hängt der Server oder das Netz, und ein Kind würde noch einmal
+        so lange warten (Regel aus ``kb_retry_decide`` der Firmware).
+        """
         last_error: Optional[Exception] = None
+        started = self.clock()
+        limit = self.config.request_timeout_seconds if timeout is None else timeout
         for attempt in range(self.config.retry_count + 1):
             try:
                 status, _response_headers, payload = self._request(method, path, body, headers, timeout=timeout)
@@ -482,7 +632,8 @@ class PicastApi:
             except (TimeoutError, OSError, ApiError) as exc:
                 last_error = exc
                 retryable = not isinstance(exc, ApiError) or exc.retryable
-                if attempt >= self.config.retry_count or not retryable:
+                time_used_up = self.clock() - started >= limit
+                if attempt >= self.config.retry_count or not retryable or time_used_up:
                     raise
                 delay = self.config.retry_backoff_seconds * (attempt + 1)
                 LOG.warning("API-Versuch %d fehlgeschlagen (%s), neuer Versuch in %.1fs", attempt + 1, exc, delay)
@@ -529,7 +680,7 @@ class PicastApi:
             return exc.code, dict(exc.headers.items()), exc.read()
         except URLError as exc:
             raise OSError(str(exc.reason)) from exc
-        except OSError as exc:
+        except OSError:
             raise
 
 
@@ -566,6 +717,8 @@ class KunibertClient:
     state_history: list[ClientState] = field(default_factory=list)
     # Uhr für die Zeitmessung (Tests setzen eine eigene).
     clock: Callable[[], float] = time.monotonic
+    # Warten zwischen Verbindungsversuchen (Tests setzen eine eigene Funktion).
+    sleep: Callable[[float], None] = time.sleep
 
     def transition(self, new_state: ClientState) -> None:
         allowed = {
@@ -604,8 +757,8 @@ class KunibertClient:
     def run(self) -> None:
         try:
             self.transition(ClientState.WIFI_CONNECTING)
-            if not self.config.dry_run and not self.api.health():
-                raise ApiError("picastAI Health-Endpunkt nicht erreichbar", retryable=True)
+            if not self.wait_for_server():
+                return
             self.transition(ClientState.MIC_OFF if self.buttons.mic_off else ClientState.READY)
             LOG.info("Kunibert bereit. Sprechtaste gedrückt halten oder Erzähltaste drücken.")
             while not self.stop_requested:
@@ -623,6 +776,34 @@ class KunibertClient:
                     pass
         finally:
             self.shutdown()
+
+    def wait_for_server(self) -> bool:
+        """Wartet beim Start, bis der Server antwortet. False nur, wenn das Beenden verlangt wurde.
+
+        Früher beendete sich der Client, wenn der Server beim Start nicht erreichbar war
+        (WLAN noch nicht da, Router startet noch). Jetzt zeigt die LED den Fehler, und der
+        Client versucht es alle ``connect_retry_seconds`` wieder, ohne Neustart des Dienstes.
+        """
+        if self.config.dry_run:
+            return True
+        while not self.stop_requested:
+            try:
+                if self.api.health():
+                    return True
+                reason = "Health-Endpunkt meldet nicht ok"
+            except (ApiError, OSError) as exc:
+                reason = str(exc)
+            LOG.warning("Server nicht erreichbar (%s); neuer Versuch in %.0f s",
+                        reason, self.config.connect_retry_seconds)
+            if self.state != ClientState.ERROR:
+                self.transition(ClientState.ERROR)
+            # In kleinen Schritten warten, damit ein Beenden (SIGTERM) schnell greift.
+            waited = 0.0
+            while waited < self.config.connect_retry_seconds and not self.stop_requested:
+                step = min(0.5, self.config.connect_retry_seconds - waited)
+                self.sleep(step)
+                waited += step
+        return False
 
     def step(self) -> None:
         if self.buttons.mic_off:
@@ -673,13 +854,13 @@ class KunibertClient:
             LOG.info("Aufnahme zu kurz; keine Anfrage gesendet")
             self.transition(ClientState.READY)
             return
+        self._warn_if_silent(wav_bytes)
         self.transition(ClientState.UPLOADING)
         try:
             response_wav = self.api.ask_question(wav_bytes)
             self.transition(ClientState.PLAYING)
             self._log_wait("frage", recording_ended)
-            self.audio_out.play_wav(response_wav)
-            self.transition(ClientState.MIC_OFF if self.buttons.mic_off else ClientState.READY)
+            self._play(response_wav)
         except Exception as exc:
             self.handle_error(exc)
 
@@ -690,10 +871,35 @@ class KunibertClient:
             response_wav = self.api.request_story()
             self.transition(ClientState.PLAYING)
             self._log_wait("erzaehltaste", button_pressed)
-            self.audio_out.play_wav(response_wav)
-            self.transition(ClientState.MIC_OFF if self.buttons.mic_off else ClientState.READY)
+            self._play(response_wav)
         except Exception as exc:
             self.handle_error(exc)
+
+    def _play(self, response_wav: bytes) -> None:
+        """Spielt die Antwort; ein Beenden des Dienstes bricht die Wiedergabe ab."""
+        self.audio_out.play_wav(response_wav, should_stop=lambda: self.stop_requested)
+        if self.stop_requested:
+            self.transition(ClientState.SHUTDOWN)
+            return
+        self._discard_pending_presses()
+        self.transition(ClientState.MIC_OFF if self.buttons.mic_off else ClientState.READY)
+
+    def _discard_pending_presses(self) -> None:
+        # Nur die Tastatur im Probelauf merkt sich Drücke; echte Taster melden ihren Zustand.
+        discard = getattr(self.buttons, "discard_pending", None)
+        if callable(discard):
+            discard()
+
+    @staticmethod
+    def _warn_if_silent(wav_bytes: bytes) -> None:
+        """Hinweis im Protokoll, wenn die Aufnahme praktisch stumm ist. Gesendet wird trotzdem:
+        Der Server antwortet dann mit „nicht verstanden“. Die Zeile enthält nur eine Zahl."""
+        peak = pcm16_peak(wav_bytes)
+        if peak is not None and peak < SILENT_PEAK:
+            LOG.warning(
+                "Die Aufnahme ist praktisch stumm (Spitzenwert %d von 32767). Mikrofon prüfen: "
+                "richtiges Gerät (KUNIBERT_INPUT_DEVICE), Pegel, unter Windows auch "
+                "Einstellungen > Datenschutz > Mikrofon.", peak)
 
     def _log_wait(self, mode: str, since: float) -> None:
         """Loggt, wie lange das Kind gewartet hat: bei einer Frage vom Ende der Aufnahme, bei der
@@ -709,6 +915,7 @@ class KunibertClient:
         # Kein automatischer Dauer-Retry: bei der nächsten Schleife zurück auf READY.
         time.sleep(1.0)
         if not self.stop_requested:
+            self._discard_pending_presses()
             self.transition(ClientState.MIC_OFF if self.buttons.mic_off else ClientState.READY)
 
     def _has_audio(self, wav_bytes: bytes) -> bool:
@@ -731,7 +938,14 @@ class KunibertClient:
                 close()
 
 
-def build_client(config: ClientConfig) -> KunibertClient:
+def build_client(config: ClientConfig, keyboard: bool = False) -> KunibertClient:
+    if keyboard:
+        # Probelauf am Rechner: echtes Mikrofon und echter Lautsprecher, Tastatur statt GPIO.
+        keys = KeyboardButtons()
+        sound = SoundDeviceAudio(config)
+        client = KunibertClient(config, PicastApi(config), sound, sound, keys, ConsoleLed())
+        keys.on_quit = lambda: setattr(client, "stop_requested", True)
+        return client
     if config.dry_run:
         buttons: Buttons = DryRunButtons()
         audio_in: AudioInput = DryRunAudio(config)
@@ -749,6 +963,8 @@ def build_client(config: ClientConfig) -> KunibertClient:
 def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Ritter Kunibert Raspberry-Pi-Client")
     parser.add_argument("--dry-run", action="store_true", help="ohne GPIO/Audio-Hardware starten")
+    parser.add_argument("--keyboard", action="store_true",
+                        help="Probelauf am Rechner: Tastatur statt Taster, Mikrofon und Lautsprecher des Rechners")
     parser.add_argument("--debug", action="store_true", help="Debug-Logging aktivieren")
     parser.add_argument("--once", choices=["health", "story"], help="einmaliger Diagnose-/Story-Test")
     return parser.parse_args(argv)
@@ -770,7 +986,12 @@ def main(argv: Optional[list[str]] = None) -> int:
             wav = api.request_story()
             print(f"Story-Audio empfangen: {len(wav)} Bytes")
             return 0
-    client = build_client(config)
+    try:
+        client = build_client(config, keyboard=args.keyboard)
+    except (HardwareError, ApiError) as exc:
+        # Klare Meldung statt Traceback (zum Beispiel fehlt sounddevice oder das Token).
+        LOG.error("Kunibert kann nicht starten: %s", exc)
+        return 1
     signal.signal(signal.SIGTERM, lambda _signum, _frame: setattr(client, "stop_requested", True))
     client.run()
     return 0 if client.last_error is None else 1

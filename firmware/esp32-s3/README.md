@@ -55,7 +55,7 @@ kunibert> neustart
 **Flash-Aufteilung:** `partitions.csv` legt zwei App-Plätze von je 3 MB an (braucht 8 MB Flash, also Module N8 oder N16). Damit sind später Updates über Funk möglich, ohne das Gerät neu aufzuteilen. Der Rückfall ist eingeschaltet: Eine neue Firmware gilt erst als gut, wenn sie WLAN und Server erreicht hat; sonst startet beim nächsten Start wieder die alte. **Das Update selbst gibt es noch nicht** (es braucht signierte Firmware und eine Stelle auf dem Server; nicht entworfen). Wer von einer älteren Fassung kommt: einmal `idf.py erase-flash`, dann neu aufspielen und einrichten.
 
 **Was die Firmware tut (wie der Pi-Client):**
-- Start: WLAN, dann `/health`. Erst danach leuchtet die LED dauerhaft (bereit).
+- Start: WLAN, dann `/health`. Erst danach leuchtet die LED dauerhaft (bereit). Fehlt WLAN oder Server, blinkt die LED schnell, und das Gerät versucht es alle 30 Sekunden wieder, auch das WLAN (kein Neustart nötig, wenn der Router später startet).
 - Sprechtaste halten: Aufnahme (LED blinkt schnell), höchstens 15 s. Kürzer als 0,35 s: nichts senden.
 - Schalter „Mikrofon aus“: Das Mikrofon wird nicht gelesen. Wird er während der Aufnahme umgelegt, wird die Aufnahme verworfen und nichts gesendet.
 - Erzähltaste: nächster Teil der Geschichte.
