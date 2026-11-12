@@ -349,14 +349,22 @@ app.post(
       if (config.testTranscript && req.body.text) {
         transcript = String(req.body.text);
       } else if (req.file) {
+        // Nur eine kaputte Aufnahme ist "bad_audio". Ein Ausfall der Spracherkennung ist ein
+        // Fehler des Dienstes (503/502 im äußeren catch), keine kaputte Aufnahme. Liefert die
+        // Erkennung keinen Text oder ist die Aufnahme stumm, antwortet der Erzähler mit
+        // "nicht verstanden" wie bei /v1/device/question (früher: erfundener Ersatztext).
+        let audioOk = true;
         try {
           decodeWavHeader(req.file.buffer);
-          const typed = config.testTranscript && typeof req.body.transcript === 'string' ? req.body.transcript : '';
-          transcript = typed || await transcribeOrEmpty(req.file.buffer, timer) || 'Frage von Ritter Kunibert Kind';
-        } catch (wavErr) {
+        } catch {
+          audioOk = false;
           if (mode === 'frage') {
             return res.status(400).json({ error: 'bad_audio' });
           }
+        }
+        if (audioOk) {
+          const typed = config.testTranscript && typeof req.body.transcript === 'string' ? req.body.transcript.slice(0, 1000) : '';
+          transcript = typed || (isSilentPcm16(req.file.buffer) ? '' : await transcribeOrEmpty(req.file.buffer, timer));
         }
       } else if (mode === 'frage') {
         return res.status(400).json({ error: 'audio_required' });
