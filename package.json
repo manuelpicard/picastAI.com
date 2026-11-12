@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
+    "test:e2e": "node --test deploy/dryrun/pi-e2e.test.mjs",
     "test:firestore": "node --import tsx --test server-api/firestore.integration.test.ts",
     "build": "tsc && vite build",
     "start": "tsx server.ts",
