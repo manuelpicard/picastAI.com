@@ -187,7 +187,7 @@ async function synthesizeIfConfigured(result: Awaited<ReturnType<Brain['handle']
 }
 
 // ------------------------------------------------------------
-// picastAI.com Geräte-Schnittstelle für Raspberry Pi Zero 2 W Prototyp
+// picastAI.com Geräte-Schnittstelle (Pi-5-Prototyp und ESP32-S3-Firmware)
 // ------------------------------------------------------------
 
 app.post(

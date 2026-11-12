@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { Brain, cleanState, cleanText, extractWishKeyword, MAX_UTTERANCE_CHARS, trimWords } from './brain.js';
+import { Brain, cleanState, cleanText, extractWishKeyword, FALLBACK_ANSWER_DE, MAX_UTTERANCE_CHARS, trimWords } from './brain.js';
 import type { LlmJsonRequest, LlmProvider } from './llm.js';
 import { EPISODE_CLOSING, STORY_CLOSING } from './prompts.js';
 import { SAFETY_RESPONSE_DE, UNCLEAR_RESPONSE_DE } from './safety.js';
@@ -271,4 +271,39 @@ test('Erzähltaste (Modus weiter): setzt die Folge bis Teil 5 fort und beginnt d
   assert.equal(next.story_state.part, 1);
   assert.equal(next.story_state.ep, 3, 'neue Folge');
   assert.equal(next.story_state.done, false);
+});
+
+test('Modell stuft als unklar ein: Bitte um Wiederholung statt Ersatzantwort', async () => {
+  const llm = new FakeLlm([answer('', 'unklar')]);
+  const result = await new Brain(llm).handle('frage', 'brmm fff lala', {});
+  assert.equal(result.kind, 'hinweis');
+  assert.equal(result.fixed, 'unklar');
+  assert.equal(result.speech, UNCLEAR_RESPONSE_DE);
+  assert.equal(llm.calls.length, 1);
+});
+
+test('Ersatzantwort ohne Sprachmodell spricht die Äußerung des Kindes nie nach', async () => {
+  const result = await new Brain(null).handle('frage', 'was ist ein Geheimwort-Quokka du Blödmann', {});
+  assert.equal(result.kind, 'frage');
+  assert.equal(result.speech, FALLBACK_ANSWER_DE);
+  assert.ok(!/quokka|blödmann/i.test(result.speech));
+});
+
+test('Abgelehnte Antwort des Modells: fester Ersatztext ohne Zitat der Frage', silent(async () => {
+  const llm = new FakeLlm([answer('Schau mal auf www.beispiel.de nach.')]);
+  const result = await new Brain(llm).handle('frage', 'wo finde ich Geheimwort-Okapi', {});
+  assert.equal(result.speech, FALLBACK_ANSWER_DE);
+}));
+
+test('Ersatzantwort erkennt ganze Wörter: "Schwein" ist nicht "weinen", "Weiterbildung" nicht "weiter"', async () => {
+  const brain = new Brain(null);
+  const pig = await brain.handle('frage', 'warum grunzt ein Schwein', {});
+  assert.equal(pig.speech, FALLBACK_ANSWER_DE);
+  const sad = await brain.handle('frage', 'ich muss immer weinen', {});
+  assert.match(sad.speech, /traurig zu sein/);
+  const training = await brain.handle('frage', 'was ist eine Weiterbildung', {});
+  assert.equal(training.kind, 'frage');
+  assert.equal(training.story_state.part, 0);
+  const more = await brain.handle('frage', 'bitte weiter', {});
+  assert.equal(more.story_state.part, 1);
 });

@@ -60,7 +60,7 @@ test('AnthropicProvider sendet erzwungenen Tool-Aufruf und liefert das Tool-Erge
 
 test('AnthropicProvider: HTTP-Fehler, fehlendes Tool-Ergebnis und Netzwerkfehler sind LlmError', async () => {
   const make = (handler: (url: string, init: RequestInit) => Response | Promise<Response>) =>
-    new AnthropicProvider({ apiKey: 'k', model: 'm', fetchImpl: fakeFetch(handler) });
+    new AnthropicProvider({ apiKey: 'k', model: 'm', retryDelayMs: 0, fetchImpl: fakeFetch(handler) });
 
   await assert.rejects(
     () => make(() => new Response('overloaded', { status: 529 })).generateJson(REQUEST),
@@ -134,4 +134,44 @@ test('AnthropicProvider: eine kürzere Frist aus dem Zeitbudget der Anfrage gilt
     (error: unknown) => error instanceof LlmError && /Zeitüberschreitung/.test(error.message)
   );
   assert.ok(Date.now() - started < 5_000);
+});
+
+const OK_BODY = JSON.stringify({ content: [{ type: 'tool_use', name: 'antwort', input: { category: 'frage', done: true } }] });
+
+test('AnthropicProvider: vorübergehender Fehler (529, 429, Netzwerk) wird genau einmal wiederholt', async () => {
+  for (const first of [() => new Response('overloaded', { status: 529 }), () => new Response('rate', { status: 429 }), () => { throw new Error('ECONNRESET'); }]) {
+    let calls = 0;
+    const provider = new AnthropicProvider({
+      apiKey: 'k', model: 'm', retryDelayMs: 0,
+      fetchImpl: fakeFetch(() => (++calls === 1 ? first() : new Response(OK_BODY, { status: 200 }))),
+    });
+    assert.deepEqual(await provider.generateJson(REQUEST), { category: 'frage', done: true });
+    assert.equal(calls, 2);
+  }
+  let calls = 0;
+  const always = new AnthropicProvider({
+    apiKey: 'k', model: 'm', retryDelayMs: 0,
+    fetchImpl: fakeFetch(() => { calls++; return new Response('overloaded', { status: 529 }); }),
+  });
+  await assert.rejects(() => always.generateJson(REQUEST), LlmError);
+  assert.equal(calls, 2, 'höchstens ein zweiter Versuch');
+});
+
+test('AnthropicProvider: keine Wiederholung bei 400/401, bei fehlendem Tool-Ergebnis oder zu wenig Restzeit', async () => {
+  for (const status of [400, 401, 404]) {
+    let calls = 0;
+    const provider = new AnthropicProvider({
+      apiKey: 'k', model: 'm', retryDelayMs: 0,
+      fetchImpl: fakeFetch(() => { calls++; return new Response('nein', { status }); }),
+    });
+    await assert.rejects(() => provider.generateJson(REQUEST), LlmError);
+    assert.equal(calls, 1, `HTTP ${status}`);
+  }
+  let calls = 0;
+  const short = new AnthropicProvider({
+    apiKey: 'k', model: 'm', retryDelayMs: 0,
+    fetchImpl: fakeFetch(() => { calls++; return new Response('overloaded', { status: 529 }); }),
+  });
+  await assert.rejects(() => short.generateJson({ ...REQUEST, timeoutMs: 2_000 }), LlmError);
+  assert.equal(calls, 1, 'unter 3 s Restzeit kein zweiter Versuch');
 });

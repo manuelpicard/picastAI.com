@@ -206,3 +206,18 @@ test('Store: Laden schlägt fehl, wenn der Store nicht erreichbar ist (Server st
     await assert.rejects(() => new DeviceRegistry(store).loadFromStore(), /nicht erreichbar/);
   });
 });
+
+test('Widerruf ist dauerhaft: dieselbe Geräte-ID lässt sich nicht neu anlegen', async () => {
+  await withEnv({ ...CLEAN, NODE_ENV: 'production' }, async () => {
+    const store = new FakeStore();
+    const registry = new DeviceRegistry(store);
+    const { deviceId, token } = await registry.register('kinderzimmer');
+    await registry.revokeAndPersist(deviceId);
+    await assert.rejects(() => registry.register('kinderzimmer'), /widerrufen/);
+    assert.equal(registry.verify(deviceId, token), false);
+    assert.equal(store.entries.get(deviceId)!.revoked, true, 'der gespeicherte Widerruf bleibt');
+    // Eine neue ID geht weiter.
+    const fresh = await registry.register('kinderzimmer-2');
+    assert.equal(registry.verify(fresh.deviceId, fresh.token), true);
+  });
+});

@@ -411,7 +411,7 @@ describe('picastAI-API (echter Server)', () => {
   it('Zeitmessung: je Anfrage eine Zeile mit allen Werten, aber ohne Texte, Geräte-ID oder Token', async () => {
     const device = await registerDevice();
     const original = fake.state.transcript;
-    // Dieser Satz landet im festen Antworttext ("Das ist eine spannende Frage zu ..."): er wird also gesprochen, darf aber nicht ins Protokoll.
+    // Der Satz des Kindes wird seit dem 12.11.2026 nicht mehr nachgesprochen (fester Ersatztext ohne Zitat). Er darf auch nicht ins Protokoll.
     fake.state.transcript = 'Geheimwort-Quokka was ist das';
     const since = output.length;
     try {
@@ -423,8 +423,12 @@ describe('picastAI-API (echter Server)', () => {
     const story = await postStory(device);
     assert.equal(story.status, 200, await story.clone().text());
     assert.ok(
-      fake.state.speechInputs.some((text) => text.includes('Geheimwort-Quokka')),
-      'Vorbedingung: der Satz des Kindes wird tatsächlich gesprochen'
+      fake.state.speechInputs.some((text) => text.startsWith('Das ist eine gute Frage')),
+      'Vorbedingung: ohne Sprachmodell wird der feste Ersatztext gesprochen'
+    );
+    assert.ok(
+      !fake.state.speechInputs.some((text) => text.includes('Quokka')),
+      'der Satz des Kindes darf nicht nachgesprochen werden'
     );
 
     const lines = await timingLinesSince(since, 2);
@@ -448,7 +452,7 @@ describe('picastAI-API (echter Server)', () => {
 
     // Keine Inhalte: weder Satz des Kindes noch gesprochener Text noch Geräte-ID oder Token irgendwo im neuen Protokoll.
     const newOutput = output.slice(since);
-    for (const secret of ['Quokka', 'spannende Frage', 'Dachzimmer', 'Kunibert erwachte', device.id, device.token]) {
+    for (const secret of ['Quokka', 'gute Frage', 'Dachzimmer', 'Kunibert erwachte', device.id, device.token]) {
       assert.ok(!newOutput.includes(secret), `"${secret}" darf nicht im Protokoll stehen`);
     }
   });

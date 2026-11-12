@@ -27,7 +27,7 @@ export class DeviceRegistry {
 
   constructor(private readonly store: DeviceStore | null = null) {
     // Entwicklungsgeräte mit bekannten Tokens gibt es nur außerhalb von
-    // Produktion. Für den Pi Zero 2 W-Prototyp wird ein eigener Token über
+    // Produktion. Für das erste Gerät wird ein eigener Token über
     // Umgebungsvariablen provisioniert; echte Tokens stehen nicht im Quellcode.
     if (process.env.NODE_ENV !== 'production') {
       this.addDeviceWithRawToken('prototype-1', 'test-token-kunibert-2026', 'Raspberry Pi Prototyp #1');
@@ -40,7 +40,7 @@ export class DeviceRegistry {
       this.addDeviceWithRawToken(
         configuredDeviceId,
         configuredToken,
-        process.env.PICASTAI_DEVICE_NAME || 'picastAI Pi Zero 2 W Prototyp'
+        process.env.PICASTAI_DEVICE_NAME || 'picastAI Prototyp'
       );
     }
   }
@@ -106,6 +106,11 @@ export class DeviceRegistry {
   /** Neues Gerät anlegen und dauerhaft speichern; bei Speicherfehler wird zurückgerollt. */
   public async register(deviceId: string, name?: string): Promise<{ deviceId: string; token: string }> {
     const previous = this.devices.get(deviceId);
+    // Ein Widerruf ist dauerhaft (siehe docs/picastAI-Pi-API.md). Ohne diese Sperre würde ein
+    // erneutes Anlegen derselben ID das Gerät still wieder zulassen.
+    if (previous?.revoked) {
+      throw new Error('Diese Geräte-ID ist widerrufen. Bitte eine neue Geräte-ID verwenden.');
+    }
     const created = this.add(deviceId, name);
     if (this.store) {
       try {

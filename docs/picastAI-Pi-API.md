@@ -32,9 +32,9 @@ Formularfelder:
 - `locale`: derzeit `de-DE`
 - `age_band`: derzeit `6-10`
 - `session_id`: temporäre Gerätekennung
-- `transcript`: optionales Diagnosefeld für lokale Tests; fehlt es, nutzt der Server den konfigurierten Spracherkennungsdienst
+- `transcript`: optionales Diagnosefeld für Tests (Text statt Spracherkennung, höchstens 1000 Zeichen); fehlt es, nutzt der Server den konfigurierten Spracherkennungsdienst. Das Feld wirkt auch mit `NODE_ENV=production` (die Tests am echten Server nutzen es); Geräte senden es nicht. Ob es im Betrieb abgeschaltet werden soll, ist offen
 
-Die Gegenstelle validiert das WAV-Format. Wenn `PICASTAI_STT_URL` und `PICASTAI_STT_MODEL` gesetzt sind, wird die Aufnahme serverseitig über einen OpenAI-kompatiblen Spracherkennungsdienst transkribiert, in der Regel ein eigener Server. Die Sprachausgabe läuft entsprechend über `PICASTAI_TTS_URL`, `PICASTAI_TTS_MODEL` und `PICASTAI_TTS_VOICE`; ohne diese Angaben bleibt der Dienst aus (siehe `docs/LLM-Anbieter.md`). Alternativ lässt sich nur die Sprachausgabe auf Google Cloud Text-to-Speech umstellen (`PICASTAI_TTS_PROVIDER=google`, eingeführt mit PR #14); die Einstellungen dazu stehen in `docs/LLM-Anbieter.md` und sind hier nicht wiederholt. Der Transcript-Text wird anschließend durch die Sicherheitsweiche und den Erzählmotor verarbeitet. Liefert die Erkennung keinen Text (Stille, Rauschen), ist das kein Fehler: der Server antwortet mit dem festen Hinweis „Das habe ich leider nicht richtig verstanden“ (HTTP 200).
+Die Gegenstelle validiert das WAV-Format. Wenn `PICASTAI_STT_URL` und `PICASTAI_STT_MODEL` gesetzt sind, wird die Aufnahme serverseitig über einen OpenAI-kompatiblen Spracherkennungsdienst transkribiert, in der Regel ein eigener Server. Die Sprachausgabe läuft entsprechend über `PICASTAI_TTS_URL`, `PICASTAI_TTS_MODEL` und `PICASTAI_TTS_VOICE`; ohne diese Angaben bleibt der Dienst aus (siehe `docs/LLM-Anbieter.md`). Alternativ lässt sich nur die Sprachausgabe auf Google Cloud Text-to-Speech umstellen (`PICASTAI_TTS_PROVIDER=google`, eingeführt mit PR #14); die Einstellungen dazu stehen in `docs/LLM-Anbieter.md` und sind hier nicht wiederholt. Der Transcript-Text wird anschließend durch die Sicherheitsweiche und den Erzählmotor verarbeitet. Liefert die Erkennung keinen Text (Stille, Rauschen), ist das kein Fehler: der Server antwortet mit dem festen Hinweis „Das habe ich leider nicht richtig verstanden“ (HTTP 200). Denselben Hinweis gibt es, wenn das Sprachmodell die Äußerung als unverständlich einstuft. Fehlt das Sprachmodell oder wird seine Antwort abgelehnt, spricht der Server einen festen Ersatztext; die Äußerung des Kindes wird dabei nie nachgesprochen.
 
 Beispielantwort:
 
@@ -139,7 +139,7 @@ Für eine Produktionsumgebung sollte der Token nicht als einzelne globale Umgebu
 - Beim Start lädt der Server die Geräteliste. Ist Firestore dann nicht erreichbar, startet er nicht (fail-closed), damit widerrufene Geräte nicht wieder gültig werden.
 - `POST /api/devices` speichert das Gerät, bevor es den Token ausgibt; schlägt das Speichern fehl, antwortet die API mit `503 {"error":"device_store_unavailable"}` und legt nichts an.
 - `POST /api/devices/:id/revoke` wirkt sofort im Speicher und antwortet mit `{"success":true,"persisted":true|false}`. Bei `persisted:false` war Firestore nicht erreichbar; der Widerruf gilt bis zum nächsten Neustart und sollte dann wiederholt werden.
-- Ein gespeicherter Widerruf gilt auch für per Umgebung provisionierte Geräte. Soll ein widerrufenes Gerät wieder zugelassen werden, ist eine neue Geräte-ID oder das Löschen des Firestore-Dokuments nötig.
+- Ein gespeicherter Widerruf gilt auch für per Umgebung provisionierte Geräte. Soll ein widerrufenes Gerät wieder zugelassen werden, ist eine neue Geräte-ID oder das Löschen des Firestore-Dokuments nötig. `POST /api/devices` mit einer widerrufenen ID antwortet deshalb mit HTTP 400 und lässt das Gerät nicht wieder zu.
 - Das Admin-SDK benötigt Zugangsdaten (z. B. Application Default Credentials) mit Schreib-/Leserecht auf Firestore.
 
 ## Lokaler Test
