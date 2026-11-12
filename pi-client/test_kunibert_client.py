@@ -15,6 +15,8 @@ from kunibert_client import (
     GpioButtons,
     GpioStatusLed,
     HardwareError,
+    KeyboardButtons,
+    ConsoleLed,
     KunibertClient,
     NoRedirectHandler,
     PicastApi,
@@ -237,6 +239,56 @@ class StartupTests(unittest.TestCase):
         self.assertIsNone(client.last_error)
         self.assertTrue(buttons.closed)
         self.assertTrue(led.closed)
+
+
+class KeyboardButtonsTests(unittest.TestCase):
+    def test_enter_toggles_recording_and_g_presses_story_once(self):
+        keys = KeyboardButtons(start_reader=False)
+        self.assertFalse(keys.speech_pressed)
+        keys.handle_line("\n")
+        self.assertTrue(keys.speech_pressed)
+        keys.handle_line("\n")
+        self.assertFalse(keys.speech_pressed)
+        keys.handle_line("g\n")
+        self.assertTrue(keys.story_pressed)
+        self.assertFalse(keys.story_pressed, "ein Tastendruck gilt nur einmal")
+        self.assertFalse(keys.mic_off)
+
+    def test_q_and_end_of_input_request_quit_and_stop_recording(self):
+        quits = []
+        keys = KeyboardButtons(start_reader=False, on_quit=lambda: quits.append(True))
+        keys.handle_line("\n")
+        keys.handle_line("q\n")
+        self.assertEqual(quits, [True])
+        self.assertFalse(keys.speech_pressed)
+
+        done = []
+        reader = KeyboardButtons(lines=["g\n"], on_quit=lambda: done.append(True))
+        reader._thread.join(timeout=2)
+        self.assertEqual(done, [True], "Ende der Eingabe beendet den Client")
+        self.assertTrue(reader.story_pressed)
+
+    def test_keyboard_run_question_then_story_then_quit(self):
+        config = ClientConfig(dry_run=True, min_record_seconds=0.1)
+        keys = KeyboardButtons(start_reader=False)
+        api = FakeApi()
+        out = CaptureAudioOutput()
+        client = KunibertClient(config, api, DryRunAudio(config), out, keys, ConsoleLed())
+        keys.on_quit = lambda: setattr(client, "stop_requested", True)
+        client.transition(ClientState.WIFI_CONNECTING)
+        client.transition(ClientState.READY)
+        keys.handle_line("\n")   # Aufnahme an (die Attrappe nimmt sofort 0,5 s auf)
+        client.step()
+        self.assertEqual(api.questions, 1)
+        keys.handle_line("\n")   # Aufnahme aus
+        keys.handle_line("g\n")
+        client.step()
+        self.assertEqual(api.stories, 1)
+        client.step()
+        self.assertEqual(api.stories, 1)
+        self.assertEqual(len(out.played), 2)
+        keys.handle_line("q\n")
+        self.assertTrue(client.stop_requested)
 
 
 class KunibertClientTests(unittest.TestCase):

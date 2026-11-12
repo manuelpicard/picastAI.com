@@ -373,6 +373,81 @@ class DryRunLed:
         LOG.info("LED: %s", mode)
 
 
+class KeyboardButtons:
+    """Tastatur statt Taster: für einen Probelauf am Rechner ohne Pi (``--keyboard``).
+
+    Eingabetaste: Aufnahme beginnen; noch einmal Eingabetaste: Aufnahme beenden und senden.
+    ``g`` + Eingabetaste: Erzähltaste. ``q`` + Eingabetaste (oder Ende der Eingabe): beenden.
+    Einen Mikrofon-Aus-Schalter gibt es hier nicht.
+    """
+
+    mic_off = False
+
+    def __init__(self, lines: Optional[Any] = None, on_quit: Optional[Callable[[], None]] = None,
+                 start_reader: bool = True):
+        self.on_quit = on_quit
+        self._lock = threading.Lock()
+        self._speech = False
+        self._story = False
+        self._thread: Optional[threading.Thread] = None
+        if start_reader:
+            source = sys.stdin if lines is None else lines
+            self._thread = threading.Thread(target=self._read, args=(source,), name="kunibert-tastatur", daemon=True)
+            self._thread.start()
+
+    def _read(self, source: Any) -> None:
+        for line in source:
+            self.handle_line(line)
+        self._quit()
+
+    def _quit(self) -> None:
+        with self._lock:
+            self._speech = False
+        if self.on_quit:
+            self.on_quit()
+
+    def handle_line(self, line: str) -> None:
+        command = line.strip().lower()
+        if command in {"q", "quit", "ende"}:
+            self._quit()
+            return
+        with self._lock:
+            if command == "":
+                self._speech = not self._speech
+            elif command in {"g", "geschichte"}:
+                self._story = True
+            else:
+                print("Eingabetaste = sprechen/senden, g = Geschichte, q = Ende", flush=True)
+
+    @property
+    def speech_pressed(self) -> bool:
+        with self._lock:
+            return self._speech
+
+    @property
+    def story_pressed(self) -> bool:
+        # Ein Tastendruck gilt genau einmal.
+        with self._lock:
+            pressed, self._story = self._story, False
+            return pressed
+
+
+class ConsoleLed:
+    """Zeigt den Zustand als Textzeile statt mit einer LED (Probelauf am Rechner)."""
+
+    _TEXT = {
+        "ready": "Bereit. Eingabetaste = sprechen, g = Geschichte, q = Ende",
+        "recording": "Aufnahme läuft. Eingabetaste = fertig und senden",
+        "busy": "Kunibert arbeitet ...",
+        "error": "Fehler (siehe Meldung oben)",
+    }
+
+    def set(self, mode: str) -> None:
+        text = self._TEXT.get(mode)
+        if text:
+            print(f"[{text}]", flush=True)
+
+
 def encode_wav(pcm: bytes, sample_rate: int, channels: int, sample_width: int) -> bytes:
     out = io.BytesIO()
     with wave.open(out, "wb") as wav:
@@ -765,7 +840,14 @@ class KunibertClient:
                 close()
 
 
-def build_client(config: ClientConfig) -> KunibertClient:
+def build_client(config: ClientConfig, keyboard: bool = False) -> KunibertClient:
+    if keyboard:
+        # Probelauf am Rechner: echtes Mikrofon und echter Lautsprecher, Tastatur statt GPIO.
+        keys = KeyboardButtons()
+        sound = SoundDeviceAudio(config)
+        client = KunibertClient(config, PicastApi(config), sound, sound, keys, ConsoleLed())
+        keys.on_quit = lambda: setattr(client, "stop_requested", True)
+        return client
     if config.dry_run:
         buttons: Buttons = DryRunButtons()
         audio_in: AudioInput = DryRunAudio(config)
@@ -783,6 +865,8 @@ def build_client(config: ClientConfig) -> KunibertClient:
 def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Ritter Kunibert Raspberry-Pi-Client")
     parser.add_argument("--dry-run", action="store_true", help="ohne GPIO/Audio-Hardware starten")
+    parser.add_argument("--keyboard", action="store_true",
+                        help="Probelauf am Rechner: Tastatur statt Taster, Mikrofon und Lautsprecher des Rechners")
     parser.add_argument("--debug", action="store_true", help="Debug-Logging aktivieren")
     parser.add_argument("--once", choices=["health", "story"], help="einmaliger Diagnose-/Story-Test")
     return parser.parse_args(argv)
@@ -804,7 +888,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             wav = api.request_story()
             print(f"Story-Audio empfangen: {len(wav)} Bytes")
             return 0
-    client = build_client(config)
+    client = build_client(config, keyboard=args.keyboard)
     signal.signal(signal.SIGTERM, lambda _signum, _frame: setattr(client, "stop_requested", True))
     client.run()
     return 0 if client.last_error is None else 1

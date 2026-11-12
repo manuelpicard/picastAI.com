@@ -220,6 +220,22 @@ Nur Health prüfen:
 
 Ohne Pi-Hardware gibt es zwei Prüfungen:
 
+### Probelauf am Rechner, ohne Pi (`--keyboard`)
+
+Damit lässt sich die ganze Kette (Aufnahme, Server, Spracherkennung, Claude, Sprachausgabe, Abspielen) mit dem Mikrofon und dem Lautsprecher eines normalen Rechners ausprobieren, bevor der Pi da ist. Tastatur statt Taster: Eingabetaste beginnt die Aufnahme, noch einmal Eingabetaste sendet sie; `g` und Eingabetaste ist die Erzähltaste; `q` und Eingabetaste beendet. Stand: mit Attrappen getestet, **an keinem echten Mikrofon gelaufen**. Nur Erwachsene als Tester.
+
+In PowerShell auf deinem Rechner, im Ordner des Repos (Python 3.10 oder neuer):
+
+```powershell
+py -m pip install sounddevice
+$env:PICASTAI_API_BASE_URL = "https://<Hostname des Servers>"
+$env:PICASTAI_DEVICE_ID = "<Geräte-ID aus /etc/kunibert/kunibert.env>"
+$env:PICASTAI_DEVICE_TOKEN = "<Geräte-Token, nur hier eintippen>"
+py pi-client\kunibert_client.py --keyboard
+```
+
+Das Token steht danach im Verlauf dieses PowerShell-Fensters: Fenster am Ende schließen. Mikrofon oder Lautsprecher wählen: `KUNIBERT_INPUT_DEVICE`, `KUNIBERT_OUTPUT_DEVICE` (Liste: `py -m sounddevice`). Die Wartezeit je Anfrage steht in der Zeile `Zeitmessung ... wartezeit_s=`.
+
 `--dry-run` startet den Zustandsautomaten mit Attrappen für Taster, Mikrofon, Lautsprecher und LED. Es sendet **keine** Anfrage an den Server (auch keinen Health-Check), und die Attrappen drücken nie eine Taste. Der Lauf zeigt nur, dass der Client startet und `READY` erreicht; Server-Adresse und Token spielen dabei keine Rolle:
 
 ```bash
