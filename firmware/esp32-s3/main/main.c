@@ -12,6 +12,8 @@
 #include "sdkconfig.h"
 
 #include "kb_api.h"
+#include "kb_console.h"
+#include "kb_settings.h"
 #include "kb_audio.h"
 #include "kb_board.h"
 #include "kb_state.h"
@@ -159,6 +161,14 @@ void app_main(void)
         err = nvs_flash_init();
     }
     ESP_ERROR_CHECK(err);
+    ESP_ERROR_CHECK(kb_settings_load());
+    // Einrichten über das USB-Kabel (zeige, setze, loesche, neustart). Ohne Konsole läuft das Gerät weiter.
+    if (kb_console_start() != ESP_OK) {
+        ESP_LOGW(TAG, "Serielle Konsole nicht verfügbar");
+    }
+    if (!kb_settings_complete()) {
+        ESP_LOGW(TAG, "Einstellungen unvollständig. Konsole: zeige, setze <name> <wert>, neustart");
+    }
     ESP_ERROR_CHECK(kb_board_init());
     ESP_ERROR_CHECK(kb_audio_init());
     kb_api_new_session();
@@ -166,7 +176,7 @@ void app_main(void)
     go(KB_STATE_WIFI_CONNECTING);
     // Ohne WLAN oder Server gibt es keinen Betrieb: Fehler zeigen und alle 30 s neu prüfen.
     bool wifi_up = kb_wifi_connect() == ESP_OK;
-    while (!wifi_up || kb_api_health(CONFIG_KB_API_BASE_URL) != ESP_OK) {
+    while (!wifi_up || kb_api_health(kb_settings_get(KB_SETTING_API_BASE_URL)) != ESP_OK) {
         if (s_state != KB_STATE_ERROR) {
             go(KB_STATE_ERROR);
         }

@@ -14,6 +14,8 @@
 #include "esp_random.h"
 #include "sdkconfig.h"
 
+#include "kb_settings.h"
+
 #include "kb_audio.h"
 #include "kb_wav.h"
 
@@ -75,9 +77,9 @@ static esp_http_client_handle_t open_client(const char *url, esp_http_client_met
     esp_http_client_handle_t client = esp_http_client_init(&config);
     if (client != NULL && with_auth) {
         char bearer[160];
-        snprintf(bearer, sizeof(bearer), "Bearer %s", CONFIG_KB_DEVICE_TOKEN);
+        snprintf(bearer, sizeof(bearer), "Bearer %s", kb_settings_get(KB_SETTING_DEVICE_TOKEN));
         esp_http_client_set_header(client, "Authorization", bearer);
-        esp_http_client_set_header(client, "X-Device-ID", CONFIG_KB_DEVICE_ID);
+        esp_http_client_set_header(client, "X-Device-ID", kb_settings_get(KB_SETTING_DEVICE_ID));
         memset(bearer, 0, sizeof(bearer));
     }
     return client;
@@ -176,7 +178,7 @@ static esp_err_t read_turn_response(esp_http_client_handle_t client, kb_api_turn
         if (out->http_status == 200 && cJSON_IsString(url) && url->valuestring != NULL &&
             strlen(url->valuestring) < sizeof(out->audio_url)) {
             // Die Antwort darf nur auf den eigenen Server zeigen, sonst ginge das Token woandershin.
-            if (kb_url_same_origin(CONFIG_KB_API_BASE_URL, url->valuestring)) {
+            if (kb_url_same_origin(kb_settings_get(KB_SETTING_API_BASE_URL), url->valuestring)) {
                 strlcpy(out->audio_url, url->valuestring, sizeof(out->audio_url));
                 result = ESP_OK;
             } else {
@@ -199,12 +201,12 @@ esp_err_t kb_api_question(const uint8_t *pcm, size_t pcm_bytes, kb_api_turn_t *o
     }
     memset(out, 0, sizeof(*out));
     if (pcm == NULL || pcm_bytes == 0 || pcm_bytes + KB_WAV_HEADER_SIZE > KB_WAV_UPLOAD_MAX ||
-        !kb_api_base_url_ok(CONFIG_KB_API_BASE_URL)) {
+        !kb_api_base_url_ok(kb_settings_get(KB_SETTING_API_BASE_URL))) {
         return ESP_ERR_INVALID_ARG;
     }
 
     char url[KB_URL_MAX];
-    snprintf(url, sizeof(url), "%s/v1/device/question", CONFIG_KB_API_BASE_URL);
+    snprintf(url, sizeof(url), "%s/v1/device/question", kb_settings_get(KB_SETTING_API_BASE_URL));
 
     static char head[512];
     int head_len = snprintf(head, sizeof(head),
@@ -247,11 +249,11 @@ esp_err_t kb_api_story(kb_api_turn_t *out)
         return ESP_ERR_INVALID_ARG;
     }
     memset(out, 0, sizeof(*out));
-    if (!kb_api_base_url_ok(CONFIG_KB_API_BASE_URL)) {
+    if (!kb_api_base_url_ok(kb_settings_get(KB_SETTING_API_BASE_URL))) {
         return ESP_ERR_INVALID_ARG;
     }
     char url[KB_URL_MAX];
-    snprintf(url, sizeof(url), "%s/v1/device/kunibert-story", CONFIG_KB_API_BASE_URL);
+    snprintf(url, sizeof(url), "%s/v1/device/kunibert-story", kb_settings_get(KB_SETTING_API_BASE_URL));
     char body[160];
     int body_len = snprintf(body, sizeof(body),
                             "{\"locale\":\"de-DE\",\"age_band\":\"6-10\",\"length\":\"short\",\"session_id\":\"%s\"}",
@@ -273,7 +275,7 @@ esp_err_t kb_api_story(kb_api_turn_t *out)
 
 esp_err_t kb_api_play_audio(const char *audio_url)
 {
-    if (audio_url == NULL || !kb_url_same_origin(CONFIG_KB_API_BASE_URL, audio_url)) {
+    if (audio_url == NULL || !kb_url_same_origin(kb_settings_get(KB_SETTING_API_BASE_URL), audio_url)) {
         return ESP_ERR_INVALID_ARG;
     }
     static kb_response_t response;
