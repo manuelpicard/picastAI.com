@@ -5,6 +5,7 @@
 #include <string.h>
 
 #include "esp_log.h"
+#include "esp_ota_ops.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -150,6 +151,20 @@ static void wait_release(bool (*pressed)(void))
     }
 }
 
+// Nach einem Update gilt die neue Firmware erst als gut, wenn WLAN und Server erreicht sind.
+// Ohne diese Bestätigung startet der Bootloader beim nächsten Start wieder die alte Firmware.
+static void confirm_firmware(void)
+{
+    const esp_partition_t *running = esp_ota_get_running_partition();
+    esp_ota_img_states_t state;
+    if (running != NULL && esp_ota_get_state_partition(running, &state) == ESP_OK &&
+        state == ESP_OTA_IMG_PENDING_VERIFY) {
+        if (esp_ota_mark_app_valid_cancel_rollback() == ESP_OK) {
+            ESP_LOGI(TAG, "Neue Firmware bestätigt");
+        }
+    }
+}
+
 void app_main(void)
 {
     ESP_LOGI(TAG, "Ritter Kunibert, Firmware (Entwurf M1 bis M5)");
@@ -185,6 +200,7 @@ void app_main(void)
             ESP_LOGE(TAG, "Kein WLAN. Bitte Zugangsdaten prüfen und neu starten.");
         }
     }
+    confirm_firmware();
     go(kb_board_mic_off() ? KB_STATE_MIC_OFF : KB_STATE_READY);
     ESP_LOGI(TAG, "Kunibert bereit. Sprechtaste halten oder Erzähltaste drücken.");
 
