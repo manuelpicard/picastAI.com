@@ -11,7 +11,7 @@
     "start": "tsx server.ts",
     "ansagen": "tsx server-api/ansagen.ts",
     "lint": "tsc --noEmit",
-    "test": "node --import tsx --test server-api/config.test.ts server-api/http-utils.test.ts server-api/admin-auth.test.ts server-api/provider-errors.test.ts server-api/audio.test.ts server-api/safety.test.ts server-api/devices.test.ts server-api/google-speech.test.ts server-api/pocket-speech.test.ts server-api/voice.test.ts server-api/llm.test.ts server-api/brain.test.ts server-api/story-states.test.ts server-api/timing.test.ts server-api/eval-llm.test.ts server-api/api.test.ts server-api/sicherheit-integration.test.ts server-api/ansagen.test.ts",
+    "test": "node --import tsx --test server-api/config.test.ts server-api/http-utils.test.ts server-api/admin-auth.test.ts server-api/provider-errors.test.ts server-api/audio.test.ts server-api/safety.test.ts server-api/devices.test.ts server-api/google-speech.test.ts server-api/pocket-speech.test.ts server-api/voice.test.ts server-api/llm.test.ts server-api/brain.test.ts server-api/story-states.test.ts server-api/eltern.test.ts server-api/timing.test.ts server-api/eval-llm.test.ts server-api/api.test.ts server-api/sicherheit-integration.test.ts server-api/ansagen.test.ts",
     "eval:llm": "tsx server-api/eval-llm.ts"
   },
   "dependencies": {

@@ -5,9 +5,10 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { DeviceRegistry, DeviceStoreError, RateLimiter, AudioStore } from './server-api/devices.js';
-import { Brain, FALLBACK_ANSWER_DE, StoryState } from './server-api/brain.js';
+import { Brain, FALLBACK_ANSWER_DE, StoryState, type TurnResult } from './server-api/brain.js';
 import { StoryStateStore } from './server-api/story-states.js';
-import { AudioError, decodeWavHeader, isPcmFormat, isSilentPcm16 } from './server-api/audio.js';
+import { AudioError, decodeWavHeader, generateMelodyWav, isPcmFormat, isSilentPcm16 } from './server-api/audio.js';
+import { CONSENT_MISSING_DE, ParentControls, SLEEPING_DE, isValidTime, pairingCodeSpeech, type BlockReason } from './server-api/eltern.js';
 import { config, getSafeConfigSummary, llmConfigWarnings, testSwitchWarnings, ttsProviderWarnings, voiceConfigWarnings } from './server-api/config.js';
 import { isAdminTokenConfigured, verifyAdminAuthorization } from './server-api/admin-auth.js';
 import { VoicePipeline, VoiceProviderError } from './server-api/voice.js';
@@ -47,6 +48,10 @@ const voice = new VoicePipeline(config);
 // auch von Geräten, die sich nie wieder melden.
 const deviceStoryStates = new StoryStateStore();
 setInterval(() => deviceStoryStates.purge(), 60 * 60 * 1000).unref();
+// Eltern-Steuerung: Kopplung, Einwilligung, Schlafmodus, Ruhezeiten (vorläufig nur im RAM).
+const parents = new ParentControls();
+// Falsche Kopplungscodes: höchstens 10 je 10 Minuten und Absender (Schutz vor Raten).
+const pairingLimiter = new RateLimiter(10, 600);
 
 // Multer für WAV Uploads (max 2 MB)
 const upload = multer({
@@ -151,6 +156,41 @@ async function transcribeOrEmpty(wav: Buffer, timer: StageTimer = NO_TIMER): Pro
   return timer.time('erkennung', () => voice.transcribe(wav, budgetTimeoutMs(timer)));
 }
 
+/**
+ * Fester Hinweis statt einer Antwort, wenn das Gerät gerade nicht antworten darf
+ * (keine Einwilligung, Schlafmodus, Ruhezeiten). Ohne Spracherkennung und ohne Sprachmodell.
+ */
+function blockedTurn(reason: Exclude<BlockReason, null>, state: unknown): TurnResult {
+  const consent = reason === 'einwilligung';
+  return {
+    kind: 'hinweis',
+    speech: consent ? CONSENT_MISSING_DE : SLEEPING_DE,
+    story_state: state as StoryState,
+    fixed: consent ? 'einwilligung' : 'schlaf',
+    wav: generateMelodyWav([523.25, 440], [0.3, 0.4], config.audioSampleRate),
+  };
+}
+
+/** Antwortet mit dem festen Hinweis, wenn das Gerät gesperrt ist. Gibt true zurück, wenn geantwortet wurde. */
+async function respondIfBlocked(
+  req: Request,
+  res: Response,
+  deviceId: string,
+  type: 'answer' | 'kunibert_story',
+  timer: TurnTimer
+): Promise<boolean> {
+  const reason = parents.blockReason(deviceId, config.requireConsent);
+  if (!reason) return false;
+  const result = await synthesizeTimed(blockedTurn(reason, {}), timer);
+  timer.noteAudio(result.wav);
+  const turnId = store.put(deviceId, result.wav || Buffer.alloc(0));
+  // session_end: true, damit das Gerät nicht auf eine Fortsetzung wartet. Der Story-State bleibt unverändert.
+  const body: Record<string, unknown> = { type, audio_url: deviceAudioUrl(req, turnId), session_end: true };
+  if (config.diagnosticText) body.text = result.speech;
+  res.json(body);
+  return true;
+}
+
 // Zeitmessung pro Anfrage: eine Logzeile mit Anfrage-ID, Modus, Dauer je Stufe und Länge des
 // Antwort-Audios (siehe docs/Zeitmessung.md). Sie enthält nur Zahlen, nie Texte oder Tokens.
 // Abgewiesene Anfragen (401, 429, 400), bei denen keine Stufe lief, erzeugen keine Zeile.
@@ -213,6 +253,9 @@ app.post(
     }
 
     try {
+      // Ohne Einwilligung, im Schlafmodus und in Ruhezeiten: fester Hinweis, die Aufnahme
+      // geht nicht an die Spracherkennung und nichts geht an das Sprachmodell.
+      if (await respondIfBlocked(req, res, deviceId, 'answer', timer)) return;
       const header = decodeWavHeader(req.file.buffer);
       if (!isPcmFormat(header.formatTag) || header.channels !== 1 || header.bitsPerSample !== 16 || header.sampleRate !== config.audioSampleRate) {
         return res.status(400).json({ error: 'unsupported_audio_format' });
@@ -271,6 +314,7 @@ app.post(
     }
 
     try {
+      if (await respondIfBlocked(req, res, deviceId, 'kunibert_story', timer)) return;
       const state = deviceStoryStates.get(deviceId);
       // Die Erzähltaste setzt eine laufende Folge fort ("Drück noch einmal die
       // Erzähltaste") und beginnt nur dann eine neue, wenn keine läuft. Mit Modus
@@ -332,6 +376,28 @@ app.post(
       // Prüfe Rate-Limit
       if (!limiter.allow(deviceId)) {
         return res.status(429).json({ error: 'rate_limited' });
+      }
+
+      // Gesperrt (keine Einwilligung, Schlafmodus, Ruhezeiten): fester Hinweis ohne
+      // Spracherkennung und ohne Sprachmodell; der mitgeschickte Story-State kommt unverändert zurück.
+      const blockReason = parents.blockReason(deviceId, config.requireConsent);
+      if (blockReason) {
+        let sentState: unknown = {};
+        try {
+          sentState = typeof req.body.story_state === 'string' ? JSON.parse(req.body.story_state) : (req.body.story_state ?? {});
+        } catch {
+          sentState = {};
+        }
+        const blocked = await synthesizeTimed(blockedTurn(blockReason, sentState), timer);
+        timer.noteAudio(blocked.wav);
+        const blockedBody: Record<string, any> = {
+          turn_id: store.put(deviceId, blocked.wav || Buffer.alloc(0)),
+          kind: blocked.kind,
+          story_state: blocked.story_state,
+          fixed: blocked.fixed,
+        };
+        if (config.diagnosticText) blockedBody.text = blocked.speech;
+        return res.json(blockedBody);
       }
 
       // Story-State parsen
@@ -431,6 +497,164 @@ app.get('/v1/turn/:turn_id/audio', (req: Request, res: Response): any => {
 });
 
 // ------------------------------------------------------------
+// Eltern-App, Server-Teil: Kopplung, Einwilligung, Schlafmodus, Ruhezeiten, Löschen
+// (Schnittstelle: docs/picastAI-Pi-API.md, Abschnitt „Eltern“). Keine Protokollzeilen mit
+// Codes, Tokens oder Geräte-IDs. Kein Verlauf, keine Mitschriften, keine Statistik je Kind.
+// ------------------------------------------------------------
+
+// POST /v1/device/pairing-code: Das Gerät (beide Tasten 5 s gehalten) holt einen
+// sechsstelligen Code und spricht ihn. Fester Satz mit Ziffern, ohne Sprachmodell.
+app.post('/v1/device/pairing-code', requireDevice, startTurnTimer, async (req: Request, res: Response): Promise<any> => {
+  const deviceId = res.locals.deviceId as string;
+  const timer = res.locals.timer as TurnTimer;
+  timer.mode = 'kopplung';
+  if (!limiter.allow(deviceId)) {
+    return res.status(429).json({ error: 'rate_limited' });
+  }
+  try {
+    const { code, expiresInSeconds } = parents.createPairingCode(deviceId);
+    const speech = pairingCodeSpeech(code);
+    let wav = generateMelodyWav([523.25, 659.25], [0.3, 0.4], config.audioSampleRate);
+    if (voice.ttsConfigured) {
+      // Nicht aus dem Zwischenspeicher: Jeder Code ist anders und soll nicht liegen bleiben.
+      wav = await timer.time('sprachausgabe', () => voice.synthesize(speech, budgetTimeoutMs(timer)));
+    }
+    timer.noteAudio(wav);
+    const turnId = store.put(deviceId, wav);
+    const body: Record<string, unknown> = {
+      type: 'pairing_code',
+      audio_url: deviceAudioUrl(req, turnId),
+      expires_in: expiresInSeconds,
+    };
+    if (config.diagnosticText) body.text = speech;
+    return res.json(body);
+  } catch (err) {
+    if (err instanceof VoiceProviderError) {
+      return res.status(err.retryable ? 503 : 502).json({ error: 'voice_provider_failed', retryable: err.retryable });
+    }
+    console.error('Fehler in /v1/device/pairing-code');
+    return res.status(500).json({ error: 'internal_error' });
+  }
+});
+
+const PARENT_COOKIE = 'kb_eltern';
+const PARENT_COOKIE_MAX_AGE_SECONDS = 180 * 24 * 60 * 60;
+
+function readCookie(req: Request, name: string): string | null {
+  for (const part of (req.headers.cookie || '').split(';')) {
+    const index = part.indexOf('=');
+    if (index < 0) continue;
+    if (part.slice(0, index).trim() === name) return part.slice(index + 1).trim();
+  }
+  return null;
+}
+
+function parentCookie(req: Request, value: string, maxAgeSeconds: number): string {
+  // Secure im Betrieb immer (hinter Caddy mit TLS); im Probelauf nur, wenn die Anfrage https war.
+  const secure = process.env.NODE_ENV === 'production' || req.secure;
+  return [
+    `${PARENT_COOKIE}=${value}`,
+    'Path=/v1/eltern',
+    `Max-Age=${maxAgeSeconds}`,
+    'HttpOnly',
+    'SameSite=Strict',
+    ...(secure ? ['Secure'] : []),
+  ].join('; ');
+}
+
+/** Ändernde Eltern-Anfragen nur als JSON: Ein fremdes Formular kann das ohne CORS nicht senden. */
+function requireJson(req: Request, res: Response, next: NextFunction): void {
+  if (!req.is('application/json')) {
+    res.status(415).json({ error: 'json_required' });
+    return;
+  }
+  next();
+}
+
+function requireParent(req: Request, res: Response, next: NextFunction): void {
+  const deviceId = parents.deviceForToken(readCookie(req, PARENT_COOKIE));
+  // Ein gesperrtes Gerät hat keine Eltern-Steuerung mehr.
+  if (!deviceId || !registry.isActive(deviceId)) {
+    res.status(401).json({ error: 'unauthorized' });
+    return;
+  }
+  res.set('Cache-Control', 'no-store');
+  res.locals.parentDeviceId = deviceId;
+  next();
+}
+
+// POST /v1/eltern/koppeln {code}: Code einlösen, Eltern-Token als Cookie setzen.
+app.post('/v1/eltern/koppeln', requireJson, (req: Request, res: Response): any => {
+  // Nur Fehlversuche zählen: Wer zu oft falsch rät, wartet bis zu 10 Minuten.
+  const sender = req.ip || 'unbekannt';
+  if (pairingLimiter.getStatus(sender).remaining === 0) {
+    return res.status(429).json({ error: 'rate_limited' });
+  }
+  const redeemed = parents.redeemPairingCode(req.body?.code);
+  if (!redeemed || !registry.isActive(redeemed.deviceId)) {
+    pairingLimiter.allow(sender);
+    return res.status(400).json({ error: 'invalid_code' });
+  }
+  res.set('Set-Cookie', parentCookie(req, redeemed.token, PARENT_COOKIE_MAX_AGE_SECONDS));
+  res.set('Cache-Control', 'no-store');
+  return res.json({ gekoppelt: true, ...parents.settings(redeemed.deviceId) });
+});
+
+// GET /v1/eltern/status: aktueller Stand (kein Verlauf).
+app.get('/v1/eltern/status', requireParent, (_req: Request, res: Response) => {
+  res.json(parents.settings(res.locals.parentDeviceId as string));
+});
+
+// PUT /v1/eltern/einwilligung: Einwilligung erteilen.
+app.put('/v1/eltern/einwilligung', requireJson, requireParent, (_req: Request, res: Response) => {
+  const deviceId = res.locals.parentDeviceId as string;
+  parents.grantConsent(deviceId);
+  res.json(parents.settings(deviceId));
+});
+
+// DELETE /v1/eltern/einwilligung: Einwilligung widerrufen. Der Stand der Geschichte wird gelöscht.
+app.delete('/v1/eltern/einwilligung', requireParent, (_req: Request, res: Response) => {
+  const deviceId = res.locals.parentDeviceId as string;
+  parents.revokeConsent(deviceId);
+  deviceStoryStates.delete(deviceId);
+  store.dropDevice(deviceId);
+  res.json(parents.settings(deviceId));
+});
+
+// PUT /v1/eltern/einstellungen {schlafmodus?: boolean, ruhezeiten?: {von, bis} | null}
+app.put('/v1/eltern/einstellungen', requireJson, requireParent, (req: Request, res: Response): any => {
+  const deviceId = res.locals.parentDeviceId as string;
+  const body = req.body ?? {};
+  if ('schlafmodus' in body && typeof body.schlafmodus !== 'boolean') {
+    return res.status(400).json({ error: 'invalid_settings' });
+  }
+  if ('ruhezeiten' in body && body.ruhezeiten !== null && !(isValidTime(body.ruhezeiten?.von) && isValidTime(body.ruhezeiten?.bis))) {
+    return res.status(400).json({ error: 'invalid_settings' });
+  }
+  if ('schlafmodus' in body) parents.setSleep(deviceId, body.schlafmodus);
+  if ('ruhezeiten' in body) parents.setQuietHours(deviceId, body.ruhezeiten ? { von: body.ruhezeiten.von, bis: body.ruhezeiten.bis } : null);
+  return res.json(parents.settings(deviceId));
+});
+
+// POST /v1/eltern/geschichte-neu: Die nächste Erzählung beginnt bei einer neuen Folge.
+app.post('/v1/eltern/geschichte-neu', requireJson, requireParent, (_req: Request, res: Response) => {
+  deviceStoryStates.delete(res.locals.parentDeviceId as string);
+  res.json({ geschichte_neu: true });
+});
+
+// DELETE /v1/eltern/daten: alles löschen, was der Server zum Gerät für die Eltern hält:
+// Einwilligung, Einstellungen, Eltern-Tokens (auch auf anderen Handys), Geschichte, wartendes Audio.
+// Die Geräte-Anmeldung selbst bleibt (die verwaltet der Betreiber).
+app.delete('/v1/eltern/daten', requireParent, (req: Request, res: Response) => {
+  const deviceId = res.locals.parentDeviceId as string;
+  parents.forgetDevice(deviceId);
+  deviceStoryStates.delete(deviceId);
+  store.dropDevice(deviceId);
+  res.set('Set-Cookie', parentCookie(req, '', 0));
+  res.json({ geloescht: true });
+});
+
+// ------------------------------------------------------------
 // Dashboard & Simulator Verwaltungs-APIs
 // ------------------------------------------------------------
 
@@ -457,9 +681,21 @@ app.post('/api/devices', requireAdminAuth, async (req: Request, res: Response): 
 app.post('/api/devices/:id/revoke', requireAdminAuth, async (req: Request, res: Response): Promise<any> => {
   const deviceId = String(req.params.id);
   const { success, persisted } = await registry.revokeAndPersist(deviceId);
-  // Ein gesperrtes Gerät braucht seinen Geschichten-Stand nicht mehr.
+  // Ein gesperrtes Gerät braucht seinen Geschichten-Stand und seine Eltern-Steuerung nicht mehr.
   deviceStoryStates.delete(deviceId);
+  parents.forgetDevice(deviceId);
+  store.dropDevice(deviceId);
   return res.json({ success, persisted });
+});
+
+// POST /api/devices/:id/kopplungscode: Kopplungscode als Text für den Betreiber (Tests mit
+// Erwachsenen, solange Pi-Client und Firmware den Code noch nicht sprechen).
+app.post('/api/devices/:id/kopplungscode', requireAdminAuth, (req: Request, res: Response): any => {
+  const deviceId = String(req.params.id);
+  if (!registry.isActive(deviceId)) return res.status(404).json({ error: 'not_found' });
+  const { code, expiresInSeconds } = parents.createPairingCode(deviceId);
+  res.set('Cache-Control', 'no-store');
+  return res.json({ code, expires_in: expiresInSeconds });
 });
 
 app.get('/api/config', requireAdminAuth, (_req: Request, res: Response) => {
@@ -472,6 +708,7 @@ app.get('/api/status', requireAdminAuth, (req: Request, res: Response) => {
     rateLimit: limiter.getStatus(deviceId),
     audioStoreItems: store.count,
     storyStates: deviceStoryStates.count,
+    eltern: parents.counts,
     llm: brain.llmName,
     config: getSafeConfigSummary(config),
   });
@@ -551,7 +788,7 @@ async function startServer() {
     // schon beim ersten Kind ohne Wartezeit und ohne Anbieter-Anfrage gesprochen wird.
     // Mit neuen Versuchen, falls der Sprachserver nach einem Neustart noch nicht bereit ist.
     if (isProd && voice.ttsConfigured) {
-      const fixedTexts = [SAFETY_RESPONSE_DE, UNCLEAR_RESPONSE_DE, ERROR_RESPONSE_DE, FALLBACK_ANSWER_DE];
+      const fixedTexts = [SAFETY_RESPONSE_DE, UNCLEAR_RESPONSE_DE, ERROR_RESPONSE_DE, FALLBACK_ANSWER_DE, CONSENT_MISSING_DE, SLEEPING_DE];
       void voice
         .warmUpWithRetry(fixedTexts)
         .then((count) => console.log(`Feste Sprechtexte vorbereitet (${count} von ${fixedTexts.length}).`));

@@ -147,6 +147,23 @@ before(async () => {
     }
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
+  // Im Betrieb antwortet der Server erst nach der Einwilligung der Eltern: koppeln wie die
+  // Eltern-App (Code über die Betreiber-Route) und einwilligen.
+  const admin = { Authorization: 'Bearer e2e-admin-token-nur-fuer-diesen-test' };
+  const { code } = await (await fetch(`${base}/api/devices/${DEVICE_ID}/kopplungscode`, { method: 'POST', headers: admin })).json();
+  const paired = await fetch(`${base}/v1/eltern/koppeln`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code }),
+  });
+  assert.equal(paired.status, 200);
+  const cookie = (paired.headers.get('set-cookie') || '').split(';')[0];
+  const consent = await fetch(`${base}/v1/eltern/einwilligung`, {
+    method: 'PUT',
+    headers: { Cookie: cookie, 'Content-Type': 'application/json' },
+    body: '{}',
+  });
+  assert.equal(consent.status, 200);
 });
 
 after(async () => {
