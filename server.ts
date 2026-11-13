@@ -7,6 +7,7 @@ import { fileURLToPath } from 'url';
 import { DeviceRegistry, DeviceStoreError, RateLimiter, AudioStore } from './server-api/devices.js';
 import { Brain, FALLBACK_ANSWER_DE, StoryState } from './server-api/brain.js';
 import { STORY_PAUSE_TEXT } from './server-api/prompts.js';
+import { StoryPrefetcher } from './server-api/prefetch.js';
 import { AudioError, decodeWavHeader, isPcmFormat, isSilentPcm16 } from './server-api/audio.js';
 import { config, getSafeConfigSummary, llmConfigWarnings, testSwitchWarnings, ttsProviderWarnings, voiceConfigWarnings } from './server-api/config.js';
 import { isAdminTokenConfigured, verifyAdminAuthorization } from './server-api/admin-auth.js';
@@ -43,6 +44,14 @@ const store = new AudioStore(
 const brain = new Brain();
 const voice = new VoicePipeline(config);
 const deviceStoryStates = new Map<string, StoryState>();
+// Nächster Geschichtenteil im Hintergrund (Sprachmodell und Sprachausgabe), siehe server-api/prefetch.ts.
+const prefetcher = new StoryPrefetcher(
+  async (state) => synthesizeIfConfigured(await brain.handle('weiter', '', state)),
+  { ttlMs: 30 * 60 * 1000, enabled: config.storyPrefetch }
+);
+// Ein frisch erzeugter Teil braucht Claude und die Sprachausgabe. So viel Zeit bleibt mindestens
+// übrig, wenn der Server auf eine laufende Vorbereitung wartet und sie nicht rechtzeitig fertig wird.
+const PREFETCH_FRESH_RESERVE_MS = 70_000;
 
 // Multer für WAV Uploads (max 2 MB)
 const upload = multer({
@@ -226,6 +235,9 @@ app.post(
       timer.noteAudio(result.wav);
       rememberDeviceStoryState(deviceId, result.story_state);
       const response = deviceResponse(req, deviceId, result, 'answer');
+      // Hat die Frage eine Folge begonnen oder fortgesetzt, den nächsten Teil vorbereiten. Bei einer
+      // reinen Frage bleibt der Stand gleich, und eine laufende Vorbereitung bleibt gültig.
+      prefetcher.start(deviceId, result.story_state);
       return res.json(response.body);
     } catch (err) {
       console.error('Error in /v1/device/question:', err);
@@ -267,15 +279,21 @@ app.post(
     }
 
     try {
-      const state = deviceStoryStates.get(deviceId) || {};
+      const state = deviceStoryStates.get(deviceId);
       // Die Erzähltaste setzt eine laufende Folge fort ("Drück noch einmal die
       // Erzähltaste") und beginnt nur dann eine neue, wenn keine läuft. Mit Modus
       // "geschichte" begänne jeder Druck wieder bei Teil 1. Einen Kinderwunsch gibt
       // es hier nicht: die Taste trägt keinen Text.
-      const result = await synthesizeTimed(await brain.handle('weiter', '', state, timer), timer);
+      // Liegt der nächste Teil schon bereit (oder wird gerade vorbereitet), wird er genommen.
+      const prepared = state && prefetcher.has(deviceId)
+        ? await timer.time('vorbereitet', () =>
+          prefetcher.take(deviceId, state, Math.max(0, timer.remainingMs() - PREFETCH_FRESH_RESERVE_MS)))
+        : null;
+      const result = prepared ?? await synthesizeTimed(await brain.handle('weiter', '', state || {}, timer), timer);
       timer.noteAudio(result.wav);
       rememberDeviceStoryState(deviceId, result.story_state);
       const response = deviceResponse(req, deviceId, result, 'kunibert_story');
+      prefetcher.start(deviceId, result.story_state);
       return res.json(response.body);
     } catch (err) {
       console.error('Error in /v1/device/kunibert-story:', err);

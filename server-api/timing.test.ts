@@ -63,7 +63,7 @@ test('Zeitmesser: Werte je Stufe, Gesamtzeit und Audiolänge erscheinen in der Z
   assert.equal(
     line,
     'Zeitmessung id=3f9a1c2b modus=frage status=200 erkennung_ms=1204 weiche_ms=2 sprachmodell_ms=3480 ' +
-      'ausgabecheck_ms=1 sprachausgabe_ms=2210 gesamt_ms=7050 sprachmodell_aufrufe=1 audio_s=12.0'
+      'ausgabecheck_ms=1 sprachausgabe_ms=2210 vorbereitet_ms=- gesamt_ms=7050 sprachmodell_aufrufe=1 audio_s=12.0'
   );
   assert.match(line!, LINE_FORMAT);
 });

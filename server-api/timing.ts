@@ -4,7 +4,8 @@ import { randomBytes } from 'node:crypto';
 import { decodeWavHeader } from './audio.js';
 
 /** Die gemessenen Stufen einer Anfrage, in der Reihenfolge, in der sie ablaufen. */
-export const TIMED_STAGES = ['erkennung', 'weiche', 'sprachmodell', 'ausgabecheck', 'sprachausgabe'] as const;
+// vorbereitet: Wartezeit auf einen im Hintergrund vorbereiteten Geschichtenteil (server-api/prefetch.ts).
+export const TIMED_STAGES = ['erkennung', 'weiche', 'sprachmodell', 'ausgabecheck', 'sprachausgabe', 'vorbereitet'] as const;
 export type TimedStage = (typeof TIMED_STAGES)[number];
 
 /**

@@ -15,7 +15,7 @@ sudo journalctl -u kunibert-server -n 200 --no-pager | grep Zeitmessung
 Beispiel:
 
 ```text
-Zeitmessung id=3f9a1c2b modus=frage status=200 erkennung_ms=1204 weiche_ms=0 sprachmodell_ms=3480 ausgabecheck_ms=0 sprachausgabe_ms=2210 gesamt_ms=7050 sprachmodell_aufrufe=1 audio_s=12.4
+Zeitmessung id=3f9a1c2b modus=frage status=200 erkennung_ms=1204 weiche_ms=0 sprachmodell_ms=3480 ausgabecheck_ms=0 sprachausgabe_ms=2210 vorbereitet_ms=- gesamt_ms=7050 sprachmodell_aufrufe=1 audio_s=12.4
 ```
 
 | Feld | Bedeutung |
@@ -28,6 +28,7 @@ Zeitmessung id=3f9a1c2b modus=frage status=200 erkennung_ms=1204 weiche_ms=0 spr
 | `sprachmodell_ms` | Claude: Antwort oder Geschichte schreiben. Mehrere Aufrufe werden addiert. |
 | `ausgabecheck_ms` | Prüfung des Claude-Textes, bevor er vorgelesen wird. |
 | `sprachausgabe_ms` | Sprachausgabe (Text in Sprache umwandeln). Feste Texte aus dem Speicher dauern fast nichts. |
+| `vorbereitet_ms` | Nur bei der Erzähltaste: Wie lange der Server auf einen im Hintergrund vorbereiteten Teil gewartet hat (`server-api/prefetch.ts`). `-` = nichts vorbereitet; dann laufen Sprachmodell und Sprachausgabe wie gewohnt. Eine kleine Zahl ohne `sprachmodell_ms` heißt: Der Teil lag fertig bereit. |
 | `gesamt_ms` | Gesamtzeit der Anfrage auf dem Server: vom Beginn (nach der Anmeldung des Geräts) bis die Antwort abgeschickt ist. Das Hochladen der Aufnahme gehört dazu. |
 | `sprachmodell_aufrufe` | Wie oft Claude gefragt wurde. Erkennt Claude bei einer Frage einen Geschichtenwunsch, sind es **zwei** Aufrufe. |
 | `audio_s` | Länge des Antwort-Audios in Sekunden. |
