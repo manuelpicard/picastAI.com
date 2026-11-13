@@ -215,7 +215,7 @@ export const STORY_SCHEMA: JsonSchema = {
       type: 'string',
       description:
         'Nur im ersten Teil einer Folge, sonst leer. Der Plan für die ganze Folge in drei bis fünf knappen Sätzen, nur für dich, wird nicht vorgelesen: ' +
-        'Anlass und Ziel; Nebenfigur mit Namen; der Hinweis der Hexe wörtlich; die kluge Lösung am Ende und wie der Hinweis dazu passt; wie der Wunsch des Kindes vorkommt.',
+        'Anlass und Ziel; Nebenfigur mit Namen; der Hinweis der Hexe wörtlich in „…“; die kluge Lösung am Ende und wie der Hinweis dazu passt; wie der Wunsch des Kindes vorkommt.',
     },
     text: {
       type: 'string',
@@ -376,6 +376,20 @@ export function isBedtime(date: Date): boolean {
   return hour >= 19 || hour < 6;
 }
 
+/** Der Hinweis der Hexe aus dem Plan: der erste Text in „…“ (oder "…"), sonst leer. */
+export function hintFromPlan(plan: string): string {
+  const match = /[„"]([^“”"]{4,200})[“”"]/.exec(plan || '');
+  return match ? match[1].trim() : '';
+}
+
+/** Kommt der Hinweis im Text vor? Mindestens die Hälfte seiner längeren Wörter (ab vier Buchstaben). */
+export function usesHint(text: string, hint: string): boolean {
+  const words = (hint.toLowerCase().match(/\p{L}{4,}/gu) || []);
+  if (!words.length) return false;
+  const lower = text.toLowerCase();
+  return words.filter((word) => lower.includes(word)).length * 2 >= words.length;
+}
+
 /** Baut die Anfrage für einen Teil. Exportiert für Tests. */
 export function buildStoryPrompt(
   state: StoryState,
@@ -397,6 +411,10 @@ export function buildStoryPrompt(
     if (state.recent) lines.push(`Diese Ideen gab es in den letzten Folgen schon; erfinde diesmal etwas anderes: ${state.recent}`);
   } else {
     lines.push(`Plan der Folge: ${state.plan || 'nicht festgehalten; bleib bei dem, was bisher geschah'}`);
+    const hint = hintFromPlan(state.plan);
+    if (hint && phase === 'trick') {
+      lines.push(`Die Worte der Hexe lauteten: „${hint}“. Kunibert erinnert sich in diesem Teil an genau diese Worte, und die Lösung ergibt sich daraus.`);
+    }
     lines.push(`Bisher: ${state.summary}`);
     lines.push(`Offene Fäden: ${state.threads || 'keine'}`);
     if (state.last) lines.push(`So endete der vorige Teil: ${state.last}`);
@@ -612,7 +630,9 @@ export class Brain {
           };
         }
         if (parsed.category === 'frage' && parsed.speech) {
-          const speech = trimWords(parsed.speech, this.answerMaxWords + 20);
+          // Gleiche Vorlese-Glättung wie bei Geschichten: kein Markdown, Zahlen als Wörter.
+          const speech = prepareStoryText(trimWords(parsed.speech, this.answerMaxWords + 20));
+          if (!speech) throw new Error('Antwort des Sprachmodells ist leer');
           // Ausgabe-Check: bei Treffer greift der Fallback unten (catch-Pfad).
           if (timer.timeSync('ausgabecheck', () => screenOutput(speech, 'answer'))) {
             throw new Error('Antwort des Sprachmodells durch Ausgabe-Check abgelehnt');
@@ -741,7 +761,9 @@ export class Brain {
           if (!text) throw new Error('Geschichte des Sprachmodells ist leer');
           const metrics = storyMetrics(text);
           // Nur Zahlen ins Protokoll, nie der Text (CLAUDE.md).
-          console.log(`Geschichte Teil ${part}/${current.target}: ${formatMetrics(metrics)}`);
+          const hint = phase === 'trick' ? hintFromPlan(current.plan) : '';
+          const hintNote = hint ? `, Hinweis der Hexe ${usesHint(text, hint) ? 'aufgegriffen' : 'nicht erkennbar'}` : '';
+          console.log(`Geschichte Teil ${part}/${current.target}: ${formatMetrics(metrics)}${hintNote}`);
           // Viel zu kurz (abgeschnitten oder Zusammenfassung statt Szene): einmal neu, wenn Zeit bleibt.
           // Nur mit echtem Zeitbudget (jede Geräteanfrage hat eins); ohne Budget gilt der Text, wie er ist.
           const left = timer.remainingMs();
@@ -800,7 +822,8 @@ export class Brain {
   }
 
   private storyResult(text: string, part: number, state: StoryState): TurnResult {
-    const closing = state.done ? EPISODE_CLOSING : part === 1 ? STORY_CLOSING_FIRST : STORY_CLOSING;
+    // Den Hinweis auf die Sprechtaste hören Kinder in den ersten beiden Folgen; danach kennen sie ihn.
+    const closing = state.done ? EPISODE_CLOSING : part === 1 && state.ep <= 2 ? STORY_CLOSING_FIRST : STORY_CLOSING;
     // Leerzeile vor dem Abschluss: Die Stimme setzt dort eine längere Pause.
     const fullSpeech = `${text}\n\n${closing}`;
     return {

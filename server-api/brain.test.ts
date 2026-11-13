@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { screenOutput } from './safety.js';
 import test from 'node:test';
-import { Brain, buildStoryPrompt, FALLBACK_VARIANTS, formatMetrics, isBedtime, germanNumber, spellOutForSpeech, storyMetrics, cleanState, cleanText, extractWishKeyword, FALLBACK_ANSWER_DE, isLikelySttArtifact, lastSentences, MAX_UTTERANCE_CHARS, prepareStoryText, rememberMotif, storyPhase, trimWords } from './brain.js';
+import { Brain, buildStoryPrompt, FALLBACK_VARIANTS, formatMetrics, hintFromPlan, usesHint, isBedtime, germanNumber, spellOutForSpeech, storyMetrics, cleanState, cleanText, extractWishKeyword, FALLBACK_ANSWER_DE, isLikelySttArtifact, lastSentences, MAX_UTTERANCE_CHARS, prepareStoryText, rememberMotif, storyPhase, trimWords } from './brain.js';
 import type { LlmJsonRequest, LlmProvider } from './llm.js';
 import { BEDTIME_HINT, EPISODE_CLOSING, EPISODE_SEEDS_BY_SEASON, seasonOf, STORY_CLOSING, STORY_CLOSING_FIRST, STORY_PAUSE_TEXT } from './prompts.js';
 import { SAFETY_RESPONSE_DE, UNCLEAR_RESPONSE_DE } from './safety.js';
@@ -717,4 +717,39 @@ test('Nur Teil 1 endet mit dem Hinweis auf die Sprechtaste, spätere Teile mit d
   assert.ok(first.speech.endsWith(STORY_CLOSING_FIRST));
   const second = await brain.handle('weiter', '', first.story_state);
   assert.ok(second.speech.endsWith(STORY_CLOSING) && !second.speech.endsWith(STORY_CLOSING_FIRST));
+});
+
+test('hintFromPlan und usesHint: Hinweis der Hexe aus dem Plan und im Text wiederfinden', () => {
+  assert.equal(hintFromPlan('Glocke fehlt. Hexe sagt: „Was klingt, will gefunden werden.“ Lösung: Nest.'), 'Was klingt, will gefunden werden.');
+  assert.equal(hintFromPlan('ohne Zitat'), '');
+  assert.equal(usesHint('Da fiel ihm ein: Was klingt, will gefunden werden!', 'Was klingt, will gefunden werden.'), true);
+  assert.equal(usesHint('Er ging nach Hause.', 'Was klingt, will gefunden werden.'), false);
+});
+
+test('Wendung bekommt die Worte der Hexe ausdrücklich; Protokoll sagt nur, ob sie aufgegriffen wurden', async () => {
+  const state = { ...cleanState({}), ep: 3, part: 3, target: 5, plan: 'Hexe sagt: „Läute erst, wenn er gähnt.“', summary: 's' };
+  const llm = new FakeLlm([story('Der Drache gähnte. Läute erst, wenn er gähnt, dachte Kunibert.')]);
+  const lines: string[] = [];
+  const original = console.log;
+  console.log = (...args: unknown[]) => { lines.push(args.join(' ')); };
+  try {
+    await new Brain(llm).handle('weiter', '', state);
+  } finally {
+    console.log = original;
+  }
+  assert.match(llm.calls[0].user, /Die Worte der Hexe lauteten: „Läute erst, wenn er gähnt\.“/);
+  const line = lines.find((l) => l.startsWith('Geschichte Teil 4/5'));
+  assert.match(line!, /Hinweis der Hexe aufgegriffen$/);
+  assert.ok(!line!.includes('gähnt'), 'kein Text im Protokoll');
+});
+
+test('Hinweis auf die Sprechtaste nur in den ersten beiden Folgen', async () => {
+  const third = await new Brain(new FakeLlm([story('Los.')])).handle('weiter', '', { ...cleanState({}), ep: 2, done: true, part: 5 });
+  assert.equal(third.story_state.ep, 3);
+  assert.ok(third.speech.endsWith(STORY_CLOSING) && !third.speech.endsWith(STORY_CLOSING_FIRST));
+});
+
+test('Antworten: Zahlen als Wörter, kein Markdown', async () => {
+  const result = await new Brain(new FakeLlm([answer('Ein Jahr hat **365** Tage.')])).handle('frage', 'wie viele tage hat ein jahr', {});
+  assert.equal(result.speech, 'Ein Jahr hat dreihundertfünfundsechzig Tage.');
 });
