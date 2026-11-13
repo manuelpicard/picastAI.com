@@ -79,6 +79,43 @@ Die Story-Session wird für die Gerät-ID ausschließlich flüchtig im RAM gehal
 
 Erfordert wieder dieselben `Authorization`- und `X-Device-ID`-Header. Die WAV-Datei wird aus dem flüchtigen AudioStore geliefert und danach einmalig gelöscht. Die URL läuft ab, sobald die konfigurierte TTL erreicht ist.
 
+### Einwilligung, Schlafmodus und Ruhezeiten (gilt für alle Geräte-Routen)
+
+Ohne Einwilligung der Eltern antworten `POST /v1/device/question`, `POST /v1/device/kunibert-story` und `POST /v1/turn` mit HTTP 200 und einem festen Hinweis („… müssen mich deine Eltern einmal einrichten …“). Die Aufnahme geht dann nicht an die Spracherkennung, und nichts geht an das Sprachmodell. Dasselbe gilt im Schlafmodus und in den Ruhezeiten, dann mit dem Satz „Psst! Ritter Kunibert schläft gerade …“.
+
+- Geräte-Routen: `session_end: true`; der Story-State rückt nicht vor.
+- `/v1/turn`: `kind: "hinweis"`, `fixed: "einwilligung"` oder `"schlaf"`, der mitgeschickte `story_state` kommt unverändert zurück.
+- Die Prüfung der Einwilligung ist mit `NODE_ENV=production` immer an. Nur im Probelauf am Rechner lässt sie sich mit `KUNIBERT_EINWILLIGUNG_PRUEFEN=0` abschalten (zum Beispiel für den Web-Simulator).
+- Ruhezeiten gelten in Berliner Zeit (vorläufig fest).
+
+### `POST /v1/device/pairing-code`
+
+Gleiche Anmeldung wie oben. Das Gerät ruft die Route auf, wenn beide Tasten 5 Sekunden gehalten werden (Pi-Client und Firmware: noch nicht umgesetzt). Der Server erzeugt einen sechsstelligen Code (10 Minuten gültig, nur einmal einlösbar; ein neuer Code ersetzt den alten) und liefert ihn als Sprache:
+
+```json
+{ "type": "pairing_code", "audio_url": "https://…/v1/device/audio/t_…", "expires_in": 600 }
+```
+
+Der Code steht nicht in der Antwort und nicht im Protokoll; das Gerät spielt die `audio_url` ab wie bei einer Antwort.
+
+## Eltern (Server-Teil der Eltern-App)
+
+Die Eltern koppeln ihr Handy einmal mit dem Gerät. Danach hält ein Cookie `kb_eltern` das Eltern-Token (`HttpOnly`, `SameSite=Strict`, `Secure`, `Path=/v1/eltern`, 180 Tage). Der Server speichert nur den SHA-256-Hash des Tokens, höchstens 5 je Gerät. Ändernde Anfragen müssen `Content-Type: application/json` haben (sonst 415). Alle Antworten haben `Cache-Control: no-store`.
+
+| Route | Wirkung |
+| --- | --- |
+| `POST /v1/eltern/koppeln` `{"code":"123456"}` | Code einlösen, Cookie setzen. Falscher oder abgelaufener Code: 400 `invalid_code`. Nach 10 Fehlversuchen je Absender in 10 Minuten: 429. |
+| `GET /v1/eltern/status` | Aktueller Stand: `einwilligung {erteilt, zeitpunkt}`, `schlafmodus`, `ruhezeiten {von, bis}` oder `null` |
+| `PUT /v1/eltern/einwilligung` | Einwilligung erteilen |
+| `DELETE /v1/eltern/einwilligung` | Einwilligung widerrufen; Stand der Geschichte und wartendes Audio werden gelöscht |
+| `PUT /v1/eltern/einstellungen` `{"schlafmodus":true, "ruhezeiten":{"von":"19:00","bis":"07:00"}}` | Schlafmodus und Ruhezeiten (Felder einzeln möglich; `ruhezeiten: null` löscht sie). Ungültige Werte: 400 `invalid_settings` |
+| `POST /v1/eltern/geschichte-neu` | Die nächste Erzählung beginnt eine neue Folge |
+| `DELETE /v1/eltern/daten` | Alles löschen: Einwilligung, Einstellungen, alle Eltern-Tokens des Geräts, Geschichte, wartendes Audio. Das Cookie wird gelöscht. Die Geräte-Anmeldung bleibt. |
+
+Ohne gültiges Cookie oder für ein widerrufenes Gerät: 401. Es gibt keinen Verlauf, keine Mitschriften und keine Statistik je Kind. Vorläufig liegt alles nur im Arbeitsspeicher: Nach einem Neustart des Servers müssen die Eltern neu koppeln und neu einwilligen. Die Weboberfläche unter `/eltern` kommt später.
+
+Für Tests mit Erwachsenen, solange die Geräte den Code noch nicht sprechen: `POST /api/devices/:id/kopplungscode` (Betreiber-Token) gibt den Code als Text zurück: `{"code":"123456","expires_in":600}`.
+
 ## Fehlerantworten
 
 | Status | Body | Bedeutung für den Client |
@@ -128,7 +165,7 @@ PICASTAI_VOICE_TIMEOUT_MS=45000
 
 Die Token-Datei beziehungsweise Prozessumgebung darf nur für den Serverdienst lesbar sein. Nicht in Git, Screenshots oder Logs eintragen.
 
-`PICASTAI_ADMIN_TOKEN` schützt `GET/POST /api/devices`, `POST /api/devices/:id/revoke` sowie `GET /api/config` und `GET /api/status` per `Authorization: Bearer <admin-token>`. Fehlt das Token oder ist es kürzer als 32 Zeichen, antworten diese Routen geschlossen mit HTTP 503. Ein falsches oder fehlendes Token ergibt HTTP 401. Das Dashboard hält das eingegebene Token nur im Tab-Speicher; es muss ausschließlich über HTTPS verwendet werden.
+`PICASTAI_ADMIN_TOKEN` schützt `GET/POST /api/devices`, `POST /api/devices/:id/revoke`, `POST /api/devices/:id/kopplungscode` sowie `GET /api/config` und `GET /api/status` per `Authorization: Bearer <admin-token>`. Fehlt das Token oder ist es kürzer als 32 Zeichen, antworten diese Routen geschlossen mit HTTP 503. Ein falsches oder fehlendes Token ergibt HTTP 401. Das Dashboard hält das eingegebene Token nur im Tab-Speicher; es muss ausschließlich über HTTPS verwendet werden.
 
 `PICASTAI_CORS_ORIGINS` enthält eine kommagetrennte Liste exakter Browser-Origin-Werte, zum Beispiel `https://kunibert.example,https://www.kunibert.example`. Leer bedeutet: keine Cross-Origin-Freigabe; Same-Origin-Aufrufe und Pi-/Server-zu-Server-Aufrufe benötigen keine CORS-Freigabe. Keine Wildcards für Produktionszugriffe eintragen.
 
@@ -179,7 +216,7 @@ Die `audio_url` aus der Antwort mit denselben Authentifizierungsheadern abrufen.
 - Fehlermeldungen der Sprachdienste und von Anthropic kommen nur als HTTP-Status mit Fehlercode ins Protokoll (zum Beispiel `HTTP 422 (string_too_long)`), nie mit ihrem Fließtext: Der kann den gesendeten Text enthalten (`server-api/provider-errors.ts`).
 - Audio nur im flüchtigen RAM, TTL standardmäßig 120 Sekunden.
 - Audio-URL benötigt erneut Geräteauthentifizierung.
-- Story-State, Rate-Limit und Audio sind im Prozessspeicher, nicht hochverfügbar. Die Geräteliste ist es nur ohne `PICASTAI_DEVICE_STORE=firestore`.
+- Story-State, Rate-Limit und Audio sind im Prozessspeicher, nicht hochverfügbar. Der Story-State eines Geräts verfällt nach 24 Stunden ohne Nutzung (vorläufig); beim Sperren des Geräts wird er sofort gelöscht. Die Geräteliste ist es nur ohne `PICASTAI_DEVICE_STORE=firestore`.
 - Geräteverwaltung, Status und sichere Konfigurationsübersicht benötigen ein starkes Admin-Bearer-Token.
 - CORS akzeptiert nur exakt konfigurierte Browser-Ursprünge; ohne Allowlist gibt es keine Cross-Origin-Freigabe.
 - Firestore-Regeln verweigern direkte Clientzugriffe; serverseitige Admin-SDK-Zugriffe sind hiervon nicht erfasst.

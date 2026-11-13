@@ -4,6 +4,7 @@ import {
   getSafeConfigSummary,
   isDiagnosticTextEnabled,
   isTestTranscriptEnabled,
+  isConsentRequired,
   llmConfigWarnings,
   loadConfig,
   normalizeServiceUrl,
@@ -184,4 +185,12 @@ test('Startwarnung nur, wenn das Testfeld im Betrieb an ist', () => {
   const [warning] = testSwitchWarnings({ NODE_ENV: 'production', KUNIBERT_TEST_TRANSCRIPT: '1' });
   assert.match(warning, /KUNIBERT_TEST_TRANSCRIPT=1/);
   assert.match(warning, /vor dem ersten Kind/);
+});
+
+test('Einwilligungs-Prüfung: im Betrieb immer an, im Probelauf nur mit =0 aus', () => {
+  assert.equal(isConsentRequired({}), true, 'Standard ist an');
+  assert.equal(isConsentRequired({ KUNIBERT_EINWILLIGUNG_PRUEFEN: '0' }), false);
+  assert.equal(isConsentRequired({ NODE_ENV: 'development', KUNIBERT_EINWILLIGUNG_PRUEFEN: ' 0 ' }), false);
+  assert.equal(isConsentRequired({ KUNIBERT_EINWILLIGUNG_PRUEFEN: 'nein' }), true);
+  assert.equal(isConsentRequired({ NODE_ENV: 'production', KUNIBERT_EINWILLIGUNG_PRUEFEN: '0' }), true, 'im Betrieb nicht abschaltbar');
 });

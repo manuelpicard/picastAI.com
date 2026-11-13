@@ -163,6 +163,12 @@ export class DeviceRegistry {
     }));
   }
 
+  /** Ist das Gerät angelegt und nicht widerrufen? */
+  public isActive(deviceId: string): boolean {
+    const entry = this.devices.get(deviceId);
+    return Boolean(entry && !entry.revoked);
+  }
+
   public verify(deviceId: string, token: string): boolean {
     if (!deviceId || !token) return false;
     const entry = this.devices.get(deviceId);
@@ -261,6 +267,18 @@ export class AudioStore {
     // Nach einmaligem Abruf löschen (exakt wie im Python-Server)
     this.items.delete(turnId);
     return entry.wav;
+  }
+
+  /** Löscht alles wartende Audio eines Geräts (Widerruf, „alles löschen“). */
+  public dropDevice(deviceId: string): number {
+    let removed = 0;
+    for (const [key, item] of this.items.entries()) {
+      if (item.deviceId === deviceId) {
+        this.items.delete(key);
+        removed++;
+      }
+    }
+    return removed;
   }
 
   public peek(deviceId: string, turnId: string): Buffer | null {

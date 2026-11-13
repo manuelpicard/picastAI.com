@@ -16,6 +16,7 @@ import { after, before, describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { encodeWav } from './audio.js';
 import { screen } from './safety.js';
+import { pairAndConsent } from './eltern-testhilfe.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SAFETY_START = 'Danke, dass du mir das sagst';
@@ -194,6 +195,9 @@ describe('Sicherheitsweiche und Datensparsamkeit (echter Server, Attrappen)', ()
     });
     assert.equal(res.status, 200, await res.clone().text());
     registered = { id: 'geraet-registriert-4711', token: ((await res.json()) as { token: string }).token };
+    // Im Betrieb antwortet der Server erst nach der Einwilligung der Eltern.
+    await pairAndConsent(base, ADMIN_TOKEN, ENV_DEVICE_ID);
+    await pairAndConsent(base, ADMIN_TOKEN, registered.id);
   });
 
   after(async () => {
