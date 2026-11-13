@@ -6,9 +6,10 @@ import {
   isValidGoogleVoiceName,
   isValidSpeakingRate,
 } from './google-speech.js';
+import { DEFAULT_POCKET_VOICE, isValidPauseMs, isValidPocketUrl, isValidPocketVoice, isValidTempo } from './pocket-speech.js';
 import { normalizePublicBaseUrl, parseTrustProxy, type TrustProxySetting } from './http-utils.js';
 
-export type TtsProviderName = 'openai-compatible' | 'google';
+export type TtsProviderName = 'openai-compatible' | 'google' | 'pocket';
 
 export interface KunibertConfig {
   // Server-Netzwerk
@@ -54,6 +55,11 @@ export interface KunibertConfig {
   googleTtsVoice: string;
   /** Google: Tempo 0,25 bis 2,0 (PICASTAI_GOOGLE_TTS_RATE); leer = Standard 0,95. */
   googleTtsRate: string;
+  /** Pocket TTS (`pocket-tts serve`): Adresse, Stimme (Standard stuart_bell), Tempo (0,92), Satzpause in ms (450). */
+  pocketTtsUrl: string | null;
+  pocketTtsVoice: string;
+  pocketTtsTempo: string;
+  pocketTtsPauseMs: string;
   voiceTimeoutMs: number;
 
   // Erzähl- & Pädagogik-Parameter
@@ -146,14 +152,15 @@ export function llmConfigWarnings(
 
 /** Anbieter der Sprachausgabe: nur ein ausdrückliches "google" wählt Google, sonst der OpenAI-kompatible Dienst. */
 export function resolveTtsProvider(env: { PICASTAI_TTS_PROVIDER?: string } = process.env): TtsProviderName {
-  return env.PICASTAI_TTS_PROVIDER?.trim().toLowerCase() === 'google' ? 'google' : 'openai-compatible';
+  const requested = env.PICASTAI_TTS_PROVIDER?.trim().toLowerCase();
+  return requested === 'google' || requested === 'pocket' ? requested : 'openai-compatible';
 }
 
 /** Warnung beim Start bei einem unbekannten Wert für PICASTAI_TTS_PROVIDER (er würde sonst still ignoriert). */
 export function ttsProviderWarnings(env: { PICASTAI_TTS_PROVIDER?: string } = process.env): string[] {
   const requested = env.PICASTAI_TTS_PROVIDER?.trim().toLowerCase();
-  if (requested && requested !== 'google' && requested !== 'openai-compatible') {
-    return [`Sprachausgabe: PICASTAI_TTS_PROVIDER=${requested} ist unbekannt (erlaubt: openai-compatible, google). Es gilt openai-compatible.`];
+  if (requested && requested !== 'google' && requested !== 'pocket' && requested !== 'openai-compatible') {
+    return [`Sprachausgabe: PICASTAI_TTS_PROVIDER=${requested} ist unbekannt (erlaubt: openai-compatible, google, pocket). Es gilt openai-compatible.`];
   }
   return [];
 }
@@ -183,14 +190,15 @@ const EXCLUDED_VOICE_HOSTS = ['api.openai.com', 'generativelanguage.googleapis.c
  */
 export function voiceConfigWarnings(
   config: Pick<KunibertConfig, 'sttUrl' | 'ttsUrl'> &
-    Partial<Pick<KunibertConfig, 'ttsProvider' | 'googleTtsKey' | 'googleTtsVoice' | 'googleTtsRate'>>
+    Partial<Pick<KunibertConfig, 'ttsProvider' | 'googleTtsKey' | 'googleTtsVoice' | 'googleTtsRate' | 'pocketTtsUrl' | 'pocketTtsVoice' | 'pocketTtsTempo' | 'pocketTtsPauseMs'>>
 ): string[] {
   const warnings: string[] = [];
   const google = config.ttsProvider === 'google';
+  const pocket = config.ttsProvider === 'pocket';
   const services: Array<[string, string | null]> = [
     ['Spracherkennung', config.sttUrl],
     // Bei Google ist die Sprachausgabe-Adresse nicht in Gebrauch.
-    ['Sprachausgabe', google ? null : config.ttsUrl],
+    ['Sprachausgabe', google ? null : pocket ? config.pocketTtsUrl ?? null : config.ttsUrl],
   ];
   for (const [name, url] of services) {
     if (!url) continue;
@@ -207,6 +215,26 @@ export function voiceConfigWarnings(
     }
   }
   if (google) warnings.push(...googleConfigWarnings(config));
+  if (pocket) warnings.push(...pocketConfigWarnings(config));
+  return warnings;
+}
+
+function pocketConfigWarnings(
+  config: Partial<Pick<KunibertConfig, 'pocketTtsUrl' | 'pocketTtsVoice' | 'pocketTtsTempo' | 'pocketTtsPauseMs'>>
+): string[] {
+  const warnings: string[] = [];
+  if (!config.pocketTtsUrl || !isValidPocketUrl(config.pocketTtsUrl)) {
+    warnings.push('Sprachausgabe (Pocket): PICASTAI_POCKET_TTS_URL fehlt oder ist ungültig (erwartet z. B. http://127.0.0.1:8001, ohne Pfad). Die Sprachausgabe bleibt aus.');
+  }
+  if (!isValidPocketVoice(config.pocketTtsVoice ?? '')) {
+    warnings.push('Sprachausgabe (Pocket): Die Stimme ist ungültig (erwartet z. B. stuart_bell). Die Sprachausgabe bleibt aus.');
+  }
+  if (config.pocketTtsTempo && !isValidTempo(config.pocketTtsTempo)) {
+    warnings.push('Sprachausgabe (Pocket): PICASTAI_POCKET_TTS_TEMPO ist ungültig (erlaubt 0.7 bis 1.3) und wird ignoriert; es gilt 0.92.');
+  }
+  if (config.pocketTtsPauseMs && !isValidPauseMs(config.pocketTtsPauseMs)) {
+    warnings.push('Sprachausgabe (Pocket): PICASTAI_POCKET_TTS_PAUSE_MS ist ungültig (erlaubt 0 bis 2000) und wird ignoriert; es gilt 450.');
+  }
   return warnings;
 }
 
@@ -265,6 +293,10 @@ export function loadConfig(): KunibertConfig {
     googleTtsKey: process.env.PICASTAI_GOOGLE_TTS_KEY?.trim() || null,
     googleTtsVoice: process.env.PICASTAI_GOOGLE_TTS_VOICE?.trim() || DEFAULT_GOOGLE_VOICE,
     googleTtsRate: process.env.PICASTAI_GOOGLE_TTS_RATE?.trim() || '',
+    pocketTtsUrl: normalizeServiceUrl(process.env.PICASTAI_POCKET_TTS_URL),
+    pocketTtsVoice: process.env.PICASTAI_POCKET_TTS_VOICE?.trim() || DEFAULT_POCKET_VOICE,
+    pocketTtsTempo: process.env.PICASTAI_POCKET_TTS_TEMPO?.trim() || '',
+    pocketTtsPauseMs: process.env.PICASTAI_POCKET_TTS_PAUSE_MS?.trim() || '',
     voiceTimeoutMs: Math.min(120_000, Math.max(3_000, parseNum(process.env.PICASTAI_VOICE_TIMEOUT_MS, 45_000))),
 
     ageBracket: process.env.KUNIBERT_AGE || 'sechs bis zehn',

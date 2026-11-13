@@ -258,6 +258,21 @@ curl.exe -fsS -X POST http://127.0.0.1:8000/v1/models/speaches-ai/piper-de_DE-th
 
 `curl.exe` mit `.exe`: In Windows PowerShell ist `curl` ein anderer Befehl. Später genügt `docker start speaches`. Das Image ist bewusst eine feste Version (`0.8.3-cpu`, am 12.11.2026 dieselbe wie `latest-cpu`), damit dein Rechner und ein späterer Server gleich arbeiten. Hast du den Container schon mit `latest-cpu` angelegt, ist das derzeit dasselbe Image; nichts zu tun.
 
+**1b. Kuniberts Stimme (Pocket TTS, eigenes PowerShell-Fenster):** Seit 13.11.2026 spricht Kunibert mit Pocket TTS und der freien Stimme `stuart_bell` (CC0). Piper bleibt der Rückfall. Mit `uv`:
+
+```powershell
+uvx --python 3.12 pocket-tts@4.0.1 serve --language german --default-voice stuart_bell --host 127.0.0.1 --port 8001
+```
+
+Der erste Start lädt Programm und Modell (einige hundert MB). Bereit ist der Dienst, wenn `curl.exe -fsS http://127.0.0.1:8001/health` antwortet. Im Server-Fenster (Schritt 2) dann zusätzlich:
+
+```powershell
+$env:PICASTAI_TTS_PROVIDER = "pocket"
+$env:PICASTAI_POCKET_TTS_URL = "http://127.0.0.1:8001"
+```
+
+Tempo und Pausen lassen sich mit `PICASTAI_POCKET_TTS_TEMPO` (0.7 bis 1.3, Standard 0.92) und `PICASTAI_POCKET_TTS_PAUSE_MS` (0 bis 2000, Standard 450) einstellen.
+
 **2. Kunibert-Server (PowerShell-Fenster 1, im Ordner des Repos, Stand von `main`):**
 
 ```powershell
