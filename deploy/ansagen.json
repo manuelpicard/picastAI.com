@@ -1,0 +1,12 @@
+{
+  "hinweis": "Feste Zwischensätze für den Pi (die KI-Ansage beim ersten Einschalten kommt aus dem Server, siehe server-api/ansage.ts). Die Dateinamen sind der Vertrag mit pi-client/rueckmeldung.py und dürfen nur gemeinsam geändert werden. Erzeugt werden die WAV-Dateien mit: npm run ansagen -- <zielordner> (siehe docs/Ansagen.md).",
+  "ansagen": [
+    { "datei": "zwischen-1.wav", "text": "Ich höre dir zu. Einen Moment." },
+    { "datei": "zwischen-2.wav", "text": "Lass mich kurz nachdenken." },
+    { "datei": "zwischen-3.wav", "text": "Hmm, einen Augenblick." },
+    { "datei": "zwischen-4.wav", "text": "Ich überlege." },
+    { "datei": "zwischen-5.wav", "text": "Gleich bin ich so weit." },
+    { "datei": "zwischen-6.wav", "text": "Einen Moment bitte." },
+    { "datei": "zwischen-lang.wav", "text": "Das dauert heute etwas länger." }
+  ]
+}
