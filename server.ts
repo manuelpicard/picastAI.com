@@ -6,6 +6,7 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { DeviceRegistry, DeviceStoreError, RateLimiter, AudioStore } from './server-api/devices.js';
 import { Brain, FALLBACK_ANSWER_DE, StoryState } from './server-api/brain.js';
+import { StoryStateStore } from './server-api/story-states.js';
 import { AudioError, decodeWavHeader, isPcmFormat, isSilentPcm16 } from './server-api/audio.js';
 import { config, getSafeConfigSummary, llmConfigWarnings, testSwitchWarnings, ttsProviderWarnings, voiceConfigWarnings } from './server-api/config.js';
 import { isAdminTokenConfigured, verifyAdminAuthorization } from './server-api/admin-auth.js';
@@ -41,7 +42,11 @@ const store = new AudioStore(
 );
 const brain = new Brain();
 const voice = new VoicePipeline(config);
-const deviceStoryStates = new Map<string, StoryState>();
+// Stand der laufenden Geschichte je Gerät: verfällt nach 24 Stunden ohne Nutzung
+// (vorläufig, Maßnahme M9). Stündlich räumt der Server abgelaufene Einträge auf,
+// auch von Geräten, die sich nie wieder melden.
+const deviceStoryStates = new StoryStateStore();
+setInterval(() => deviceStoryStates.purge(), 60 * 60 * 1000).unref();
 
 // Multer für WAV Uploads (max 2 MB)
 const upload = multer({
@@ -220,7 +225,7 @@ app.post(
       // Eine stumme Aufnahme geht nicht erst an die Spracherkennung: Sie ergibt den Hinweis
       // "nicht verstanden" (Whisper würde bei Stille eher etwas erfinden).
       if (!transcript && !isSilentPcm16(req.file.buffer)) transcript = await transcribeOrEmpty(req.file.buffer, timer);
-      const state = deviceStoryStates.get(deviceId) || {};
+      const state = deviceStoryStates.get(deviceId);
       const result = await synthesizeTimed(await brain.handle('frage', transcript, state, timer), timer);
       timer.noteAudio(result.wav);
       rememberDeviceStoryState(deviceId, result.story_state);
@@ -266,7 +271,7 @@ app.post(
     }
 
     try {
-      const state = deviceStoryStates.get(deviceId) || {};
+      const state = deviceStoryStates.get(deviceId);
       // Die Erzähltaste setzt eine laufende Folge fort ("Drück noch einmal die
       // Erzähltaste") und beginnt nur dann eine neue, wenn keine läuft. Mit Modus
       // "geschichte" begänne jeder Druck wieder bei Teil 1. Einen Kinderwunsch gibt
@@ -450,7 +455,10 @@ app.post('/api/devices', requireAdminAuth, async (req: Request, res: Response): 
 });
 
 app.post('/api/devices/:id/revoke', requireAdminAuth, async (req: Request, res: Response): Promise<any> => {
-  const { success, persisted } = await registry.revokeAndPersist(String(req.params.id));
+  const deviceId = String(req.params.id);
+  const { success, persisted } = await registry.revokeAndPersist(deviceId);
+  // Ein gesperrtes Gerät braucht seinen Geschichten-Stand nicht mehr.
+  deviceStoryStates.delete(deviceId);
   return res.json({ success, persisted });
 });
 
@@ -463,6 +471,7 @@ app.get('/api/status', requireAdminAuth, (req: Request, res: Response) => {
   res.json({
     rateLimit: limiter.getStatus(deviceId),
     audioStoreItems: store.count,
+    storyStates: deviceStoryStates.count,
     llm: brain.llmName,
     config: getSafeConfigSummary(config),
   });

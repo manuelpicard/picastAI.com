@@ -179,7 +179,7 @@ Die `audio_url` aus der Antwort mit denselben Authentifizierungsheadern abrufen.
 - Fehlermeldungen der Sprachdienste und von Anthropic kommen nur als HTTP-Status mit Fehlercode ins Protokoll (zum Beispiel `HTTP 422 (string_too_long)`), nie mit ihrem Fließtext: Der kann den gesendeten Text enthalten (`server-api/provider-errors.ts`).
 - Audio nur im flüchtigen RAM, TTL standardmäßig 120 Sekunden.
 - Audio-URL benötigt erneut Geräteauthentifizierung.
-- Story-State, Rate-Limit und Audio sind im Prozessspeicher, nicht hochverfügbar. Die Geräteliste ist es nur ohne `PICASTAI_DEVICE_STORE=firestore`.
+- Story-State, Rate-Limit und Audio sind im Prozessspeicher, nicht hochverfügbar. Der Story-State eines Geräts verfällt nach 24 Stunden ohne Nutzung (vorläufig); beim Sperren des Geräts wird er sofort gelöscht. Die Geräteliste ist es nur ohne `PICASTAI_DEVICE_STORE=firestore`.
 - Geräteverwaltung, Status und sichere Konfigurationsübersicht benötigen ein starkes Admin-Bearer-Token.
 - CORS akzeptiert nur exakt konfigurierte Browser-Ursprünge; ohne Allowlist gibt es keine Cross-Origin-Freigabe.
 - Firestore-Regeln verweigern direkte Clientzugriffe; serverseitige Admin-SDK-Zugriffe sind hiervon nicht erfasst.
