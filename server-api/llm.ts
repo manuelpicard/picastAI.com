@@ -2,7 +2,7 @@
 // Beide Aufrufstellen in brain.ts fragen strukturiertes JSON an; die Schicht bleibt
 // austauschbar, damit ein anderer zulässiger Anbieter ohne Umbau von brain.ts möglich ist.
 import type { KunibertConfig } from './config.js';
-import { summarizeErrorResponse } from './provider-errors.js';
+import { providerErrorSummary } from './provider-errors.js';
 
 /** Schema in Standard-JSON-Schema-Schreibweise (Kleinbuchstaben-Typen). */
 export interface JsonSchema {
@@ -73,6 +73,8 @@ export class AnthropicProvider implements LlmProvider {
       apiKey: string;
       model: string;
       baseUrl?: string;
+      /** Kopf anthropic-workspace-id (nötig bei Schlüsseln, die an eine Person gebunden sind). */
+      workspaceId?: string | null;
       timeoutMs?: number;
       /** Pause vor dem zweiten Versuch (Standard 700 ms; Tests setzen 0). */
       retryDelayMs?: number;
@@ -114,6 +116,7 @@ export class AnthropicProvider implements LlmProvider {
           'content-type': 'application/json',
           'x-api-key': this.options.apiKey,
           'anthropic-version': '2023-06-01',
+          ...(this.options.workspaceId ? { 'anthropic-workspace-id': this.options.workspaceId } : {}),
         },
         // Ein erzwungener Tool-Aufruf liefert das Antwortformat als Objekt,
         // ohne dass JSON aus Fließtext herausgelöst werden muss.
@@ -139,8 +142,18 @@ export class AnthropicProvider implements LlmProvider {
       if (!response.ok) {
         // Nur Status und Fehlercode (z. B. "overloaded_error"), nie der Fließtext der Antwort:
         // Die Meldung landet im Protokoll, und das darf keine Äußerungen enthalten.
+        let body = '';
+        try {
+          body = (await response.text()).slice(0, 65_536);
+        } catch {
+          body = '';
+        }
+        // Bekannte Ursache als fester Hinweis (der Fließtext selbst kommt nie ins Protokoll).
+        const hint = response.status === 400 && body.includes('anthropic-workspace-id')
+          ? ' – Arbeitsbereich fehlt: PICASTAI_ANTHROPIC_WORKSPACE_ID setzen (Console, Arbeitsbereiche, Spalte ID)'
+          : '';
         throw new LlmError(
-          `Anthropic antwortete mit ${await summarizeErrorResponse(response)}`,
+          `Anthropic antwortete mit ${providerErrorSummary(response.status, body)}${hint}`,
           response.status === 429 || response.status >= 500
         );
       }
@@ -170,6 +183,7 @@ export function createLlmProvider(
     | 'anthropicApiKey'
     | 'anthropicModel'
     | 'anthropicBaseUrl'
+    | 'anthropicWorkspaceId'
     | 'llmTimeoutMs'
   >
 ): LlmProvider | null {
@@ -178,6 +192,7 @@ export function createLlmProvider(
       apiKey: cfg.anthropicApiKey,
       model: cfg.anthropicModel,
       baseUrl: cfg.anthropicBaseUrl,
+      workspaceId: cfg.anthropicWorkspaceId,
       timeoutMs: cfg.llmTimeoutMs,
     });
   }

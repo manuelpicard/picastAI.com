@@ -28,6 +28,12 @@ export interface KunibertConfig {
   anthropicModel: string;
   anthropicBaseUrl: string;
   /**
+   * Arbeitsbereich (Workspace) für Claude, zum Beispiel wrkspc_01ABC… . Nötig bei Schlüsseln, die an eine
+   * Person gebunden sind (sk-ant-usr-…): Ohne den Kopf anthropic-workspace-id lehnt die API mit
+   * HTTP 400 (invalid_request_error) ab. Keine Geheimzahl; steht in der Console unter Arbeitsbereiche.
+   */
+  anthropicWorkspaceId: string | null;
+  /**
    * Spracherkennung über eine OpenAI-kompatible Schnittstelle (POST {sttUrl}/audio/transcriptions),
    * z. B. ein eigener Speaches-Server. null = aus. Es gibt keinen Voreinstellungsdienst:
    * Kinderstimmen sollen nur an einen Dienst gehen, den der Betreiber bewusst gewählt hat.
@@ -136,11 +142,20 @@ export function resolveLlmProvider(
   return 'none';
 }
 
-/** Warnung beim Start, wenn noch Gemini-Einstellungen vorhanden sind (sie wirken nicht mehr). */
+/** Arbeitsbereichs-ID der Claude Console: wrkspc_ und Buchstaben oder Ziffern. */
+export function isValidWorkspaceId(value: string): boolean {
+  return /^wrkspc_[A-Za-z0-9]{8,64}$/.test(value);
+}
+
+/** Warnung beim Start, wenn noch Gemini-Einstellungen vorhanden sind (sie wirken nicht mehr) oder die Arbeitsbereichs-ID ungültig ist. */
 export function llmConfigWarnings(
-  env: { PICASTAI_LLM_PROVIDER?: string; GEMINI_API_KEY?: string; PICASTAI_GEMINI_MODEL?: string } = process.env
+  env: { PICASTAI_LLM_PROVIDER?: string; GEMINI_API_KEY?: string; PICASTAI_GEMINI_MODEL?: string; PICASTAI_ANTHROPIC_WORKSPACE_ID?: string } = process.env
 ): string[] {
   const warnings: string[] = [];
+  const workspace = env.PICASTAI_ANTHROPIC_WORKSPACE_ID?.trim();
+  if (workspace && !isValidWorkspaceId(workspace)) {
+    warnings.push('Sprachmodell: PICASTAI_ANTHROPIC_WORKSPACE_ID ist ungültig (erwartet z. B. wrkspc_01ABC…) und wird ignoriert.');
+  }
   if (env.PICASTAI_LLM_PROVIDER?.trim().toLowerCase() === 'gemini') {
     warnings.push('Sprachmodell: PICASTAI_LLM_PROVIDER=gemini wird nicht mehr unterstützt (Gemini ist für Kinderprodukte nicht zulässig). Es greifen die festen Erzähltexte; auf anthropic umstellen.');
   }
@@ -281,6 +296,10 @@ export function loadConfig(): KunibertConfig {
     anthropicApiKey: process.env.ANTHROPIC_API_KEY?.trim() || null,
     anthropicModel: process.env.PICASTAI_ANTHROPIC_MODEL?.trim() || 'claude-sonnet-5-5',
     anthropicBaseUrl: (process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com').replace(/\/$/, ''),
+    anthropicWorkspaceId: (() => {
+      const value = process.env.PICASTAI_ANTHROPIC_WORKSPACE_ID?.trim() || '';
+      return isValidWorkspaceId(value) ? value : null;
+    })(),
     sttUrl: normalizeServiceUrl(process.env.PICASTAI_STT_URL),
     sttApiKey: process.env.PICASTAI_STT_API_KEY?.trim() || null,
     sttModel: process.env.PICASTAI_STT_MODEL?.trim() || '',

@@ -8,6 +8,7 @@ Der Server erzeugt Antworten und Kunibert-Geschichten über einen austauschbaren
 | --- | --- |
 | `PICASTAI_LLM_PROVIDER` | `anthropic` oder `none`. Ohne Angabe wählt der Server Anthropic, wenn `ANTHROPIC_API_KEY` gesetzt ist. Ein altes `gemini` schaltet das Sprachmodell ab (feste Erzähltexte) und der Server warnt beim Start. |
 | `ANTHROPIC_API_KEY`, `PICASTAI_ANTHROPIC_MODEL` | Standardmodell `claude-sonnet-5-5`. Für kürzere Wartezeit und geringere Kosten ist `claude-haiku-5-5` eine Option. |
+| `PICASTAI_ANTHROPIC_WORKSPACE_ID` | Arbeitsbereich, z. B. `wrkspc_01…` (Console, Arbeitsbereiche, Spalte ID). Nötig bei Schlüsseln, die an eine Person gebunden sind (`sk-ant-usr-…`): Ohne den Kopf `anthropic-workspace-id` antwortet die API mit HTTP 400 `invalid_request_error`. Das Protokoll nennt dann diese Einstellung. |
 | `PICASTAI_LLM_TIMEOUT_MS` | Zeitlimit pro Aufruf (Standard 30000). |
 
 Schlägt ein Aufruf fehl oder verwirft der Ausgabe-Check den Text, spricht der feste Fallback. Das Dashboard und `GET /api/status` zeigen den aktiven Anbieter und das Modell.
