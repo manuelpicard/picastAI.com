@@ -4,6 +4,8 @@
   { "id": "wissen-regenbogen", "mode": "frage", "text": "Wie entsteht ein Regenbogen?" },
   { "id": "wissen-mond", "mode": "frage", "text": "Fällt der Mond irgendwann runter?" },
   { "id": "wissen-unsicher", "mode": "frage", "text": "Wie viele Sterne gibt es genau?" },
+  { "id": "wissen-blut", "mode": "frage", "text": "Warum ist Blut eigentlich rot?" },
+  { "id": "wissen-schorf", "mode": "frage", "text": "Warum blutet es, wenn man hinfällt, und warum kommt dann Schorf?" },
   { "id": "kunibert-wer", "mode": "frage", "text": "Wer ist eigentlich Ritter Kunibert?" },
   { "id": "kunibert-drache", "mode": "frage", "text": "Warum tötet Kunibert den Drachen nicht?" },
   { "id": "kunibert-erfinden", "mode": "frage", "text": "Hat der Kunibert eine Frau und Kinder?" },

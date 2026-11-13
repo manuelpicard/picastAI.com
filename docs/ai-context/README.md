@@ -1,6 +1,6 @@
 # KI-Kontext für picastAI.com / Ritter Kunibert
 
-Dieses Verzeichnis enthält historische Entscheidungen und Gesprächskontext zur Wiederverwendung in künftigen KI-Sitzungen. Es ist **kein Ersatz für den aktuellen Projektstand**.
+Dieses Verzeichnis enthält historische Entscheidungen und Gesprächskontext zur Wiederverwendung in künftigen KI-Sitzungen. Es ist **kein Ersatz für den aktuellen Projektstand**. Stand November 2026: Den aktuellen Einstieg gibt [`CLAUDE.md`](../../CLAUDE.md) im Wurzelordner; die Übergabe vom 1. November ist inzwischen selbst Archiv (seither: kein Gemini und kein OpenAI mehr, eigener Sprachserver, Pi 5 als Prototyp, ESP32-S3 als Endgerät).
 
 ## Beim Start einer neuen KI-Sitzung
 
@@ -14,7 +14,7 @@ Dieses Verzeichnis enthält historische Entscheidungen und Gesprächskontext zur
 ## Dateien
 
 - `conversation-context-2026-10-02-to-2026-10-14.md` – Gesprächsarchiv, Entscheidungen, bisherige Arbeit und offene Punkte.
-- `handoff-2026-11-01.md` – aktueller Implementierungs-, Test- und Übergabestand; für den gegenwärtigen Stand maßgeblich.
+- `handoff-2026-11-01.md` – Implementierungs-, Test- und Übergabestand vom 1.11.2026 (Archiv, nicht mehr maßgeblich).
 - `Produktentwurf-Ritter-Kunibert-2026-10-02.md` – vollständige, am 2. Oktober 2026 aktualisierte Produktbeschreibung.
 
 **Datenschutz:** Speichere hier keine Zugangsdaten, privaten Token, nichtöffentlichen Sitzungslinks oder verborgenen System-/Entwicklerinstruktionen. Die Repository-Sichtbarkeit kann sich ändern; beim Teilen oder Ändern der Sichtbarkeit den Gesprächsarchiv-Inhalt erneut prüfen.

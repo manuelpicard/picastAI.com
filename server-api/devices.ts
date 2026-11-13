@@ -22,12 +22,24 @@ export class DeviceStoreError extends Error {
   }
 }
 
+/**
+ * Fehlercode eines Speicherfehlers für Meldungen und Protokoll, ohne den Fehlertext: Meldungen
+ * von Firestore können den Dokumentpfad und damit die Geräte-ID enthalten (z. B. bei NOT_FOUND).
+ */
+export function storeErrorCode(err: unknown): string {
+  const code = (err as { code?: unknown } | null)?.code;
+  if (typeof code === 'number' && Number.isInteger(code)) return String(code);
+  if (typeof code === 'string' && /^[A-Za-z][A-Za-z0-9_.-]{0,63}$/.test(code)) return code;
+  const name = (err as Error | null)?.name;
+  return typeof name === 'string' && /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(name) ? name : 'unbekannt';
+}
+
 export class DeviceRegistry {
   private devices: Map<string, DeviceEntry> = new Map();
 
   constructor(private readonly store: DeviceStore | null = null) {
     // Entwicklungsgeräte mit bekannten Tokens gibt es nur außerhalb von
-    // Produktion. Für den Pi Zero 2 W-Prototyp wird ein eigener Token über
+    // Produktion. Für das erste Gerät wird ein eigener Token über
     // Umgebungsvariablen provisioniert; echte Tokens stehen nicht im Quellcode.
     if (process.env.NODE_ENV !== 'production') {
       this.addDeviceWithRawToken('prototype-1', 'test-token-kunibert-2026', 'Raspberry Pi Prototyp #1');
@@ -40,7 +52,7 @@ export class DeviceRegistry {
       this.addDeviceWithRawToken(
         configuredDeviceId,
         configuredToken,
-        process.env.PICASTAI_DEVICE_NAME || 'picastAI Pi Zero 2 W Prototyp'
+        process.env.PICASTAI_DEVICE_NAME || 'picastAI Prototyp'
       );
     }
   }
@@ -106,6 +118,11 @@ export class DeviceRegistry {
   /** Neues Gerät anlegen und dauerhaft speichern; bei Speicherfehler wird zurückgerollt. */
   public async register(deviceId: string, name?: string): Promise<{ deviceId: string; token: string }> {
     const previous = this.devices.get(deviceId);
+    // Ein Widerruf ist dauerhaft (siehe docs/picastAI-Pi-API.md). Ohne diese Sperre würde ein
+    // erneutes Anlegen derselben ID das Gerät still wieder zulassen.
+    if (previous?.revoked) {
+      throw new Error('Diese Geräte-ID ist widerrufen. Bitte eine neue Geräte-ID verwenden.');
+    }
     const created = this.add(deviceId, name);
     if (this.store) {
       try {
@@ -113,7 +130,7 @@ export class DeviceRegistry {
       } catch (err) {
         if (previous) this.devices.set(deviceId, previous);
         else this.devices.delete(deviceId);
-        throw new DeviceStoreError(`Gerät konnte nicht gespeichert werden: ${(err as Error)?.message || 'unbekannt'}`);
+        throw new DeviceStoreError(`Gerät konnte nicht gespeichert werden (${storeErrorCode(err)})`);
       }
     }
     return created;
@@ -131,7 +148,8 @@ export class DeviceRegistry {
       await this.store.markRevoked(deviceId);
       return { success, persisted: true };
     } catch (err) {
-      console.warn(`Widerruf von ${deviceId} konnte nicht dauerhaft gespeichert werden:`, err);
+      // Ohne Geräte-ID und ohne Fehlertext im Protokoll (der Text kann den Dokumentpfad enthalten).
+      console.warn(`Ein Widerruf konnte nicht dauerhaft gespeichert werden (${storeErrorCode(err)}).`);
       return { success, persisted: false };
     }
   }

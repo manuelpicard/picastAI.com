@@ -42,20 +42,206 @@ export function encodeWav(pcmData: Buffer, sampleRate: number = 16000, channels:
   return buffer;
 }
 
-export function decodeWavHeader(buffer: Buffer) {
+// ---------------------------------------------------------------------------
+// Abtastrate umrechnen (Sprachausgabe 22,05 oder 24 kHz -> Geräteformat 16 kHz)
+// ---------------------------------------------------------------------------
+
+/** Filterlänge je Seite in Nulldurchgängen des Sinc-Kerns (mehr = steilere Flanke, mehr Rechenzeit). */
+const RESAMPLE_ZERO_CROSSINGS = 20;
+/** Grenzfrequenz als Anteil der halben Zielrate: bei 16 kHz etwa 7,2 kHz. */
+const RESAMPLE_ROLLOFF = 0.9;
+/** Höchstzahl vorberechneter Filterphasen; übliche Raten brauchen 2 (24 kHz) bis 320 (22,05 kHz). */
+const RESAMPLE_MAX_PHASES = 2048;
+
+function gcd(a: number, b: number): number {
+  while (b) [a, b] = [b, a % b];
+  return a;
+}
+
+/**
+ * Rechnet Mono-PCM (16 Bit) auf eine andere Abtastrate um, mit Tiefpass gegen Aliasing
+ * (gefensterter Sinc, Blackman-Fenster, Gewichte je Phase vorberechnet).
+ *
+ * Vorher wurde nur linear zwischen zwei Samples interpoliert. Beim Herunterrechnen von 22,05
+ * oder 24 kHz auf 16 kHz klappten dabei Anteile über 8 kHz fast ungedämpft in den hörbaren
+ * Bereich zurück (ein Ton mit 10 kHz kam mit -4,6 dB als 6-kHz-Ton heraus, jetzt unter
+ * -80 dB), und 6 kHz wurden um 2 dB gedämpft (jetzt 0 dB). Bei Sprache trifft das vor allem
+ * s- und sch-Laute. Länge des Ergebnisses wie bisher: round(Quelllänge * Zielrate /
+ * Quellrate), mindestens 1. Ganzzahlige Raten werden erwartet.
+ */
+export function resampleMono16(source: Int16Array, fromRate: number, toRate: number): Int16Array {
+  const targetFrames = Math.max(1, Math.round((source.length * toRate) / fromRate));
+  if (fromRate === toRate || source.length === 0) {
+    const copy = new Int16Array(targetFrames);
+    copy.set(source.subarray(0, targetFrames));
+    return copy;
+  }
+  const divisor = gcd(Math.round(fromRate), Math.round(toRate)) || 1;
+  const up = Math.round(toRate) / divisor; // Zahl der Phasen
+  const down = Math.round(fromRate) / divisor; // Quell-Samples je "up" Ziel-Samples
+  const phases = up <= RESAMPLE_MAX_PHASES ? up : RESAMPLE_MAX_PHASES;
+  const cutoff = 0.5 * Math.min(1, toRate / fromRate) * RESAMPLE_ROLLOFF; // Zyklen je Quell-Sample
+  const halfWidth = RESAMPLE_ZERO_CROSSINGS / (2 * cutoff); // in Quell-Samples
+  const reach = Math.ceil(halfWidth); // Abgriffe je Seite
+  const taps = 2 * reach;
+
+  const kernel = (x: number): number => {
+    const distance = Math.abs(x);
+    if (distance >= halfWidth) return 0;
+    const arg = 2 * cutoff * distance;
+    const sinc = arg === 0 ? 1 : Math.sin(Math.PI * arg) / (Math.PI * arg);
+    const u = distance / halfWidth;
+    return sinc * (0.42 + 0.5 * Math.cos(Math.PI * u) + 0.08 * Math.cos(2 * Math.PI * u));
+  };
+  // Gewichte je Phase (Bruchteil zwischen zwei Quell-Samples) für die Abgriffe base-reach+1 .. base+reach.
+  const weights = new Float64Array(phases * taps);
+  const sums = new Float64Array(phases);
+  for (let phase = 0; phase < phases; phase++) {
+    const fraction = phase / phases;
+    let sum = 0;
+    for (let j = 0; j < taps; j++) {
+      const w = kernel(fraction - (j - reach + 1));
+      weights[phase * taps + j] = w;
+      sum += w;
+    }
+    sums[phase] = sum;
+  }
+
+  const out = new Int16Array(targetFrames);
+  const last = source.length - 1;
+  for (let n = 0; n < targetFrames; n++) {
+    let base: number;
+    let phase: number;
+    if (phases === up) {
+      const position = n * down;
+      base = Math.floor(position / up);
+      phase = position - base * up;
+    } else {
+      // Sehr ungewöhnliche Raten: nächstgelegene vorberechnete Phase.
+      const t = (n * fromRate) / toRate;
+      base = Math.floor(t);
+      phase = Math.min(phases - 1, Math.round((t - base) * phases));
+    }
+    const first = base - reach + 1;
+    const offset = phase * taps;
+    let sum = 0;
+    let weight = sums[phase];
+    if (first >= 0 && first + taps - 1 <= last) {
+      for (let j = 0; j < taps; j++) sum += source[first + j] * weights[offset + j];
+    } else {
+      // Am Anfang und Ende fehlen Nachbarn: nur vorhandene Samples, Gewichte neu summiert.
+      weight = 0;
+      for (let j = 0; j < taps; j++) {
+        const k = first + j;
+        if (k < 0 || k > last) continue;
+        sum += source[k] * weights[offset + j];
+        weight += weights[offset + j];
+      }
+    }
+    // Durch die Summe der Gewichte teilen: Der Gleichanteil bleibt exakt, und die Ränder
+    // werden nicht leiser.
+    const value = weight > 0 ? sum / weight : 0;
+    out[n] = Math.max(-32768, Math.min(32767, Math.round(value)));
+  }
+  return out;
+}
+
+/** Formatkennung im fmt-Block: PCM (1) oder WAVE_FORMAT_EXTENSIBLE (0xFFFE, bei 16 Bit ebenfalls PCM). */
+export const WAV_FORMAT_PCM = 1;
+export const WAV_FORMAT_EXTENSIBLE = 0xfffe;
+
+export interface WavInfo {
+  formatTag: number;
+  channels: number;
+  sampleRate: number;
+  bitsPerSample: number;
+  /** Beginn der Audiodaten (nach dem Kopf des data-Blocks). */
+  dataOffset: number;
+  /** Länge der Audiodaten in Byte, höchstens so viel, wie wirklich in der Datei steht. */
+  dataSize: number;
+  /** Dauer in Sekunden (0, wenn das Format keine Rechnung erlaubt). */
+  duration: number;
+}
+
+/**
+ * Liest ein RIFF/WAVE chunkweise statt mit festen Abständen.
+ *
+ * Bis 12.11.2026 las der Server Format und Länge immer an den Stellen des 44-Byte-Kopfs der
+ * Geräte. Eine WAV mit zusätzlichem Block vor den Daten (ffmpeg schreibt zum Beispiel einen
+ * LIST-Block) hatte dann eine falsche Länge, und die Stille-Prüfung las Kopf-Bytes als Ton:
+ * Eine stumme Aufnahme ging deshalb im Probelauf vom 12.11. doch an die Spracherkennung.
+ * Längenangaben 0 oder 0xFFFFFFFF (Streaming) und zu große Angaben gelten als "bis zum Ende".
+ */
+export function parseWav(buffer: Buffer): WavInfo {
   if (buffer.length < 44) {
     throw new AudioError('WAV-Datei zu kurz');
   }
   if (buffer.toString('ascii', 0, 4) !== 'RIFF' || buffer.toString('ascii', 8, 12) !== 'WAVE') {
     throw new AudioError('Keine gültige RIFF/WAVE Datei');
   }
-  const channels = buffer.readUInt16LE(22);
-  const sampleRate = buffer.readUInt32LE(24);
-  const bitsPerSample = buffer.readUInt16LE(34);
-  const dataSize = buffer.readUInt32LE(40);
-  const duration = dataSize / ((sampleRate * channels * bitsPerSample) / 8);
+  let format: Pick<WavInfo, 'formatTag' | 'channels' | 'sampleRate' | 'bitsPerSample'> | null = null;
+  let offset = 12;
+  while (offset + 8 <= buffer.length) {
+    const id = buffer.toString('ascii', offset, offset + 4);
+    const size = buffer.readUInt32LE(offset + 4);
+    const body = offset + 8;
+    if (id === 'fmt ') {
+      if (size < 16 || body + 16 > buffer.length) throw new AudioError('WAV mit defektem Formatblock');
+      format = {
+        formatTag: buffer.readUInt16LE(body),
+        channels: buffer.readUInt16LE(body + 2),
+        sampleRate: buffer.readUInt32LE(body + 4),
+        bitsPerSample: buffer.readUInt16LE(body + 14),
+      };
+    } else if (id === 'data') {
+      if (!format) throw new AudioError('WAV ohne Formatblock vor den Daten');
+      const available = buffer.length - body;
+      const dataSize = size === 0 || size === 0xffffffff || size > available ? available : size;
+      const bytesPerSecond = (format.sampleRate * format.channels * format.bitsPerSample) / 8;
+      return { ...format, dataOffset: body, dataSize, duration: bytesPerSecond > 0 ? dataSize / bytesPerSecond : 0 };
+    }
+    // Blöcke mit ungerader Länge haben ein Füllbyte.
+    offset = body + size + (size % 2);
+  }
+  throw new AudioError('WAV ohne Audiodaten');
+}
 
-  return { channels, sampleRate, bitsPerSample, dataSize, duration };
+/** Format und Länge einer WAV-Datei (chunkweise gelesen, siehe parseWav). */
+export function decodeWavHeader(buffer: Buffer) {
+  const { formatTag, channels, sampleRate, bitsPerSample, dataSize, duration } = parseWav(buffer);
+  return { formatTag, channels, sampleRate, bitsPerSample, dataSize, duration };
+}
+
+/** true für unkomprimiertes PCM (Formatkennung 1 oder 0xFFFE). */
+export function isPcmFormat(formatTag: number): boolean {
+  return formatTag === WAV_FORMAT_PCM || formatTag === WAV_FORMAT_EXTENSIBLE;
+}
+
+/** Spitzenwert, unter dem eine 16-Bit-Aufnahme als stumm gilt (32 von 32767, etwa -60 dBFS). */
+export const SILENCE_PEAK = 32;
+
+/**
+ * true, wenn eine Aufnahme (16 Bit PCM) praktisch stumm ist: Mikrofon aus oder defekt, falsches
+ * Gerät, unter Windows der Zugriff gesperrt. Dann gibt es nichts zu erkennen, und Whisper
+ * erfindet bei Stille gern Text. Der Wert ist bewusst niedrig (Einschätzung, nicht gemessen:
+ * auch leises Sprechen in ein ungeregeltes I2S-Mikrofon liegt deutlich darüber). Andere
+ * Formate und leere Aufnahmen gelten nicht als stumm.
+ */
+export function isSilentPcm16(wav: Buffer, peakLimit: number = SILENCE_PEAK): boolean {
+  let info: WavInfo;
+  try {
+    info = parseWav(wav);
+  } catch {
+    return false;
+  }
+  if (info.bitsPerSample !== 16 || !isPcmFormat(info.formatTag)) return false;
+  const end = info.dataOffset + info.dataSize - (info.dataSize % 2);
+  if (end <= info.dataOffset) return false;
+  for (let offset = info.dataOffset; offset + 1 < end; offset += 2) {
+    const sample = wav.readInt16LE(offset);
+    if (sample >= peakLimit || sample <= -peakLimit) return false;
+  }
+  return true;
 }
 
 /**

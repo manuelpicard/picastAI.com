@@ -9,6 +9,7 @@ import {
 } from './prompts.js';
 import {
   ERROR_RESPONSE_DE,
+  normalize,
   SAFETY_RESPONSE_DE,
   screen,
   screenOutput,
@@ -16,6 +17,13 @@ import {
 } from './safety.js';
 import { generateMelodyWav, generateToneWav } from './audio.js';
 import { config, type KunibertConfig } from './config.js';
+import { budgetTimeoutMs, MIN_LLM_MS, NO_TIMER, TTS_RESERVE_MS, type StageTimer } from './timing.js';
+
+/** Fester Ersatztext, wenn das Sprachmodell fehlt, ausfällt oder seine Antwort abgelehnt wurde. */
+export const FALLBACK_ANSWER_DE =
+  'Das ist eine gute Frage. Die kann ich dir gerade leider nicht beantworten. ' +
+  'Frag am besten deine Eltern oder eine Lehrerin, die wissen darüber oft ganz Erstaunliches. ' +
+  'Wenn du eine Geschichte hören willst, drück die Erzähltaste.';
 
 export interface StoryState {
   v: number;
@@ -52,6 +60,36 @@ export function cleanText(text: unknown, maxChars: number): string {
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, maxChars);
+}
+
+/**
+ * Typische Fehlerkennungen von Whisper bei Stille oder Rauschen: Untertitel-Abspänne aus den
+ * Trainingsdaten. Belegt: „Untertitel im Auftrag des ZDF, 2017“ bei 23 s Stille
+ * (https://gist.github.com/riotbib/3b3c5f817b55b68801d14b8bdb02df09) und die deutsche Liste in
+ * scraibe (https://huggingface.co/spaces/Hyathi/Stem-Extractor/blob/main/scraibe/hallucinations.py).
+ * Geprüft wird nach normalize(): klein, ohne Satzzeichen. Nur ganze Äußerungen, die genau so
+ * aussehen; eine Kinderfrage wie „Was sind Untertitel?“ trifft keines der Muster.
+ */
+const STT_ARTIFACTS: RegExp[] = [
+  /^untertitel(ung)? (im auftrag des zdf|aufgrund der amara org community|der amara org community|von stephanie geiges)( für funk)?( \d{4})?$/,
+  /^copyright wdr( \d{4})?$/,
+  /^swr \d{4}$/,
+];
+
+/**
+ * true, wenn die Erkennung sehr wahrscheinlich nichts Gesprochenes enthält: ein bekannter
+ * Untertitel-Abspann oder nur der Erkennungshinweis selbst (PICASTAI_STT_PROMPT, zum Beispiel
+ * „Ritter Kunibert“), den Whisper bei Rauschen nachsprechen kann. Dann bittet Kunibert um
+ * Wiederholung, statt auf etwas zu antworten, das das Kind nicht gesagt hat.
+ */
+export function isLikelySttArtifact(transcript: string, sttPrompt = ''): boolean {
+  const text = normalize(transcript).trim();
+  if (!text) return false;
+  if (STT_ARTIFACTS.some((pattern) => pattern.test(text))) return true;
+  const prompt = normalize(sttPrompt).trim();
+  if (!prompt) return false;
+  // Auch mehrfach hintereinander („Ritter Kunibert. Ritter Kunibert.“).
+  return text.split(prompt).every((rest) => rest.trim() === '');
 }
 
 const WISH_FILLER = new Set([
@@ -138,7 +176,7 @@ export const STORY_SCHEMA: JsonSchema = {
   required: ['text', 'summary', 'open_threads', 'next_hook', 'episode_finished'],
 };
 
-export type BrainSettings = Pick<KunibertConfig, 'ageBracket' | 'partsPerEpisode' | 'storyMinWords' | 'storyMaxWords' | 'answerMaxWords'>;
+export type BrainSettings = Pick<KunibertConfig, 'ageBracket' | 'partsPerEpisode' | 'storyMinWords' | 'storyMaxWords' | 'answerMaxWords' | 'sttPrompt'>;
 
 export class Brain {
   private readonly age: string;
@@ -146,6 +184,7 @@ export class Brain {
   private readonly storyMinWords: number;
   private readonly storyMaxWords: number;
   private readonly answerMaxWords: number;
+  private readonly sttPrompt: string;
 
   /**
    * Ohne Anbieter (kein Key) greifen die festen Fallback-Texte. Die Einstellungen
@@ -157,6 +196,19 @@ export class Brain {
     this.storyMinWords = settings.storyMinWords ?? config.storyMinWords;
     this.storyMaxWords = settings.storyMaxWords ?? config.storyMaxWords;
     this.answerMaxWords = settings.answerMaxWords ?? config.answerMaxWords;
+    this.sttPrompt = settings.sttPrompt ?? config.sttPrompt;
+  }
+
+  /**
+   * Zeit für den nächsten Sprachmodell-Aufruf aus dem gemeinsamen Zeitbudget der Anfrage, mit Reserve
+   * für die Sprachausgabe. Bleibt zu wenig übrig, wird kein Aufruf mehr gestartet (der Aufrufer
+   * fängt den Fehler und nimmt den festen Fallback-Text). Ohne Budget (undefined) gilt nur die
+   * eigene Grenze des Anbieters.
+   */
+  private llmTimeoutMs(timer: StageTimer): number | undefined {
+    const left = budgetTimeoutMs(timer, TTS_RESERVE_MS);
+    if (left !== undefined && left < MIN_LLM_MS) throw new Error('Zeitbudget der Anfrage aufgebraucht, kein weiterer Sprachmodell-Aufruf');
+    return left;
   }
 
   /** Für Statusanzeige und Logs, z. B. "anthropic:claude-sonnet-5-5". */
@@ -164,16 +216,18 @@ export class Brain {
     return this.llm ? `${this.llm.name}:${this.llm.model}` : 'none';
   }
 
+  /** Der optionale Zeitmesser misst nur die Dauer von Weiche, Sprachmodell und Ausgabe-Check; am Ablauf ändert er nichts. */
   public async handle(
     mode: 'frage' | 'geschichte' | 'weiter',
     rawTranscript: string,
-    rawState: any
+    rawState: any,
+    timer: StageTimer = NO_TIMER
   ): Promise<TurnResult> {
     const state = cleanState(rawState);
     const transcript = cleanText(rawTranscript, MAX_UTTERANCE_CHARS);
 
     // 1. Deterministische Sicherheitsweiche
-    if (transcript && screen(transcript)) {
+    if (transcript && timer.timeSync('weiche', () => screen(transcript))) {
       return {
         kind: 'hinweis',
         speech: SAFETY_RESPONSE_DE,
@@ -185,13 +239,13 @@ export class Brain {
 
     try {
       if (mode === 'frage') {
-        return await this.handleQuestion(transcript, state);
+        return await this.handleQuestion(transcript, state, timer);
       }
       if (mode === 'geschichte') {
-        return await this.handleStory(true, state, transcript);
+        return await this.handleStory(true, state, transcript, timer);
       }
       if (mode === 'weiter') {
-        return await this.handleStory(!storyActive(state), state, '');
+        return await this.handleStory(!storyActive(state), state, '', timer);
       }
     } catch (err) {
       console.error('Brain execution error:', err);
@@ -207,8 +261,10 @@ export class Brain {
     throw new Error('Unbekannter Modus');
   }
 
-  private async handleQuestion(transcript: string, state: StoryState): Promise<TurnResult> {
-    if (!transcript) {
+  private async handleQuestion(transcript: string, state: StoryState, timer: StageTimer): Promise<TurnResult> {
+    // Die Sicherheitsweiche lief schon (handle). Ein Abspann oder nur der Erkennungshinweis
+    // ist keine Äußerung des Kindes: wie eine leere Erkennung behandeln.
+    if (!transcript || isLikelySttArtifact(transcript, this.sttPrompt)) {
       return {
         kind: 'hinweis',
         speech: UNCLEAR_RESPONSE_DE,
@@ -219,17 +275,19 @@ export class Brain {
     }
 
     // Wenn ein Sprachmodell konfiguriert ist, befragen
-    if (this.llm) {
+    const llm = this.llm;
+    if (llm) {
       try {
         const systemPrompt = ANSWER_SYSTEM(this.age, this.answerMaxWords);
         const userPrompt = `Läuft gerade eine Kunibert-Geschichte: ${storyActive(state) ? 'ja' : 'nein'}\nErkannte Äußerung des Kindes: «${transcript}»`;
 
-        const parsed = await this.llm.generateJson({
+        const parsed = await timer.time('sprachmodell', () => llm.generateJson({
           system: systemPrompt,
           user: userPrompt,
           schemaName: 'kunibert_antwort',
           schema: QUESTION_SCHEMA,
-        }) as { category?: string; speech?: string };
+          timeoutMs: this.llmTimeoutMs(timer),
+        })) as { category?: string; speech?: string };
         if (parsed.category === 'sicherheit') {
           return {
             kind: 'hinweis',
@@ -240,15 +298,26 @@ export class Brain {
           };
         }
         if (parsed.category === 'geschichte') {
-          return await this.handleStory(true, state, transcript);
+          return await this.handleStory(true, state, transcript, timer);
         }
         if (parsed.category === 'weiter') {
-          return await this.handleStory(!storyActive(state), state, '');
+          return await this.handleStory(!storyActive(state), state, '', timer);
+        }
+        if (parsed.category === 'unklar') {
+          // Das Sprachmodell hat die Äußerung als leer oder unverständlich eingestuft: um
+          // Wiederholung bitten, statt mit dem Ersatztext unten auf Unverstandenes zu antworten.
+          return {
+            kind: 'hinweis',
+            speech: UNCLEAR_RESPONSE_DE,
+            story_state: state,
+            fixed: 'unklar',
+            wav: this.synthesizeWav(UNCLEAR_RESPONSE_DE, 'hinweis'),
+          };
         }
         if (parsed.category === 'frage' && parsed.speech) {
           const speech = trimWords(parsed.speech, this.answerMaxWords + 20);
           // Ausgabe-Check: bei Treffer greift der Fallback unten (catch-Pfad).
-          if (screenOutput(speech, 'answer')) {
+          if (timer.timeSync('ausgabecheck', () => screenOutput(speech, 'answer'))) {
             throw new Error('Antwort des Sprachmodells durch Ausgabe-Check abgelehnt');
           }
           return {
@@ -268,50 +337,53 @@ export class Brain {
   }
 
   private fallbackQuestion(transcript: string, state: StoryState): TurnResult {
-    const lower = transcript.toLowerCase();
+    // Ganze Wörter statt Teilwörter: "Schwein" enthält "wein", "Weiterbildung" enthält "weiter".
+    const words = new Set(transcript.toLowerCase().split(/[^a-zäöüß]+/).filter(Boolean));
+    const has = (...candidates: string[]) => candidates.some((word) => words.has(word));
 
-    // Check for story requests
-    if (lower.includes('geschichte') || lower.includes('erzähl') || lower.includes('märchen')) {
+    if (has('geschichte', 'geschichten', 'märchen', 'erzähl', 'erzähle', 'erzählst', 'erzählen')) {
       return this.fallbackStory(true, state, transcript);
     }
-    if (lower.includes('weiter') || lower.includes('nochmal')) {
+    if (has('weiter', 'weitererzählen', 'nochmal')) {
       return this.fallbackStory(!storyActive(state), state, '');
     }
 
-    // Answers to common questions or Kunibert lore
+    // Feste Antworten ohne Sprachmodell. Die Äußerung des Kindes wird nie nachgesprochen:
+    // Sie käme sonst ungeprüft am Ausgabe-Check vorbei in den Lautsprecher, auch mit
+    // Erkennungsfehlern oder Wörtern, die Kunibert nicht sagen soll.
     let speech = '';
-    if (lower.includes('wer ist ritter kunibert') || lower.includes('kunibert')) {
+    if (has('kunibert', 'kuniberts')) {
       speech =
         'Ritter Kunibert ist ein mutiger, höflicher und großzügiger Ritter. ' +
         'Er wohnt im Dachzimmer eines Gasthauses, fährt mit einem Kutscher über holprige Pflastersteine, ' +
         'trifft im düsteren Wald eine geheimnisvolle Hexe und zieht immer wieder auf den Berg zum Drachen. ' +
         'Manchmal verliert er, dann isst er Suppe, schläft und versucht es am nächsten Tag wieder. ' +
         'Am Ende hilft ihm seine Klugheit. Wenn du eine Geschichte hören willst, drück die Erzähltaste.';
-    } else if (lower.includes('himmel') && lower.includes('blau')) {
+    } else if (has('himmel') && has('blau')) {
       speech =
         'Der Himmel wirkt blau, weil das weiße Sonnenlicht in der Luft auf winzig kleine Teilchen trifft ' +
         'und dabei in alle Richtungen gestreut wird. Blaues Licht wird dabei viel stärker gestreut als ' +
         'rotes Licht, deshalb sehen wir den Himmel blau leuchten.';
-    } else if (lower.includes('traurig') || lower.includes('wein') || lower.includes('allein')) {
+    } else if (has('traurig', 'weine', 'weinen', 'geweint', 'allein', 'alleine', 'einsam')) {
       speech =
         'Es ist ganz in Ordnung, manchmal traurig zu sein. Jeder von uns fühlt sich ab und zu so, ' +
         'sogar Ritter Kunibert, wenn er vom Drachenberg zurückkehrt. ' +
         'Sprich am besten mit einem Erwachsenen, den du lieb hast, oder nimm ein Kuscheltier in den Arm.';
-    } else if (lower.includes('drache')) {
+    } else if (has('drache', 'drachen')) {
       speech =
         'Der Drache wohnt oben auf dem Berg in einer dunklen Höhle. Er ist gewaltig und spuckt Rauch, ' +
         'aber Ritter Kunibert besiegt ihn nie mit Gewalt, sondern immer mit Klugheit und ein bisschen Geduld.';
     } else {
-      speech =
-        `Das ist eine spannende Frage zu «${trimWords(transcript, 12)}». ` +
-        'Ritter Kunibert lernt auch jeden Tag etwas Neues, wenn er durch den Wald reitet. ' +
-        'Frag am besten auch einmal deine Eltern oder eine Lehrerin – die wissen darüber oft ganz Erstaunliches!';
+      speech = FALLBACK_ANSWER_DE;
     }
 
     return {
       kind: 'frage',
       speech,
       story_state: state,
+      // Alle Texte hier sind fest: Die Sprachausgabe kommt nach dem ersten Mal aus dem
+      // Zwischenspeicher. Das hilft gerade dann, wenn das Sprachmodell ausfällt.
+      fixed: 'ersatz',
       wav: this.synthesizeWav(speech, 'frage'),
     };
   }
@@ -319,7 +391,8 @@ export class Brain {
   private async handleStory(
     newEpisode: boolean,
     state: StoryState,
-    wish: string
+    wish: string,
+    timer: StageTimer
   ): Promise<TurnResult> {
     let current = { ...state };
     if (newEpisode) {
@@ -344,7 +417,8 @@ export class Brain {
     else if (part >= target) phase = 'finale';
     else if (part === target - 1) phase = 'trick';
 
-    if (this.llm) {
+    const llm = this.llm;
+    if (llm) {
       try {
         const systemPrompt = STORYTELLER_SYSTEM(this.age);
         const partLabel =
@@ -359,16 +433,17 @@ export class Brain {
 
         const userPrompt = `Erzähle jetzt ${partLabel}.\nLänge: ${this.storyMinWords} bis ${this.storyMaxWords} Wörter.\n${PHASE_HINTS[phase]}\n${continuity}\n${wishLine}\nAntworte strikt im JSON-Format.`;
 
-        const parsed = await this.llm.generateJson({
+        const parsed = await timer.time('sprachmodell', () => llm.generateJson({
           system: systemPrompt,
           user: userPrompt,
           schemaName: 'kunibert_geschichte',
           schema: STORY_SCHEMA,
           maxOutputTokens: 1500,
-        }) as { text?: string; summary?: string; open_threads?: string; next_hook?: string; episode_finished?: boolean };
+          timeoutMs: this.llmTimeoutMs(timer),
+        })) as { text?: string; summary?: string; open_threads?: string; next_hook?: string; episode_finished?: boolean };
         const text = trimWords(String(parsed.text || ''), this.storyMaxWords + 50);
         // Ausgabe-Check: bei Treffer greift der Fallback unten (catch-Pfad).
-        if (!text || screenOutput(text, 'story')) {
+        if (!text || timer.timeSync('ausgabecheck', () => screenOutput(text, 'story'))) {
           throw new Error('Geschichte des Sprachmodells durch Ausgabe-Check abgelehnt');
         }
         const done = Boolean(parsed.episode_finished) || phase === 'finale';
