@@ -13,7 +13,8 @@ const result = (over: Partial<TurnResult> = {}): TurnResult => ({
 });
 
 test('prefetchKey: Folge, Teil, Teilezahl und Ausfallzähler', () => {
-  assert.equal(prefetchKey(state()), '2:2:5:0');
+  assert.equal(prefetchKey(state()), '2:2:5:0:läuft');
+  assert.notEqual(prefetchKey(state({ done: true })), prefetchKey(state()));
   assert.notEqual(prefetchKey(state({ miss: 1 })), prefetchKey(state()));
 });
 
@@ -72,12 +73,11 @@ test('noch in Arbeit: take wartet höchstens waitMs', async () => {
   assert.equal((await pending)?.speech, 'spät');
 });
 
-test('keine Vorbereitung ohne laufende Folge, nach dem Ende oder wenn ausgeschaltet', () => {
+test('keine Vorbereitung ohne bisherige Geschichte oder wenn ausgeschaltet', () => {
   let calls = 0;
   const produce = async () => { calls++; return result(); };
   const prefetcher = new StoryPrefetcher(produce, { ttlMs: 60_000 });
   prefetcher.start('a', cleanState({}));
-  prefetcher.start('b', state({ done: true }));
   assert.equal(calls, 0);
   assert.equal(prefetcher.size, 0);
   const off = new StoryPrefetcher(produce, { ttlMs: 60_000, enabled: false });
@@ -85,9 +85,14 @@ test('keine Vorbereitung ohne laufende Folge, nach dem Ende oder wenn ausgeschal
   assert.equal(calls, 0);
 });
 
-test('Folge beendet: alte Vorbereitung des Geräts wird verworfen', () => {
-  const prefetcher = new StoryPrefetcher(async () => result(), { ttlMs: 60_000 });
+test('Folge beendet: der Anfang der nächsten Folge wird vorbereitet, die alte Vorbereitung ersetzt', async () => {
+  const seen: StoryState[] = [];
+  const prefetcher = new StoryPrefetcher(async (s) => { seen.push(s); return result({ speech: s.done ? 'neue Folge' : 'Teil' }); }, { ttlMs: 60_000 });
   prefetcher.start('d', state());
-  prefetcher.start('d', state({ done: true }));
-  assert.equal(prefetcher.has('d'), false);
+  const ended = state({ part: 5, done: true });
+  prefetcher.start('d', ended);
+  assert.equal(seen.length, 2);
+  assert.equal(await prefetcher.take('d', state(), 100), null, 'alter Stand passt nicht mehr');
+  prefetcher.start('d', ended);
+  assert.equal((await prefetcher.take('d', ended, 1000))?.speech, 'neue Folge');
 });

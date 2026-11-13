@@ -23,7 +23,7 @@ export interface PrefetchEntry {
 
 /** Schlüssel für den Stand, auf dem eine Vorbereitung aufbaut. */
 export function prefetchKey(state: StoryState): string {
-  return `${state.ep}:${state.part}:${state.target}:${state.miss}`;
+  return `${state.ep}:${state.part}:${state.target}:${state.miss}:${state.done ? 'ende' : 'läuft'}`;
 }
 
 export class StoryPrefetcher {
@@ -39,10 +39,14 @@ export class StoryPrefetcher {
     return this.options.now ? this.options.now() : Date.now();
   }
 
-  /** Startet die Vorbereitung des Teils nach `state`, wenn eine Folge läuft. */
+  /**
+   * Startet die Vorbereitung des Teils nach `state`: in einer laufenden Folge den nächsten Teil,
+   * nach dem letzten Teil den Anfang der nächsten Folge (die Erzähltaste beginnt dann eine neue).
+   * Ohne bisherige Geschichte (Teil 0) wird nichts vorbereitet.
+   */
   start(deviceId: string, state: StoryState): void {
     if (this.options.enabled === false) return;
-    if (!(state.part > 0 && !state.done)) {
+    if (state.part <= 0) {
       this.entries.delete(deviceId);
       return;
     }
