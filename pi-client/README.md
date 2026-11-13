@@ -19,7 +19,7 @@ sudo bash pi-client/install_raspberry_pi.sh \
   --api-token 'TOKEN_AUS_SECRET_MANAGER'
 ```
 
-Für automatisierte Provisionierung ohne Eingabeaufforderung `--non-interactive` verwenden. Ohne `--api-token` wird dann absichtlich nur eine leere Konfiguration geschrieben:
+Für automatisierte Provisionierung ohne Eingabeaufforderung `--non-interactive` verwenden. Ohne `--api-token` schreibt das Skript dann die Konfiguration mit leerem Token:
 
 ```bash
 sudo bash pi-client/install_raspberry_pi.sh \
@@ -118,7 +118,8 @@ READY ── Erzähltaste ──> REQUESTING_STORY ──> PLAYING
 
 PLAYING ── neuer Druck auf eine Taste ──> Wiedergabe stoppt ──> (Tasten los) ──> READY
 
-jeder Zustand ── MIC OFF ──> MIC_OFF ──> READY
+fast jeder Zustand ── MIC OFF ──> MIC_OFF ──> READY
+WIFI_CONNECTING ── Server nicht erreichbar ──> ERROR ── alle 10 s neuer Versuch
 jeder Netzwerk-/Audiofehler ──> ERROR ──> READY
 SIGTERM/Ctrl+C ──> SHUTDOWN
 ```
@@ -129,7 +130,9 @@ Die API-Keys und Modellaufrufe bleiben auf `picastAI.com`. Der Pi nimmt nur auf,
 
 ## Hardware-/GPIO-Belegung
 
-Die GPIO-Nummern sind BCM-Nummern und können über Umgebungsvariablen geändert werden.
+Während Kunibert auf die Antwort wartet (`UPLOADING`, `REQUESTING_STORY`), wirkt der Mikrofon-Schalter erst nach der Antwort.
+
+Die GPIO-Nummern sind BCM-Nummern und können über Umgebungsvariablen geändert werden: `KUNIBERT_SPEECH_BUTTON_GPIO` (17), `KUNIBERT_STORY_BUTTON_GPIO` (27), `KUNIBERT_MIC_OFF_GPIO` (22), `KUNIBERT_STATUS_LED_GPIO` (23). Die kürzeste gültige Aufnahme steht in `KUNIBERT_MIN_RECORD_SECONDS` (0,35 s).
 
 | Funktion | BCM GPIO | Elektrische Logik |
 |---|---:|---|
@@ -211,7 +214,7 @@ Alle Werte sind optional und stehen in `/etc/kunibert/kunibert.env`.
 
 | Variable | Standard | Bedeutung |
 |---|---:|---|
-| `KUNIBERT_FEEDBACK` | `1` | `0` schaltet Ton, Zwischensätze ab (der Client verhält sich dann wie vorher) |
+| `KUNIBERT_FEEDBACK` | `1` | `0` schaltet Ton, Zwischensätze und das Pulsieren der LED ab (der Client verhält sich dann wie vorher) |
 | `KUNIBERT_ANNOUNCEMENTS_DIR` | `/var/lib/kunibert/ansagen` | Ordner mit den Sprachdateien |
 | `KUNIBERT_FILLER_AFTER_SECONDS` | `2.5` | Sekunden bis zum ersten Zwischensatz |
 | `KUNIBERT_LONG_WAIT_SECONDS` | `15` | Sekunden bis zum zweiten Satz |
@@ -225,7 +228,7 @@ Die Abläufe sind mit einer Fake-Uhr und Fake-Audio in `test_rueckmeldung.py` ge
 
 ```bash
 sudo apt update
-sudo apt install -y python3-venv python3-pip python3-gpiozero \
+sudo apt install -y python3-venv python3-pip python3-gpiozero python3-lgpio \
   libportaudio2 libsndfile1 alsa-utils
 python3 -m venv --system-site-packages /opt/kunibert/.venv
 /opt/kunibert/.venv/bin/pip install sounddevice
@@ -238,7 +241,6 @@ Projektdateien nach `/opt/kunibert` kopieren und eine Konfigurationsdatei anlege
 PICASTAI_API_BASE_URL=https://picastAI.com
 PICASTAI_DEVICE_ID=prototype-001
 PICASTAI_DEVICE_TOKEN=NICHT_IN_GIT_EINTRAGEN
-KUNIBERT_CACHE_DIR=/var/lib/kunibert/audio
 KUNIBERT_SAMPLE_RATE=16000
 KUNIBERT_MAX_RECORD_SECONDS=15
 KUNIBERT_REQUEST_TIMEOUT=30
@@ -253,9 +255,13 @@ KUNIBERT_OUTPUT_DEVICE=
 Zeitgrenzen in Sekunden: `KUNIBERT_REQUEST_TIMEOUT` gilt für den Health-Check, `KUNIBERT_PIPELINE_TIMEOUT` für Frage und Geschichte, `KUNIBERT_AUDIO_TIMEOUT` für den Abruf der WAV-Antwort. Frage und Geschichte laufen auf dem Server durch Spracherkennung, Sprachmodell und Sprachsynthese; der Server hält dafür ein gemeinsames Zeitbudget von 120 s ein. Der Client muss länger warten als diese Kette, sonst bricht er ab und schickt die Anfrage erneut, und der Server erzeugt die Antwort ein zweites Mal (bei der Geschichte rückt die Folge dabei weiter). Die abgestimmte Zeitkette mit dem Reverse Proxy steht in [`deploy/EINRICHTUNG.md`](../deploy/EINRICHTUNG.md).
 
 ```bash
-sudo install -d -m 0750 /etc/kunibert /var/lib/kunibert/audio
+sudo useradd --system --create-home --home-dir /opt/kunibert --shell /usr/sbin/nologin kunibert
+sudo install -d -m 0750 /etc/kunibert
+sudo install -d -o kunibert -g kunibert -m 0750 /var/lib/kunibert /var/lib/kunibert/ansagen
 sudo chmod 600 /etc/kunibert/kunibert.env
 ```
+
+Der Dienst läuft als `kunibert` und braucht ein beschreibbares Arbeitsverzeichnis (lgpio legt dort Hilfsdateien an). Einfacher ist das Installationsskript: Es erledigt all das. Mit `KUNIBERT_INSTALL_START=1` startet es den Dienst danach sofort.
 
 ## Manuell starten
 
@@ -278,7 +284,7 @@ Ohne Pi-Hardware gibt es zwei Prüfungen:
 
 ### Probelauf am Rechner, ohne Pi (`--keyboard`)
 
-Damit lässt sich die ganze Kette (Aufnahme, Server, Spracherkennung, Claude, Sprachausgabe, Abspielen) mit dem Mikrofon und dem Lautsprecher eines normalen Rechners ausprobieren, bevor der Pi da ist. Tastatur statt Taster: Eingabetaste beginnt die Aufnahme, noch einmal Eingabetaste sendet sie; `g` und Eingabetaste ist die Erzähltaste; `q` und Eingabetaste beendet. Stand: Aufnahme und Wiedergabe laufen in der CI gegen die echte Audio-Bibliothek (`sounddevice` mit PortAudio, ohne Soundkarte über ein ALSA-Nullgerät); **an keinem echten Mikrofon und Lautsprecher gelaufen**. Bis zum 12.11.2026 scheiterte jede Wiedergabe an der echten Bibliothek (sie verlangte NumPy); das ist behoben. Drückst du die Eingabetaste (oder `g` und Eingabetaste), während Kunibert spricht, hört er sofort auf, wie bei den Tastern am Pi; der Druck zählt nicht als neue Aufnahme. Tasten, die du drückst, während Kunibert noch arbeitet, zählen nicht. Nur Erwachsene als Tester.
+Damit lässt sich die ganze Kette (Aufnahme, Server, Spracherkennung, Claude, Sprachausgabe, Abspielen) mit dem Mikrofon und dem Lautsprecher eines normalen Rechners ausprobieren, bevor der Pi da ist. Tastatur statt Taster: Eingabetaste beginnt die Aufnahme, noch einmal Eingabetaste sendet sie; `g` und Eingabetaste ist die Erzähltaste; `q` und Eingabetaste beendet. Stand: Aufnahme und Wiedergabe laufen in der CI gegen die echte Audio-Bibliothek (`sounddevice` mit PortAudio, ohne Soundkarte über ein ALSA-Nullgerät); **an keinem echten Mikrofon und Lautsprecher gelaufen**. Bis zum 12.11.2026 scheiterte jede Wiedergabe an der echten Bibliothek (sie verlangte NumPy); das ist behoben. Drückst du die Eingabetaste (oder `g` und Eingabetaste), während Kunibert spricht, hört er sofort auf, wie bei den Tastern am Pi; der Druck zählt nicht als neue Aufnahme. Tasten, die du drückst, während Kunibert noch arbeitet, zählen nicht. Im Probelauf mit `--keyboard` gibt es keinen Quittungston und keine Zwischensätze. Nur Erwachsene als Tester.
 
 In PowerShell auf deinem Rechner, im Ordner des Repos (Python 3.10 oder neuer):
 
@@ -419,6 +425,8 @@ Beispiel `/etc/systemd/system/kunibert.service`:
 Description=Ritter Kunibert Raspberry-Pi-Client
 After=network-online.target sound.target
 Wants=network-online.target
+# systemd gibt den Dienst nie endgültig auf
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple
@@ -508,6 +516,9 @@ bash pi-client/test_alsa_audio.sh \
 - Die heruntergeladene Antwort wird nicht dauerhaft gespeichert.
 - Audio-URLs müssen denselben Origin (Schema, Host und Port) wie die API verwenden; der Host wird ohne Beachtung der Groß-/Kleinschreibung verglichen, ein fehlender Port gilt als Standardport (80/443), Zugangsdaten in der URL werden abgelehnt, HTTP-Downgrades ebenfalls. HTTP-Redirects werden nicht verfolgt.
 - HTTP 400, 401, 413, 415 und 429 werden nicht automatisch wiederholt.
-- Temporäre Netzwerk- und Serverfehler werden begrenzt wiederholt.
+- Höchstens ein neuer Versuch (`KUNIBERT_RETRY_COUNT=1`), nur bei Netzfehlern und HTTP 5xx. Kein neuer Versuch bei 4xx, bei `"retryable": false` (zum Beispiel 502) oder wenn die erste Anfrage schon die ganze Zeitgrenze gebraucht hat. Den Abruf der WAV-Datei wiederholt der Client nie.
 - Bei Server-/Audiofehlern bleibt der Client nicht in einer Endlosschleife, sondern wechselt kurz nach `ERROR` zurück nach `READY`.
-- Ohne echte STT-Integration liefert `/v1/device/question` bei einer Aufnahme derzeit die sichere Fallback-Antwort des Backends.
+- Der Server erkennt die Aufnahme mit dem eigenen Sprachserver. Ist keiner eingerichtet oder versteht er nichts, antwortet Kunibert mit „Das habe ich leider nicht richtig verstanden“.
+- Ohne Einwilligung der Eltern antwortet der Server nur mit einem festen Hinweis (siehe [`docs/picastAI-Pi-API.md`](../docs/picastAI-Pi-API.md)). Mit `NODE_ENV=production` vorher koppeln und einwilligen, nach jedem Neustart des Servers erneut. Im Probelauf am Rechner geht es auch ohne: `KUNIBERT_EINWILLIGUNG_PRUEFEN=0` am Server.
+- `KUNIBERT_CACHE_DIR` wird derzeit nicht benutzt; Antworten werden nicht gespeichert.
+- Die Kopplung per Tastendruck (beide Tasten 5 s halten, Gerät spricht den Code) ist im Client noch nicht umgesetzt.
