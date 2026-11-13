@@ -8,6 +8,11 @@ updates:
     groups:
       npm:
         patterns: ["*"]
+    # Große Versionssprünge (Major) nicht automatisch: Sie brechen Builds (zum Beispiel Express 5,
+    # TypeScript 7, Next 16). Die macht Manuel bewusst von Hand.
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: github-actions
     directory: /
     schedule:
