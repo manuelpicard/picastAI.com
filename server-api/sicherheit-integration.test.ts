@@ -115,7 +115,12 @@ function startFakeSpeech() {
   return { server, state, listening: listen(server) };
 }
 
-const wav16k = () => encodeWav(Buffer.alloc(16_000), 16_000, 1, 16);
+// Eine hörbare Aufnahme (Rechteckton): Stille würde der Server als „unklar“ abweisen, ohne die Weiche zu fragen.
+const wav16k = () => {
+  const pcm = Buffer.alloc(16_000);
+  for (let i = 0; i < pcm.length; i += 2) pcm.writeInt16LE(Math.floor(i / 32) % 2 === 0 ? 8000 : -8000, i);
+  return encodeWav(pcm, 16_000, 1, 16);
+};
 
 function questionForm(fields: Record<string, string> = {}): FormData {
   const form = new FormData();
@@ -208,11 +213,14 @@ describe('Sicherheitsweiche und Datensparsamkeit (echter Server, Attrappen)', ()
 
   it('Notfall-Sätze: Sicherheitshinweis, und das Sprachmodell wird nicht aufgerufen', async () => {
     const vorher = claude.calls.length;
+    const original = speech.state.transcript;
     for (const satz of NOTFALL_SAETZE) {
-      const res = await postQuestion(ENV_DEVICE_ID, ENV_DEVICE_TOKEN, questionForm({ transcript: satz }));
+      speech.state.transcript = satz; // im Betrieb ist das Testfeld "transcript" aus; die Erkennung liefert den Satz
+      const res = await postQuestion(ENV_DEVICE_ID, ENV_DEVICE_TOKEN, questionForm());
       assert.equal(res.status, 200, `${satz}: ${await res.clone().text()}`);
       assert.equal(((await res.json()) as { type: string }).type, 'answer');
     }
+    speech.state.transcript = original;
     assert.equal(claude.calls.length, vorher, 'bei einer Notlage darf kein Aufruf an das Sprachmodell gehen');
     assert.ok(
       speech.state.spoken.some((text) => text.startsWith(SAFETY_START)),
@@ -238,7 +246,8 @@ describe('Sicherheitsweiche und Datensparsamkeit (echter Server, Attrappen)', ()
 
   it('Alltagssatz: das Sprachmodell wird aufgerufen, und die Anfrage enthält keine Gerätedaten', async () => {
     const vorher = claude.calls.length;
-    const res = await postQuestion(registered.id, registered.token, questionForm({ transcript: ALLTAGS_SATZ }));
+    speech.state.transcript = ALLTAGS_SATZ;
+    const res = await postQuestion(registered.id, registered.token, questionForm());
     assert.equal(res.status, 200, await res.clone().text());
     assert.equal(claude.calls.length, vorher + 1, 'ein Alltagssatz geht genau einmal an das Sprachmodell');
     assertKeineGeraetedaten(claude.calls[vorher], ALLTAGS_SATZ);
