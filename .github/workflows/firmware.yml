@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Prüfung der Server-Adresse (Rechner-Test)
         working-directory: firmware/esp32-s3
         run: cc -Wall -Wextra -Werror -I main -o /tmp/kb_test test/test_base_url.c main/kb_url.c && /tmp/kb_test
@@ -30,7 +30,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Firmware bauen (ESP-IDF)
         uses: espressif/esp-idf-ci-action@v1
         with:
