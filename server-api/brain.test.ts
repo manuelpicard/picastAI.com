@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
+import { screenOutput } from './safety.js';
 import test from 'node:test';
-import { Brain, buildStoryPrompt, formatMetrics, isBedtime, germanNumber, spellOutForSpeech, storyMetrics, cleanState, cleanText, extractWishKeyword, FALLBACK_ANSWER_DE, isLikelySttArtifact, lastSentences, MAX_UTTERANCE_CHARS, prepareStoryText, rememberMotif, storyPhase, trimWords } from './brain.js';
+import { Brain, buildStoryPrompt, FALLBACK_VARIANTS, formatMetrics, isBedtime, germanNumber, spellOutForSpeech, storyMetrics, cleanState, cleanText, extractWishKeyword, FALLBACK_ANSWER_DE, isLikelySttArtifact, lastSentences, MAX_UTTERANCE_CHARS, prepareStoryText, rememberMotif, storyPhase, trimWords } from './brain.js';
 import type { LlmJsonRequest, LlmProvider } from './llm.js';
 import { BEDTIME_HINT, EPISODE_CLOSING, EPISODE_SEEDS_BY_SEASON, seasonOf, STORY_CLOSING, STORY_PAUSE_TEXT } from './prompts.js';
 import { SAFETY_RESPONSE_DE, UNCLEAR_RESPONSE_DE } from './safety.js';
@@ -644,4 +645,49 @@ test('Schlafenszeit: abends nach deutscher Zeit ruhigere Teile', async () => {
   const morning = new FakeLlm([story('Hell.')]);
   await new Brain(morning, { now: () => new Date('2026-11-13T09:00:00Z') }).handle('geschichte', '', {});
   assert.ok(!morning.calls[0].user.includes(BEDTIME_HINT));
+});
+
+test('Lange Pause zwischen zwei Teilen: kurze Erinnerung am Anfang des nächsten Teils', async () => {
+  const t0 = new Date('2026-11-13T15:00:00Z');
+  let now = t0;
+  const llm = new FakeLlm([story('Eins.'), story('Zwei.'), story('Drei.')]);
+  const brain = new Brain(llm, { now: () => now });
+  const first = await brain.handle('geschichte', '', {});
+  assert.equal(first.story_state.at, t0.getTime());
+
+  now = new Date(t0.getTime() + 10 * 60 * 1000); // zehn Minuten später
+  const second = await brain.handle('weiter', '', first.story_state);
+  assert.ok(!/viel Zeit vergangen/.test(llm.calls[1].user));
+
+  now = new Date(t0.getTime() + 16 * 60 * 60 * 1000); // am nächsten Morgen
+  await brain.handle('weiter', '', second.story_state);
+  assert.match(llm.calls[2].user, /viel Zeit vergangen/);
+});
+
+test('cleanState: at bleibt eine ganze Zahl ab 0', () => {
+  assert.equal(cleanState({ v: 1, at: 'x' }).at, 0);
+  assert.equal(cleanState({ v: 1, at: -5 }).at, 0);
+  assert.equal(cleanState({ v: 1, at: 1794600000000.7 }).at, 1794600000000);
+});
+
+test('Ersatzgeschichte: drei verschiedene Listen, jede besteht den Ausgabe-Check und ist in sich stimmig', async () => {
+  const tricks = new Set<string>();
+  for (let ep = 1; ep <= 3; ep++) {
+    const brain = new Brain(null);
+    let state: unknown = { ...cleanState({}), ep, done: true, part: 5 };
+    let all = '';
+    let episode = 0;
+    for (let i = 0; i < 5; i++) {
+      const result = await brain.handle('weiter', '', state);
+      episode = result.story_state.ep;
+      assert.equal(screenOutput(result.speech, 'story'), false, result.speech);
+      all += result.speech + '\n';
+      state = result.story_state;
+    }
+    const variant = FALLBACK_VARIANTS[episode % FALLBACK_VARIANTS.length];
+    assert.ok(all.includes(variant.hint.split('.')[0]), 'Hinweis der Hexe kommt vor');
+    assert.ok(all.includes(variant.trick.slice(0, 30)), 'passende Wendung');
+    tricks.add(variant.trick);
+  }
+  assert.equal(tricks.size, 3);
 });

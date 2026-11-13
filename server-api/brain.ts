@@ -54,7 +54,12 @@ export interface StoryState {
   recent: string;
   /** Wie oft Claude für den anstehenden Teil schon ausgefallen ist (0 oder 1, siehe STORY_PAUSE_TEXT). */
   miss: number;
+  /** Zeitpunkt des letzten erzählten Teils (ms seit 1970), 0 = unbekannt. Für die Erinnerung nach langer Pause. */
+  at: number;
 }
+
+/** Nach so langer Pause zwischen zwei Teilen erinnert der nächste Teil kurz an das Wichtigste. */
+export const RECAP_AFTER_MS = 6 * 60 * 60 * 1000;
 
 /** Längen der Textfelder im Zustand (Zeichen). */
 const STATE_LIMITS = { seed: 300, summary: 900, threads: 400, hook: 300, plan: 800, wish: 200, last: 400, recent: 600 } as const;
@@ -155,6 +160,7 @@ export function cleanState(raw: any): StoryState {
       last: '',
       recent: '',
       miss: 0,
+      at: 0,
     };
   }
   const ep = Number(raw.ep) || 1;
@@ -175,6 +181,7 @@ export function cleanState(raw: any): StoryState {
     last: cleanText(raw.last, STATE_LIMITS.last),
     recent: cleanText(raw.recent, STATE_LIMITS.recent),
     miss: Math.max(0, Math.min(3, Math.floor(Number(raw.miss) || 0))),
+    at: Math.max(0, Math.floor(Number(raw.at) || 0)),
   };
 }
 
@@ -371,7 +378,7 @@ export function isBedtime(date: Date): boolean {
 export function buildStoryPrompt(
   state: StoryState,
   part: number,
-  settings: { storyMinWords: number; storyMaxWords: number; bedtime?: boolean },
+  settings: { storyMinWords: number; storyMaxWords: number; bedtime?: boolean; nowMs?: number },
   retryNote = ''
 ): string {
   const target = state.target;
@@ -391,6 +398,9 @@ export function buildStoryPrompt(
     lines.push(`Bisher: ${state.summary}`);
     lines.push(`Offene Fäden: ${state.threads || 'keine'}`);
     if (state.last) lines.push(`So endete der vorige Teil: ${state.last}`);
+    if (state.at && settings.nowMs && settings.nowMs - state.at >= RECAP_AFTER_MS) {
+      lines.push('Seit dem vorigen Teil ist viel Zeit vergangen, vielleicht eine Nacht. Beginne mit zwei kurzen Sätzen, die wie beim Erzählen am Bett an das Wichtigste erinnern (wo Kunibert ist, was er sucht), ohne „Im letzten Teil“. Dann geht es nahtlos weiter.');
+    }
     if (state.hook) lines.push(`Anknüpfen an: ${state.hook}`);
   }
   if (state.wish) lines.push(`Wunsch des Kindes für diese Folge: «${state.wish}»`);
@@ -406,6 +416,52 @@ export type BrainSettings = Pick<KunibertConfig, 'ageBracket' | 'partsPerEpisode
   /** Uhr für die Jahreszeit der Stimmung (austauschbar für Tests). */
   now: () => Date;
 };
+
+/**
+ * Bausteine der Ersatzgeschichte (ohne Sprachmodell): drei verschiedene Geschenke der Hexe und
+ * drei Listen. Welche gilt, hängt an der Folgennummer, damit Kinder ohne Claude nicht immer
+ * dieselbe Folge hören.
+ */
+export const FALLBACK_VARIANTS = [
+  {
+    gift: 'Sie füllte etwas Goldenes in eine kleine grüne Flasche und gab sie ihm.',
+    hint: 'Nicht trinken. Wenn der Drache schnaubt, halte sie gegen den Wind.',
+    item: 'die grüne Flasche',
+    itemCap: 'Die grüne Flasche',
+    trick:
+      `Der Drache holte tief Luft. Gleich würde er schnauben. Da fielen Kunibert die Worte der Hexe ein: ` +
+      `„Wenn der Drache schnaubt, halte sie gegen den Wind.“\n\n` +
+      `Er zog die grüne Flasche hervor und zog den Korken heraus. Ein Duft nach Pfefferminz und Sommerblumen ` +
+      `wehte mit dem Bergwind direkt in die Nase des Drachen. Der Drache schnupperte, blinzelte und musste gewaltig niesen. „Hatschi!“\n\n` +
+      `Danach war er ganz ruhig. Er legte seinen schweren Kopf auf den warmen Felsen und brummte zufrieden wie eine riesige Katze. ` +
+      `Kunibert steckte sein Schwert weg und lächelte. Mit Klugheit war es viel leichter gegangen als mit Kraft.`,
+  },
+  {
+    gift: 'Sie nahm ein kleines silbernes Glöckchen von einem Haken und legte es ihm in die Hand.',
+    hint: 'Läute es erst, wenn der Drache gähnt. Vorher nützt es nichts.',
+    item: 'das silberne Glöckchen',
+    itemCap: 'Das silberne Glöckchen',
+    trick:
+      `Der Drache streckte sich vor seiner Höhle. Die Sonne wärmte die Felsen. Da riss er sein riesiges Maul auf und gähnte, ` +
+      `so laut, dass die Steine wackelten. „Läute es erst, wenn der Drache gähnt“, hatte die Hexe gesagt.\n\n` +
+      `Kunibert zog das silberne Glöckchen hervor und läutete, ganz leise. Bimm, bimm. Der Ton schwebte über den Berg wie ein Schlaflied.\n\n` +
+      `Die Augen des Drachen wurden schwer. Er rollte sich zusammen wie ein großer, warmer Hund und schnarchte, dass die Grashalme zitterten. ` +
+      `Kunibert lächelte und schlich auf Zehenspitzen davon. Manchmal ist ein leiser Ton stärker als ein Schwert.`,
+  },
+  {
+    gift: 'Sie gab ihm einen glatten, runden Stein mit einem Loch in der Mitte.',
+    hint: 'Schau durch den Stein, bevor du kämpfst. Dann siehst du, was der Drache wirklich will.',
+    item: 'den runden Stein',
+    itemCap: 'Der runde Stein',
+    trick:
+      `Der Drache stampfte vor seiner Höhle und schnaubte. Kunibert wollte schon sein Schwert ziehen. Doch dann dachte er an die Hexe: ` +
+      `„Schau durch den Stein, bevor du kämpfst.“\n\n` +
+      `Er hielt den runden Stein vor sein Auge und schaute hindurch. Da sah er etwas, das er vorher nicht bemerkt hatte. ` +
+      `Im Eingang der Höhle steckte ein riesiger Dorn im Fels, genau dort, wo der Drache sich hinlegen wollte.\n\n` +
+      `„Ach so!“, rief Kunibert. Er kletterte hinauf, zog und ruckelte, bis der Dorn herausfiel. Der Drache legte sich hin, ` +
+      `seufzte tief und blinzelte ihn freundlich an. Kunibert hatte gewonnen, ohne zu kämpfen.`,
+  },
+] as const;
 
 export class Brain {
   private readonly age: string;
@@ -636,6 +692,7 @@ export class Brain {
       last: '',
       recent: state.recent,
       miss: 0,
+      at: 0,
     };
   }
 
@@ -651,7 +708,8 @@ export class Brain {
 
     const llm = this.llm;
     if (llm) {
-      const settings = { storyMinWords: this.storyMinWords, storyMaxWords: this.storyMaxWords, bedtime: isBedtime(this.now()) };
+      const now = this.now();
+      const settings = { storyMinWords: this.storyMinWords, storyMaxWords: this.storyMaxWords, bedtime: isBedtime(now), nowMs: now.getTime() };
       let retryNote = '';
       // Höchstens zwei Versuche: Lehnt der Ausgabe-Check einen Teil ab, bekommt das Modell einen
       // Hinweis und schreibt ihn neu, wenn noch genug Zeit bleibt. Sonst greift die Ersatzgeschichte.
@@ -704,6 +762,7 @@ export class Brain {
             wish: done ? '' : current.wish,
             recent: done ? rememberMotif(current.recent, String(parsed.episode_motif || plan || '')) : current.recent,
             miss: 0,
+            at: now.getTime(),
           };
           return this.storyResult(text, part, updatedState);
         } catch (err) {
@@ -751,6 +810,7 @@ export class Brain {
     const phase = storyPhase(part, current.target);
     const wishKeyword = extractWishKeyword(current.wish || wish);
     const mood = EPISODE_SEEDS.find((seed) => current.seed.startsWith(seed)) ?? '';
+    const variant = FALLBACK_VARIANTS[(current.ep || 1) % FALLBACK_VARIANTS.length];
 
     let text = '';
     let summary = '';
@@ -779,12 +839,11 @@ export class Brain {
         `Kunibert ging vorsichtig in den düsteren Wald hinein. Tropfen perlten von den Farnen, und ` +
         `im Dickicht knackte ein Zweig. Dann sah er die Hütte der Hexe. Aus dem Schornstein stieg blauer Rauch.\n\n` +
         `Die Hexe stand an ihrem Topf und rührte. „Du gehst zum Drachen“, sagte sie, ohne aufzusehen. ` +
-        `Sie füllte etwas Goldenes in eine kleine grüne Flasche und gab sie ihm. ` +
-        `„Nicht trinken“, sagte sie. „Wenn der Drache schnaubt, halte sie gegen den Wind.“\n\n` +
-        `„Habt Dank“, sagte Kunibert und verbeugte sich. Er steckte die Flasche gut ein. ` +
+        `${variant.gift} „${variant.hint}“, sagte sie.\n\n` +
+        `„Habt Dank“, sagte Kunibert und verbeugte sich. Er steckte ${variant.item} gut ein. ` +
         `Bald wurde der Weg steiler. Die Bäume wurden weniger, und die Felsen des Berges kamen näher.`;
-      summary = `Die Hexe gab Kunibert eine grüne Flasche: nicht trinken, sondern gegen den Wind halten, wenn der Drache schnaubt.`;
-      threads = `Die Flasche der Hexe am Berg benutzen.`;
+      summary = `Die Hexe gab Kunibert ${variant.item} und sagte: „${variant.hint}“`;
+      threads = `${variant.itemCap} der Hexe am Berg benutzen.`;
       hook = `Kunibert erreicht den Aufstieg zur Drachenhöhle.`;
     } else if (phase === 'middle') {
       text =
@@ -793,19 +852,13 @@ export class Brain {
         `Da grollte es tief im Berg. Der Drache schob seinen großen Kopf aus der Höhle. Rauch kam aus seinen Nüstern, ` +
         `und seine goldenen Augen funkelten. Mit einem Schwung seines Schwanzes schob er Kunibert sanft, aber bestimmt den Hang hinunter.\n\n` +
         `Kunibert setzte sich auf einen Stein und atmete tief durch. „Mit Kraft geht das heute nicht“, murmelte er. ` +
-        `Er tastete nach seiner Tasche. Die kleine Flasche war noch da.`;
+        `Er tastete nach seiner Tasche. ${variant.itemCap} war noch da.`;
       summary = `Kunibert traf am Berg auf den Drachen und merkte, dass er eine List braucht.`;
-      threads = `Die Flasche der Hexe im richtigen Moment benutzen.`;
+      threads = `${variant.itemCap} der Hexe im richtigen Moment benutzen.`;
       hook = `Kunibert überlegt sich eine List.`;
     } else if (phase === 'trick') {
-      text =
-        `Der Drache holte tief Luft. Gleich würde er schnauben. Da fielen Kunibert die Worte der Hexe ein: ` +
-        `„Wenn der Drache schnaubt, halte sie gegen den Wind.“\n\n` +
-        `Er zog die grüne Flasche hervor und zog den Korken heraus. Ein Duft nach Pfefferminz und Sommerblumen ` +
-        `wehte mit dem Bergwind direkt in die Nase des Drachen. Der Drache schnupperte, blinzelte und musste gewaltig niesen. „Hatschi!“\n\n` +
-        `Danach war er ganz ruhig. Er legte seinen schweren Kopf auf den warmen Felsen und brummte zufrieden wie eine riesige Katze. ` +
-        `Kunibert steckte sein Schwert weg und lächelte. Mit Klugheit war es viel leichter gegangen als mit Kraft.`;
-      summary = `Kunibert beruhigte den Drachen mit dem Duft aus der Flasche der Hexe.`;
+      text = variant.trick;
+      summary = `Kunibert beruhigte den Drachen mit Klugheit und dem Geschenk der Hexe.`;
       threads = ``;
       hook = `Kunibert kehrt ins Dorf zurück.`;
     } else {
@@ -830,6 +883,7 @@ export class Brain {
       plan: done ? '' : current.plan,
       wish: done ? '' : current.wish,
       miss: 0,
+      at: this.now().getTime(),
     };
     return this.storyResult(text, part, updatedState);
   }

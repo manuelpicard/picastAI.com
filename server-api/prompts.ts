@@ -21,40 +21,40 @@ export function seasonOf(date: Date): Season {
   return 'herbst';
 }
 
-/** Stimmungen, die zu jeder Jahreszeit passen. */
+/** Stimmungen, die zu jeder Jahreszeit passen. Im Präteritum, wie die Geschichten selbst (die Ersatzgeschichte übernimmt sie wörtlich). */
 export const EPISODE_SEEDS_ANYTIME = [
-  'Im Dorf wird heute Markt gehalten.',
-  'Es regnet leise auf das Dach.',
-  'Ein kleiner Hund folgt Kunibert ein Stück.',
-  'Der Kutscher pfeift ein Lied, das Kunibert nicht kennt.',
-  'Die Wirtin hat einen neuen Kuchen gebacken.',
-  'Kunibert hat seinen Helm verlegt.',
-  'Die Brücke wird gerade repariert.',
-  'Ein Gewitter ist in der Nacht vorbeigezogen, alles glitzert nass.',
-  'Die Sonne geht gerade erst auf, und die Vögel sind sehr laut.',
+  'Im Dorf wurde heute Markt gehalten.',
+  'Es regnete leise auf das Dach.',
+  'Ein kleiner Hund folgte Kunibert ein Stück.',
+  'Der Kutscher pfiff ein Lied, das Kunibert nicht kannte.',
+  'Die Wirtin hatte einen neuen Kuchen gebacken.',
+  'Kunibert hatte seinen Helm verlegt.',
+  'Die Brücke wurde gerade repariert.',
+  'Ein Gewitter war in der Nacht vorbeigezogen, alles glitzerte nass.',
+  'Die Sonne ging gerade erst auf, und die Vögel waren sehr laut.',
 ];
 
 /** Stimmungen je Jahreszeit; so passt Kuniberts Welt zu dem, was das Kind draußen sieht. */
 export const EPISODE_SEEDS_BY_SEASON: Record<Season, string[]> = {
   winter: [
-    'Über Nacht ist Schnee gefallen.',
-    'Am Fenster des Dachzimmers wachsen Eisblumen.',
-    'Der Brunnen im Dorf ist zugefroren, und die Kinder schlittern darauf herum.',
+    'Über Nacht war Schnee gefallen.',
+    'Am Fenster des Dachzimmers wuchsen Eisblumen.',
+    'Der Brunnen im Dorf war zugefroren, und die Kinder schlitterten darauf herum.',
   ],
   fruehling: [
-    'Es ist der erste warme Frühlingstag.',
-    'Im Wald blühen seltsame blaue Blumen.',
-    'Die Störche sind auf das Dach der Mühle zurückgekehrt.',
+    'Es war der erste warme Frühlingstag.',
+    'Im Wald blühten seltsame blaue Blumen.',
+    'Die Störche waren auf das Dach der Mühle zurückgekehrt.',
   ],
   sommer: [
-    'Es ist so heiß, dass die Katze des Gasthauses nur im Schatten liegt.',
-    'Ein warmer Wind kommt vom Berg herunter.',
-    'Auf den Wiesen zirpen die Grillen so laut wie ein ganzes Orchester.',
+    'Es war so heiß, dass die Katze des Gasthauses nur im Schatten lag.',
+    'Ein warmer Wind kam vom Berg herunter.',
+    'Auf den Wiesen zirpten die Grillen so laut wie ein ganzes Orchester.',
   ],
   herbst: [
-    'Es ist ein nebliger Herbstmorgen.',
-    'Am Himmel ziehen Kraniche nach Süden.',
-    'Der Wind wirbelt bunte Blätter durch die Gasse.',
+    'Es war ein nebliger Herbstmorgen.',
+    'Am Himmel zogen Kraniche nach Süden.',
+    'Der Wind wirbelte bunte Blätter durch die Gasse.',
   ],
 };
 
