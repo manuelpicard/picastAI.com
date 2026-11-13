@@ -13,7 +13,10 @@ So entsteht ein Teil einer Kunibert-Folge. Code: `server-api/brain.ts` (Ablauf, 
 7. Messwerte (`storyMetrics`): Wörter, Absätze, Sätze, Wörter je Satz, lange Sätze, Redeteile, „plötzlich“. Sie stehen als eine Zeile im Protokoll (nur Zahlen, nie Text). Ist ein Teil kürzer als die Hälfte der Mindestlänge, schreibt Claude ihn einmal neu, wenn noch mindestens 75 s im Zeitbudget sind.
 8. Ausgabe-Check (`screenOutput`). Lehnt er ab, schreibt Claude den Teil einmal neu, wenn noch mindestens 75 s im Zeitbudget sind; sonst kommt die Ersatzgeschichte.
 9. Fällt Claude mitten in einer laufenden Folge aus, rückt die Folge nicht weiter. Kunibert sagt „Kunibert muss kurz überlegen …“ (fester Text, vorab gesprochen und gespeichert), und der nächste Druck versucht denselben Teil. Erst beim zweiten Ausfall in Folge übernimmt die Ersatzgeschichte.
-10. Am Ende einer Folge merkt sich der Zustand die Kernidee (höchstens drei Folgen), damit die nächste Folge einen anderen Trank, Hinweis und eine andere Lösung erfindet.
+10. Idee des Kindes: Sagt das Kind während einer Folge per Sprechtaste, was passieren soll, ordnet Claude das als „idee“ ein. Der nächste Teil derselben Folge greift die Idee gleich am Anfang auf. Nach Teil 1 sagt der Schlusssatz, dass das geht.
+11. Liegen mehr als sechs Stunden zwischen zwei Teilen, beginnt der nächste mit zwei Sätzen Erinnerung.
+12. Ohne Claude: drei Ersatzfolgen mit verschiedenen Geschenken der Hexe und Listen, je nach Folgennummer.
+13. Am Ende einer Folge merkt sich der Zustand die Kernidee (höchstens drei Folgen), damit die nächste Folge einen anderen Trank, Hinweis und eine andere Lösung erfindet.
 
 Der Zustand liegt nur im Arbeitsspeicher des Servers (je Gerät) und enthält keine Äußerungen außer dem Wunsch der laufenden Folge (höchstens 200 Zeichen, nach der Folge gelöscht).
 

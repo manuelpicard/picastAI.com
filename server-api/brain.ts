@@ -8,9 +8,11 @@ import {
   seedsForSeason,
   STORY_PAUSE_TEXT,
   BEDTIME_HINT,
+  IDEA_HINT,
   NEXT_PHASE_PREVIEW,
   PHASE_HINTS,
   STORY_CLOSING,
+  STORY_CLOSING_FIRST,
   STORYTELLER_SYSTEM,
   type StoryPhase,
 } from './prompts.js';
@@ -200,7 +202,7 @@ export function trimWords(text: string, maxWords: number): string {
 export const QUESTION_SCHEMA: JsonSchema = {
   type: 'object',
   properties: {
-    category: { type: 'string', enum: ['frage', 'geschichte', 'weiter', 'sicherheit', 'unklar'] },
+    category: { type: 'string', enum: ['frage', 'geschichte', 'weiter', 'idee', 'sicherheit', 'unklar'] },
     speech: { type: 'string' },
   },
   required: ['category', 'speech'],
@@ -378,7 +380,7 @@ export function isBedtime(date: Date): boolean {
 export function buildStoryPrompt(
   state: StoryState,
   part: number,
-  settings: { storyMinWords: number; storyMaxWords: number; bedtime?: boolean; nowMs?: number },
+  settings: { storyMinWords: number; storyMaxWords: number; bedtime?: boolean; nowMs?: number; idea?: string },
   retryNote = ''
 ): string {
   const target = state.target;
@@ -405,6 +407,7 @@ export function buildStoryPrompt(
   }
   if (state.wish) lines.push(`Wunsch des Kindes für diese Folge: «${state.wish}»`);
   if (settings.bedtime) lines.push(BEDTIME_HINT);
+  if (settings.idea) lines.push(IDEA_HINT(cleanText(settings.idea, STATE_LIMITS.wish)));
   const preview = phase === 'finale' ? '' : NEXT_PHASE_PREVIEW[storyPhase(part + 1, target)];
   if (preview) lines.push(preview);
   if (retryNote) lines.push(retryNote);
@@ -590,6 +593,13 @@ export class Brain {
         if (parsed.category === 'weiter') {
           return await this.handleStory(!storyActive(state), state, '', timer);
         }
+        if (parsed.category === 'idee') {
+          // Idee für die laufende Folge: weitererzählen und die Idee einbauen. Läuft keine Folge,
+          // ist die Idee der Wunsch für eine neue.
+          return storyActive(state)
+            ? await this.handleStory(false, state, '', timer, transcript)
+            : await this.handleStory(true, state, transcript, timer);
+        }
         if (parsed.category === 'unklar') {
           // Das Sprachmodell hat die Äußerung als leer oder unverständlich eingestuft: um
           // Wiederholung bitten, statt mit dem Ersatztext unten auf Unverstandenes zu antworten.
@@ -700,7 +710,8 @@ export class Brain {
     newEpisode: boolean,
     state: StoryState,
     wish: string,
-    timer: StageTimer
+    timer: StageTimer,
+    idea = ''
   ): Promise<TurnResult> {
     const current = newEpisode ? this.startEpisode(state, wish) : { ...state };
     const part = current.part + 1;
@@ -709,7 +720,7 @@ export class Brain {
     const llm = this.llm;
     if (llm) {
       const now = this.now();
-      const settings = { storyMinWords: this.storyMinWords, storyMaxWords: this.storyMaxWords, bedtime: isBedtime(now), nowMs: now.getTime() };
+      const settings = { storyMinWords: this.storyMinWords, storyMaxWords: this.storyMaxWords, bedtime: isBedtime(now), nowMs: now.getTime(), idea };
       let retryNote = '';
       // Höchstens zwei Versuche: Lehnt der Ausgabe-Check einen Teil ab, bekommt das Modell einen
       // Hinweis und schreibt ihn neu, wenn noch genug Zeit bleibt. Sonst greift die Ersatzgeschichte.
@@ -789,7 +800,7 @@ export class Brain {
   }
 
   private storyResult(text: string, part: number, state: StoryState): TurnResult {
-    const closing = state.done ? EPISODE_CLOSING : STORY_CLOSING;
+    const closing = state.done ? EPISODE_CLOSING : part === 1 ? STORY_CLOSING_FIRST : STORY_CLOSING;
     // Leerzeile vor dem Abschluss: Die Stimme setzt dort eine längere Pause.
     const fullSpeech = `${text}\n\n${closing}`;
     return {

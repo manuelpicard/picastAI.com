@@ -3,7 +3,7 @@ import { screenOutput } from './safety.js';
 import test from 'node:test';
 import { Brain, buildStoryPrompt, FALLBACK_VARIANTS, formatMetrics, isBedtime, germanNumber, spellOutForSpeech, storyMetrics, cleanState, cleanText, extractWishKeyword, FALLBACK_ANSWER_DE, isLikelySttArtifact, lastSentences, MAX_UTTERANCE_CHARS, prepareStoryText, rememberMotif, storyPhase, trimWords } from './brain.js';
 import type { LlmJsonRequest, LlmProvider } from './llm.js';
-import { BEDTIME_HINT, EPISODE_CLOSING, EPISODE_SEEDS_BY_SEASON, seasonOf, STORY_CLOSING, STORY_PAUSE_TEXT } from './prompts.js';
+import { BEDTIME_HINT, EPISODE_CLOSING, EPISODE_SEEDS_BY_SEASON, seasonOf, STORY_CLOSING, STORY_CLOSING_FIRST, STORY_PAUSE_TEXT } from './prompts.js';
 import { SAFETY_RESPONSE_DE, UNCLEAR_RESPONSE_DE } from './safety.js';
 
 /** Fake-Anbieter: liefert vorbereitete Antworten oder wirft vorbereitete Fehler. */
@@ -89,7 +89,7 @@ test('Modell erkennt Geschichtenwunsch: zweiter Aufruf erzählt Teil 1', async (
   assert.equal(result.kind, 'geschichte');
   assert.equal(result.story_state.part, 1);
   assert.equal(result.story_state.done, false);
-  assert.ok(result.speech.endsWith(STORY_CLOSING));
+  assert.ok(result.speech.endsWith(STORY_CLOSING_FIRST));
   assert.equal(llm.calls.length, 2);
   assert.equal(llm.calls[1].schemaName, 'kunibert_geschichte');
 });
@@ -220,7 +220,7 @@ test('Wortgrenzen aus der Konfiguration gelten im Prompt und beim Kürzen', asyn
   const storyLlm = new FakeLlm([story(long)]);
   const storyResult = await new Brain(storyLlm, settings).handle('geschichte', '', {});
   assert.match(storyLlm.calls[0].user, /Länge: 100 bis 150 Wörter/);
-  const spoken = storyResult.speech.replace(STORY_CLOSING, '').trim().split(' ').length;
+  const spoken = storyResult.speech.replace(STORY_CLOSING_FIRST, '').trim().split(' ').length;
   assert.ok(spoken <= 150 + 50 + 1, `gesprochen: ${spoken} Wörter`);
 });
 
@@ -481,7 +481,7 @@ test('Neue Folge bekommt Stimmung und Anlass als Einstieg', async () => {
 
 test('Abschluss steht nach einer Leerzeile (längere Pause in der Sprachausgabe)', async () => {
   const result = await new Brain(new FakeLlm([story('Kunibert ging los.')])).handle('geschichte', '', {});
-  assert.ok(result.speech.endsWith(`ging los.\n\n${STORY_CLOSING}`));
+  assert.ok(result.speech.endsWith(`ging los.\n\n${STORY_CLOSING_FIRST}`));
 });
 
 test('Ersatzgeschichte endet passend zur Teilezahl (3 und 7 Teile)', async () => {
@@ -690,4 +690,31 @@ test('Ersatzgeschichte: drei verschiedene Listen, jede besteht den Ausgabe-Check
     tricks.add(variant.trick);
   }
   assert.equal(tricks.size, 3);
+});
+
+test('Idee des Kindes während einer Folge: Folge geht weiter, die Idee steht in der Anfrage', async () => {
+  const state = { ...cleanState({}), ep: 2, part: 2, target: 5, plan: 'Plan', summary: 's' };
+  const llm = new FakeLlm([{ category: 'idee', speech: '' }, story('Kunibert kitzelte den Drachen.')]);
+  const result = await new Brain(llm).handle('frage', 'Kunibert soll den Drachen kitzeln', state);
+  assert.equal(result.kind, 'weiter');
+  assert.equal(result.story_state.part, 3, 'dieselbe Folge, nächster Teil');
+  assert.equal(result.story_state.ep, 2);
+  assert.match(llm.calls[1].user, /gerade gewünscht: «Kunibert soll den Drachen kitzeln»/);
+  assert.match(llm.calls[1].user, /Plan der Folge: Plan/);
+  assert.equal(result.story_state.wish, '', 'Idee gilt nur für diesen Teil');
+});
+
+test('Idee ohne laufende Folge: wird zum Wunsch einer neuen Folge', async () => {
+  const llm = new FakeLlm([{ category: 'idee', speech: '' }, story('Neue Folge.')]);
+  const result = await new Brain(llm).handle('frage', 'Der Drache soll fliegen', {});
+  assert.equal(result.story_state.part, 1);
+  assert.match(result.story_state.wish, /Drache soll fliegen/);
+});
+
+test('Nur Teil 1 endet mit dem Hinweis auf die Sprechtaste, spätere Teile mit dem kurzen Abschluss', async () => {
+  const brain = new Brain(new FakeLlm([story('Eins.'), story('Zwei.')]));
+  const first = await brain.handle('geschichte', '', {});
+  assert.ok(first.speech.endsWith(STORY_CLOSING_FIRST));
+  const second = await brain.handle('weiter', '', first.story_state);
+  assert.ok(second.speech.endsWith(STORY_CLOSING) && !second.speech.endsWith(STORY_CLOSING_FIRST));
 });

@@ -180,6 +180,7 @@ Ordne die Äußerung genau einer Kategorie zu:
 - "frage": Wissensfrage, Alltagsfrage, Plaudern, Gefühle, Sorgen ohne akute Gefahr
 - "geschichte": das Kind möchte eine (neue) Geschichte von Ritter Kunibert hören
 - "weiter": das Kind möchte, dass die laufende Geschichte weitergeht
+- "idee": nur wenn gerade eine Geschichte läuft: das Kind sagt, was in der Geschichte passieren soll („Kunibert soll den Drachen kitzeln“, „Der Drache soll sein Freund werden“, „Die Hexe soll ihm helfen“). Das ist keine neue Geschichte; die laufende geht mit dieser Idee weiter
 - "sicherheit": Hinweise auf akute Gefahr, Gewalt, Missbrauch, Selbstverletzung, Suizidgedanken, medizinischen Notfall, Feuer, verlaufen/allein in Gefahr
 - "unklar": leer, unverständlich oder sinnlos
 
@@ -197,7 +198,15 @@ Regeln für "frage":
 Für andere Kategorien darf "speech" leer bleiben.
 `;
 
+/** Was Claude für einen Teil bekommt, wenn das Kind per Sprechtaste eine Idee für die laufende Folge gesagt hat. */
+export const IDEA_HINT = (idea: string) =>
+  `Das Kind hat sich für diesen Teil gerade gewünscht: «${idea}». Greif die Idee gleich am Anfang dieses Teils sichtbar und freundlich auf, ` +
+  'so dass das Kind merkt: Kunibert hat mich gehört. Der Plan der Folge bleibt; passe ihn nur so weit an, wie die Idee es braucht. ' +
+  'Ist die Idee nicht kindgerecht, übergehe sie still.';
+
 export const STORY_CLOSING = 'Wenn du wissen willst, wie es weitergeht, drück noch einmal die Erzähltaste.';
+/** Nur nach Teil 1: Hinweis, dass das Kind Kunibert mit der Sprechtaste Ideen geben kann (Kategorie „idee“). */
+export const STORY_CLOSING_FIRST = `${STORY_CLOSING} Du kannst Kunibert auch mit der Sprechtaste sagen, was er tun soll.`;
 /**
  * Fällt Claude mitten in einer Folge aus, rückt die Folge nicht weiter: Kunibert macht eine
  * kurze Pause, und der nächste Druck versucht denselben Teil noch einmal. So bricht der rote
