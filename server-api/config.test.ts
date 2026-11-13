@@ -4,6 +4,7 @@ import {
   getSafeConfigSummary,
   isDiagnosticTextEnabled,
   isTestTranscriptEnabled,
+  isValidWorkspaceId,
   llmConfigWarnings,
   loadConfig,
   normalizeServiceUrl,
@@ -184,4 +185,13 @@ test('Startwarnung nur, wenn das Testfeld im Betrieb an ist', () => {
   const [warning] = testSwitchWarnings({ NODE_ENV: 'production', KUNIBERT_TEST_TRANSCRIPT: '1' });
   assert.match(warning, /KUNIBERT_TEST_TRANSCRIPT=1/);
   assert.match(warning, /vor dem ersten Kind/);
+});
+
+test('Arbeitsbereichs-ID: Format geprüft, ungültige wird mit Warnung ignoriert', () => {
+  assert.equal(isValidWorkspaceId('wrkspc_014T6HKPx3kPyKLYf48XXvXj'), true);
+  assert.equal(isValidWorkspaceId('wrkspc_'), false);
+  assert.equal(isValidWorkspaceId('sk-ant-usr-abc'), false);
+  assert.equal(isValidWorkspaceId('wrkspc_abc def'), false);
+  assert.deepEqual(llmConfigWarnings({ PICASTAI_ANTHROPIC_WORKSPACE_ID: 'wrkspc_014T6HKPx3kPyKLYf48XXvXj' }), []);
+  assert.match(llmConfigWarnings({ PICASTAI_ANTHROPIC_WORKSPACE_ID: 'falsch' })[0], /PICASTAI_ANTHROPIC_WORKSPACE_ID ist ungültig/);
 });

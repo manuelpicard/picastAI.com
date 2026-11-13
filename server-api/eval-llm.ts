@@ -180,7 +180,7 @@ const MISSING_KEY_MESSAGE = [
 export function resolveCandidates(
   env: { ANTHROPIC_API_KEY?: string; EVAL_MODELS?: string } = process.env,
   makeProvider: (model: string, apiKey: string) => LlmProvider = (model, apiKey) =>
-    new AnthropicProvider({ apiKey, model, baseUrl: config.anthropicBaseUrl, timeoutMs: config.llmTimeoutMs })
+    new AnthropicProvider({ apiKey, model, baseUrl: config.anthropicBaseUrl, workspaceId: config.anthropicWorkspaceId, timeoutMs: config.llmTimeoutMs })
 ): LlmProvider[] {
   const apiKey = env.ANTHROPIC_API_KEY?.trim();
   if (!apiKey) throw new EvalSetupError(MISSING_KEY_MESSAGE);

@@ -48,10 +48,11 @@ test('AnthropicProvider sendet erzwungenen Tool-Aufruf und liefert das Tool-Erge
   const headers = seen!.init.headers as Record<string, string>;
   assert.equal(headers['x-api-key'], 'sk-test');
   assert.equal(headers['anthropic-version'], '2023-06-01');
+  assert.equal(headers['anthropic-workspace-id'], undefined, 'ohne Einstellung kein Arbeitsbereich-Kopf');
   const body = JSON.parse(String(seen!.init.body));
   assert.equal(body.model, 'claude-test');
   assert.equal(body.max_tokens, 700);
-  assert.equal(body.system, 'Du bist Kunibert.');
+  assert.deepEqual(body.system, [{ type: 'text', text: 'Du bist Kunibert.', cache_control: { type: 'ephemeral' } }]);
   assert.deepEqual(body.messages, [{ role: 'user', content: 'Hallo' }]);
   assert.deepEqual(body.tool_choice, { type: 'tool', name: 'antwort' });
   assert.equal(body.tools[0].name, 'antwort');
@@ -110,6 +111,7 @@ test('createLlmProvider: liefert den Anbieter nur mit passendem Key', () => {
     anthropicBaseUrl: 'https://api.anthropic.com',
     llmTimeoutMs: 30_000,
     anthropicApiKey: null,
+    anthropicWorkspaceId: null,
   };
   assert.equal(createLlmProvider({ ...base, llmProvider: 'none' }), null);
   assert.equal(createLlmProvider({ ...base, llmProvider: 'anthropic' }), null, 'Anthropic ohne Key');
@@ -174,4 +176,25 @@ test('AnthropicProvider: keine Wiederholung bei 400/401, bei fehlendem Tool-Erge
   });
   await assert.rejects(() => short.generateJson({ ...REQUEST, timeoutMs: 2_000 }), LlmError);
   assert.equal(calls, 1, 'unter 3 s Restzeit kein zweiter Versuch');
+});
+
+test('AnthropicProvider: Arbeitsbereich-Kopf bei gesetzter ID; fehlender Arbeitsbereich wird als fester Hinweis gemeldet, ohne Fließtext', async () => {
+  let headers: Record<string, string> = {};
+  const ok = new AnthropicProvider({
+    apiKey: 'k', model: 'm', workspaceId: 'wrkspc_01ABCDEFGHJK',
+    fetchImpl: fakeFetch((_url, init) => {
+      headers = init.headers as Record<string, string>;
+      return new Response(JSON.stringify({ content: [{ type: 'tool_use', input: { ok: true } }] }), { status: 200 });
+    }),
+  });
+  await ok.generateJson(REQUEST);
+  assert.equal(headers['anthropic-workspace-id'], 'wrkspc_01ABCDEFGHJK');
+
+  const body = JSON.stringify({ type: 'error', error: { type: 'invalid_request_error', message: 'anthropic-workspace-id is required when authenticating with an identity-linked API key; GEHEIMER TEXT' } });
+  const missing = new AnthropicProvider({ apiKey: 'k', model: 'm', retryDelayMs: 0, fetchImpl: fakeFetch(() => new Response(body, { status: 400 })) });
+  await assert.rejects(
+    () => missing.generateJson(REQUEST),
+    (error: unknown) => error instanceof LlmError && /HTTP 400 \(invalid_request_error\)/.test(error.message)
+      && /PICASTAI_ANTHROPIC_WORKSPACE_ID/.test(error.message) && !/GEHEIMER/.test(error.message) && !error.transient
+  );
 });
