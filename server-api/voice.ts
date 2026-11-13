@@ -8,6 +8,16 @@ import {
   usableGoogleSettings,
   type GoogleTtsSettings,
 } from './google-speech.js';
+import {
+  pcm16ToSamples,
+  samplesToPcm16,
+  sentencePauseMs,
+  silencePcm16,
+  splitSentences,
+  timeStretchPcm16,
+  usablePocketSettings,
+  type PocketTtsSettings,
+} from './pocket-speech.js';
 
 export interface SpeechToTextProvider {
   /** timeoutMs: Obergrenze aus dem Zeitbudget der Anfrage; die eigene Grenze des Dienstes gilt zusätzlich. */
@@ -250,6 +260,62 @@ export class GoogleTextToSpeech implements TextToSpeechProvider {
   }
 }
 
+/**
+ * Sprachausgabe über Pocket TTS (`pocket-tts serve`, POST /tts mit text und voice_url). Pocket hat
+ * kein Tempo-Feld und setzt keine Pausen: Der Text geht Satz für Satz an den Dienst, danach fügt
+ * dieser Server Pausen ein, dehnt das Tempo (ohne Tonhöhe zu ändern) und rechnet auf die Abtastrate
+ * der Geräte um. Die Sätze werden nacheinander erzeugt (der Dienst rechnet ohnehin nur eine Anfrage
+ * zur Zeit). Fehlermeldungen des Dienstes nur als Status, nie mit Text (feste Regel).
+ */
+export class PocketTextToSpeech implements TextToSpeechProvider {
+  constructor(
+    private readonly settings: PocketTtsSettings,
+    private readonly timeoutMs: number,
+    private readonly targetSampleRate: number,
+    private readonly fetchImpl: typeof fetch = fetch
+  ) {}
+
+  async synthesize(text: string, timeoutMs?: number): Promise<Buffer> {
+    const sentences = splitSentences(text);
+    if (!sentences.length) throw new VoiceProviderError('TTS: leerer Text');
+    const timeout = withTimeout(Math.min(this.timeoutMs, timeoutMs ?? Infinity));
+    try {
+      let sampleRate = 0;
+      const parts: Buffer[] = [];
+      for (const { sentence, paragraphEnd } of sentences) {
+        const form = new URLSearchParams({ text: sentence, voice_url: this.settings.voice });
+        const response = await this.fetchImpl(`${this.settings.url}/tts`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: form,
+          signal: timeout.signal,
+        });
+        if (!response.ok) {
+          throw new VoiceProviderError(`TTS-Provider (Pocket) antwortete mit HTTP ${response.status}`, response.status >= 500 || response.status === 429);
+        }
+        const audio = Buffer.from(await response.arrayBuffer());
+        const wav = parsePcmWav(audio);
+        if (!isPcmFormat(wav.formatTag) || wav.bitsPerSample !== 16 || wav.channels !== 1 || wav.sampleRate <= 0) {
+          throw new VoiceProviderError('TTS-Provider (Pocket) lieferte kein unterstütztes PCM-WAV');
+        }
+        if (sampleRate && wav.sampleRate !== sampleRate) throw new VoiceProviderError('TTS-Provider (Pocket) wechselte die Abtastrate');
+        sampleRate = wav.sampleRate;
+        parts.push(audio.subarray(wav.dataOffset, wav.dataOffset + wav.dataSize - (wav.dataSize % 2)));
+        parts.push(silencePcm16(sampleRate, sentencePauseMs(sentence, this.settings.pauseMs, paragraphEnd)));
+      }
+      parts.pop(); // keine Pause nach dem letzten Satz
+      const stretched = timeStretchPcm16(pcm16ToSamples(Buffer.concat(parts)), this.settings.tempo, sampleRate);
+      return normalizePcmWav(encodeWav(samplesToPcm16(stretched), sampleRate, 1, 16), this.targetSampleRate);
+    } catch (error) {
+      if (error instanceof VoiceProviderError) throw error;
+      if ((error as Error)?.name === 'AbortError') throw new VoiceProviderError('TTS-Timeout', true);
+      throw new VoiceProviderError('TTS-Netzwerkfehler (Pocket)', true);
+    } finally {
+      timeout.cancel();
+    }
+  }
+}
+
 /** Obergrenze für zwischengespeicherte feste Texte (es gibt nur eine Handvoll). */
 const MAX_FIXED_CACHE_ENTRIES = 16;
 
@@ -267,7 +333,10 @@ export class VoicePipeline {
           config.sttPrompt
         )
       : null;
-    if (config.ttsProvider === 'google') {
+    if (config.ttsProvider === 'pocket') {
+      const pocket = usablePocketSettings(config);
+      this.tts = pocket ? new PocketTextToSpeech(pocket, config.voiceTimeoutMs, config.audioSampleRate) : null;
+    } else if (config.ttsProvider === 'google') {
       const google = usableGoogleSettings(config);
       this.tts = google ? new GoogleTextToSpeech(google, config.voiceTimeoutMs, config.audioSampleRate) : null;
     } else {
