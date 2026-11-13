@@ -149,6 +149,7 @@ Der Client konfiguriert `gpiozero.Button` für die Sprechtaste, Erzähltaste und
 | Bereit | Dauerlicht |
 | Aufnahme | schnelles Blinken (180 ms an, 180 ms aus) |
 | Verarbeitung/Wiedergabe | langsames Blinken (700 ms an, 700 ms aus) |
+| Kunibert denkt nach (nach dem Loslassen der Sprechtaste, bis die Antwort da ist) | langsames Pulsieren, etwa 3 Sekunden je Durchlauf |
 | Fehler | sehr schnelles Blinken (80 ms an, 80 ms aus) |
 | Mikrofon ausgeschaltet | zwei kurze Blitze (je 80 ms), dann Pause |
 
@@ -168,6 +169,70 @@ Der Softwareablauf bei OFF ist:
 **Wichtig für den Hardwareaufbau:** GPIO 22 allein schaltet ein Mikrofon nicht elektrisch ab. Für einen echten Datenschutz-Schalter muss ein separater Schaltkontakt die Mikrofonversorgung bzw. den passenden Mikrofonpfad des konkreten Audio-HATs/USB-Geräts physisch unterbrechen; ein weiterer Kontakt kann GPIO 22 nach GND ziehen. Die geeignete Schaltung hängt vom ausgewählten Audiointerface ab und muss anhand dessen Dokumentation geplant und am Gerät geprüft werden. Keine 5-V-Signale an den GPIO legen. Vor dem Softwaretest die elektrische Abschaltung separat prüfen und danach mit `arecord -l` sowie einer Testaufnahme kontrollieren, dass OFF tatsächlich keine Aufnahme zulässt.
 
 Die softwareseitige Abbruch- und Verwerfungslogik ist mit `python3 -m unittest -v` testbar; der Unit-Test ersetzt keine Prüfung der tatsächlichen elektrischen Abschaltung am Pi.
+
+## Rückmeldung beim Warten
+
+Kinder sollen nie still warten müssen. Dafür gibt es zwei Dinge (Quittung und Zwischensätze) und eine Tastenkombination für Eltern. Der Code steht in `rueckmeldung.py`. Die KI-Ansage beim ersten Einschalten kommt aus dem Server und ist [oben](#ki-ansage-beim-ersten-einschalten) beschrieben.
+
+### Quittung: „Ich habe dich gehört“
+
+Lässt das Kind die Sprechtaste los, passiert sofort, innerhalb einer halben Sekunde, Folgendes:
+
+- Der Pi spielt einen kurzen, leisen Ton (zusammen 0,2 Sekunden). Der Ton wird im Code erzeugt. Es gibt keine Tondatei.
+- Die LED pulsiert langsam („Kunibert denkt nach“).
+- Der Upload startet im selben Augenblick. Er wartet nicht auf den Ton.
+
+Zu kurze Aufnahmen (ein kurzes Antippen) bekommen keinen Ton und keine Anfrage. Die Erzähltaste hat kein „Loslassen“, deshalb gibt es dort keinen Ton. Die LED pulsiert aber auch dort, und die Zwischensätze gelten genauso.
+
+### Zwischensätze
+
+Dauert die Antwort länger, spricht Kunibert kurz dazwischen:
+
+- Nach **2,5 Sekunden** ohne Antwort spielt der Pi einen zufälligen Zwischensatz („Ich höre dir zu. Einen Moment.“ und ähnliche). Es gibt sechs davon, die Sätze sind absichtlich neutral. Derselbe Satz kommt nie zweimal hintereinander.
+- Nach **15 Sekunden** ohne Antwort folgt ein zweiter Satz („Das dauert heute etwas länger.“).
+- Mehr als diese zwei Sätze gibt es pro Frage nicht.
+- Es spielt immer nur eines nach dem anderen. Ein Satz wird nie abgeschnitten und nichts überlappt. Kommt die Antwort während eines Satzes, spielt der Satz zu Ende, dann folgen 300 Millisekunden Pause und danach die Antwort.
+
+### KI-Ansage wiederholen (Eltern)
+
+Die KI-Ansage kommt beim allerersten Start (siehe [oben](#ki-ansage-beim-ersten-einschalten)). Eltern können sie auch ohne Rechner noch einmal abspielen:
+
+1. Mikrofon-Schalter auf „aus“ stellen (die LED zeigt die zwei Blitze).
+2. **Beide Tasten** (Sprechtaste und Erzähltaste) **5 Sekunden lang gedrückt halten.**
+3. Der Pi holt die Ansage vom Server und spielt sie ab. Zum nächsten Mal beide Tasten erst loslassen.
+
+Die Merkdatei `intro-played` bleibt dabei unberührt. Klappt der Abruf nicht (kein Netz), steht nur eine Warnung im Log.
+
+Warum diese Kombination: Bei ausgeschaltetem Mikrofon startet ein Tastendruck nie eine Aufnahme. Ohne den Schalter würde schon das Drücken der Sprechtaste die Aufnahme starten. Außerdem braucht es drei bewusste Handgriffe (Schalter, beide Tasten, 5 Sekunden). Ein Kind löst das nicht aus Versehen aus. Die Zeit ist mit `KUNIBERT_INTRO_HOLD_SECONDS` einstellbar.
+### Die Sprachdateien
+
+Die Zwischensätze sind WAV-Dateien (16 kHz, Mono, 16 Bit) im Ordner `KUNIBERT_ANNOUNCEMENTS_DIR` (Standard `/var/lib/kunibert/ansagen`). Die Dateinamen sind fest:
+
+| Datei | Wofür |
+|---|---|
+| `zwischen-1.wav` bis `zwischen-6.wav` | sechs Zwischensätze nach 2,5 Sekunden |
+| `zwischen-lang.wav` | zweiter Satz nach 15 Sekunden |
+
+Der Server erzeugt die Dateien mit `npm run ansagen -- <Zielordner>` (siehe [`docs/Ansagen.md`](../docs/Ansagen.md)). Es sind keine Dateien im Repo, weil die Stimme noch nicht festgelegt ist.
+
+**Fehlen Dateien**, läuft der Pi normal weiter: mit Ton und LED, aber ohne die fehlenden Sätze. Beim Start steht eine Warnung im Log, welche Dateien fehlen. Eine Datei mit falschem Format (andere Abtastrate, Stereo, keine WAV-Datei) wird übersprungen und ebenfalls gemeldet. Im Log stehen nur Dateinamen, nie die gesprochenen Texte.
+
+### Einstellungen
+
+Alle Werte sind optional und stehen in `/etc/kunibert/kunibert.env`.
+
+| Variable | Standard | Bedeutung |
+|---|---:|---|
+| `KUNIBERT_FEEDBACK` | `1` | `0` schaltet Ton, Zwischensätze und die Elternkombination ab (der Client verhält sich dann wie vorher; die KI-Ansage beim ersten Start bleibt) |
+| `KUNIBERT_ANNOUNCEMENTS_DIR` | `/var/lib/kunibert/ansagen` | Ordner mit den Sprachdateien |
+| `KUNIBERT_FILLER_AFTER_SECONDS` | `2.5` | Sekunden bis zum ersten Zwischensatz |
+| `KUNIBERT_LONG_WAIT_SECONDS` | `15` | Sekunden bis zum zweiten Satz |
+| `KUNIBERT_ANSWER_PAUSE_SECONDS` | `0.3` | Pause zwischen Zwischensatz und Antwort |
+| `KUNIBERT_INTRO_HOLD_SECONDS` | `5` | Sekunden, die die Eltern beide Tasten halten, um die KI-Ansage zu wiederholen |
+
+### Was getestet ist
+
+Die Abläufe sind mit einer Fake-Uhr und Fake-Audio in `test_rueckmeldung.py` getestet (Ton, Zwischensätze, Pausen, Reihenfolge, Elternkombination, fehlende Dateien). Auf echter Hardware ist **nichts** getestet: weder, wie der Ton und die Sätze über den Lautsprecher klingen, noch das sanfte Pulsieren der LED (es braucht PWM über `gpiozero.PWMLED`; ohne PWM blinkt die LED langsam).
 
 ## Installation auf Raspberry Pi OS Lite
 
