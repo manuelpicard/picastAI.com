@@ -174,7 +174,8 @@ test('Geschichtenwunsch als Frage: zwei Sprachmodell-Aufrufe, beide gezählt und
   ]);
   const timer = new TurnTimer(clock.now, '0a1b2c3e');
   timer.mode = 'frage';
-  const result = await new Brain(llm).handle('frage', 'erzähl mir bitte eine geschichte', {}, timer);
+  // Mindestlänge klein: Der kurze Testtext soll keinen zweiten Versuch auslösen.
+  const result = await new Brain(llm, { storyMinWords: 5 }).handle('frage', 'erzähl mir bitte eine geschichte', {}, timer);
   assert.equal(result.kind, 'geschichte');
   assert.equal(llm.calls, 2);
   const line = timer.logLine(200)!;

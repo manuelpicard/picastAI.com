@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { Brain, buildStoryPrompt, cleanState, cleanText, extractWishKeyword, FALLBACK_ANSWER_DE, isLikelySttArtifact, lastSentences, MAX_UTTERANCE_CHARS, prepareStoryText, rememberMotif, storyPhase, trimWords } from './brain.js';
+import { Brain, buildStoryPrompt, formatMetrics, isBedtime, germanNumber, spellOutForSpeech, storyMetrics, cleanState, cleanText, extractWishKeyword, FALLBACK_ANSWER_DE, isLikelySttArtifact, lastSentences, MAX_UTTERANCE_CHARS, prepareStoryText, rememberMotif, storyPhase, trimWords } from './brain.js';
 import type { LlmJsonRequest, LlmProvider } from './llm.js';
-import { EPISODE_CLOSING, STORY_CLOSING } from './prompts.js';
+import { BEDTIME_HINT, EPISODE_CLOSING, EPISODE_SEEDS_BY_SEASON, seasonOf, STORY_CLOSING, STORY_PAUSE_TEXT } from './prompts.js';
 import { SAFETY_RESPONSE_DE, UNCLEAR_RESPONSE_DE } from './safety.js';
 
 /** Fake-Anbieter: liefert vorbereitete Antworten oder wirft vorbereitete Fehler. */
@@ -514,4 +514,134 @@ test('buildStoryPrompt: kurze Folge holt den Hinweis der Hexe in Teil 1', () => 
   const prompt = buildStoryPrompt({ ...cleanState({}), target: 3, seed: 'Nebel.' }, 1, { storyMinWords: 170, storyMaxWords: 230 });
   assert.match(prompt, /schon in diesem Teil die Hexe/);
   assert.match(prompt, /Wendung mit der klugen Lösung/);
+});
+
+// ---------------------------------------------------------------------------
+// Feinschliff (13.11.2026, Nacht): Zahlen als Wörter, Pause statt Bruch, Jahreszeit, Messwerte
+// ---------------------------------------------------------------------------
+
+test('germanNumber: deutsche Zahlwörter', () => {
+  const cases: Array<[number, string]> = [
+    [0, 'null'], [1, 'eins'], [7, 'sieben'], [12, 'zwölf'], [17, 'siebzehn'], [20, 'zwanzig'], [21, 'einundzwanzig'],
+    [34, 'vierunddreißig'], [100, 'einhundert'], [102, 'einhundertzwei'], [365, 'dreihundertfünfundsechzig'],
+    [1000, 'eintausend'], [2026, 'zweitausendsechsundzwanzig'], [12_345, 'zwölftausenddreihundertfünfundvierzig'],
+  ];
+  for (const [n, word] of cases) assert.equal(germanNumber(n), word, String(n));
+  assert.equal(germanNumber(1_000_000), '1000000');
+});
+
+test('spellOutForSpeech: Ziffern, Uhrzeiten und Abkürzungen werden gesprochen', () => {
+  assert.equal(spellOutForSpeech('Er zählte 3 Äpfel und 21 Birnen.'), 'Er zählte drei Äpfel und einundzwanzig Birnen.');
+  assert.equal(spellOutForSpeech('Es gab 1 Apfel. Er hatte nur 1.'), 'Es gab ein Apfel. Er hatte nur eins.');
+  assert.equal(spellOutForSpeech('Um 7:30 und um 1:00 Uhr.'), 'Um sieben Uhr dreißig und um ein Uhr.');
+  assert.equal(spellOutForSpeech('Tiere, z. B. Füchse, usw.'), 'Tiere, zum Beispiel Füchse, und so weiter');
+  assert.equal(spellOutForSpeech('Er wog 2,5 Kilo.'), 'Er wog 2,5 Kilo.', 'Dezimalzahlen bleiben (selten, mehrdeutig)');
+});
+
+test('prepareStoryText spricht Zahlen aus', () => {
+  assert.equal(prepareStoryText('Nach 3 Tagen kam er an.\n\nEs war 12:00.'), 'Nach drei Tagen kam er an.\n\nEs war zwölf Uhr.');
+});
+
+test('storyMetrics: Wörter, Absätze, Sätze, lange Sätze, Redeteile', () => {
+  const long = Array.from({ length: 22 }, () => 'Wort').join(' ') + '.';
+  const m = storyMetrics(`„Halt!“, rief er. Plötzlich war es still.\n\n${long}`);
+  assert.equal(m.paragraphs, 2);
+  assert.equal(m.sentences, 3);
+  assert.equal(m.longSentences, 1);
+  assert.equal(m.dialogue, 1);
+  assert.equal(m.ploetzlich, 1);
+  assert.match(formatMetrics(m), /^\d+ Wörter, 2 Absätze, 3 Sätze, [\d,]+ Wörter je Satz, 1 lange Sätze, 1 Redeteile, 1x „plötzlich“$/);
+});
+
+test('Protokoll: Messwerte eines Teils nur als Zahlen, nie der Text', async () => {
+  const lines: string[] = [];
+  const original = console.log;
+  console.log = (...args: unknown[]) => { lines.push(args.join(' ')); };
+  try {
+    await new Brain(new FakeLlm([story('Geheimwort-Dachs ging los.')])).handle('geschichte', '', {});
+  } finally {
+    console.log = original;
+  }
+  const line = lines.find((l) => l.startsWith('Geschichte Teil 1/'));
+  assert.ok(line, lines.join('\n'));
+  assert.ok(!line!.includes('Dachs'));
+});
+
+test('Claude fällt mitten in einer Folge aus: einmal Pause ohne Fortschritt, beim zweiten Mal Ersatzgeschichte', silent(async () => {
+  const state = { ...cleanState({}), ep: 3, part: 2, target: 5, plan: 'Plan', summary: 's', last: 'l' };
+  const failing = new FakeLlm([]);
+  failing.generateJson = async () => { throw new Error('HTTP 529'); };
+  const brain = new Brain(failing);
+
+  const pause = await brain.handle('weiter', '', state);
+  assert.equal(pause.speech, STORY_PAUSE_TEXT);
+  assert.equal(pause.fixed, 'pause');
+  assert.equal(pause.story_state.part, 2, 'Folge rückt nicht weiter');
+  assert.equal(pause.story_state.plan, 'Plan');
+  assert.equal(pause.story_state.miss, 1);
+
+  const fallback = await brain.handle('weiter', '', pause.story_state);
+  assert.notEqual(fallback.speech, STORY_PAUSE_TEXT);
+  assert.equal(fallback.story_state.part, 3);
+  assert.equal(fallback.story_state.miss, 0);
+}));
+
+test('Nach einer Pause gelingt derselbe Teil: Zähler zurück auf null', async () => {
+  const state = { ...cleanState({}), ep: 3, part: 2, target: 5, plan: 'Plan', summary: 's', miss: 1 };
+  const result = await new Brain(new FakeLlm([story('Weiter ging es.')])).handle('weiter', '', state);
+  assert.equal(result.story_state.part, 3);
+  assert.equal(result.story_state.miss, 0);
+});
+
+test('Keine Pause bei neuer Folge, ohne Plan oder ohne Sprachmodell', silent(async () => {
+  const failing = new FakeLlm([]);
+  failing.generateJson = async () => { throw new Error('HTTP 529'); };
+  const fresh = await new Brain(failing).handle('geschichte', '', {});
+  assert.notEqual(fresh.speech, STORY_PAUSE_TEXT);
+  const noPlan = await new Brain(failing).handle('weiter', '', { ...cleanState({}), part: 2, target: 5 });
+  assert.notEqual(noPlan.speech, STORY_PAUSE_TEXT);
+  const noLlm = await new Brain(null).handle('weiter', '', { ...cleanState({}), part: 2, target: 5, plan: 'Plan' });
+  assert.notEqual(noLlm.speech, STORY_PAUSE_TEXT);
+}));
+
+test('cleanState: miss wird auf 0 bis 3 begrenzt', () => {
+  assert.equal(cleanState({ v: 1, miss: 99 }).miss, 3);
+  assert.equal(cleanState({ v: 1, miss: -2 }).miss, 0);
+  assert.equal(cleanState({ v: 1 }).miss, 0);
+});
+
+test('seasonOf und Stimmung passend zur Jahreszeit', async () => {
+  assert.equal(seasonOf(new Date(2026, 0, 10)), 'winter');
+  assert.equal(seasonOf(new Date(2026, 3, 10)), 'fruehling');
+  assert.equal(seasonOf(new Date(2026, 6, 10)), 'sommer');
+  assert.equal(seasonOf(new Date(2026, 10, 13)), 'herbst');
+  assert.equal(seasonOf(new Date(2026, 11, 24)), 'winter');
+  const offSeason = [...EPISODE_SEEDS_BY_SEASON.sommer, ...EPISODE_SEEDS_BY_SEASON.fruehling, ...EPISODE_SEEDS_BY_SEASON.herbst];
+  for (let i = 0; i < 40; i++) {
+    const result = await new Brain(null, { now: () => new Date(2026, 0, 15) }).handle('weiter', '', {});
+    assert.ok(!offSeason.some((seed) => result.story_state.seed.startsWith(seed)), result.story_state.seed);
+  }
+});
+
+test('Viel zu kurzer Teil: mit Zeitbudget einmal neu', async () => {
+  const llm = new FakeLlm([story('Kurz.'), story(Array.from({ length: 120 }, () => 'Wort').join(' ') + '.')]);
+  const timer = { time: <T>(_s: unknown, fn: () => Promise<T>) => fn(), timeSync: <T>(_s: unknown, fn: () => T) => fn(), remainingMs: () => 110_000 };
+  const result = await new Brain(llm).handle('geschichte', '', {}, timer as never);
+  assert.equal(llm.calls.length, 2);
+  assert.match(llm.calls[1].user, /viel zu kurz/);
+  assert.ok(result.speech.split(/\s+/).length > 100);
+});
+
+test('Schlafenszeit: abends nach deutscher Zeit ruhigere Teile', async () => {
+  assert.equal(isBedtime(new Date('2026-11-13T20:30:00Z')), true, '21:30 in Berlin');
+  assert.equal(isBedtime(new Date('2026-11-13T04:30:00Z')), true, '5:30 in Berlin');
+  assert.equal(isBedtime(new Date('2026-11-13T09:00:00Z')), false, '10:00 in Berlin');
+  assert.equal(isBedtime(new Date('2026-07-13T16:30:00Z')), false, '18:30 Sommerzeit in Berlin');
+
+  const evening = new FakeLlm([story('Leise.')]);
+  await new Brain(evening, { now: () => new Date('2026-11-13T20:30:00Z') }).handle('geschichte', '', {});
+  assert.ok(evening.calls[0].user.includes(BEDTIME_HINT));
+  const morning = new FakeLlm([story('Hell.')]);
+  await new Brain(morning, { now: () => new Date('2026-11-13T09:00:00Z') }).handle('geschichte', '', {});
+  assert.ok(!morning.calls[0].user.includes(BEDTIME_HINT));
 });

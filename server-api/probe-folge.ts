@@ -11,7 +11,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { Brain, type StoryState, type TurnResult } from './brain.js';
+import { Brain, formatMetrics, storyMetrics, type StoryState, type TurnResult } from './brain.js';
 import { loadConfig } from './config.js';
 import { createLlmProvider } from './llm.js';
 import { VoicePipeline } from './voice.js';
@@ -77,6 +77,7 @@ export function renderProbe(parts: ProbePart[], meta: { model: string; wish: str
     lines.push(`## Teil ${part.part}${part.fixed ? ` (fester Text: ${part.fixed})` : ''}`, '');
     if (part.part === 1 && part.state.plan) lines.push(`> Plan der Folge (wird nicht vorgelesen): ${part.state.plan}`, '');
     lines.push(part.speech, '');
+    if (!part.fixed) lines.push(`Messwerte: ${formatMetrics(storyMetrics(part.speech))}`, '');
     lines.push(`_${part.words} Wörter, Sprachmodell ${(part.ms / 1000).toFixed(1)} s${part.ttsMs !== null ? `, Sprachausgabe ${(part.ttsMs / 1000).toFixed(1)} s` : ''}_`, '');
     if (!part.state.done) {
       lines.push(`<details><summary>Stand nach Teil ${part.part}</summary>`, '');

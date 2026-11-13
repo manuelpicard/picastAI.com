@@ -4,6 +4,10 @@ import {
   EPISODE_CLOSING,
   EPISODE_SEEDS,
   EPISODE_SPARKS,
+  seasonOf,
+  seedsForSeason,
+  STORY_PAUSE_TEXT,
+  BEDTIME_HINT,
   NEXT_PHASE_PREVIEW,
   PHASE_HINTS,
   STORY_CLOSING,
@@ -48,6 +52,8 @@ export interface StoryState {
   last: string;
   /** Kernideen der letzten Folgen (Trank, Hinweis, Lösung), damit sie sich nicht wiederholen. */
   recent: string;
+  /** Wie oft Claude für den anstehenden Teil schon ausgefallen ist (0 oder 1, siehe STORY_PAUSE_TEXT). */
+  miss: number;
 }
 
 /** Längen der Textfelder im Zustand (Zeichen). */
@@ -148,6 +154,7 @@ export function cleanState(raw: any): StoryState {
       wish: '',
       last: '',
       recent: '',
+      miss: 0,
     };
   }
   const ep = Number(raw.ep) || 1;
@@ -167,6 +174,7 @@ export function cleanState(raw: any): StoryState {
     wish: cleanText(raw.wish, STATE_LIMITS.wish),
     last: cleanText(raw.last, STATE_LIMITS.last),
     recent: cleanText(raw.recent, STATE_LIMITS.recent),
+    miss: Math.max(0, Math.min(3, Math.floor(Number(raw.miss) || 0))),
   };
 }
 
@@ -232,6 +240,81 @@ export function storyPhase(part: number, target: number): StoryPhase {
 
 const pick = <T>(items: readonly T[]): T => items[Math.floor(Math.random() * items.length)];
 
+const ONES = ['null', 'eins', 'zwei', 'drei', 'vier', 'fünf', 'sechs', 'sieben', 'acht', 'neun', 'zehn', 'elf', 'zwölf',
+  'dreizehn', 'vierzehn', 'fünfzehn', 'sechzehn', 'siebzehn', 'achtzehn', 'neunzehn'];
+const TENS = ['', '', 'zwanzig', 'dreißig', 'vierzig', 'fünfzig', 'sechzig', 'siebzig', 'achtzig', 'neunzig'];
+
+/** Deutsche Zahlwörter von 0 bis 999 999 („einundzwanzig“, „hundertzwei“, „dreitausend“). */
+export function germanNumber(n: number): string {
+  if (!Number.isInteger(n) || n < 0 || n > 999_999) return String(n);
+  if (n < 20) return ONES[n];
+  if (n < 100) {
+    const unit = n % 10;
+    const ten = TENS[Math.floor(n / 10)];
+    return unit ? `${unit === 1 ? 'ein' : ONES[unit]}und${ten}` : ten;
+  }
+  if (n < 1000) {
+    const hundreds = Math.floor(n / 100);
+    const rest = n % 100;
+    return `${hundreds === 1 ? 'ein' : ONES[hundreds]}hundert${rest ? germanNumber(rest) : ''}`;
+  }
+  const thousands = Math.floor(n / 1000);
+  const rest = n % 1000;
+  return `${thousands === 1 ? 'ein' : germanNumber(thousands)}tausend${rest ? germanNumber(rest) : ''}`;
+}
+
+/** Ziffern, Uhrzeiten und gängige Abkürzungen als gesprochene Wörter. */
+export function spellOutForSpeech(text: string): string {
+  return text
+    .replace(/\bz\.\s?B\./g, 'zum Beispiel')
+    .replace(/\bu\.\s?a\./g, 'unter anderem')
+    .replace(/\busw\./g, 'und so weiter')
+    .replace(/\bca\./g, 'ungefähr')
+    .replace(/\bNr\.\s?/g, 'Nummer ')
+    .replace(/\b(\d{1,2}):(\d{2})\b(?:\s*Uhr\b)?/g, (_m, h: string, min: string) =>
+      `${germanNumber(Number(h)) === 'eins' ? 'ein' : germanNumber(Number(h))} Uhr${Number(min) ? ` ${germanNumber(Number(min))}` : ''}`)
+    .replace(/(?<![\d.,])(\d{1,6})(?![\d,]|\.\d)/g, (_m, digits: string, offset: number, whole: string) => {
+      const word = germanNumber(Number(digits));
+      // „1 Apfel“ → „ein Apfel“, alleinstehend „eins“.
+      return word === 'eins' && /^\s+\p{L}/u.test(whole.slice(offset + digits.length)) ? 'ein' : word;
+    });
+}
+
+export interface StoryMetrics {
+  words: number;
+  paragraphs: number;
+  sentences: number;
+  /** Durchschnittliche Wörter je Satz, eine Nachkommastelle. */
+  wordsPerSentence: number;
+  /** Sätze mit mehr als 20 Wörtern (für Kinderohren zu lang). */
+  longSentences: number;
+  /** Stellen mit wörtlicher Rede („…“). */
+  dialogue: number;
+  ploetzlich: number;
+}
+
+/** Messwerte eines Teils, ohne Text: für das Protokoll und `npm run probe:folge`. */
+export function storyMetrics(text: string): StoryMetrics {
+  const paragraphs = text.split(/\n\s*\n/).filter((p) => p.trim()).length;
+  const sentences = text.split(/(?<=[.!?…])[“”"]?\s+/).map((x) => x.trim()).filter(Boolean);
+  const counts = sentences.map((x) => x.split(/\s+/).filter(Boolean).length);
+  const words = text.split(/\s+/).filter(Boolean).length;
+  return {
+    words,
+    paragraphs,
+    sentences: sentences.length,
+    wordsPerSentence: sentences.length ? Math.round((words / sentences.length) * 10) / 10 : 0,
+    longSentences: counts.filter((c) => c > 20).length,
+    dialogue: (text.match(/„/g) || []).length,
+    ploetzlich: (text.match(/\bplötzlich\b/gi) || []).length,
+  };
+}
+
+export function formatMetrics(m: StoryMetrics): string {
+  return `${m.words} Wörter, ${m.paragraphs} Absätze, ${m.sentences} Sätze, ${String(m.wordsPerSentence).replace('.', ',')} Wörter je Satz, ` +
+    `${m.longSentences} lange Sätze, ${m.dialogue} Redeteile, ${m.ploetzlich}x „plötzlich“`;
+}
+
 /**
  * Glättet einen Geschichtentext für die Sprachausgabe: kein Markdown, keine Emojis, keine
  * Gedankenstriche oder Klammern, saubere Absätze (Leerzeile, dort macht die Stimme eine längere
@@ -249,6 +332,7 @@ export function prepareStoryText(raw: string): string {
     .split(/\n\s*\n+/)
     .map((paragraph) => paragraph.replace(/\s+/g, ' ').replace(/^[\s,]+/, '').trim())
     .filter(Boolean)
+    .map(spellOutForSpeech)
     .join('\n\n');
 }
 
@@ -276,11 +360,18 @@ export function rememberMotif(recent: string, motif: string): string {
   return joined.slice(0, STATE_LIMITS.recent);
 }
 
+/** Abends (19 bis 6 Uhr deutscher Zeit) gilt Schlafenszeit: ruhigere Teile (Kanon, Abschnitt 7). */
+export function isBedtime(date: Date): boolean {
+  const parts = new Intl.DateTimeFormat('de-DE', { timeZone: 'Europe/Berlin', hour: 'numeric', hourCycle: 'h23' }).formatToParts(date);
+  const hour = Number(parts.find((part) => part.type === 'hour')?.value);
+  return hour >= 19 || hour < 6;
+}
+
 /** Baut die Anfrage für einen Teil. Exportiert für Tests. */
 export function buildStoryPrompt(
   state: StoryState,
   part: number,
-  settings: { storyMinWords: number; storyMaxWords: number },
+  settings: { storyMinWords: number; storyMaxWords: number; bedtime?: boolean },
   retryNote = ''
 ): string {
   const target = state.target;
@@ -303,6 +394,7 @@ export function buildStoryPrompt(
     if (state.hook) lines.push(`Anknüpfen an: ${state.hook}`);
   }
   if (state.wish) lines.push(`Wunsch des Kindes für diese Folge: «${state.wish}»`);
+  if (settings.bedtime) lines.push(BEDTIME_HINT);
   const preview = phase === 'finale' ? '' : NEXT_PHASE_PREVIEW[storyPhase(part + 1, target)];
   if (preview) lines.push(preview);
   if (retryNote) lines.push(retryNote);
@@ -310,7 +402,10 @@ export function buildStoryPrompt(
   return lines.join('\n');
 }
 
-export type BrainSettings = Pick<KunibertConfig, 'ageBracket' | 'partsPerEpisode' | 'storyMinWords' | 'storyMaxWords' | 'answerMaxWords' | 'sttPrompt'>;
+export type BrainSettings = Pick<KunibertConfig, 'ageBracket' | 'partsPerEpisode' | 'storyMinWords' | 'storyMaxWords' | 'answerMaxWords' | 'sttPrompt'> & {
+  /** Uhr für die Jahreszeit der Stimmung (austauschbar für Tests). */
+  now: () => Date;
+};
 
 export class Brain {
   private readonly age: string;
@@ -319,6 +414,7 @@ export class Brain {
   private readonly storyMaxWords: number;
   private readonly answerMaxWords: number;
   private readonly sttPrompt: string;
+  private readonly now: () => Date;
 
   /**
    * Ohne Anbieter (kein Key) greifen die festen Fallback-Texte. Die Einstellungen
@@ -331,6 +427,7 @@ export class Brain {
     this.storyMaxWords = settings.storyMaxWords ?? config.storyMaxWords;
     this.answerMaxWords = settings.answerMaxWords ?? config.answerMaxWords;
     this.sttPrompt = settings.sttPrompt ?? config.sttPrompt;
+    this.now = settings.now ?? (() => new Date());
   }
 
   /**
@@ -529,7 +626,7 @@ export class Brain {
       ep: (state.ep || 0) + 1,
       part: 0,
       target: this.partsPerEpisode,
-      seed: `${pick(EPISODE_SEEDS)} ${pick(EPISODE_SPARKS)}`,
+      seed: `${pick(seedsForSeason(seasonOf(this.now())))} ${pick(EPISODE_SPARKS)}`,
       summary: '',
       threads: '',
       hook: '',
@@ -538,6 +635,7 @@ export class Brain {
       wish: cleanText(wish, STATE_LIMITS.wish),
       last: '',
       recent: state.recent,
+      miss: 0,
     };
   }
 
@@ -553,7 +651,7 @@ export class Brain {
 
     const llm = this.llm;
     if (llm) {
-      const settings = { storyMinWords: this.storyMinWords, storyMaxWords: this.storyMaxWords };
+      const settings = { storyMinWords: this.storyMinWords, storyMaxWords: this.storyMaxWords, bedtime: isBedtime(this.now()) };
       let retryNote = '';
       // Höchstens zwei Versuche: Lehnt der Ausgabe-Check einen Teil ab, bekommt das Modell einen
       // Hinweis und schreibt ihn neu, wenn noch genug Zeit bleibt. Sonst greift die Ersatzgeschichte.
@@ -572,6 +670,16 @@ export class Brain {
           };
           const text = prepareStoryText(trimWords(String(parsed.text || ''), this.storyMaxWords + 50));
           if (!text) throw new Error('Geschichte des Sprachmodells ist leer');
+          const metrics = storyMetrics(text);
+          // Nur Zahlen ins Protokoll, nie der Text (CLAUDE.md).
+          console.log(`Geschichte Teil ${part}/${current.target}: ${formatMetrics(metrics)}`);
+          // Viel zu kurz (abgeschnitten oder Zusammenfassung statt Szene): einmal neu, wenn Zeit bleibt.
+          // Nur mit echtem Zeitbudget (jede Geräteanfrage hat eins); ohne Budget gilt der Text, wie er ist.
+          const left = timer.remainingMs();
+          if (metrics.words < this.storyMinWords * 0.5 && attempt === 1 && Number.isFinite(left) && left >= STORY_RETRY_MIN_MS) {
+            retryNote = `Wichtig: Ein erster Entwurf war viel zu kurz. Erzähle diesen Teil als lebendige Szene mit ${this.storyMinWords} bis ${this.storyMaxWords} Wörtern.`;
+            continue;
+          }
           if (timer.timeSync('ausgabecheck', () => screenOutput(text, 'story'))) {
             if (attempt === 1 && timer.remainingMs() >= STORY_RETRY_MIN_MS) {
               console.warn(`LLM-Geschichte (${this.llmName}) durch Ausgabe-Check abgelehnt, zweiter Versuch`);
@@ -595,6 +703,7 @@ export class Brain {
             last: done ? '' : lastSentences(text),
             wish: done ? '' : current.wish,
             recent: done ? rememberMotif(current.recent, String(parsed.episode_motif || plan || '')) : current.recent,
+            miss: 0,
           };
           return this.storyResult(text, part, updatedState);
         } catch (err) {
@@ -602,6 +711,19 @@ export class Brain {
           break;
         }
       }
+    }
+
+    // Fällt Claude mitten in einer laufenden Claude-Folge aus (sie hat einen Plan), rückt die Folge
+    // einmal nicht weiter: eine kurze Pause, und der nächste Druck versucht denselben Teil. Erst beim
+    // zweiten Ausfall in Folge übernimmt die Ersatzgeschichte.
+    if (llm && !newEpisode && current.plan && !current.done && current.part >= 1 && current.miss < 1) {
+      return {
+        kind: 'weiter',
+        speech: STORY_PAUSE_TEXT,
+        story_state: { ...current, miss: current.miss + 1 },
+        fixed: 'pause',
+        wav: this.synthesizeWav(STORY_PAUSE_TEXT, 'hinweis'),
+      };
     }
 
     return this.fallbackStory(newEpisode, state, wish);
@@ -707,6 +829,7 @@ export class Brain {
       last: done ? '' : lastSentences(text),
       plan: done ? '' : current.plan,
       wish: done ? '' : current.wish,
+      miss: 0,
     };
     return this.storyResult(text, part, updatedState);
   }

@@ -6,6 +6,7 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { DeviceRegistry, DeviceStoreError, RateLimiter, AudioStore } from './server-api/devices.js';
 import { Brain, FALLBACK_ANSWER_DE, StoryState } from './server-api/brain.js';
+import { STORY_PAUSE_TEXT } from './server-api/prompts.js';
 import { AudioError, decodeWavHeader, isPcmFormat, isSilentPcm16 } from './server-api/audio.js';
 import { config, getSafeConfigSummary, llmConfigWarnings, testSwitchWarnings, ttsProviderWarnings, voiceConfigWarnings } from './server-api/config.js';
 import { isAdminTokenConfigured, verifyAdminAuthorization } from './server-api/admin-auth.js';
@@ -542,7 +543,7 @@ async function startServer() {
     // schon beim ersten Kind ohne Wartezeit und ohne Anbieter-Anfrage gesprochen wird.
     // Mit neuen Versuchen, falls der Sprachserver nach einem Neustart noch nicht bereit ist.
     if (isProd && voice.ttsConfigured) {
-      const fixedTexts = [SAFETY_RESPONSE_DE, UNCLEAR_RESPONSE_DE, ERROR_RESPONSE_DE, FALLBACK_ANSWER_DE];
+      const fixedTexts = [SAFETY_RESPONSE_DE, UNCLEAR_RESPONSE_DE, ERROR_RESPONSE_DE, FALLBACK_ANSWER_DE, STORY_PAUSE_TEXT];
       void voice
         .warmUpWithRetry(fixedTexts)
         .then((count) => console.log(`Feste Sprechtexte vorbereitet (${count} von ${fixedTexts.length}).`));
