@@ -92,7 +92,9 @@ if [[ -z "$SOURCE_DIR" ]]; then
 fi
 CLIENT_SOURCE="${SOURCE_DIR}/pi-client/kunibert_client.py"
 CLIENT_README="${SOURCE_DIR}/pi-client/README.md"
+CLIENT_FEEDBACK="${SOURCE_DIR}/pi-client/rueckmeldung.py"
 [[ -f "$CLIENT_SOURCE" ]] || die "Client nicht gefunden: $CLIENT_SOURCE"
+[[ -f "$CLIENT_FEEDBACK" ]] || die "Modul für Rückmeldung und Vorstellung nicht gefunden: $CLIENT_FEEDBACK"
 
 if [[ -z "$DEVICE_TOKEN" && "$NON_INTERACTIVE" != "1" && "$DRY_RUN" != "1" && -t 0 ]]; then
   read -r -s -p "picastAI-Gerätetoken (Eingabe wird nicht angezeigt): " DEVICE_TOKEN
@@ -134,12 +136,13 @@ if ! id -u "$APP_USER" >/dev/null 2>&1; then
   useradd --system --create-home --home-dir "$INSTALL_DIR" --shell /usr/sbin/nologin "$APP_USER"
 fi
 usermod -a -G "$APP_GROUP" "$APP_USER" 2>/dev/null || true
-install -d -o "$APP_USER" -g "$APP_GROUP" -m 0750 "$INSTALL_DIR" "$DATA_DIR" "$DATA_DIR/audio" "$DATA_DIR/state"
+install -d -o "$APP_USER" -g "$APP_GROUP" -m 0750 "$INSTALL_DIR" "$DATA_DIR" "$DATA_DIR/audio" "$DATA_DIR/state" "$DATA_DIR/ansagen"
 install -d -o root -g "$APP_GROUP" -m 0750 "$CONFIG_DIR"
 
 log "Kopiere Client und richte virtuelle Python-Umgebung ein …"
 install -d -o "$APP_USER" -g "$APP_GROUP" -m 0750 "$INSTALL_DIR/pi-client"
 install -o "$APP_USER" -g "$APP_GROUP" -m 0644 "$CLIENT_SOURCE" "$INSTALL_DIR/pi-client/kunibert_client.py"
+install -o "$APP_USER" -g "$APP_GROUP" -m 0644 "$CLIENT_FEEDBACK" "$INSTALL_DIR/pi-client/rueckmeldung.py"
 if [[ -f "$CLIENT_README" ]]; then
   install -o "$APP_USER" -g "$APP_GROUP" -m 0644 "$CLIENT_README" "$INSTALL_DIR/pi-client/README.md"
 fi
@@ -189,6 +192,7 @@ PICASTAI_DEVICE_TOKEN=$(printf '%q' "$DEVICE_TOKEN")
 PICASTAI_DEVICE_NAME=$(printf '%q' "$DEVICE_NAME")
 KUNIBERT_SAMPLE_RATE=$(printf '%q' "$SAMPLE_RATE")
 KUNIBERT_CACHE_DIR=$(printf '%q' "$DATA_DIR/audio")
+KUNIBERT_ANNOUNCEMENTS_DIR=$(printf '%q' "$DATA_DIR/ansagen")
 KUNIBERT_STATE_DIR=$(printf '%q' "$DATA_DIR/state")
 KUNIBERT_MAX_RECORD_SECONDS=15
 KUNIBERT_MIN_RECORD_SECONDS=0.35
@@ -240,7 +244,7 @@ systemctl daemon-reload
 systemctl enable kunibert.service
 
 log "Prüfe lokale Python-Syntax …"
-"$VENV_DIR/bin/python" -m py_compile "$INSTALL_DIR/pi-client/kunibert_client.py"
+"$VENV_DIR/bin/python" -m py_compile "$INSTALL_DIR/pi-client/kunibert_client.py" "$INSTALL_DIR/pi-client/rueckmeldung.py"
 
 log "Prüfe ALSA-Geräte …"
 if command -v aplay >/dev/null; then
@@ -267,6 +271,7 @@ Konfiguration: $CONFIG_FILE
 Client:        $INSTALL_DIR/pi-client/kunibert_client.py
 Service:       $SERVICE_FILE
 Daten:         $DATA_DIR
+Ansagen:       $DATA_DIR/ansagen (noch leer: Sprachdateien siehe docs/Ansagen.md)
 
 Nächste Schritte:
   sudo systemctl start kunibert.service
