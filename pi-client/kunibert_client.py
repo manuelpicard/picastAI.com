@@ -34,6 +34,8 @@ from urllib.parse import urljoin, urlparse
 from urllib.error import HTTPError, URLError
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
+from rueckmeldung import Feedback, build_feedback
+
 LOG = logging.getLogger("kunibert")
 
 
@@ -87,6 +89,12 @@ class ClientConfig:
     poll_interval_seconds: float = 0.04
     cache_dir: Path = Path("/var/lib/kunibert/audio")
     dry_run: bool = False
+    # Rückmeldung beim Warten (siehe rueckmeldung.py und README).
+    feedback_enabled: bool = True
+    announcements_dir: Path = Path("/var/lib/kunibert/ansagen")
+    filler_after_seconds: float = 2.5
+    long_wait_seconds: float = 15.0
+    answer_pause_seconds: float = 0.3
 
     @classmethod
     def from_env(cls, dry_run: bool = False) -> "ClientConfig":
@@ -129,6 +137,11 @@ class ClientConfig:
             output_device=device("KUNIBERT_OUTPUT_DEVICE"),
             cache_dir=Path(os.getenv("KUNIBERT_CACHE_DIR", "/var/lib/kunibert/audio")),
             dry_run=dry_run,
+            feedback_enabled=os.getenv("KUNIBERT_FEEDBACK", "1").strip().lower() not in {"0", "false", "no", "nein", "aus"},
+            announcements_dir=Path(os.getenv("KUNIBERT_ANNOUNCEMENTS_DIR", "/var/lib/kunibert/ansagen")),
+            filler_after_seconds=number("KUNIBERT_FILLER_AFTER_SECONDS", 2.5),
+            long_wait_seconds=number("KUNIBERT_LONG_WAIT_SECONDS", 15.0),
+            answer_pause_seconds=number("KUNIBERT_ANSWER_PAUSE_SECONDS", 0.3),
         )
 
 
@@ -237,12 +250,26 @@ class GpioButtons:
             item.close()
 
 
-class GpioStatusLed:
-    """One LED, active-high. Modes: off, ready, recording, busy, error, mic_off."""
+def _pulse_pattern(steps: int = 12, step_seconds: float = 0.12) -> tuple[tuple[float, float], ...]:
+    """Weiches Pulsieren: Die Helligkeit (0 bis 1) steigt in kleinen Schritten und fällt wieder.
 
-    _PATTERNS: dict[str, tuple[tuple[bool, float], ...]] = {
+    Ein Durchlauf dauert etwa 2,9 Sekunden, das wirkt ruhig ("ich denke nach").
+    """
+    up = [(index / steps, step_seconds) for index in range(1, steps + 1)]
+    down = [(index / steps, step_seconds) for index in range(steps - 1, -1, -1)]
+    return tuple(up + down)
+
+
+class GpioStatusLed:
+    """One LED, active-high. Modes: off, ready, recording, busy, thinking, error, mic_off.
+
+    Ein Muster ist eine Folge aus (Helligkeit, Sekunden). True und False zählen als 1 und 0.
+    """
+
+    _PATTERNS: dict[str, tuple[tuple[float, float], ...]] = {
         "recording": ((True, 0.18), (False, 0.18)),
         "busy": ((True, 0.7), (False, 0.7)),
+        "thinking": _pulse_pattern(),
         "error": ((True, 0.08), (False, 0.08)),
         "mic_off": ((True, 0.08), (False, 0.12), (True, 0.08), (False, 1.2)),
     }
@@ -252,7 +279,14 @@ class GpioStatusLed:
             from gpiozero import LED
         except ImportError as exc:
             raise HardwareError("gpiozero fehlt; auf dem Pi installieren: sudo apt install python3-gpiozero") from exc
-        self._led = LED(config.status_led_gpio)
+        try:
+            # Mit PWM kann die LED sanft pulsieren; ohne PWM bleibt es beim langsamen Blinken.
+            from gpiozero import PWMLED
+            self._led = PWMLED(config.status_led_gpio)
+            self._dimmable = True
+        except ImportError:
+            self._led = LED(config.status_led_gpio)
+            self._dimmable = False
         self._stop = threading.Event()
         self._thread: Optional[threading.Thread] = None
 
@@ -274,20 +308,32 @@ class GpioStatusLed:
             self._led.off()
 
     @classmethod
-    def pattern_for_mode(cls, mode: str) -> tuple[tuple[bool, float], ...]:
+    def pattern_for_mode(cls, mode: str) -> tuple[tuple[float, float], ...]:
         return cls._PATTERNS.get(mode, ())
 
-    def _blink(self, pattern: tuple[tuple[bool, float], ...]) -> None:
+    def _apply(self, level: float) -> None:
+        if level >= 1:
+            self._led.on()
+        elif level <= 0:
+            self._led.off()
+        elif self._dimmable:
+            self._led.value = level
+        elif level >= 0.5:  # ohne Dimmen: grob an oder aus
+            self._led.on()
+        else:
+            self._led.off()
+
+    def _blink(self, pattern: tuple[tuple[float, float], ...]) -> None:
         self._stop = threading.Event()
         stop = self._stop
         self._led.off()
 
         def worker() -> None:
             while not stop.is_set():
-                for is_on, duration in pattern:
+                for level, duration in pattern:
                     if stop.is_set():
                         break
-                    self._led.on() if is_on else self._led.off()
+                    self._apply(level)
                     if stop.wait(duration):
                         break
             self._led.off()
@@ -741,6 +787,8 @@ class KunibertClient:
     state: ClientState = ClientState.BOOT
     stop_requested: bool = False
     last_error: Optional[str] = None
+    # Rückmeldung beim Warten. Ohne Wert verhält sich der Client wie bisher.
+    feedback: Optional[Feedback] = None
     state_history: list[ClientState] = field(default_factory=list)
     # Uhr für die Zeitmessung (Tests setzen eine eigene).
     clock: Callable[[], float] = time.monotonic
@@ -884,7 +932,7 @@ class KunibertClient:
         self._warn_if_silent(wav_bytes)
         self.transition(ClientState.UPLOADING)
         try:
-            response_wav = self.api.ask_question(wav_bytes)
+            response_wav = self._request(lambda: self.api.ask_question(wav_bytes), acknowledge=True)
             self.transition(ClientState.PLAYING)
             self._log_wait("frage", recording_ended)
             self._play(response_wav)
@@ -895,7 +943,7 @@ class KunibertClient:
         button_pressed = self.clock()
         self.transition(ClientState.REQUESTING_STORY)
         try:
-            response_wav = self.api.request_story()
+            response_wav = self._request(self.api.request_story, acknowledge=False)
             self.transition(ClientState.PLAYING)
             self._log_wait("erzaehltaste", button_pressed)
             self._play(response_wav)
@@ -977,6 +1025,27 @@ class KunibertClient:
             self._discard_pending_presses()
             self.transition(ClientState.MIC_OFF if self.buttons.mic_off else ClientState.READY)
 
+    def _request(self, function: Callable[[], bytes], acknowledge: bool) -> bytes:
+        """Führt die Anfrage an den Server aus und gibt dem Kind dabei Rückmeldung.
+
+        Ohne Feedback läuft sie wie bisher direkt. Mit Feedback startet sie sofort im Hintergrund,
+        damit der Upload nicht wartet. Der Pi spielt beim Loslassen der Sprechtaste einen kurzen
+        Ton (acknowledge), die LED pulsiert ("denken"), und nach 2,5 s und 15 s ohne Antwort
+        folgt je ein Zwischensatz. Es spielt immer nur eines nach dem anderen.
+        """
+        feedback = self.feedback
+        if feedback is None:
+            return function()
+        started = feedback.clock.monotonic()
+        call = feedback.start(function)
+        self.led.set("thinking")
+        if acknowledge:
+            feedback.acknowledge(self.audio_out)
+        feedback.wait_for_answer(call, self.audio_out, started=started, should_stop=lambda: self.stop_requested)
+        if not call.done():
+            raise ApiError("Abbruch beim Warten auf die Antwort")
+        return call.result()
+
     def _has_audio(self, wav_bytes: bytes) -> bool:
         try:
             with wave.open(io.BytesIO(wav_bytes), "rb") as wav:
@@ -1016,7 +1085,8 @@ def build_client(config: ClientConfig, keyboard: bool = False) -> KunibertClient
         audio_in = audio
         audio_out = audio
         led = GpioStatusLed(config)
-    return KunibertClient(config, PicastApi(config), audio_in, audio_out, buttons, led)
+    feedback = build_feedback(config) if config.feedback_enabled else None
+    return KunibertClient(config, PicastApi(config), audio_in, audio_out, buttons, led, feedback=feedback)
 
 
 def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
