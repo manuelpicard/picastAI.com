@@ -51,7 +51,7 @@ test('AnthropicProvider sendet erzwungenen Tool-Aufruf und liefert das Tool-Erge
   const body = JSON.parse(String(seen!.init.body));
   assert.equal(body.model, 'claude-test');
   assert.equal(body.max_tokens, 700);
-  assert.equal(body.system, 'Du bist Kunibert.');
+  assert.deepEqual(body.system, [{ type: 'text', text: 'Du bist Kunibert.', cache_control: { type: 'ephemeral' } }]);
   assert.deepEqual(body.messages, [{ role: 'user', content: 'Hallo' }]);
   assert.deepEqual(body.tool_choice, { type: 'tool', name: 'antwort' });
   assert.equal(body.tools[0].name, 'antwort');

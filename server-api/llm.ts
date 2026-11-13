@@ -120,7 +120,10 @@ export class AnthropicProvider implements LlmProvider {
         body: JSON.stringify({
           model: this.model,
           max_tokens: request.maxOutputTokens ?? 1024,
-          system: request.system,
+          // Der Systemtext ist für alle Teile einer Folge gleich: Anthropic hält ihn kurz im
+          // Zwischenspeicher (Prompt-Caching). Das spart Kosten und etwas Wartezeit; zu kurze
+          // Texte speichert der Dienst einfach nicht, ohne Fehler.
+          system: [{ type: 'text', text: request.system, cache_control: { type: 'ephemeral' } }],
           messages: [{ role: 'user', content: request.user }],
           tools: [
             {

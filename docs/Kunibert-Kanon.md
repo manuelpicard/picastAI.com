@@ -131,3 +131,4 @@ Diese Motive sind literarische Möglichkeiten, keine psychologische Auswertung. 
 - [`Ritter Kunibert und der Drache am Berg`](./Ritter%20Kunibert%20und%20der%20Drache%20am%20Berg.md) – erste Geschichte nach den erinnerten Motiven.
 - [`Ritter Kunibert – ein kleines Zuhör- und Erzählgerät`](./Ritter%20Kunibert%20%E2%80%93%20ein%20kleines%20Zuh%C3%B6r-%20und%20Erz%C3%A4hlger%C3%A4t.md) – Produkt- und Erzählkonzept.
 - [`server-api/prompts.ts`](../server-api/prompts.ts) – derzeitige Erzählwelt, Stil-, Episoden- und Antwortregeln im Produktcode.
+- [`Erzaehler-Engine.md`](./Erzaehler-Engine.md) – wie ein Teil entsteht (Plan, roter Faden, Vorlese-Glättung, zweiter Versuch) und wie man eine ganze Folge zum Probehören erzeugt.

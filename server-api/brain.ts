@@ -3,9 +3,12 @@ import {
   ANSWER_SYSTEM,
   EPISODE_CLOSING,
   EPISODE_SEEDS,
+  EPISODE_SPARKS,
+  NEXT_PHASE_PREVIEW,
   PHASE_HINTS,
   STORY_CLOSING,
   STORYTELLER_SYSTEM,
+  type StoryPhase,
 } from './prompts.js';
 import {
   ERROR_RESPONSE_DE,
@@ -30,12 +33,28 @@ export interface StoryState {
   ep: number;
   part: number;
   target: number;
+  /** Stimmung und Anlass zum Einstieg der Folge. */
   seed: string;
+  /** Zusammenfassung der ganzen Folge bis einschließlich des letzten Teils. */
   summary: string;
   threads: string;
   hook: string;
   done: boolean;
+  /** Plan der Folge aus Teil 1 (Ziel, Hinweis der Hexe, Lösung, Nebenfigur); hält den roten Faden. */
+  plan: string;
+  /** Wunsch des Kindes zu dieser Folge (gilt für alle Teile, nicht nur für Teil 1). */
+  wish: string;
+  /** Die letzten Sätze des vorigen Teils, damit der nächste nahtlos anschließt. */
+  last: string;
+  /** Kernideen der letzten Folgen (Trank, Hinweis, Lösung), damit sie sich nicht wiederholen. */
+  recent: string;
 }
+
+/** Längen der Textfelder im Zustand (Zeichen). */
+const STATE_LIMITS = { seed: 300, summary: 900, threads: 400, hook: 300, plan: 800, wish: 200, last: 400, recent: 600 } as const;
+
+/** Ein zweiter Versuch nach einem abgelehnten Teil lohnt nur mit so viel Restzeit (Modell plus lange Sprachausgabe). */
+export const STORY_RETRY_MIN_MS = 75_000;
 
 export interface TurnResult {
   kind: 'frage' | 'geschichte' | 'weiter' | 'hinweis';
@@ -125,6 +144,10 @@ export function cleanState(raw: any): StoryState {
       threads: '',
       hook: '',
       done: false,
+      plan: '',
+      wish: '',
+      last: '',
+      recent: '',
     };
   }
   const ep = Number(raw.ep) || 1;
@@ -135,11 +158,15 @@ export function cleanState(raw: any): StoryState {
     ep: Math.max(1, Math.min(10000, ep)),
     part: Math.max(0, Math.min(50, part)),
     target,
-    seed: cleanText(raw.seed, 200),
-    summary: cleanText(raw.summary, 700),
-    threads: cleanText(raw.threads, 400),
-    hook: cleanText(raw.hook, 300),
+    seed: cleanText(raw.seed, STATE_LIMITS.seed),
+    summary: cleanText(raw.summary, STATE_LIMITS.summary),
+    threads: cleanText(raw.threads, STATE_LIMITS.threads),
+    hook: cleanText(raw.hook, STATE_LIMITS.hook),
     done: Boolean(raw.done),
+    plan: cleanText(raw.plan, STATE_LIMITS.plan),
+    wish: cleanText(raw.wish, STATE_LIMITS.wish),
+    last: cleanText(raw.last, STATE_LIMITS.last),
+    recent: cleanText(raw.recent, STATE_LIMITS.recent),
   };
 }
 
@@ -167,14 +194,121 @@ export const QUESTION_SCHEMA: JsonSchema = {
 export const STORY_SCHEMA: JsonSchema = {
   type: 'object',
   properties: {
-    text: { type: 'string' },
-    summary: { type: 'string' },
-    open_threads: { type: 'string' },
-    next_hook: { type: 'string' },
-    episode_finished: { type: 'boolean' },
+    episode_plan: {
+      type: 'string',
+      description:
+        'Nur im ersten Teil einer Folge, sonst leer. Der Plan für die ganze Folge in drei bis fünf knappen Sätzen, nur für dich, wird nicht vorgelesen: ' +
+        'Anlass und Ziel; Nebenfigur mit Namen; der Hinweis der Hexe wörtlich; die kluge Lösung am Ende und wie der Hinweis dazu passt; wie der Wunsch des Kindes vorkommt.',
+    },
+    text: {
+      type: 'string',
+      description: 'Der vorzulesende Teil der Geschichte, in drei bis fünf Absätzen, getrennt durch eine Leerzeile. Nur Erzähltext.',
+    },
+    summary: {
+      type: 'string',
+      description:
+        'Zusammenfassung der GANZEN Folge bis einschließlich dieses Teils (nicht nur dieses Teils), in höchstens sechs kurzen Sätzen. ' +
+        'Nenne Namen neuer Figuren, wichtige Gegenstände und was die Hexe wörtlich gesagt hat.',
+    },
+    open_threads: { type: 'string', description: 'Was noch offen ist und bis zum Ende aufgelöst werden muss, kurz. Leer, wenn nichts offen ist.' },
+    next_hook: { type: 'string', description: 'Ein Satz: Wo und in welcher Lage der nächste Teil beginnt.' },
+    episode_finished: { type: 'boolean', description: 'true nur im letzten Teil der Folge.' },
+    episode_motif: {
+      type: 'string',
+      description: 'Nur im letzten Teil: in einem kurzen Satz Anlass, Trank oder Hinweis der Hexe und die Lösung dieser Folge, damit die nächste Folge etwas anderes erfindet.',
+    },
   },
   required: ['text', 'summary', 'open_threads', 'next_hook', 'episode_finished'],
 };
+
+/** Rolle eines Teils: 1 Anfang, letzter Teil Finale, vorletzter Wendung, Teil 2 unterwegs (Hexe), sonst Mitte. */
+export function storyPhase(part: number, target: number): StoryPhase {
+  if (part <= 1) return 'start';
+  if (part >= target) return 'finale';
+  if (part === target - 1) return 'trick';
+  if (part === 2) return 'weg';
+  return 'middle';
+}
+
+const pick = <T>(items: readonly T[]): T => items[Math.floor(Math.random() * items.length)];
+
+/**
+ * Glättet einen Geschichtentext für die Sprachausgabe: kein Markdown, keine Emojis, keine
+ * Gedankenstriche oder Klammern, saubere Absätze (Leerzeile, dort macht die Stimme eine längere
+ * Pause). Inhaltlich ändert sich nichts; der Ausgabe-Check läuft danach auf genau diesem Text.
+ */
+export function prepareStoryText(raw: string): string {
+  return String(raw || '')
+    .replace(/\r\n?/g, '\n')
+    .replace(/[*_#`~|]+/g, '')
+    .replace(/\p{Extended_Pictographic}|\uFE0F|\u200D/gu, '')
+    .replace(/[\[\]{}]/g, '')
+    .replace(/\s*\(([^()]*)\)/g, ', $1,')
+    .replace(/,\s*([.!?,])/g, '$1')
+    .replace(/\s+[–—-]\s+/g, ', ')
+    .split(/\n\s*\n+/)
+    .map((paragraph) => paragraph.replace(/\s+/g, ' ').replace(/^[\s,]+/, '').trim())
+    .filter(Boolean)
+    .join('\n\n');
+}
+
+/** Letzte ein bis drei Sätze eines Teils (höchstens maxChars), als Anschluss für den nächsten Teil. */
+export function lastSentences(text: string, maxChars = STATE_LIMITS.last): string {
+  const flat = cleanText(text, 5000);
+  const sentences = flat.split(/(?<=[.!?…][“”"]?)\s+/).filter(Boolean);
+  let out = '';
+  for (let index = sentences.length - 1; index >= 0 && index >= sentences.length - 3; index--) {
+    const next = out ? `${sentences[index]} ${out}` : sentences[index];
+    if (next.length > maxChars) break;
+    out = next;
+  }
+  return out || flat.slice(-maxChars);
+}
+
+/** Hängt die Kernidee einer beendeten Folge an und behält die letzten drei. */
+export function rememberMotif(recent: string, motif: string): string {
+  const entry = cleanText(motif, 180).replace(/\|/g, '/');
+  if (!entry) return recent;
+  const list = recent ? recent.split(' | ').filter(Boolean) : [];
+  list.push(entry);
+  let joined = list.slice(-3).join(' | ');
+  while (joined.length > STATE_LIMITS.recent && joined.includes(' | ')) joined = joined.slice(joined.indexOf(' | ') + 3);
+  return joined.slice(0, STATE_LIMITS.recent);
+}
+
+/** Baut die Anfrage für einen Teil. Exportiert für Tests. */
+export function buildStoryPrompt(
+  state: StoryState,
+  part: number,
+  settings: { storyMinWords: number; storyMaxWords: number },
+  retryNote = ''
+): string {
+  const target = state.target;
+  const phase = storyPhase(part, target);
+  const lines: string[] = [];
+  lines.push(part === 1 ? `Erzähle jetzt Teil 1 von ${target} einer neuen Folge.` : `Erzähle jetzt Teil ${part} von ${target} der laufenden Folge.`);
+  lines.push(`Länge: ${settings.storyMinWords} bis ${settings.storyMaxWords} Wörter.`);
+  lines.push(`Aufgabe dieses Teils: ${PHASE_HINTS[phase]}`);
+  if (target <= 3 && phase === 'start') {
+    lines.push('Die Folge ist kurz: Kunibert trifft schon in diesem Teil die Hexe und bekommt ihren Hinweis.');
+  }
+  if (part === 1) {
+    lines.push(`Stimmung und Anlass zum Einstieg: ${state.seed}`);
+    if (state.recent) lines.push(`Diese Ideen gab es in den letzten Folgen schon; erfinde diesmal etwas anderes: ${state.recent}`);
+  } else {
+    lines.push(`Plan der Folge: ${state.plan || 'nicht festgehalten; bleib bei dem, was bisher geschah'}`);
+    lines.push(`Bisher: ${state.summary}`);
+    lines.push(`Offene Fäden: ${state.threads || 'keine'}`);
+    if (state.last) lines.push(`So endete der vorige Teil: ${state.last}`);
+    if (state.hook) lines.push(`Anknüpfen an: ${state.hook}`);
+  }
+  if (state.wish) lines.push(`Wunsch des Kindes für diese Folge: «${state.wish}»`);
+  const preview = phase === 'finale' ? '' : NEXT_PHASE_PREVIEW[storyPhase(part + 1, target)];
+  if (preview) lines.push(preview);
+  if (retryNote) lines.push(retryNote);
+  lines.push('Antworte strikt im vorgegebenen Format.');
+  return lines.join('\n');
+}
 
 export type BrainSettings = Pick<KunibertConfig, 'ageBracket' | 'partsPerEpisode' | 'storyMinWords' | 'storyMaxWords' | 'answerMaxWords' | 'sttPrompt'>;
 
@@ -388,208 +522,193 @@ export class Brain {
     };
   }
 
+  /** Neue Folge: Zähler weiter, Stimmung und Anlass auslosen, Wunsch und Gedächtnis der letzten Folgen mitnehmen. */
+  private startEpisode(state: StoryState, wish: string): StoryState {
+    return {
+      v: 1,
+      ep: (state.ep || 0) + 1,
+      part: 0,
+      target: this.partsPerEpisode,
+      seed: `${pick(EPISODE_SEEDS)} ${pick(EPISODE_SPARKS)}`,
+      summary: '',
+      threads: '',
+      hook: '',
+      done: false,
+      plan: '',
+      wish: cleanText(wish, STATE_LIMITS.wish),
+      last: '',
+      recent: state.recent,
+    };
+  }
+
   private async handleStory(
     newEpisode: boolean,
     state: StoryState,
     wish: string,
     timer: StageTimer
   ): Promise<TurnResult> {
-    let current = { ...state };
-    if (newEpisode) {
-      const seed = EPISODE_SEEDS[Math.floor(Math.random() * EPISODE_SEEDS.length)];
-      current = {
-        v: 1,
-        ep: (current.ep || 0) + 1,
-        part: 0,
-        target: this.partsPerEpisode,
-        seed,
-        summary: '',
-        threads: '',
-        hook: '',
-        done: false,
-      };
-    }
-
+    const current = newEpisode ? this.startEpisode(state, wish) : { ...state };
     const part = current.part + 1;
-    const target = current.target;
-    let phase = 'middle';
-    if (part === 1) phase = 'start';
-    else if (part >= target) phase = 'finale';
-    else if (part === target - 1) phase = 'trick';
+    const phase = storyPhase(part, current.target);
 
     const llm = this.llm;
     if (llm) {
-      try {
-        const systemPrompt = STORYTELLER_SYSTEM(this.age);
-        const partLabel =
-          part === 1
-            ? `Teil ${part} von ${target} einer neuen Folge`
-            : `Teil ${part} von ${target} der laufenden Folge`;
-        const continuity =
-          part === 1
-            ? `Stimmung zum Einstieg: ${current.seed}`
-            : `Bisher: ${current.summary}\nOffene Fäden: ${current.threads || 'keine'}\nAnknüpfen an: ${current.hook}`;
-        const wishLine = wish && part === 1 ? `Wunsch des Kindes: «${wish.slice(0, 200)}»` : '';
-
-        const userPrompt = `Erzähle jetzt ${partLabel}.\nLänge: ${this.storyMinWords} bis ${this.storyMaxWords} Wörter.\n${PHASE_HINTS[phase]}\n${continuity}\n${wishLine}\nAntworte strikt im JSON-Format.`;
-
-        const parsed = await timer.time('sprachmodell', () => llm.generateJson({
-          system: systemPrompt,
-          user: userPrompt,
-          schemaName: 'kunibert_geschichte',
-          schema: STORY_SCHEMA,
-          maxOutputTokens: 1500,
-          timeoutMs: this.llmTimeoutMs(timer),
-        })) as { text?: string; summary?: string; open_threads?: string; next_hook?: string; episode_finished?: boolean };
-        const text = trimWords(String(parsed.text || ''), this.storyMaxWords + 50);
-        // Ausgabe-Check: bei Treffer greift der Fallback unten (catch-Pfad).
-        if (!text || timer.timeSync('ausgabecheck', () => screenOutput(text, 'story'))) {
-          throw new Error('Geschichte des Sprachmodells durch Ausgabe-Check abgelehnt');
+      const settings = { storyMinWords: this.storyMinWords, storyMaxWords: this.storyMaxWords };
+      let retryNote = '';
+      // Höchstens zwei Versuche: Lehnt der Ausgabe-Check einen Teil ab, bekommt das Modell einen
+      // Hinweis und schreibt ihn neu, wenn noch genug Zeit bleibt. Sonst greift die Ersatzgeschichte.
+      for (let attempt = 1; attempt <= 2; attempt++) {
+        try {
+          const parsed = await timer.time('sprachmodell', () => llm.generateJson({
+            system: STORYTELLER_SYSTEM(this.age),
+            user: buildStoryPrompt(current, part, settings, retryNote),
+            schemaName: 'kunibert_geschichte',
+            schema: STORY_SCHEMA,
+            maxOutputTokens: 2000,
+            timeoutMs: this.llmTimeoutMs(timer),
+          })) as {
+            text?: string; summary?: string; open_threads?: string; next_hook?: string;
+            episode_finished?: boolean; episode_plan?: string; episode_motif?: string;
+          };
+          const text = prepareStoryText(trimWords(String(parsed.text || ''), this.storyMaxWords + 50));
+          if (!text) throw new Error('Geschichte des Sprachmodells ist leer');
+          if (timer.timeSync('ausgabecheck', () => screenOutput(text, 'story'))) {
+            if (attempt === 1 && timer.remainingMs() >= STORY_RETRY_MIN_MS) {
+              console.warn(`LLM-Geschichte (${this.llmName}) durch Ausgabe-Check abgelehnt, zweiter Versuch`);
+              retryNote =
+                'Wichtig: Ein erster Entwurf wurde vom automatischen Prüfer abgelehnt. Schreib den Teil neu und vermeide ' +
+                'jedes Wort über Blut, Tod, Sterben, Töten und Verletzungen, auch in Redewendungen.';
+              continue;
+            }
+            throw new Error('Geschichte des Sprachmodells durch Ausgabe-Check abgelehnt');
+          }
+          const done = Boolean(parsed.episode_finished) || phase === 'finale';
+          const plan = part === 1 ? cleanText(parsed.episode_plan, STATE_LIMITS.plan) : current.plan;
+          const updatedState: StoryState = {
+            ...current,
+            part,
+            done,
+            plan: done ? '' : plan,
+            summary: done ? '' : cleanText(parsed.summary, STATE_LIMITS.summary),
+            threads: done ? '' : cleanText(parsed.open_threads, STATE_LIMITS.threads),
+            hook: done ? '' : cleanText(parsed.next_hook, STATE_LIMITS.hook),
+            last: done ? '' : lastSentences(text),
+            wish: done ? '' : current.wish,
+            recent: done ? rememberMotif(current.recent, String(parsed.episode_motif || plan || '')) : current.recent,
+          };
+          return this.storyResult(text, part, updatedState);
+        } catch (err) {
+          console.warn(`LLM-Geschichte (${this.llmName}) fehlgeschlagen, verwende Fallback:`, err);
+          break;
         }
-        const done = Boolean(parsed.episode_finished) || phase === 'finale';
-        const updatedState: StoryState = {
-          ...current,
-          part,
-          done,
-          summary: String(parsed.summary || '').slice(0, 700),
-          threads: done ? '' : String(parsed.open_threads || '').slice(0, 400),
-          hook: done ? '' : String(parsed.next_hook || '').slice(0, 300),
-        };
-
-        const closing = done ? EPISODE_CLOSING : STORY_CLOSING;
-        const fullSpeech = `${text} ${closing}`;
-
-        return {
-          kind: part === 1 ? 'geschichte' : 'weiter',
-          speech: fullSpeech,
-          story_state: updatedState,
-          wav: this.synthesizeWav(fullSpeech, 'geschichte'),
-        };
-      } catch (err) {
-        console.warn(`LLM-Geschichte (${this.llmName}) fehlgeschlagen, verwende Fallback:`, err);
       }
     }
 
     return this.fallbackStory(newEpisode, state, wish);
   }
 
-  private fallbackStory(newEpisode: boolean, state: StoryState, wish: string): TurnResult {
-    let current = { ...state };
-    if (newEpisode) {
-      const seed = EPISODE_SEEDS[Math.floor(Math.random() * EPISODE_SEEDS.length)];
-      current = {
-        v: 1,
-        ep: (current.ep || 0) + 1,
-        part: 0,
-        target: this.partsPerEpisode,
-        seed,
-        summary: '',
-        threads: '',
-        hook: '',
-        done: false,
-      };
-    }
+  private storyResult(text: string, part: number, state: StoryState): TurnResult {
+    const closing = state.done ? EPISODE_CLOSING : STORY_CLOSING;
+    // Leerzeile vor dem Abschluss: Die Stimme setzt dort eine längere Pause.
+    const fullSpeech = `${text}\n\n${closing}`;
+    return {
+      kind: part === 1 ? 'geschichte' : 'weiter',
+      speech: fullSpeech,
+      story_state: state,
+      wav: this.synthesizeWav(fullSpeech, 'geschichte'),
+    };
+  }
 
+  /**
+   * Feste Ersatzgeschichte ohne Sprachmodell. Die Bausteine folgen der Rolle des Teils (Anfang,
+   * Hexe, Berg, Wendung, Heimkehr), damit auch eine Folge mit drei oder acht Teilen sauber endet.
+   */
+  private fallbackStory(newEpisode: boolean, state: StoryState, wish: string): TurnResult {
+    const current = newEpisode ? this.startEpisode(state, wish) : { ...state };
     const part = current.part + 1;
-    const target = current.target;
-    const wishKeyword = extractWishKeyword(wish);
+    const phase = storyPhase(part, current.target);
+    const wishKeyword = extractWishKeyword(current.wish || wish);
+    const mood = EPISODE_SEEDS.find((seed) => current.seed.startsWith(seed)) ?? '';
 
     let text = '';
     let summary = '';
     let threads = '';
     let hook = '';
-    let done = false;
 
-    if (part === 1) {
+    if (phase === 'start') {
       text =
-        `Kunibert erwachte im Dachzimmer des Gasthauses. ${current.seed} ` +
-        `Der schiefe Balken stand wie immer schützend über seinem Bett, und durch das kleine Fenster sah er ` +
-        `die Dächer des Dorfes und ganz hinten den hohen Berg mit dem dunklen Fleck der Drachenhöhle. ` +
-        `Er zog seine ledernen Stiefel an, gürtete sein treues Schwert um und ging die knarrende Holztreppe hinab. ` +
-        `In der Gaststube roch es herrlich nach frisch gebackenem Brot und warmem Haferbrei. Die Wirtin stellte ` +
-        `ihm lächelnd eine Schale hin: „Stärke dich, Kunibert.“ Vor der Tür wartete die morgendliche Frische. ` +
-        `An der steinernen Brücke hielt ein freundlicher Kutscher die Pferde an: „Steig auf, Ritter!“ ` +
-        `Holpernd rumpelten die Holzräder über das grobe Pflaster. Kunibert bot Münzen an, doch der Kutscher winkte ab. ` +
-        `Am Rande des düsteren Waldes stieg Kunibert dankend ab. ` +
+        `Kunibert erwachte im Dachzimmer des Gasthauses. ${mood}\n\n` +
+        `Der schiefe Balken hing wie immer über seinem Bett. Durch das kleine Fenster sah er ` +
+        `die Dächer des Dorfes und ganz hinten den hohen Berg mit dem dunklen Fleck. Das war die Drachenhöhle. ` +
+        `Er zog seine Stiefel an, nahm sein Schwert und ging die knarrende Treppe hinunter.\n\n` +
+        `In der Gaststube roch es nach frischem Brot und warmem Brei. Die Wirtin stellte ` +
+        `ihm eine Schale hin. „Iss, Kunibert“, sagte sie. Er aß, bezahlte und bedankte sich.\n\n` +
+        `An der steinernen Brücke hielt ein Kutscher die Pferde an. „Steig auf, Ritter“, brummte er. ` +
+        `Die Räder rumpelten über das grobe Pflaster, und Kuniberts Helm wackelte bei jedem Stein. ` +
+        `Am Rand des düsteren Waldes stieg Kunibert ab und gab dem Kutscher ein paar Münzen, obwohl der abwinkte.\n\n` +
         (wishKeyword
-          ? `Zwischen den hohen Tannen sah er plötzlich eine geheimnisvolle Spur – sie schien etwas mit „${wishKeyword}“ zu tun zu haben.`
-          : `Ein leiser Wind raschelte durch das Moos, und etwas silbern Schimmerndes lockte ihn tiefer zwischen die Bäume.`);
-      summary = `Kunibert ist im Gasthaus aufgebrochen, mit dem Kutscher zur Brücke gefahren und steht am Waldrand.`;
-      threads = wishKeyword ? `Die Spur zu „${wishKeyword}“ im Wald ergründen.` : `Das Geheimnis im Wald erkunden.`;
-      hook = `Kunibert betritt den Pfad der geheimnisvollen Hexe.`;
-    } else if (part === 2) {
+          ? `Zwischen den hohen Tannen entdeckte er eine seltsame Spur. Sie schien etwas mit „${wishKeyword}“ zu tun zu haben.`
+          : `Ein leiser Wind raschelte im Moos, und etwas silbern Schimmerndes lockte ihn tiefer zwischen die Bäume.`);
+      summary = `Kunibert ist aus dem Gasthaus aufgebrochen, mit dem Kutscher gefahren und steht am Waldrand.`;
+      threads = wishKeyword ? `Die Spur zu „${wishKeyword}“ im Wald ergründen.` : `Das Schimmern im Wald erkunden.`;
+      hook = `Kunibert betritt den Pfad zur Hexe.`;
+    } else if (phase === 'weg') {
       text =
-        `Kunibert trat vorsichtig in den düsteren Wald hinein. Tropfen perlten von den Farnen, und ` +
-        `im Dickicht knackte ein Zweig. Da stand die Hütte der Hexe, deren Kamin feinen blauen Rauch in den Nebel blies. ` +
-        `Die Hexe trat heraus, ein verschmitztes Lächeln im faltigen Gesicht. ` +
-        `„Sei gegrüßt, Kunibert“, sagte sie mit heiserer Stimme. „Suchst du wieder den Drachen am Berg?“ ` +
-        `Sie reichte ihm eine kleine Flasche aus grünem Glas, in der eine goldene Flüssigkeit leise blubberte. ` +
-        `„Nicht trinken!“, warnte sie mit erhobenem Finger. „Aber wenn der Drache schnaubt, halte sie gegen den Wind.“ ` +
-        `Kunibert verneigte sich höflich: „Habt Dank, werte Frau.“ Er steckte das Fläschchen gut in seine Tasche ` +
-        `und spürte, dass der Weg nun steiler wurde. Die Bäume lichteten sich, und die nackten Felsen des Berges kamen näher.`;
-      summary = `Die Hexe gab Kunibert eine grüne Flasche mit der Warnung, sie bei Gegenwind zu öffnen.`;
-      threads = `Die geheimnisvolle Gabe der Hexe am Berg einsetzen.`;
-      hook = `Kunibert erreicht den steilen Aufstieg zur Drachenhöhle.`;
-    } else if (part === 3) {
+        `Kunibert ging vorsichtig in den düsteren Wald hinein. Tropfen perlten von den Farnen, und ` +
+        `im Dickicht knackte ein Zweig. Dann sah er die Hütte der Hexe. Aus dem Schornstein stieg blauer Rauch.\n\n` +
+        `Die Hexe stand an ihrem Topf und rührte. „Du gehst zum Drachen“, sagte sie, ohne aufzusehen. ` +
+        `Sie füllte etwas Goldenes in eine kleine grüne Flasche und gab sie ihm. ` +
+        `„Nicht trinken“, sagte sie. „Wenn der Drache schnaubt, halte sie gegen den Wind.“\n\n` +
+        `„Habt Dank“, sagte Kunibert und verbeugte sich. Er steckte die Flasche gut ein. ` +
+        `Bald wurde der Weg steiler. Die Bäume wurden weniger, und die Felsen des Berges kamen näher.`;
+      summary = `Die Hexe gab Kunibert eine grüne Flasche: nicht trinken, sondern gegen den Wind halten, wenn der Drache schnaubt.`;
+      threads = `Die Flasche der Hexe am Berg benutzen.`;
+      hook = `Kunibert erreicht den Aufstieg zur Drachenhöhle.`;
+    } else if (phase === 'middle') {
       text =
-        `Der Weg am Berg war steil und steinig. Kunibert kletterte stetig bergauf, während kleine Kiesel ` +
-        `unter seinen Stiefeln ins Tal rollten. Immer wärmer wurde die Luft, je näher er der großen schwarzen Höhle kam. ` +
-        `Plötzlich ertönte ein tiefes Grollen, das den ganzen Berg vibrieren ließ! ` +
-        `Der gewaltige rote Drache schob seinen Kopf aus der Höhle. Rauch quoll aus seinen Nüstern, und seine ` +
-        `goldenen Augen funkelten angriffslustig. Kunibert zog sein Schwert, doch der Schwanz des Drachen fegte herüber ` +
-        `und warf ihn zurück auf die Felsen. Kunibert rappelte sich auf, merkte aber, dass mit bloßer Kraft heute nichts ` +
-        `auszurichten war. Er atmete tief durch, fasste an seine Tasche und wusste: Noch war der richtige Moment nicht da. ` +
-        `Er musste seine Klugheit sammeln.`;
-      summary = `Kunibert traf am Berg auf den Drachen und erkannte, dass nur eine List zum Ziel führt.`;
-      threads = `Die Hexe-Gabe im richtigen Moment anwenden.`;
-      hook = `Kunibert bereitet die kluge List vor.`;
-    } else if (part === 4) {
+        `Der Weg am Berg war steil und steinig. Kleine Kiesel rollten unter Kuniberts Stiefeln ins Tal. ` +
+        `Je näher er der Höhle kam, desto wärmer wurde die Luft.\n\n` +
+        `Da grollte es tief im Berg. Der Drache schob seinen großen Kopf aus der Höhle. Rauch kam aus seinen Nüstern, ` +
+        `und seine goldenen Augen funkelten. Mit einem Schwung seines Schwanzes schob er Kunibert sanft, aber bestimmt den Hang hinunter.\n\n` +
+        `Kunibert setzte sich auf einen Stein und atmete tief durch. „Mit Kraft geht das heute nicht“, murmelte er. ` +
+        `Er tastete nach seiner Tasche. Die kleine Flasche war noch da.`;
+      summary = `Kunibert traf am Berg auf den Drachen und merkte, dass er eine List braucht.`;
+      threads = `Die Flasche der Hexe im richtigen Moment benutzen.`;
+      hook = `Kunibert überlegt sich eine List.`;
+    } else if (phase === 'trick') {
       text =
-        `Nun trat die Wende ein. Der Drache holte tief Luft und wollte einen heißen Rauchstoß über das Plateau jagen. ` +
-        `In genau diesem Augenblick erinnerte sich Kunibert an die Worte der Hexe: Gegen den Wind halten! ` +
-        `Er zog die grüne Flasche hervor und zog den Korken. Ein herrlicher Duft nach Pfefferminz und Sommerblumen ` +
-        `strömte heraus und wirbelte mit dem Bergwind genau in die Nase des Drachen. ` +
-        `Der große Drache schnupperte verblüfft, blinzelte und musste plötzlich gewaltig niesen: „Ha-tschi!“ ` +
-        `Durch das Niesen fielen dem Drachen die Augen zu, und die kühle Frische beruhigte sein feuriges Gemüt. ` +
-        `Er legte seinen schweren Kopf sanft auf den Felsen und begann gemütlich zu schnurren wie eine riesige Katze. ` +
-        `Kunibert steckte sein Schwert weg und nickte zufrieden. Mit Klugheit hatte er den Berg befriedet!`;
-      summary = `Kunibert überlistete den Drachen mit dem Duftfläschchen der Hexe friedlich.`;
+        `Der Drache holte tief Luft. Gleich würde er schnauben. Da fielen Kunibert die Worte der Hexe ein: ` +
+        `„Wenn der Drache schnaubt, halte sie gegen den Wind.“\n\n` +
+        `Er zog die grüne Flasche hervor und zog den Korken heraus. Ein Duft nach Pfefferminz und Sommerblumen ` +
+        `wehte mit dem Bergwind direkt in die Nase des Drachen. Der Drache schnupperte, blinzelte und musste gewaltig niesen. „Hatschi!“\n\n` +
+        `Danach war er ganz ruhig. Er legte seinen schweren Kopf auf den warmen Felsen und brummte zufrieden wie eine riesige Katze. ` +
+        `Kunibert steckte sein Schwert weg und lächelte. Mit Klugheit war es viel leichter gegangen als mit Kraft.`;
+      summary = `Kunibert beruhigte den Drachen mit dem Duft aus der Flasche der Hexe.`;
       threads = ``;
-      hook = `Kuniberts Heimkehr ins Dorf.`;
+      hook = `Kunibert kehrt ins Dorf zurück.`;
     } else {
-      done = true;
       text =
-        `Mit leichtem Schritt und frohem Herzen stieg Kunibert den Berg hinab. Die Sonne stand warm am Himmel, ` +
-        `als er wieder den Wald durchquerte und die Hexe ihm vom Fenster aus freundlich zuwinkte. ` +
-        `An der Brücke wartete wieder der Kutscher und nahm ihn mit zurück zum Dorf. ` +
-        `Im Gasthaus empfing ihn die Wirtin mit einer dampfenden Schale frischer Gemüsesuppe. ` +
-        `Kunibert aß mit großem Appetit, erzählte vom friedlich schlafenden Drachen und bedankte sich herzlich. ` +
-        `Müde und glücklich stieg er die knarrende Treppe hinauf in sein Dachzimmer. ` +
-        `Er legte sich auf das gemütliche Bett unter dem schiefen Balken, schloss die Augen und schlief tief ein. ` +
-        `Und so erwacht er bald wieder im Dachzimmer zu einem neuen Tag.`;
-      summary = `Kunibert kehrte siegreich und zufrieden ins Gasthaus zurück und ruht im Dachzimmer.`;
-      threads = '';
-      hook = '';
+        `Mit leichten Schritten stieg Kunibert den Berg hinab. Im Wald winkte ihm die Hexe aus ihrem Fenster zu. ` +
+        `An der Brücke wartete wieder der Kutscher und nahm ihn mit zurück ins Dorf.\n\n` +
+        `Im Gasthaus stellte die Wirtin ihm eine dampfende Schale Gemüsesuppe hin. ` +
+        `Kunibert aß mit großem Hunger und bedankte sich. Dann stieg er die knarrende Treppe hinauf in sein Dachzimmer.\n\n` +
+        `Er legte sich unter den schiefen Balken und schloss die Augen. Draußen war es still. ` +
+        `Und als er die Augen wieder öffnete, war es Morgen, und durch das kleine Fenster sah er den Berg.`;
     }
 
+    const done = phase === 'finale';
     const updatedState: StoryState = {
       ...current,
       part,
       done,
-      summary,
-      threads,
-      hook,
+      summary: done ? '' : summary,
+      threads: done ? '' : threads,
+      hook: done ? '' : hook,
+      last: done ? '' : lastSentences(text),
+      plan: done ? '' : current.plan,
+      wish: done ? '' : current.wish,
     };
-
-    const closing = done ? EPISODE_CLOSING : STORY_CLOSING;
-    const fullSpeech = `${text} ${closing}`;
-
-    return {
-      kind: part === 1 ? 'geschichte' : 'weiter',
-      speech: fullSpeech,
-      story_state: updatedState,
-      wav: this.synthesizeWav(fullSpeech, 'geschichte'),
-    };
+    return this.storyResult(text, part, updatedState);
   }
 
   private synthesizeWav(text: string, kind: string): Buffer {
