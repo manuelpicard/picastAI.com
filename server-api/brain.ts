@@ -781,7 +781,9 @@ export class Brain {
             }
             throw new Error('Geschichte des Sprachmodells durch Ausgabe-Check abgelehnt');
           }
-          const done = Boolean(parsed.episode_finished) || phase === 'finale';
+          // Ende nur im Finale oder, wenn Claude es so will, frühestens in der Wendung. Ein früheres
+          // "fertig" würde die Folge für das Kind nach zwei Teilen abbrechen; dann zählt die Teilezahl.
+          const done = phase === 'finale' || (phase === 'trick' && Boolean(parsed.episode_finished));
           const plan = part === 1 ? cleanText(parsed.episode_plan, STATE_LIMITS.plan) : current.plan;
           const updatedState: StoryState = {
             ...current,

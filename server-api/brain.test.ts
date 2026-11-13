@@ -753,3 +753,14 @@ test('Antworten: Zahlen als Wörter, kein Markdown', async () => {
   const result = await new Brain(new FakeLlm([answer('Ein Jahr hat **365** Tage.')])).handle('frage', 'wie viele tage hat ein jahr', {});
   assert.equal(result.speech, 'Ein Jahr hat dreihundertfünfundsechzig Tage.');
 });
+
+test('Claude meldet zu früh "fertig": die Folge läuft bis zur geplanten Teilezahl weiter', async () => {
+  const state = { ...cleanState({}), ep: 2, part: 1, target: 5, plan: 'p', summary: 's' };
+  const early = await new Brain(new FakeLlm([story('Zwei.', { episode_finished: true })])).handle('weiter', '', state);
+  assert.equal(early.story_state.done, false);
+  assert.equal(early.story_state.part, 2);
+  assert.ok(early.speech.endsWith(STORY_CLOSING));
+
+  const trick = await new Brain(new FakeLlm([story('Vier.', { episode_finished: true })])).handle('weiter', '', { ...state, part: 3 });
+  assert.equal(trick.story_state.done, true, 'in der Wendung darf Claude die Folge beenden');
+});
