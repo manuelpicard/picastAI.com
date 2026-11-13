@@ -1,5 +1,11 @@
 # picast.com – Produkt 1: Ritter Kunibert
 
+> **Archiv (veraltet in einigen Punkten), Stand 2. Oktober 2026.** Historischer Produktentwurf, nicht fortgeschrieben. Überholt sind besonders:
+> - **`picast.com`** als Plattformadresse und Produktname: Die Plattform heißt **picastAI.com** (`README.md`, `ORGANIZATION.md`). Die Aussage „Die Domain gehört dem Gründer“ ist eine Nutzerangabe und hier nicht geprüft; geprüft oder entschieden wird sie in diesem Dokument nicht.
+> - **Hardware:** Der **Pi 5** ist inzwischen die Wahl für den ersten Aufbau (Betreiber, November 2026); das Endgerät soll ein **ESP32-S3** werden. Der Pi Zero 2 W ist nicht mehr als späteres Gerät geplant. Stand: `docs/Ritter Kunibert_ Hardware für den ersten Audiogeräte-Prototyp.md`.
+> - Sprachdienste und Sprachmodell: heute gilt `docs/LLM-Anbieter.md` (Claude als Sprachmodell, eigener Sprachserver für Erkennung und Stimme).
+> - Maßgeblich für den heutigen Stand sind `README.md`, `handoff-2026-11-01.md` und der Code.
+
 **Stand:** 2. Oktober 2026 (aktualisiert: Domain) · **Quelle:** Chat „Ritter Kunibert“ im Manus-Projekt „Kinderbücher“ (interner Task-Link nicht archiviert) · **Status:** Konzept, noch nichts gebaut · **Domain:** picast.com gehört dem Gründer
 
 > **picast-Grundidee:** Eine Streaming-Plattform, die dir nicht vorschlägt, was du willst, sondern was du brauchst – kurative Kuration.

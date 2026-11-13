@@ -1,0 +1,20 @@
+# Ziel: ESP32-S3 (Entwicklungsboard noch nicht festgelegt, siehe README.md)
+CONFIG_IDF_TARGET="esp32s3"
+# TLS: Zertifikate der üblichen Zertifizierungsstellen (für Let's Encrypt hinter Caddy)
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE=y
+CONFIG_ESP_TLS_INSECURE=n
+# Genug Stack für TLS im Haupt-Task (der TLS-Handshake läuft im aufrufenden Task)
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=16384
+# Aufnahmepuffer (15 s = 480 KB) liegt im PSRAM. Fehlt PSRAM, startet das Gerät trotzdem
+# und nimmt kürzer auf (siehe kb_audio.c).
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_IGNORE_NOTFOUND=y
+# Zwei App-Plätze von je 3 MB (partitions.csv) für spätere Updates über Funk; braucht 8 MB Flash
+# (ESP32-S3-Module N8 und N16). Die Firmware ist derzeit gut 1 MB groß.
+CONFIG_ESPTOOLPY_FLASHSIZE_8MB=y
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+# Rückfall: Eine neue Firmware gilt erst als gut, wenn sie den Server erreicht hat (main.c).
+# Bestätigt sie das nicht, startet der Bootloader beim nächsten Start wieder die alte.
+CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y

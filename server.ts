@@ -5,14 +5,15 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { DeviceRegistry, DeviceStoreError, RateLimiter, AudioStore } from './server-api/devices.js';
-import { Brain, StoryState } from './server-api/brain.js';
-import { AudioError, decodeWavHeader } from './server-api/audio.js';
-import { config, getSafeConfigSummary, llmConfigWarnings, ttsProviderWarnings, voiceConfigWarnings } from './server-api/config.js';
+import { Brain, FALLBACK_ANSWER_DE, StoryState } from './server-api/brain.js';
+import { AudioError, decodeWavHeader, isPcmFormat, isSilentPcm16 } from './server-api/audio.js';
+import { config, getSafeConfigSummary, llmConfigWarnings, testSwitchWarnings, ttsProviderWarnings, voiceConfigWarnings } from './server-api/config.js';
 import { isAdminTokenConfigured, verifyAdminAuthorization } from './server-api/admin-auth.js';
 import { VoicePipeline, VoiceProviderError } from './server-api/voice.js';
 import { FirestoreDeviceStore } from './server-api/firestore-service.js';
 import { buildAudioUrl } from './server-api/http-utils.js';
 import { ERROR_RESPONSE_DE, SAFETY_RESPONSE_DE, UNCLEAR_RESPONSE_DE } from './server-api/safety.js';
+import { budgetTimeoutMs, MIN_TTS_MS, NO_TIMER, TurnTimer, type StageTimer } from './server-api/timing.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -140,12 +141,34 @@ function rememberDeviceStoryState(deviceId: string, state: StoryState): void {
   deviceStoryStates.set(deviceId, state);
 }
 
-async function transcribeOrEmpty(wav: Buffer): Promise<string> {
+async function transcribeOrEmpty(wav: Buffer, timer: StageTimer = NO_TIMER): Promise<string> {
   if (!voice.sttConfigured) return '';
-  return voice.transcribe(wav);
+  return timer.time('erkennung', () => voice.transcribe(wav, budgetTimeoutMs(timer)));
 }
 
-async function synthesizeIfConfigured(result: Awaited<ReturnType<Brain['handle']>>): Promise<typeof result> {
+// Zeitmessung pro Anfrage: eine Logzeile mit Anfrage-ID, Modus, Dauer je Stufe und Länge des
+// Antwort-Audios (siehe docs/Zeitmessung.md). Sie enthält nur Zahlen, nie Texte oder Tokens.
+// Abgewiesene Anfragen (401, 429, 400), bei denen keine Stufe lief, erzeugen keine Zeile.
+function startTurnTimer(_req: Request, res: Response, next: NextFunction): void {
+  const timer = new TurnTimer();
+  res.locals.timer = timer;
+  res.once('close', () => {
+    const line = timer.logLine(res.writableFinished ? res.statusCode : 'abgebrochen');
+    if (line) console.log(line);
+  });
+  next();
+}
+
+/** Sprachausgabe mit Zeitmessung um den Aufruf herum. Ohne Sprachausgabe oder Text läuft keine Stufe. */
+async function synthesizeTimed(
+  result: Awaited<ReturnType<Brain['handle']>>,
+  timer: StageTimer
+): Promise<typeof result> {
+  if (!voice.ttsConfigured || !result.speech) return result;
+  return timer.time('sprachausgabe', () => synthesizeIfConfigured(result, timer));
+}
+
+async function synthesizeIfConfigured(result: Awaited<ReturnType<Brain['handle']>>, timer: StageTimer = NO_TIMER): Promise<typeof result> {
   if (!voice.ttsConfigured || !result.speech) return result;
   // Kein stiller Fallback: Schlägt die Sprachsynthese fehl, fliegt ein
   // VoiceProviderError (HTTP 503 bzw. 502 durch die Routen). So wird der
@@ -154,22 +177,28 @@ async function synthesizeIfConfigured(result: Awaited<ReturnType<Brain['handle']
   // Feste Texte (Sicherheitshinweis, "nicht verstanden", Fehlerhinweis) kommen nach dem
   // ersten Mal aus dem Speicher: schneller, billiger, und der Sicherheitshinweis bleibt
   // auch bei einem Anbieter-Ausfall hörbar, wenn er vorher aufgewärmt wurde.
+  // Zeit für die Sprachausgabe: der Rest des Zeitbudgets, mindestens MIN_TTS_MS (auch wenn es schon aufgebraucht ist).
+  const left = budgetTimeoutMs(timer);
+  const timeoutMs = left === undefined ? undefined : Math.max(MIN_TTS_MS, left);
   result.wav = result.fixed
-    ? await voice.synthesizeCached(result.speech)
-    : await voice.synthesize(result.speech);
+    ? await voice.synthesizeCached(result.speech, timeoutMs)
+    : await voice.synthesize(result.speech, timeoutMs);
   return result;
 }
 
 // ------------------------------------------------------------
-// picastAI.com Geräte-Schnittstelle für Raspberry Pi Zero 2 W Prototyp
+// picastAI.com Geräte-Schnittstelle (Pi-5-Prototyp und ESP32-S3-Firmware)
 // ------------------------------------------------------------
 
 app.post(
   '/v1/device/question',
   requireDevice,
+  startTurnTimer,
   upload.single('audio'),
   async (req: Request, res: Response): Promise<any> => {
     const deviceId = res.locals.deviceId as string;
+    const timer = res.locals.timer as TurnTimer;
+    timer.mode = 'frage';
 
     if (!limiter.allow(deviceId)) {
       return res.status(429).json({ error: 'rate_limited' });
@@ -180,16 +209,20 @@ app.post(
 
     try {
       const header = decodeWavHeader(req.file.buffer);
-      if (header.channels !== 1 || header.bitsPerSample !== 16 || header.sampleRate !== config.audioSampleRate) {
+      if (!isPcmFormat(header.formatTag) || header.channels !== 1 || header.bitsPerSample !== 16 || header.sampleRate !== config.audioSampleRate) {
         return res.status(400).json({ error: 'unsupported_audio_format' });
       }
 
-      let transcript = typeof req.body.transcript === 'string'
+      // Testfeld: Text statt Aufnahme. Im Betrieb nur mit KUNIBERT_TEST_TRANSCRIPT=1 (config.ts).
+      let transcript = config.testTranscript && typeof req.body.transcript === 'string'
         ? req.body.transcript.slice(0, 1000)
         : '';
-      if (!transcript) transcript = await transcribeOrEmpty(req.file.buffer);
+      // Eine stumme Aufnahme geht nicht erst an die Spracherkennung: Sie ergibt den Hinweis
+      // "nicht verstanden" (Whisper würde bei Stille eher etwas erfinden).
+      if (!transcript && !isSilentPcm16(req.file.buffer)) transcript = await transcribeOrEmpty(req.file.buffer, timer);
       const state = deviceStoryStates.get(deviceId) || {};
-      const result = await synthesizeIfConfigured(await brain.handle('frage', transcript, state));
+      const result = await synthesizeTimed(await brain.handle('frage', transcript, state, timer), timer);
+      timer.noteAudio(result.wav);
       rememberDeviceStoryState(deviceId, result.story_state);
       const response = deviceResponse(req, deviceId, result, 'answer');
       return res.json(response.body);
@@ -198,14 +231,22 @@ app.post(
       if (err instanceof VoiceProviderError) {
         return res.status(err.retryable ? 503 : 502).json({ error: 'voice_provider_failed', retryable: err.retryable });
       }
-      return res.status(400).json({ error: 'bad_audio' });
+      // Nur eine kaputte Aufnahme ist "bad_audio" (400, der Pi wiederholt nicht). Alles andere
+      // ist ein Fehler des Servers (500, der Pi wiederholt), ohne Fehlertext nach außen.
+      if (err instanceof AudioError) {
+        return res.status(400).json({ error: 'bad_audio' });
+      }
+      return res.status(500).json({ error: 'internal_error' });
     }
   }
 );
 
 app.post(
   '/v1/device/kunibert-story',
+  startTurnTimer,
   async (req: Request, res: Response): Promise<any> => {
+    const timer = res.locals.timer as TurnTimer;
+    timer.mode = 'weiter';
     let deviceId: string;
     try {
       deviceId = authenticate(req);
@@ -230,7 +271,8 @@ app.post(
       // Erzähltaste") und beginnt nur dann eine neue, wenn keine läuft. Mit Modus
       // "geschichte" begänne jeder Druck wieder bei Teil 1. Einen Kinderwunsch gibt
       // es hier nicht: die Taste trägt keinen Text.
-      const result = await synthesizeIfConfigured(await brain.handle('weiter', '', state));
+      const result = await synthesizeTimed(await brain.handle('weiter', '', state, timer), timer);
+      timer.noteAudio(result.wav);
       rememberDeviceStoryState(deviceId, result.story_state);
       const response = deviceResponse(req, deviceId, result, 'kunibert_story');
       return res.json(response.body);
@@ -269,15 +311,18 @@ app.get('/v1/device/audio/:turn_id', (req: Request, res: Response): any => {
 app.post(
   '/v1/turn',
   requireDevice,
+  startTurnTimer,
   upload.single('audio'),
   async (req: Request, res: Response, next: NextFunction): Promise<any> => {
     try {
       const deviceId = res.locals.deviceId as string;
+      const timer = res.locals.timer as TurnTimer;
 
       const mode = req.body.mode;
       if (!['frage', 'geschichte', 'weiter'].includes(mode)) {
         return res.status(400).json({ error: 'bad_mode' });
       }
+      timer.mode = mode;
 
       // Prüfe Rate-Limit
       if (!limiter.allow(deviceId)) {
@@ -297,24 +342,36 @@ app.post(
         }
       }
 
-      // Transcript ermitteln
+      // Transcript ermitteln. Text statt Aufnahme (Felder text und transcript, für den
+      // Web-Simulator) gilt wie bei /v1/device/question nur mit config.testTranscript: Im
+      // Heimnetz ohne Caddy ist diese Route sonst ein Weg an der Spracherkennung vorbei.
       let transcript = '';
-      if (req.body.text) {
+      if (config.testTranscript && req.body.text) {
         transcript = String(req.body.text);
       } else if (req.file) {
+        // Nur eine kaputte Aufnahme ist "bad_audio". Ein Ausfall der Spracherkennung ist ein
+        // Fehler des Dienstes (503/502 im äußeren catch), keine kaputte Aufnahme. Liefert die
+        // Erkennung keinen Text oder ist die Aufnahme stumm, antwortet der Erzähler mit
+        // "nicht verstanden" wie bei /v1/device/question (früher: erfundener Ersatztext).
+        let audioOk = true;
         try {
-          const header = decodeWavHeader(req.file.buffer);
-          transcript = req.body.transcript || await transcribeOrEmpty(req.file.buffer) || 'Frage von Ritter Kunibert Kind';
-        } catch (wavErr) {
+          decodeWavHeader(req.file.buffer);
+        } catch {
+          audioOk = false;
           if (mode === 'frage') {
             return res.status(400).json({ error: 'bad_audio' });
           }
+        }
+        if (audioOk) {
+          const typed = config.testTranscript && typeof req.body.transcript === 'string' ? req.body.transcript.slice(0, 1000) : '';
+          transcript = typed || (isSilentPcm16(req.file.buffer) ? '' : await transcribeOrEmpty(req.file.buffer, timer));
         }
       } else if (mode === 'frage') {
         return res.status(400).json({ error: 'audio_required' });
       }
 
-      const turnResult = await synthesizeIfConfigured(await brain.handle(mode, transcript, state));
+      const turnResult = await synthesizeTimed(await brain.handle(mode, transcript, state, timer), timer);
+      timer.noteAudio(turnResult.wav);
       const wav = turnResult.wav || Buffer.alloc(0);
       const turnId = store.put(deviceId, wav);
 
@@ -385,7 +442,7 @@ app.post('/api/devices', requireAdminAuth, async (req: Request, res: Response): 
     return res.json(await registry.register(deviceId, name));
   } catch (err: any) {
     if (err instanceof DeviceStoreError) {
-      console.error('Geräte-Store nicht erreichbar:', err);
+      console.error(`Geräte-Store nicht erreichbar: ${err.message}`);
       return res.status(503).json({ error: 'device_store_unavailable' });
     }
     return res.status(400).json({ error: err.message });
@@ -480,13 +537,15 @@ async function startServer() {
 
   app.listen(PORT, HOST, () => {
     console.log(`🏰 Ritter Kunibert Server läuft auf http://${HOST}:${PORT}`);
-    for (const warning of [...llmConfigWarnings(), ...ttsProviderWarnings(), ...voiceConfigWarnings(config)]) console.warn(`⚠️ ${warning}`);
+    for (const warning of [...llmConfigWarnings(), ...ttsProviderWarnings(), ...voiceConfigWarnings(config), ...testSwitchWarnings()]) console.warn(`⚠️ ${warning}`);
     // Feste Sprechtexte vorab synthetisieren (Produktion), damit der Sicherheitshinweis
     // schon beim ersten Kind ohne Wartezeit und ohne Anbieter-Anfrage gesprochen wird.
+    // Mit neuen Versuchen, falls der Sprachserver nach einem Neustart noch nicht bereit ist.
     if (isProd && voice.ttsConfigured) {
+      const fixedTexts = [SAFETY_RESPONSE_DE, UNCLEAR_RESPONSE_DE, ERROR_RESPONSE_DE, FALLBACK_ANSWER_DE];
       void voice
-        .warmUp([SAFETY_RESPONSE_DE, UNCLEAR_RESPONSE_DE, ERROR_RESPONSE_DE])
-        .then((count) => console.log(`Feste Sprechtexte vorbereitet (${count} von 3).`));
+        .warmUpWithRetry(fixedTexts)
+        .then((count) => console.log(`Feste Sprechtexte vorbereitet (${count} von ${fixedTexts.length}).`));
     }
   });
 }

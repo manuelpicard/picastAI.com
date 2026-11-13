@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { Brain, cleanState, cleanText, extractWishKeyword, MAX_UTTERANCE_CHARS, trimWords } from './brain.js';
+import { Brain, cleanState, cleanText, extractWishKeyword, FALLBACK_ANSWER_DE, isLikelySttArtifact, MAX_UTTERANCE_CHARS, trimWords } from './brain.js';
 import type { LlmJsonRequest, LlmProvider } from './llm.js';
 import { EPISODE_CLOSING, STORY_CLOSING } from './prompts.js';
 import { SAFETY_RESPONSE_DE, UNCLEAR_RESPONSE_DE } from './safety.js';
@@ -272,3 +272,95 @@ test('Erzähltaste (Modus weiter): setzt die Folge bis Teil 5 fort und beginnt d
   assert.equal(next.story_state.ep, 3, 'neue Folge');
   assert.equal(next.story_state.done, false);
 });
+
+test('Modell stuft als unklar ein: Bitte um Wiederholung statt Ersatzantwort', async () => {
+  const llm = new FakeLlm([answer('', 'unklar')]);
+  const result = await new Brain(llm).handle('frage', 'brmm fff lala', {});
+  assert.equal(result.kind, 'hinweis');
+  assert.equal(result.fixed, 'unklar');
+  assert.equal(result.speech, UNCLEAR_RESPONSE_DE);
+  assert.equal(llm.calls.length, 1);
+});
+
+test('Ersatzantwort ohne Sprachmodell spricht die Äußerung des Kindes nie nach', async () => {
+  const result = await new Brain(null).handle('frage', 'was ist ein Geheimwort-Quokka du Blödmann', {});
+  assert.equal(result.kind, 'frage');
+  assert.equal(result.speech, FALLBACK_ANSWER_DE);
+  assert.ok(!/quokka|blödmann/i.test(result.speech));
+});
+
+test('Abgelehnte Antwort des Modells: fester Ersatztext ohne Zitat der Frage', silent(async () => {
+  const llm = new FakeLlm([answer('Schau mal auf www.beispiel.de nach.')]);
+  const result = await new Brain(llm).handle('frage', 'wo finde ich Geheimwort-Okapi', {});
+  assert.equal(result.speech, FALLBACK_ANSWER_DE);
+}));
+
+test('Ersatzantwort erkennt ganze Wörter: "Schwein" ist nicht "weinen", "Weiterbildung" nicht "weiter"', async () => {
+  const brain = new Brain(null);
+  const pig = await brain.handle('frage', 'warum grunzt ein Schwein', {});
+  assert.equal(pig.speech, FALLBACK_ANSWER_DE);
+  const sad = await brain.handle('frage', 'ich muss immer weinen', {});
+  assert.match(sad.speech, /traurig zu sein/);
+  const training = await brain.handle('frage', 'was ist eine Weiterbildung', {});
+  assert.equal(training.kind, 'frage');
+  assert.equal(training.story_state.part, 0);
+  const more = await brain.handle('frage', 'bitte weiter', {});
+  assert.equal(more.story_state.part, 1);
+});
+
+test('Erkennungs-Artefakte: Untertitel-Abspann und der Erkennungshinweis allein', () => {
+  for (const text of [
+    'Untertitel im Auftrag des ZDF, 2017',
+    'Untertitel im Auftrag des ZDF für funk, 2017',
+    'Untertitelung im Auftrag des ZDF, 2021',
+    'Untertitelung aufgrund der Amara.org-Community',
+    'Untertitel der Amara.org-Community',
+    'Untertitel von Stephanie Geiges',
+    'Copyright WDR 2021',
+    'SWR 2020',
+  ]) {
+    assert.equal(isLikelySttArtifact(text), true, text);
+  }
+  assert.equal(isLikelySttArtifact('Ritter Kunibert.', 'Ritter Kunibert'), true);
+  assert.equal(isLikelySttArtifact(' ritter kunibert, Ritter Kunibert! ', 'Ritter Kunibert'), true);
+  for (const text of [
+    'Was sind Untertitel?',
+    'Untertitel im Fernsehen sind doof',
+    'Ich mag das ZDF',
+    'Hallo Ritter Kunibert',
+    'Ritter Kunibert, wo wohnt der Drache?',
+    'Kunibert',
+  ]) {
+    assert.equal(isLikelySttArtifact(text, 'Ritter Kunibert'), false, text);
+  }
+  assert.equal(isLikelySttArtifact('Ritter Kunibert', ''), false, 'ohne Erkennungshinweis zählt nur der Abspann');
+  assert.equal(isLikelySttArtifact('', 'Ritter Kunibert'), false);
+});
+
+test('Erkennungs-Artefakt: Kunibert bittet um Wiederholung und fragt das Sprachmodell nicht', async () => {
+  const llm = new FakeLlm([]);
+  const brain = new Brain(llm, { sttPrompt: 'Ritter Kunibert' });
+  for (const text of ['Untertitel im Auftrag des ZDF, 2017', 'Ritter Kunibert.']) {
+    const result = await brain.handle('frage', text, {});
+    assert.equal(result.fixed, 'unklar', text);
+    assert.equal(result.speech, UNCLEAR_RESPONSE_DE);
+  }
+  assert.equal(llm.calls.length, 0);
+});
+
+test('Erkennungs-Artefakt: die Sicherheitsweiche läuft trotzdem zuerst', async () => {
+  const brain = new Brain(new FakeLlm([]), { sttPrompt: 'Ritter Kunibert' });
+  const result = await brain.handle('frage', 'Ritter Kunibert, ich will nicht mehr leben', {});
+  assert.equal(result.fixed, 'sicherheit');
+});
+
+test('Feste Ersatzantworten sind als fest markiert (Sprachausgabe aus dem Zwischenspeicher)', silent(async () => {
+  const brain = new Brain(null);
+  const generic = await brain.handle('frage', 'wie viele beine hat ein tausendfüßler', {});
+  assert.equal(generic.speech, FALLBACK_ANSWER_DE);
+  assert.equal(generic.fixed, 'ersatz');
+  const sky = await brain.handle('frage', 'warum ist der himmel blau', {});
+  assert.equal(sky.fixed, 'ersatz');
+  const story = await brain.handle('frage', 'erzähl mir eine geschichte', {});
+  assert.equal(story.fixed, undefined, 'Geschichten sind nicht fest');
+}));

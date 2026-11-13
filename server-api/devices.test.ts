@@ -206,3 +206,48 @@ test('Store: Laden schlägt fehl, wenn der Store nicht erreichbar ist (Server st
     await assert.rejects(() => new DeviceRegistry(store).loadFromStore(), /nicht erreichbar/);
   });
 });
+
+test('Widerruf ist dauerhaft: dieselbe Geräte-ID lässt sich nicht neu anlegen', async () => {
+  await withEnv({ ...CLEAN, NODE_ENV: 'production' }, async () => {
+    const store = new FakeStore();
+    const registry = new DeviceRegistry(store);
+    const { deviceId, token } = await registry.register('kinderzimmer');
+    await registry.revokeAndPersist(deviceId);
+    await assert.rejects(() => registry.register('kinderzimmer'), /widerrufen/);
+    assert.equal(registry.verify(deviceId, token), false);
+    assert.equal(store.entries.get(deviceId)!.revoked, true, 'der gespeicherte Widerruf bleibt');
+    // Eine neue ID geht weiter.
+    const fresh = await registry.register('kinderzimmer-2');
+    assert.equal(registry.verify(fresh.deviceId, fresh.token), true);
+  });
+});
+
+test('Store-Fehler: weder Geräte-ID noch Fehlertext im Protokoll oder in der Meldung', async () => {
+  await withEnv({ ...CLEAN, NODE_ENV: 'production' }, async () => {
+    const leaky = new FakeStore();
+    // Firestore nennt bei NOT_FOUND den Dokumentpfad, also die Geräte-ID.
+    leaky.markRevoked = async (deviceId: string) => {
+      throw Object.assign(new Error(`5 NOT_FOUND: No document to update: devices/${deviceId}`), { code: 5 });
+    };
+    leaky.save = async (entry: DeviceEntry) => {
+      throw Object.assign(new Error(`7 PERMISSION_DENIED: devices/${entry.deviceId}`), { code: 'permission-denied' });
+    };
+    const registry = new DeviceRegistry(leaky);
+    registry.addDeviceWithRawToken('kinderzimmer-mia', 'token-0123456789', 'Kinderzimmer');
+    const lines: string[] = [];
+    const originalWarn = console.warn;
+    console.warn = (...args: unknown[]) => { lines.push(args.map(String).join(' ')); };
+    try {
+      assert.deepEqual(await registry.revokeAndPersist('kinderzimmer-mia'), { success: true, persisted: false });
+    } finally {
+      console.warn = originalWarn;
+    }
+    assert.equal(lines.length, 1);
+    assert.match(lines[0], /\(5\)/);
+    assert.ok(!lines[0].includes('kinderzimmer-mia'), lines[0]);
+    await assert.rejects(
+      () => registry.register('wohnzimmer-ben'),
+      (error: unknown) => error instanceof DeviceStoreError && !error.message.includes('wohnzimmer-ben') && /permission-denied/.test(error.message)
+    );
+  });
+});

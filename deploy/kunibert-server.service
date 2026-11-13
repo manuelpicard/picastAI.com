@@ -1,6 +1,8 @@
 [Unit]
 Description=Ritter Kunibert – Server (Spracherkennung, Erzähler, Sprachausgabe)
-After=network-online.target
+# Nach Docker starten, damit der Sprachserver (Container speaches) eher bereit ist. Fehlt Docker,
+# wirkt die Zeile nicht. Den Rest übernimmt das Aufwärmen mit neuen Versuchen (server-api/voice.ts).
+After=network-online.target docker.service
 Wants=network-online.target
 
 [Service]

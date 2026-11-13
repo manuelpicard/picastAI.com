@@ -32,9 +32,9 @@ Formularfelder:
 - `locale`: derzeit `de-DE`
 - `age_band`: derzeit `6-10`
 - `session_id`: temporäre Gerätekennung
-- `transcript`: optionales Diagnosefeld für lokale Tests; fehlt es, nutzt der Server den konfigurierten Spracherkennungsdienst
+- `transcript`: optionales Testfeld (Text statt Spracherkennung, höchstens 1000 Zeichen); fehlt es, nutzt der Server den konfigurierten Spracherkennungsdienst. Geräte senden es nicht. Seit 12.11.2026 wirkt es mit `NODE_ENV=production` nur, wenn auf dem Server `KUNIBERT_TEST_TRANSCRIPT=1` gesetzt ist (für Testtage mit Erwachsenen; beim Start erscheint dann eine Warnung). Ohne den Schalter überhört der Server das Feld und erkennt die Aufnahme. Ohne `NODE_ENV=production` (Probelauf am Rechner) wirkt es immer. Vor dem ersten Kind bleibt der Schalter weg
 
-Die Gegenstelle validiert das WAV-Format. Wenn `PICASTAI_STT_URL` und `PICASTAI_STT_MODEL` gesetzt sind, wird die Aufnahme serverseitig über einen OpenAI-kompatiblen Spracherkennungsdienst transkribiert, in der Regel ein eigener Server. Die Sprachausgabe läuft entsprechend über `PICASTAI_TTS_URL`, `PICASTAI_TTS_MODEL` und `PICASTAI_TTS_VOICE`; ohne diese Angaben bleibt der Dienst aus (siehe `docs/LLM-Anbieter.md`). Der Transcript-Text wird anschließend durch die Sicherheitsweiche und den Erzählmotor verarbeitet. Liefert die Erkennung keinen Text (Stille, Rauschen), ist das kein Fehler: der Server antwortet mit dem festen Hinweis „Das habe ich leider nicht richtig verstanden“ (HTTP 200).
+Die Gegenstelle validiert das WAV-Format. Wenn `PICASTAI_STT_URL` und `PICASTAI_STT_MODEL` gesetzt sind, wird die Aufnahme serverseitig über einen OpenAI-kompatiblen Spracherkennungsdienst transkribiert, in der Regel ein eigener Server. Die Sprachausgabe läuft entsprechend über `PICASTAI_TTS_URL`, `PICASTAI_TTS_MODEL` und `PICASTAI_TTS_VOICE`; ohne diese Angaben bleibt der Dienst aus (siehe `docs/LLM-Anbieter.md`). Alternativ lässt sich nur die Sprachausgabe auf Google Cloud Text-to-Speech umstellen (`PICASTAI_TTS_PROVIDER=google`, eingeführt mit PR #14); die Einstellungen dazu stehen in `docs/LLM-Anbieter.md` und sind hier nicht wiederholt. Der Transcript-Text wird anschließend durch die Sicherheitsweiche und den Erzählmotor verarbeitet. Liefert die Erkennung keinen Text (Stille, Rauschen), ist das kein Fehler: der Server antwortet mit dem festen Hinweis „Das habe ich leider nicht richtig verstanden“ (HTTP 200). Dasselbe gilt ohne Aufruf der Spracherkennung, wenn die Aufnahme praktisch stumm ist (Spitzenwert unter 32 von 32767, `isSilentPcm16` in `server-api/audio.ts`), und wenn die Erkennung nur aus dem Erkennungshinweis (`PICASTAI_STT_PROMPT`) oder einem bekannten Untertitel-Abspann von Whisper besteht (`isLikelySttArtifact` in `server-api/brain.ts`); die Sicherheitsweiche läuft vorher. Denselben Hinweis gibt es, wenn das Sprachmodell die Äußerung als unverständlich einstuft. Fehlt das Sprachmodell oder wird seine Antwort abgelehnt, spricht der Server einen festen Ersatztext; die Äußerung des Kindes wird dabei nie nachgesprochen.
 
 Beispielantwort:
 
@@ -122,6 +122,7 @@ PICASTAI_STT_MODEL=
 PICASTAI_TTS_URL=http://127.0.0.1:8000/v1
 PICASTAI_TTS_MODEL=
 PICASTAI_TTS_VOICE=
+# Alternative Sprachausgabe: Google Cloud Text-to-Speech (PICASTAI_TTS_PROVIDER=google, PR #14), siehe docs/LLM-Anbieter.md
 PICASTAI_VOICE_TIMEOUT_MS=45000
 ```
 
@@ -138,7 +139,7 @@ Für eine Produktionsumgebung sollte der Token nicht als einzelne globale Umgebu
 - Beim Start lädt der Server die Geräteliste. Ist Firestore dann nicht erreichbar, startet er nicht (fail-closed), damit widerrufene Geräte nicht wieder gültig werden.
 - `POST /api/devices` speichert das Gerät, bevor es den Token ausgibt; schlägt das Speichern fehl, antwortet die API mit `503 {"error":"device_store_unavailable"}` und legt nichts an.
 - `POST /api/devices/:id/revoke` wirkt sofort im Speicher und antwortet mit `{"success":true,"persisted":true|false}`. Bei `persisted:false` war Firestore nicht erreichbar; der Widerruf gilt bis zum nächsten Neustart und sollte dann wiederholt werden.
-- Ein gespeicherter Widerruf gilt auch für per Umgebung provisionierte Geräte. Soll ein widerrufenes Gerät wieder zugelassen werden, ist eine neue Geräte-ID oder das Löschen des Firestore-Dokuments nötig.
+- Ein gespeicherter Widerruf gilt auch für per Umgebung provisionierte Geräte. Soll ein widerrufenes Gerät wieder zugelassen werden, ist eine neue Geräte-ID oder das Löschen des Firestore-Dokuments nötig. `POST /api/devices` mit einer widerrufenen ID antwortet deshalb mit HTTP 400 und lässt das Gerät nicht wieder zu.
 - Das Admin-SDK benötigt Zugangsdaten (z. B. Application Default Credentials) mit Schreib-/Leserecht auf Firestore.
 
 ## Lokaler Test
@@ -169,10 +170,13 @@ curl -fsS -X POST http://127.0.0.1:3000/v1/device/kunibert-story \
 
 Die `audio_url` aus der Antwort mit denselben Authentifizierungsheadern abrufen. Da der AudioStore einmalig ausliefert, den Audioabruf nicht mehrfach wiederholen. Mit konfiguriertem TTS-Provider enthält die WAV-Antwort echte Sprachsynthese; ohne Provider wird für lokale Tests das deterministische Fallback-Signal ausgeliefert. Schlägt die Synthese bei konfiguriertem Provider fehl, liefert der Server kein Ersatzsignal, sondern `503 {"error":"voice_provider_failed","retryable":true}` (vorübergehender Fehler, der Client wiederholt) bzw. `502` mit `retryable:false`. Der Story-Zustand rückt in diesem Fall nicht vor.
 
+**Zeitbudget:** Der Server hält für eine Anfrage (Erkennung, bis zu zwei Sprachmodell-Aufrufe, Sprachausgabe) ein gemeinsames Budget von 120 Sekunden ein. Das gilt auch, wenn eine Frage als Geschichtenwunsch erkannt wird und deshalb zwei Sprachmodell-Aufrufe nötig sind. Ist das Budget knapp, startet der Server keinen weiteren Sprachmodell-Aufruf mehr und spricht den festen Ersatztext; läuft die Sprachausgabe in die Frist, folgt `503 voice_provider_failed` mit `retryable: true` (siehe Fehlertabelle oben). Die Grenzen davor und danach (Caddy 130 s, Pi-Client 140 s) bleiben unverändert (`deploy/EINRICHTUNG.md`, „Zeitkette“). Die Sicherheitsweiche bleibt vom Budget unberührt.
+
 ## Sicherheitsgrenzen des Prototyps
 
 - Rate-Limit pro Gerät: standardmäßig 30 Anfragen pro 10 Minuten.
-- Feste Sprechtexte (Sicherheitshinweis, „nicht verstanden“, Fehlerhinweis) werden nach der ersten Synthese im Speicher gehalten und in Produktion beim Start vorbereitet. Gespeichert werden nur diese festen Texte, nie Äußerungen von Kindern.
+- Feste Sprechtexte (Sicherheitshinweis, „nicht verstanden“, Fehlerhinweis, die festen Ersatzantworten ohne Sprachmodell) werden nach der ersten Synthese im Speicher gehalten. In Produktion bereitet der Server vier davon beim Start vor und versucht es gut sechs Minuten lang wieder, wenn der Sprachserver noch nicht bereit ist. Gespeichert werden nur diese festen Texte, nie Äußerungen von Kindern.
+- Fehlermeldungen der Sprachdienste und von Anthropic kommen nur als HTTP-Status mit Fehlercode ins Protokoll (zum Beispiel `HTTP 422 (string_too_long)`), nie mit ihrem Fließtext: Der kann den gesendeten Text enthalten (`server-api/provider-errors.ts`).
 - Audio nur im flüchtigen RAM, TTL standardmäßig 120 Sekunden.
 - Audio-URL benötigt erneut Geräteauthentifizierung.
 - Story-State, Rate-Limit und Audio sind im Prozessspeicher, nicht hochverfügbar. Die Geräteliste ist es nur ohne `PICASTAI_DEVICE_STORE=firestore`.
