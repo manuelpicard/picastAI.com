@@ -5,8 +5,6 @@ Alles läuft ohne Hardware, ohne echtes Warten und ohne Netzwerk:
 - ein Fake-Lautsprecher, der jede Wiedergabe mit Anfang und Ende auf dieser Uhr festhält,
 - eine Fake-Anfrage, deren Antwort zu einer bestimmten Zeit "fertig" ist.
 
-Die KI-Ansage beim ersten Einschalten gehört zu PR 17 und wird dort getestet. Hier wird nur geprüft, dass die
-Eltern-Tastenkombination sie vom Server holt und abspielt.
 """
 
 import io
@@ -69,7 +67,7 @@ class FakeSpeaker:
         self.plays = []  # (Anfang, Ende, WAV)
         self.observer = None
 
-    def play_wav(self, wav_bytes):
+    def play_wav(self, wav_bytes, should_stop=None):
         start = self.clock.now
         if self.observer:
             self.observer()
@@ -123,17 +121,9 @@ class FakeApi:
         self.answer = answer
         self.calls = []  # (Art, Zeit)
         self.error = None
-        self.intro = silence(3.0)
-        self.intro_error = None
 
     def health(self):
         return True
-
-    def fetch_intro(self):
-        self.calls.append(("intro", self.clock.now))
-        if self.intro_error:
-            raise self.intro_error
-        return "testversion", self.intro
 
     def ask_question(self, wav):
         self.calls.append(("frage", self.clock.now))
@@ -197,7 +187,7 @@ class Setup:
         self.api = FakeApi(self.clock, self.answer)
         self.folder = Path(test.tmp.name) / "ansagen"
         self.folder.mkdir(exist_ok=True)
-        self.labels = {self.answer: "antwort", self.api.intro: "vorstellung"}
+        self.labels = {self.answer: "antwort"}
         if files:
             self.labels.update(write_announcements(self.folder))
         config = ClientConfig(dry_run=True, min_record_seconds=0.1, announcements_dir=self.folder)
@@ -301,10 +291,10 @@ class AcknowledgementTests(TempDirCase):
         s = Setup(self, latency=1.0)
         original = s.speaker.play_wav
 
-        def failing_first(wav):
+        def failing_first(wav, should_stop=None):
             if wav == s.feedback.tone:
                 raise RuntimeError("Lautsprecher kaputt")
-            return original(wav)
+            return original(wav, should_stop)
 
         s.speaker.play_wav = failing_first
         with self.assertLogs(LOGGER, level="WARNING"):
@@ -331,7 +321,7 @@ class AcknowledgementTests(TempDirCase):
             def __init__(self):
                 self.played = []
 
-            def play_wav(self, wav):
+            def play_wav(self, wav, should_stop=None):
                 if not self.played:  # der erste Ton ist die Quittung
                     tone_saw_upload.append(api_started.wait(2))  # schlägt fehl, wenn der Upload erst danach beginnt
                     release_api.set()
@@ -524,84 +514,6 @@ class MissingFilesTests(TempDirCase):
         )
 
 
-class IntroRepeatTests(TempDirCase):
-    """Die KI-Ansage beim ersten Einschalten kommt aus PR 17. Hier nur: Eltern können sie wiederholen."""
-
-    def hold(self, s, seconds):
-        for _ in range(int(seconds * 10)):
-            s.client.step()
-            s.clock.sleep(0.1)
-
-    def test_parent_combination_repeats_the_intro_only_with_mic_off_and_both_buttons_held(self):
-        buttons = PressedButtons(speech=True, story=True, mic_off=True)
-        s = Setup(self, buttons=buttons)
-        s.client.transition(ClientState.MIC_OFF)
-
-        self.hold(s, 4.5)
-        self.assertEqual(s.played(), [], "nach 4,5 Sekunden noch nicht")
-        self.hold(s, 1.0)
-        self.assertEqual(s.played(), ["vorstellung"])
-        self.assertGreaterEqual(s.start_of("vorstellung"), 5.0)
-        self.assertEqual([call[0] for call in s.api.calls], ["intro"], "die Ansage wird vom Server geholt")
-        self.hold(s, 8.0)
-        self.assertEqual(s.played(), ["vorstellung"], "dauerhaftes Halten wiederholt sie nicht")
-        self.assertEqual(s.led.modes[-1], "mic_off")
-        self.assertEqual(s.client.state, ClientState.MIC_OFF)
-
-        buttons.speech_pressed = buttons.story_pressed = False
-        self.hold(s, 0.3)
-        buttons.speech_pressed = buttons.story_pressed = True
-        self.hold(s, 5.5)
-        self.assertEqual(s.played(), ["vorstellung", "vorstellung"], "nach dem Loslassen geht es wieder")
-
-    def test_the_repeat_does_not_touch_the_state_directory(self):
-        state = Path(self.tmp.name) / "state"
-        state.mkdir()
-        s = Setup(self, buttons=PressedButtons(speech=True, story=True, mic_off=True))
-        s.client.config = ClientConfig(dry_run=True, state_dir=state)
-        s.client.transition(ClientState.MIC_OFF)
-        self.hold(s, 6.0)
-        self.assertEqual(s.played(), ["vorstellung"])
-        self.assertEqual(list(state.iterdir()), [], "die Merkdatei aus PR 17 bleibt unberührt")
-
-    def test_when_the_server_cannot_be_reached_the_client_only_warns(self):
-        s = Setup(self, buttons=PressedButtons(speech=True, story=True, mic_off=True))
-        s.api.intro_error = ApiError("API-Fehler (HTTP 503)", status=503)
-        s.client.transition(ClientState.MIC_OFF)
-        with self.assertLogs("kunibert", level="WARNING") as logs:
-            self.hold(s, 6.0)
-        self.assertTrue(any("nicht wiederholt" in line for line in logs.output), logs.output)
-        self.assertEqual(s.played(), [])
-        self.assertEqual(s.client.state, ClientState.MIC_OFF)
-        self.assertEqual(s.led.modes[-1], "mic_off")
-
-    def test_one_button_alone_or_a_short_press_does_not_trigger_the_repeat(self):
-        buttons = PressedButtons(speech=True, story=False, mic_off=True)
-        s = Setup(self, buttons=buttons)
-        s.client.transition(ClientState.MIC_OFF)
-        self.hold(s, 10.0)
-        self.assertEqual(s.played(), [])
-        buttons.story_pressed = True
-        self.hold(s, 3.0)  # nur 3 Sekunden beide
-        buttons.speech_pressed = buttons.story_pressed = False
-        self.hold(s, 0.5)
-        self.assertEqual(s.played(), [])
-
-    def test_both_buttons_with_the_mic_on_never_play_the_intro(self):
-        buttons = PressedButtons(speech=True, story=True, mic_off=False)
-        s = Setup(self, latency=1.0, buttons=buttons)
-        s.client.step()  # Sprechtaste hat Vorrang: Aufnahme und Frage, wie bisher
-        self.assertEqual(s.played(), ["ton", "antwort"])
-        self.assertNotIn("vorstellung", s.played())
-
-    def test_the_repeat_is_off_without_feedback(self):
-        buttons = PressedButtons(speech=True, story=True, mic_off=True)
-        s = Setup(self, buttons=buttons)
-        s.client.feedback = None
-        s.client.transition(ClientState.MIC_OFF)
-        self.hold(s, 8.0)
-        self.assertEqual(s.played(), [])
-
 class LedAndConfigTests(unittest.TestCase):
     def test_thinking_pattern_is_a_slow_smooth_pulse_distinct_from_busy(self):
         thinking = GpioStatusLed.pattern_for_mode("thinking")
@@ -665,26 +577,24 @@ class LedAndConfigTests(unittest.TestCase):
         config = ClientConfig.from_env()
         self.assertTrue(config.feedback_enabled)
         self.assertEqual(
-            (config.filler_after_seconds, config.long_wait_seconds, config.answer_pause_seconds, config.intro_hold_seconds),
-            (2.5, 15.0, 0.3, 5.0),
+            (config.filler_after_seconds, config.long_wait_seconds, config.answer_pause_seconds,),
+            (2.5, 15.0, 0.3),
         )
         env = {
             "KUNIBERT_FEEDBACK": "0",
             "KUNIBERT_FILLER_AFTER_SECONDS": "1.5",
             "KUNIBERT_LONG_WAIT_SECONDS": "10",
             "KUNIBERT_ANSWER_PAUSE_SECONDS": "0.5",
-            "KUNIBERT_INTRO_HOLD_SECONDS": "8",
             "KUNIBERT_ANNOUNCEMENTS_DIR": "/tmp/a",
-            "KUNIBERT_STATE_DIR": "/tmp/s",
         }
         with patch.dict("os.environ", env):
             config = ClientConfig.from_env()
         self.assertFalse(config.feedback_enabled)
         self.assertEqual(
-            (config.filler_after_seconds, config.long_wait_seconds, config.answer_pause_seconds, config.intro_hold_seconds),
-            (1.5, 10.0, 0.5, 8.0),
+            (config.filler_after_seconds, config.long_wait_seconds, config.answer_pause_seconds,),
+            (1.5, 10.0, 0.5),
         )
-        self.assertEqual((config.announcements_dir, config.state_dir), (Path("/tmp/a"), Path("/tmp/s")))
+        self.assertEqual(config.announcements_dir, Path("/tmp/a"))
 
 
 class BuildClientTests(TempDirCase):

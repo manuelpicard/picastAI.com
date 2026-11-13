@@ -10,9 +10,6 @@ Es enthält:
   eines nach dem anderen, nichts überlappt und nichts wird abgeschnitten,
 - das Laden der festen Zwischensätze aus einem Ordner (fehlende Dateien sind kein Fehler).
 
-Die KI-Ansage beim ersten Einschalten kommt nicht von hier, sondern aus dem Server (/v1/device/intro,
-siehe kunibert_client.py).
-
 Gesprochene Texte, Antworten und Aufnahmen werden hier nie geloggt.
 """
 
@@ -194,7 +191,6 @@ class FeedbackSettings:
     long_wait_after: float = 15.0     # zweiter Satz, wenn es immer noch nicht weitergeht
     answer_pause: float = 0.3         # Pause zwischen einem Zwischensatz und der Antwort
     poll_interval: float = 0.05       # wie oft nachgesehen wird, ob die Antwort da ist
-    intro_hold: float = 5.0           # so lange beide Tasten halten, um die KI-Ansage zu wiederholen
 
 
 class Feedback:
@@ -298,6 +294,5 @@ def build_feedback(config: Any) -> Feedback:
         first_filler_after=config.filler_after_seconds,
         long_wait_after=config.long_wait_seconds,
         answer_pause=config.answer_pause_seconds,
-        intro_hold=config.intro_hold_seconds,
     )
     return Feedback(ansagen, settings=settings)

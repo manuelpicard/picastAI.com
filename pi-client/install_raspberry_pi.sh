@@ -164,7 +164,7 @@ usermod -a -G "$APP_GROUP" "$APP_USER" 2>/dev/null || true
 if getent group gpio >/dev/null; then
   usermod -a -G gpio "$APP_USER" 2>/dev/null || true
 fi
-install -d -o "$APP_USER" -g "$APP_GROUP" -m 0750 "$INSTALL_DIR" "$DATA_DIR" "$DATA_DIR/audio" "$DATA_DIR/state" "$DATA_DIR/ansagen"
+install -d -o "$APP_USER" -g "$APP_GROUP" -m 0750 "$INSTALL_DIR" "$DATA_DIR" "$DATA_DIR/audio" "$DATA_DIR/ansagen"
 install -d -o root -g "$APP_GROUP" -m 0750 "$CONFIG_DIR"
 
 log "Kopiere Client und richte virtuelle Python-Umgebung ein …"
@@ -221,7 +221,6 @@ PICASTAI_DEVICE_NAME=$(env_quote "$DEVICE_NAME")
 KUNIBERT_SAMPLE_RATE=$(env_quote "$SAMPLE_RATE")
 KUNIBERT_CACHE_DIR=$(env_quote "$DATA_DIR/audio")
 KUNIBERT_ANNOUNCEMENTS_DIR=$(env_quote "$DATA_DIR/ansagen")
-KUNIBERT_STATE_DIR=$(env_quote "$DATA_DIR/state")
 KUNIBERT_MAX_RECORD_SECONDS=15
 KUNIBERT_MIN_RECORD_SECONDS=0.35
 KUNIBERT_REQUEST_TIMEOUT=30

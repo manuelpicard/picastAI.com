@@ -89,14 +89,12 @@ class ClientConfig:
     poll_interval_seconds: float = 0.04
     cache_dir: Path = Path("/var/lib/kunibert/audio")
     dry_run: bool = False
-    # Rückmeldung beim Warten (siehe rueckmeldung.py und README). Die KI-Ansage beim ersten
-    # Einschalten kommt unverändert aus dem Server (/v1/device/intro).
+    # Rückmeldung beim Warten (siehe rueckmeldung.py und README).
     feedback_enabled: bool = True
     announcements_dir: Path = Path("/var/lib/kunibert/ansagen")
     filler_after_seconds: float = 2.5
     long_wait_seconds: float = 15.0
     answer_pause_seconds: float = 0.3
-    intro_hold_seconds: float = 5.0
 
     @classmethod
     def from_env(cls, dry_run: bool = False) -> "ClientConfig":
@@ -144,7 +142,6 @@ class ClientConfig:
             filler_after_seconds=number("KUNIBERT_FILLER_AFTER_SECONDS", 2.5),
             long_wait_seconds=number("KUNIBERT_LONG_WAIT_SECONDS", 15.0),
             answer_pause_seconds=number("KUNIBERT_ANSWER_PAUSE_SECONDS", 0.3),
-            intro_hold_seconds=number("KUNIBERT_INTRO_HOLD_SECONDS", 5.0),
         )
 
 
@@ -790,10 +787,8 @@ class KunibertClient:
     state: ClientState = ClientState.BOOT
     stop_requested: bool = False
     last_error: Optional[str] = None
-    # Rückmeldung beim Warten und Vorstellung. Ohne Wert verhält sich der Client wie bisher.
+    # Rückmeldung beim Warten. Ohne Wert verhält sich der Client wie bisher.
     feedback: Optional[Feedback] = None
-    _intro_hold_since: Optional[float] = field(default=None, init=False, repr=False)
-    _intro_armed: bool = field(default=True, init=False, repr=False)
     state_history: list[ClientState] = field(default_factory=list)
     # Uhr für die Zeitmessung (Tests setzen eine eigene).
     clock: Callable[[], float] = time.monotonic
@@ -889,7 +884,6 @@ class KunibertClient:
         if self.buttons.mic_off:
             if self.state not in {ClientState.MIC_OFF, ClientState.SHUTDOWN}:
                 self.transition(ClientState.MIC_OFF)
-            self._check_intro_repeat()
             return
         if self.state == ClientState.MIC_OFF:
             self.transition(ClientState.READY)
@@ -1051,45 +1045,6 @@ class KunibertClient:
         if not call.done():
             raise ApiError("Abbruch beim Warten auf die Antwort")
         return call.result()
-
-    def _check_intro_repeat(self) -> None:
-        """Eltern können die Vorstellung wiederholen: Mikrofon-Schalter auf "aus", dann beide Tasten halten.
-
-        Nur im Zustand "Mikrofon aus": Dort startet ein Tastendruck nie eine Aufnahme, und es braucht
-        drei bewusste Handgriffe (Schalter, beide Tasten, 5 Sekunden). Nach dem Abspielen muss
-        losgelassen werden, sonst würde die Vorstellung dauernd neu starten.
-        """
-        feedback = self.feedback
-        if feedback is None or self.state != ClientState.MIC_OFF:
-            return
-        if not (self.buttons.speech_pressed and self.buttons.story_pressed):
-            self._intro_hold_since = None
-            self._intro_armed = True
-            return
-        if not self._intro_armed:
-            return
-        now = feedback.clock.monotonic()
-        if self._intro_hold_since is None:
-            self._intro_hold_since = now
-            return
-        if now - self._intro_hold_since >= self.config.intro_hold_seconds:
-            self._intro_armed = False
-            self._intro_hold_since = None
-            LOG.info("Eltern-Tastenkombination: Vorstellung wird wiederholt")
-            self._replay_intro()
-
-    def _replay_intro(self) -> None:
-        """Holt die feste KI-Ansage vom Server (wie beim ersten Start) und spielt sie noch einmal ab.
-
-        Die Merkdatei bleibt unberührt. Klappt der Abruf nicht, gibt es nur eine Warnung im Log.
-        """
-        self.led.set("busy")
-        try:
-            _version, wav = self.api.fetch_intro()
-            self.audio_out.play_wav(wav)
-        except Exception as exc:
-            LOG.warning("Die KI-Ansage konnte nicht wiederholt werden: %s", exc)
-        self.led.set(self._led_mode(self.state))
 
     def _has_audio(self, wav_bytes: bytes) -> bool:
         try:
