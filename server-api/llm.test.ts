@@ -54,7 +54,7 @@ test('AnthropicProvider sendet erzwungenen Tool-Aufruf und liefert das Tool-Erge
   assert.equal(body.max_tokens, 700);
   assert.deepEqual(body.system, [{ type: 'text', text: 'Du bist Kunibert.', cache_control: { type: 'ephemeral' } }]);
   assert.deepEqual(body.messages, [{ role: 'user', content: 'Hallo' }]);
-  assert.deepEqual(body.tool_choice, { type: 'tool', name: 'antwort' });
+  assert.deepEqual(body.tool_choice, { type: 'auto' }, 'erzwungenes Werkzeug lehnt claude-sonnet-5-5 mit HTTP 400 ab');
   assert.equal(body.tools[0].name, 'antwort');
   assert.deepEqual(body.tools[0].input_schema, SCHEMA);
 });

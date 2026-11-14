@@ -34,7 +34,7 @@ http
         }
         let tool = '';
         try {
-          tool = JSON.parse(raw).tool_choice?.name ?? '';
+          tool = JSON.parse(raw).tools?.[0]?.name ?? '';
         } catch {
           // ungültiger Body: wie eine Frage behandeln
         }

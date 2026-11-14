@@ -118,7 +118,7 @@ export class AnthropicProvider implements LlmProvider {
           'anthropic-version': '2023-06-01',
           ...(this.options.workspaceId ? { 'anthropic-workspace-id': this.options.workspaceId } : {}),
         },
-        // Ein erzwungener Tool-Aufruf liefert das Antwortformat als Objekt,
+        // Ein Tool-Aufruf liefert das Antwortformat als Objekt,
         // ohne dass JSON aus Fließtext herausgelöst werden muss.
         body: JSON.stringify({
           model: this.model,
@@ -131,11 +131,14 @@ export class AnthropicProvider implements LlmProvider {
           tools: [
             {
               name: request.schemaName,
-              description: 'Antwort im vorgegebenen Format abgeben.',
+              description: 'Antwort im vorgegebenen Format abgeben. Rufe dieses Werkzeug genau einmal auf und schreibe sonst nichts.',
               input_schema: request.schema,
             },
           ],
-          tool_choice: { type: 'tool', name: request.schemaName },
+          // Neuere Modelle (z. B. claude-sonnet-5-5) lehnen ein erzwungenes Werkzeug mit HTTP 400 ab
+          // ("tool_choice: type tool and any are not supported"). Mit "auto" und der Anweisung in der
+          // Werkzeugbeschreibung ruft das Modell das einzige Werkzeug trotzdem auf.
+          tool_choice: { type: 'auto' },
         }),
         signal: controller.signal,
       });
@@ -160,7 +163,7 @@ export class AnthropicProvider implements LlmProvider {
       const body = (await response.json()) as { content?: Array<{ type: string; input?: unknown }> };
       const block = body.content?.find((item) => item.type === 'tool_use');
       if (!block || !block.input || typeof block.input !== 'object' || Array.isArray(block.input)) {
-        throw new LlmError('Anthropic: Antwort enthält kein Tool-Ergebnis');
+        throw new LlmError('Anthropic: Antwort enthält kein Tool-Ergebnis', true);
       }
       return block.input as Record<string, unknown>;
     } catch (error) {
