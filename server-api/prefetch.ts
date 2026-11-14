@@ -12,12 +12,16 @@
 // (zum Beispiel durch eine Idee des Kindes über die Sprechtaste), wird das Vorbereitete verworfen.
 //
 // Datenschutz: Vorbereitet wird nur Text und Ton eines Geschichtenteils, keine Äußerung des Kindes.
-// Er liegt nur im Arbeitsspeicher, höchstens ttlMs lang, und wird beim Abholen gelöscht.
+// Er liegt nur im Arbeitsspeicher und wird beim Abholen gelöscht. Ein Teil mitten in einer Folge
+// gilt 30 Minuten (wer später weiterhört, bekommt einen frischen Teil mit kurzer Erinnerung), ein
+// vorbereiteter Folgenanfang 24 Stunden (die nächste Folge kommt oft erst am nächsten Tag).
 import type { StoryState, TurnResult } from './brain.js';
 
 export interface PrefetchEntry {
   key: string;
   createdAt: number;
+  /** Gültigkeit dieses Eintrags in ms. */
+  ttlMs: number;
   promise: Promise<TurnResult | null>;
 }
 
@@ -32,7 +36,14 @@ export class StoryPrefetcher {
   constructor(
     /** Erzeugt den nächsten Teil fertig mit Ton; null oder Fehler = nichts vorbereiten. */
     private readonly produce: (state: StoryState) => Promise<TurnResult | null>,
-    private readonly options: { ttlMs: number; now?: () => number; enabled?: boolean } = { ttlMs: 30 * 60 * 1000 }
+    private readonly options: {
+      /** Gültigkeit eines vorbereiteten Teils mitten in einer Folge (danach soll ein neuer Teil z. B. kurz erinnern). */
+      ttlMs: number;
+      /** Gültigkeit eines vorbereiteten Folgenanfangs (kein laufender Stand; Standard: wie ttlMs). */
+      nextEpisodeTtlMs?: number;
+      now?: () => number;
+      enabled?: boolean;
+    } = { ttlMs: 30 * 60 * 1000 }
   ) {}
 
   private now(): number {
@@ -61,7 +72,8 @@ export class StoryPrefetcher {
         return result;
       })
       .catch(() => null);
-    this.entries.set(deviceId, { key, createdAt: this.now(), promise });
+    const ttlMs = state.done ? this.options.nextEpisodeTtlMs ?? this.options.ttlMs : this.options.ttlMs;
+    this.entries.set(deviceId, { key, createdAt: this.now(), ttlMs, promise });
   }
 
   /**
@@ -100,6 +112,6 @@ export class StoryPrefetcher {
   }
 
   private expired(entry: PrefetchEntry): boolean {
-    return this.now() - entry.createdAt > this.options.ttlMs;
+    return this.now() - entry.createdAt > entry.ttlMs;
   }
 }

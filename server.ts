@@ -47,7 +47,7 @@ const deviceStoryStates = new Map<string, StoryState>();
 // Nächster Geschichtenteil im Hintergrund (Sprachmodell und Sprachausgabe), siehe server-api/prefetch.ts.
 const prefetcher = new StoryPrefetcher(
   async (state) => synthesizeIfConfigured(await brain.handle('weiter', '', state)),
-  { ttlMs: 30 * 60 * 1000, enabled: config.storyPrefetch }
+  { ttlMs: 30 * 60 * 1000, nextEpisodeTtlMs: 24 * 60 * 60 * 1000, enabled: config.storyPrefetch }
 );
 // Ein frisch erzeugter Teil braucht Claude und die Sprachausgabe. So viel Zeit bleibt mindestens
 // übrig, wenn der Server auf eine laufende Vorbereitung wartet und sie nicht rechtzeitig fertig wird.

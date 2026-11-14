@@ -96,3 +96,14 @@ test('Folge beendet: der Anfang der nächsten Folge wird vorbereitet, die alte V
   prefetcher.start('d', ended);
   assert.equal((await prefetcher.take('d', ended, 1000))?.speech, 'neue Folge');
 });
+
+test('Folgenanfang gilt länger als ein Teil mitten in der Folge', async () => {
+  let now = 0;
+  const prefetcher = new StoryPrefetcher(async () => result(), { ttlMs: 1000, nextEpisodeTtlMs: 100_000, now: () => now });
+  const ended = state({ part: 5, done: true });
+  prefetcher.start('a', ended);
+  prefetcher.start('b', state());
+  now = 50_000;
+  assert.ok(await prefetcher.take('a', ended, 100), 'Folgenanfang nach 50 s noch da');
+  assert.equal(await prefetcher.take('b', state(), 100), null, 'Teil mitten in der Folge verfallen');
+});

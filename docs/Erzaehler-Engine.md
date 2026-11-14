@@ -22,7 +22,7 @@ So entsteht ein Teil einer Kunibert-Folge. Code: `server-api/brain.ts` (Ablauf, 
 
 Ein Teil braucht Claude (Einschätzung 20 bis 30 s) und die Sprachausgabe (Pocket auf zwei Kernen rund 37 s für 80 s Ton, gemessen am 13.11.2026). Ohne Vorbereitung wartet das Kind nach jedem Druck auf die Erzähltaste etwa eine Minute. Deshalb erzeugt der Server nach jedem ausgelieferten Teil den nächsten im Hintergrund, nach dem letzten Teil einer Folge den Anfang der nächsten. Drückt das Kind die Erzähltaste, nimmt er den fertigen Teil, wenn er zum Stand der Folge passt; läuft die Vorbereitung noch, wartet er darauf (höchstens so lange, dass danach noch 70 s für einen frischen Teil bleiben). Hat sich der Stand geändert, etwa durch eine Idee des Kindes, wird das Vorbereitete verworfen. Pausen und feste Texte werden nie vorbereitet.
 
-- Liegt nur im Arbeitsspeicher, höchstens 30 Minuten, wird beim Abholen gelöscht. Enthält keine Äußerung des Kindes.
+- Liegt nur im Arbeitsspeicher und wird beim Abholen gelöscht: ein Teil mitten in der Folge höchstens 30 Minuten (wer später weiterhört, bekommt einen frischen Teil mit kurzer Erinnerung), ein Folgenanfang höchstens 24 Stunden. Enthält keine Äußerung des Kindes.
 - Kosten: Hört das Kind auf (mitten in einer Folge oder nach ihrem Ende), war höchstens ein Aufruf an Claude umsonst.
 - Zeitmessung: `vorbereitet_ms` (`docs/Zeitmessung.md`).
 - Aus mit `PICASTAI_STORY_PREFETCH=0`.
