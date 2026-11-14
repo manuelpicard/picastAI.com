@@ -25,6 +25,8 @@ Ein Teil braucht Claude (Einschätzung 20 bis 30 s) und die Sprachausgabe (Pocke
 - Liegt nur im Arbeitsspeicher und wird beim Abholen gelöscht: ein Teil mitten in der Folge höchstens 30 Minuten (wer später weiterhört, bekommt einen frischen Teil mit kurzer Erinnerung), ein Folgenanfang höchstens 24 Stunden. Enthält keine Äußerung des Kindes.
 - Kosten: Hört das Kind auf (mitten in einer Folge oder nach ihrem Ende), war höchstens ein Aufruf an Claude umsonst.
 - Zeitmessung: `vorbereitet_ms` (`docs/Zeitmessung.md`).
+- Gemessen am 14.11.2026 in der Cloud (2 Kerne, echter Pocket-Dienst 4.0.1 mit `stuart_bell`, ohne Claude, also Ersatzgeschichte): Teil 1 kam nach 34,8 s (87 s Ton), Teil 2 und 3 nach 0,0 s, wenn man jeden Teil zu Ende hört. Drückt man sofort wieder, wartet der Server auf die laufende Vorbereitung (gemessen 19 s) statt neu anzufangen. Mit Claude kommt dessen Zeit nur noch bei Teil 1 dazu.
+- Pocket am Stück oder je Absatz statt je Satz ist kaum schneller (gemessen 18,9 s und 18,4 s gegen 20,1 s für rund 150 Wörter); die Satzpausen bleiben deshalb.
 - Aus mit `PICASTAI_STORY_PREFETCH=0`.
 
 Der Zustand liegt nur im Arbeitsspeicher des Servers (je Gerät) und enthält keine Äußerungen außer dem Wunsch der laufenden Folge (höchstens 200 Zeichen, nach der Folge gelöscht).
