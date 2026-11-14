@@ -10,25 +10,61 @@ Kuniberts Welt – vertraute Erinnerungsanker (nicht jede Folge braucht alle):
 - Nach dem Sieg geht er zurück ins Gasthaus und erwacht wieder im Dachzimmer. Ein sanftes, rätselhaftes Ende, das wieder von vorn beginnen könnte.
 `;
 
-/** Stimmung zum Einstieg: Wetter, Licht, Geräusche. Eine wird je Folge zufällig gewählt. */
-export const EPISODE_SEEDS = [
-  'Es ist ein nebliger Herbstmorgen.',
-  'Über Nacht ist Schnee gefallen.',
-  'Im Dorf wird heute Markt gehalten.',
-  'Es regnet leise auf das Dach.',
-  'Ein kleiner Hund folgt Kunibert ein Stück.',
-  'Der Kutscher pfeift ein Lied, das Kunibert nicht kennt.',
-  'Die Wirtin hat einen neuen Kuchen gebacken.',
-  'Am Himmel ziehen Kraniche nach Süden.',
-  'Kunibert hat seinen Helm verlegt.',
-  'Ein warmer Wind kommt vom Berg herunter.',
-  'Die Brücke wird gerade repariert.',
-  'Im Wald blühen seltsame blaue Blumen.',
-  'Es ist der erste warme Frühlingstag.',
-  'Ein Gewitter ist in der Nacht vorbeigezogen, alles glitzert nass.',
-  'Die Sonne geht gerade erst auf, und die Vögel sind sehr laut.',
-  'Es ist so heiß, dass die Katze des Gasthauses nur im Schatten liegt.',
+/** Jahreszeit auf der Nordhalbkugel (Dezember bis Februar Winter usw.). */
+export type Season = 'winter' | 'fruehling' | 'sommer' | 'herbst';
+
+export function seasonOf(date: Date): Season {
+  const month = date.getMonth(); // 0 = Januar
+  if (month === 11 || month <= 1) return 'winter';
+  if (month <= 4) return 'fruehling';
+  if (month <= 7) return 'sommer';
+  return 'herbst';
+}
+
+/** Stimmungen, die zu jeder Jahreszeit passen. Im Präteritum, wie die Geschichten selbst (die Ersatzgeschichte übernimmt sie wörtlich). */
+export const EPISODE_SEEDS_ANYTIME = [
+  'Im Dorf wurde heute Markt gehalten.',
+  'Es regnete leise auf das Dach.',
+  'Ein kleiner Hund folgte Kunibert ein Stück.',
+  'Der Kutscher pfiff ein Lied, das Kunibert nicht kannte.',
+  'Die Wirtin hatte einen neuen Kuchen gebacken.',
+  'Kunibert hatte seinen Helm verlegt.',
+  'Die Brücke wurde gerade repariert.',
+  'Ein Gewitter war in der Nacht vorbeigezogen, alles glitzerte nass.',
+  'Die Sonne ging gerade erst auf, und die Vögel waren sehr laut.',
 ];
+
+/** Stimmungen je Jahreszeit; so passt Kuniberts Welt zu dem, was das Kind draußen sieht. */
+export const EPISODE_SEEDS_BY_SEASON: Record<Season, string[]> = {
+  winter: [
+    'Über Nacht war Schnee gefallen.',
+    'Am Fenster des Dachzimmers wuchsen Eisblumen.',
+    'Der Brunnen im Dorf war zugefroren, und die Kinder schlitterten darauf herum.',
+  ],
+  fruehling: [
+    'Es war der erste warme Frühlingstag.',
+    'Im Wald blühten seltsame blaue Blumen.',
+    'Die Störche waren auf das Dach der Mühle zurückgekehrt.',
+  ],
+  sommer: [
+    'Es war so heiß, dass die Katze des Gasthauses nur im Schatten lag.',
+    'Ein warmer Wind kam vom Berg herunter.',
+    'Auf den Wiesen zirpten die Grillen so laut wie ein ganzes Orchester.',
+  ],
+  herbst: [
+    'Es war ein nebliger Herbstmorgen.',
+    'Am Himmel zogen Kraniche nach Süden.',
+    'Der Wind wirbelte bunte Blätter durch die Gasse.',
+  ],
+};
+
+/** Alle Stimmungen (für die Ersatzgeschichte, die die Stimmung am Anfang des Einstiegs erkennt). */
+export const EPISODE_SEEDS = [...EPISODE_SEEDS_ANYTIME, ...Object.values(EPISODE_SEEDS_BY_SEASON).flat()];
+
+/** Stimmungen, die zu dieser Jahreszeit passen. */
+export function seedsForSeason(season: Season): string[] {
+  return [...EPISODE_SEEDS_ANYTIME, ...EPISODE_SEEDS_BY_SEASON[season]];
+}
 
 /**
  * Kleiner Anlass, der die Folge in Gang bringt (Kanon, Abschnitt 5, Schritt 2). Er wird mit der
@@ -85,6 +121,12 @@ Sprache für Ohren von Kindern:
 - „Plötzlich“ höchstens einmal pro Teil; keine Ketten aus Adjektiven; keine Floskeln
 - Geräuschwörter sparsam und einfach („Rumms“, „Knarr“), höchstens zwei pro Teil
 
+Stilprobe (nur für den Ton; nie übernehmen, nie wiederholen):
+Die Treppe knarrte bei jedem Schritt. Kunibert blieb stehen und lauschte. Unten klapperte die Wirtin mit den Töpfen.
+„Schon wach, Herr Ritter?“, fragte sie, ohne sich umzudrehen.
+„Mein Magen ist schneller als ich“, sagte Kunibert. Wie zum Beweis knurrte es laut.
+Die Wirtin lachte nicht. Aber sie stellte ihm eine extra große Schale hin.
+
 Der Text wird von einer Sprachsynthese vorgelesen:
 - gliedere den Teil in drei bis fünf Absätze, getrennt durch eine Leerzeile; jeder Absatz ist ein Bild oder ein Schritt. Am Absatzende macht die Stimme eine längere Pause
 - keine Überschriften, kein Markdown, keine Listen, keine Emojis, keine Sternchen, keine Klammern, keine Gedankenstriche (stattdessen Komma oder Punkt)
@@ -116,6 +158,11 @@ export const PHASE_HINTS: Record<StoryPhase, string> = {
     'Das ist der letzte Teil dieser Folge: Löse alle noch offenen Fäden auf, auch den Wunsch des Kindes. Dann kehrt Kunibert ins Gasthaus zurück, und die Folge endet damit, dass er im Dachzimmer einschläft oder wieder erwacht, sanft und ein wenig rätselhaft. Setze episode_finished auf true und open_threads auf leer.',
 };
 
+/** Kanon, Abschnitt 7: Zur Schlafenszeit eine ruhigere Folge mit sicherem Rückweg. */
+export const BEDTIME_HINT =
+  'Es ist Abend, das Kind hört vielleicht im Bett zu. Erzähle diesen Teil ruhiger und langsamer: weniger Aufregung, sanfte Geräusche, ' +
+  'ein gemütlicher Haltepunkt am Ende. Spannung höchstens leise und kurz.';
+
 /** Was das Sprachmodell über den nächsten Teil wissen muss, damit next_hook dorthin zeigt. */
 export const NEXT_PHASE_PREVIEW: Record<StoryPhase, string> = {
   start: '',
@@ -133,6 +180,7 @@ Ordne die Äußerung genau einer Kategorie zu:
 - "frage": Wissensfrage, Alltagsfrage, Plaudern, Gefühle, Sorgen ohne akute Gefahr
 - "geschichte": das Kind möchte eine (neue) Geschichte von Ritter Kunibert hören
 - "weiter": das Kind möchte, dass die laufende Geschichte weitergeht
+- "idee": nur wenn gerade eine Geschichte läuft: das Kind sagt, was in der Geschichte passieren soll („Kunibert soll den Drachen kitzeln“, „Der Drache soll sein Freund werden“, „Die Hexe soll ihm helfen“). Das ist keine neue Geschichte; die laufende geht mit dieser Idee weiter
 - "sicherheit": Hinweise auf akute Gefahr, Gewalt, Missbrauch, Selbstverletzung, Suizidgedanken, medizinischen Notfall, Feuer, verlaufen/allein in Gefahr
 - "unklar": leer, unverständlich oder sinnlos
 
@@ -150,5 +198,19 @@ Regeln für "frage":
 Für andere Kategorien darf "speech" leer bleiben.
 `;
 
+/** Was Claude für einen Teil bekommt, wenn das Kind per Sprechtaste eine Idee für die laufende Folge gesagt hat. */
+export const IDEA_HINT = (idea: string) =>
+  `Das Kind hat sich für diesen Teil gerade gewünscht: «${idea}». Greif die Idee gleich am Anfang dieses Teils sichtbar und freundlich auf, ` +
+  'so dass das Kind merkt: Kunibert hat mich gehört. Der Plan der Folge bleibt; passe ihn nur so weit an, wie die Idee es braucht. ' +
+  'Ist die Idee nicht kindgerecht, übergehe sie still.';
+
 export const STORY_CLOSING = 'Wenn du wissen willst, wie es weitergeht, drück noch einmal die Erzähltaste.';
+/** Nur nach Teil 1: Hinweis, dass das Kind Kunibert mit der Sprechtaste Ideen geben kann (Kategorie „idee“). */
+export const STORY_CLOSING_FIRST = `${STORY_CLOSING} Du kannst Kunibert auch mit der Sprechtaste sagen, was er tun soll.`;
+/**
+ * Fällt Claude mitten in einer Folge aus, rückt die Folge nicht weiter: Kunibert macht eine
+ * kurze Pause, und der nächste Druck versucht denselben Teil noch einmal. So bricht der rote
+ * Faden nicht durch einen festen Text mit anderer Handlung.
+ */
+export const STORY_PAUSE_TEXT = 'Kunibert muss kurz überlegen, wie es weitergeht. Drück gleich noch einmal die Erzähltaste.';
 export const EPISODE_CLOSING = 'Und so endet diese Geschichte von Ritter Kunibert. Für heute.';

@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
+import { screenOutput } from './safety.js';
 import test from 'node:test';
-import { Brain, buildStoryPrompt, cleanState, cleanText, extractWishKeyword, FALLBACK_ANSWER_DE, isLikelySttArtifact, lastSentences, MAX_UTTERANCE_CHARS, prepareStoryText, rememberMotif, storyPhase, trimWords } from './brain.js';
+import { Brain, buildStoryPrompt, FALLBACK_VARIANTS, formatMetrics, hintFromPlan, usesHint, isBedtime, germanNumber, spellOutForSpeech, storyMetrics, cleanState, cleanText, extractWishKeyword, FALLBACK_ANSWER_DE, isLikelySttArtifact, lastSentences, MAX_UTTERANCE_CHARS, prepareStoryText, rememberMotif, storyPhase, trimWords } from './brain.js';
 import type { LlmJsonRequest, LlmProvider } from './llm.js';
-import { EPISODE_CLOSING, STORY_CLOSING } from './prompts.js';
+import { BEDTIME_HINT, EPISODE_CLOSING, EPISODE_SEEDS_BY_SEASON, seasonOf, STORY_CLOSING, STORY_CLOSING_FIRST, STORY_PAUSE_TEXT } from './prompts.js';
 import { SAFETY_RESPONSE_DE, UNCLEAR_RESPONSE_DE } from './safety.js';
 
 /** Fake-Anbieter: liefert vorbereitete Antworten oder wirft vorbereitete Fehler. */
@@ -88,7 +89,7 @@ test('Modell erkennt Geschichtenwunsch: zweiter Aufruf erzählt Teil 1', async (
   assert.equal(result.kind, 'geschichte');
   assert.equal(result.story_state.part, 1);
   assert.equal(result.story_state.done, false);
-  assert.ok(result.speech.endsWith(STORY_CLOSING));
+  assert.ok(result.speech.endsWith(STORY_CLOSING_FIRST));
   assert.equal(llm.calls.length, 2);
   assert.equal(llm.calls[1].schemaName, 'kunibert_geschichte');
 });
@@ -219,7 +220,7 @@ test('Wortgrenzen aus der Konfiguration gelten im Prompt und beim Kürzen', asyn
   const storyLlm = new FakeLlm([story(long)]);
   const storyResult = await new Brain(storyLlm, settings).handle('geschichte', '', {});
   assert.match(storyLlm.calls[0].user, /Länge: 100 bis 150 Wörter/);
-  const spoken = storyResult.speech.replace(STORY_CLOSING, '').trim().split(' ').length;
+  const spoken = storyResult.speech.replace(STORY_CLOSING_FIRST, '').trim().split(' ').length;
   assert.ok(spoken <= 150 + 50 + 1, `gesprochen: ${spoken} Wörter`);
 });
 
@@ -480,7 +481,7 @@ test('Neue Folge bekommt Stimmung und Anlass als Einstieg', async () => {
 
 test('Abschluss steht nach einer Leerzeile (längere Pause in der Sprachausgabe)', async () => {
   const result = await new Brain(new FakeLlm([story('Kunibert ging los.')])).handle('geschichte', '', {});
-  assert.ok(result.speech.endsWith(`ging los.\n\n${STORY_CLOSING}`));
+  assert.ok(result.speech.endsWith(`ging los.\n\n${STORY_CLOSING_FIRST}`));
 });
 
 test('Ersatzgeschichte endet passend zur Teilezahl (3 und 7 Teile)', async () => {
@@ -514,4 +515,252 @@ test('buildStoryPrompt: kurze Folge holt den Hinweis der Hexe in Teil 1', () => 
   const prompt = buildStoryPrompt({ ...cleanState({}), target: 3, seed: 'Nebel.' }, 1, { storyMinWords: 170, storyMaxWords: 230 });
   assert.match(prompt, /schon in diesem Teil die Hexe/);
   assert.match(prompt, /Wendung mit der klugen Lösung/);
+});
+
+// ---------------------------------------------------------------------------
+// Feinschliff (13.11.2026, Nacht): Zahlen als Wörter, Pause statt Bruch, Jahreszeit, Messwerte
+// ---------------------------------------------------------------------------
+
+test('germanNumber: deutsche Zahlwörter', () => {
+  const cases: Array<[number, string]> = [
+    [0, 'null'], [1, 'eins'], [7, 'sieben'], [12, 'zwölf'], [17, 'siebzehn'], [20, 'zwanzig'], [21, 'einundzwanzig'],
+    [34, 'vierunddreißig'], [100, 'einhundert'], [102, 'einhundertzwei'], [365, 'dreihundertfünfundsechzig'],
+    [1000, 'eintausend'], [2026, 'zweitausendsechsundzwanzig'], [12_345, 'zwölftausenddreihundertfünfundvierzig'],
+  ];
+  for (const [n, word] of cases) assert.equal(germanNumber(n), word, String(n));
+  assert.equal(germanNumber(1_000_000), '1000000');
+});
+
+test('spellOutForSpeech: Ziffern, Uhrzeiten und Abkürzungen werden gesprochen', () => {
+  assert.equal(spellOutForSpeech('Er zählte 3 Äpfel und 21 Birnen.'), 'Er zählte drei Äpfel und einundzwanzig Birnen.');
+  assert.equal(spellOutForSpeech('Es gab 1 Apfel. Er hatte nur 1.'), 'Es gab ein Apfel. Er hatte nur eins.');
+  assert.equal(spellOutForSpeech('Um 7:30 und um 1:00 Uhr.'), 'Um sieben Uhr dreißig und um ein Uhr.');
+  assert.equal(spellOutForSpeech('Tiere, z. B. Füchse, usw.'), 'Tiere, zum Beispiel Füchse, und so weiter');
+  assert.equal(spellOutForSpeech('Er wog 2,5 Kilo.'), 'Er wog 2,5 Kilo.', 'Dezimalzahlen bleiben (selten, mehrdeutig)');
+});
+
+test('prepareStoryText spricht Zahlen aus', () => {
+  assert.equal(prepareStoryText('Nach 3 Tagen kam er an.\n\nEs war 12:00.'), 'Nach drei Tagen kam er an.\n\nEs war zwölf Uhr.');
+});
+
+test('storyMetrics: Wörter, Absätze, Sätze, lange Sätze, Redeteile', () => {
+  const long = Array.from({ length: 22 }, () => 'Wort').join(' ') + '.';
+  const m = storyMetrics(`„Halt!“, rief er. Plötzlich war es still.\n\n${long}`);
+  assert.equal(m.paragraphs, 2);
+  assert.equal(m.sentences, 3);
+  assert.equal(m.longSentences, 1);
+  assert.equal(m.dialogue, 1);
+  assert.equal(m.ploetzlich, 1);
+  assert.match(formatMetrics(m), /^\d+ Wörter, 2 Absätze, 3 Sätze, [\d,]+ Wörter je Satz, 1 lange Sätze, 1 Redeteile, 1x „plötzlich“$/);
+});
+
+test('Protokoll: Messwerte eines Teils nur als Zahlen, nie der Text', async () => {
+  const lines: string[] = [];
+  const original = console.log;
+  console.log = (...args: unknown[]) => { lines.push(args.join(' ')); };
+  try {
+    await new Brain(new FakeLlm([story('Geheimwort-Dachs ging los.')])).handle('geschichte', '', {});
+  } finally {
+    console.log = original;
+  }
+  const line = lines.find((l) => l.startsWith('Geschichte Teil 1/'));
+  assert.ok(line, lines.join('\n'));
+  assert.ok(!line!.includes('Dachs'));
+});
+
+test('Claude fällt mitten in einer Folge aus: einmal Pause ohne Fortschritt, beim zweiten Mal Ersatzgeschichte', silent(async () => {
+  const state = { ...cleanState({}), ep: 3, part: 2, target: 5, plan: 'Plan', summary: 's', last: 'l' };
+  const failing = new FakeLlm([]);
+  failing.generateJson = async () => { throw new Error('HTTP 529'); };
+  const brain = new Brain(failing);
+
+  const pause = await brain.handle('weiter', '', state);
+  assert.equal(pause.speech, STORY_PAUSE_TEXT);
+  assert.equal(pause.fixed, 'pause');
+  assert.equal(pause.story_state.part, 2, 'Folge rückt nicht weiter');
+  assert.equal(pause.story_state.plan, 'Plan');
+  assert.equal(pause.story_state.miss, 1);
+
+  const fallback = await brain.handle('weiter', '', pause.story_state);
+  assert.notEqual(fallback.speech, STORY_PAUSE_TEXT);
+  assert.equal(fallback.story_state.part, 3);
+  assert.equal(fallback.story_state.miss, 0);
+}));
+
+test('Nach einer Pause gelingt derselbe Teil: Zähler zurück auf null', async () => {
+  const state = { ...cleanState({}), ep: 3, part: 2, target: 5, plan: 'Plan', summary: 's', miss: 1 };
+  const result = await new Brain(new FakeLlm([story('Weiter ging es.')])).handle('weiter', '', state);
+  assert.equal(result.story_state.part, 3);
+  assert.equal(result.story_state.miss, 0);
+});
+
+test('Keine Pause bei neuer Folge, ohne Plan oder ohne Sprachmodell', silent(async () => {
+  const failing = new FakeLlm([]);
+  failing.generateJson = async () => { throw new Error('HTTP 529'); };
+  const fresh = await new Brain(failing).handle('geschichte', '', {});
+  assert.notEqual(fresh.speech, STORY_PAUSE_TEXT);
+  const noPlan = await new Brain(failing).handle('weiter', '', { ...cleanState({}), part: 2, target: 5 });
+  assert.notEqual(noPlan.speech, STORY_PAUSE_TEXT);
+  const noLlm = await new Brain(null).handle('weiter', '', { ...cleanState({}), part: 2, target: 5, plan: 'Plan' });
+  assert.notEqual(noLlm.speech, STORY_PAUSE_TEXT);
+}));
+
+test('cleanState: miss wird auf 0 bis 3 begrenzt', () => {
+  assert.equal(cleanState({ v: 1, miss: 99 }).miss, 3);
+  assert.equal(cleanState({ v: 1, miss: -2 }).miss, 0);
+  assert.equal(cleanState({ v: 1 }).miss, 0);
+});
+
+test('seasonOf und Stimmung passend zur Jahreszeit', async () => {
+  assert.equal(seasonOf(new Date(2026, 0, 10)), 'winter');
+  assert.equal(seasonOf(new Date(2026, 3, 10)), 'fruehling');
+  assert.equal(seasonOf(new Date(2026, 6, 10)), 'sommer');
+  assert.equal(seasonOf(new Date(2026, 10, 13)), 'herbst');
+  assert.equal(seasonOf(new Date(2026, 11, 24)), 'winter');
+  const offSeason = [...EPISODE_SEEDS_BY_SEASON.sommer, ...EPISODE_SEEDS_BY_SEASON.fruehling, ...EPISODE_SEEDS_BY_SEASON.herbst];
+  for (let i = 0; i < 40; i++) {
+    const result = await new Brain(null, { now: () => new Date(2026, 0, 15) }).handle('weiter', '', {});
+    assert.ok(!offSeason.some((seed) => result.story_state.seed.startsWith(seed)), result.story_state.seed);
+  }
+});
+
+test('Viel zu kurzer Teil: mit Zeitbudget einmal neu', async () => {
+  const llm = new FakeLlm([story('Kurz.'), story(Array.from({ length: 120 }, () => 'Wort').join(' ') + '.')]);
+  const timer = { time: <T>(_s: unknown, fn: () => Promise<T>) => fn(), timeSync: <T>(_s: unknown, fn: () => T) => fn(), remainingMs: () => 110_000 };
+  const result = await new Brain(llm).handle('geschichte', '', {}, timer as never);
+  assert.equal(llm.calls.length, 2);
+  assert.match(llm.calls[1].user, /viel zu kurz/);
+  assert.ok(result.speech.split(/\s+/).length > 100);
+});
+
+test('Schlafenszeit: abends nach deutscher Zeit ruhigere Teile', async () => {
+  assert.equal(isBedtime(new Date('2026-11-13T20:30:00Z')), true, '21:30 in Berlin');
+  assert.equal(isBedtime(new Date('2026-11-13T04:30:00Z')), true, '5:30 in Berlin');
+  assert.equal(isBedtime(new Date('2026-11-13T09:00:00Z')), false, '10:00 in Berlin');
+  assert.equal(isBedtime(new Date('2026-07-13T16:30:00Z')), false, '18:30 Sommerzeit in Berlin');
+
+  const evening = new FakeLlm([story('Leise.')]);
+  await new Brain(evening, { now: () => new Date('2026-11-13T20:30:00Z') }).handle('geschichte', '', {});
+  assert.ok(evening.calls[0].user.includes(BEDTIME_HINT));
+  const morning = new FakeLlm([story('Hell.')]);
+  await new Brain(morning, { now: () => new Date('2026-11-13T09:00:00Z') }).handle('geschichte', '', {});
+  assert.ok(!morning.calls[0].user.includes(BEDTIME_HINT));
+});
+
+test('Lange Pause zwischen zwei Teilen: kurze Erinnerung am Anfang des nächsten Teils', async () => {
+  const t0 = new Date('2026-11-13T15:00:00Z');
+  let now = t0;
+  const llm = new FakeLlm([story('Eins.'), story('Zwei.'), story('Drei.')]);
+  const brain = new Brain(llm, { now: () => now });
+  const first = await brain.handle('geschichte', '', {});
+  assert.equal(first.story_state.at, t0.getTime());
+
+  now = new Date(t0.getTime() + 10 * 60 * 1000); // zehn Minuten später
+  const second = await brain.handle('weiter', '', first.story_state);
+  assert.ok(!/viel Zeit vergangen/.test(llm.calls[1].user));
+
+  now = new Date(t0.getTime() + 16 * 60 * 60 * 1000); // am nächsten Morgen
+  await brain.handle('weiter', '', second.story_state);
+  assert.match(llm.calls[2].user, /viel Zeit vergangen/);
+});
+
+test('cleanState: at bleibt eine ganze Zahl ab 0', () => {
+  assert.equal(cleanState({ v: 1, at: 'x' }).at, 0);
+  assert.equal(cleanState({ v: 1, at: -5 }).at, 0);
+  assert.equal(cleanState({ v: 1, at: 1794600000000.7 }).at, 1794600000000);
+});
+
+test('Ersatzgeschichte: drei verschiedene Listen, jede besteht den Ausgabe-Check und ist in sich stimmig', async () => {
+  const tricks = new Set<string>();
+  for (let ep = 1; ep <= 3; ep++) {
+    const brain = new Brain(null);
+    let state: unknown = { ...cleanState({}), ep, done: true, part: 5 };
+    let all = '';
+    let episode = 0;
+    for (let i = 0; i < 5; i++) {
+      const result = await brain.handle('weiter', '', state);
+      episode = result.story_state.ep;
+      assert.equal(screenOutput(result.speech, 'story'), false, result.speech);
+      all += result.speech + '\n';
+      state = result.story_state;
+    }
+    const variant = FALLBACK_VARIANTS[episode % FALLBACK_VARIANTS.length];
+    assert.ok(all.includes(variant.hint.split('.')[0]), 'Hinweis der Hexe kommt vor');
+    assert.ok(all.includes(variant.trick.slice(0, 30)), 'passende Wendung');
+    tricks.add(variant.trick);
+  }
+  assert.equal(tricks.size, 3);
+});
+
+test('Idee des Kindes während einer Folge: Folge geht weiter, die Idee steht in der Anfrage', async () => {
+  const state = { ...cleanState({}), ep: 2, part: 2, target: 5, plan: 'Plan', summary: 's' };
+  const llm = new FakeLlm([{ category: 'idee', speech: '' }, story('Kunibert kitzelte den Drachen.')]);
+  const result = await new Brain(llm).handle('frage', 'Kunibert soll den Drachen kitzeln', state);
+  assert.equal(result.kind, 'weiter');
+  assert.equal(result.story_state.part, 3, 'dieselbe Folge, nächster Teil');
+  assert.equal(result.story_state.ep, 2);
+  assert.match(llm.calls[1].user, /gerade gewünscht: «Kunibert soll den Drachen kitzeln»/);
+  assert.match(llm.calls[1].user, /Plan der Folge: Plan/);
+  assert.equal(result.story_state.wish, '', 'Idee gilt nur für diesen Teil');
+});
+
+test('Idee ohne laufende Folge: wird zum Wunsch einer neuen Folge', async () => {
+  const llm = new FakeLlm([{ category: 'idee', speech: '' }, story('Neue Folge.')]);
+  const result = await new Brain(llm).handle('frage', 'Der Drache soll fliegen', {});
+  assert.equal(result.story_state.part, 1);
+  assert.match(result.story_state.wish, /Drache soll fliegen/);
+});
+
+test('Nur Teil 1 endet mit dem Hinweis auf die Sprechtaste, spätere Teile mit dem kurzen Abschluss', async () => {
+  const brain = new Brain(new FakeLlm([story('Eins.'), story('Zwei.')]));
+  const first = await brain.handle('geschichte', '', {});
+  assert.ok(first.speech.endsWith(STORY_CLOSING_FIRST));
+  const second = await brain.handle('weiter', '', first.story_state);
+  assert.ok(second.speech.endsWith(STORY_CLOSING) && !second.speech.endsWith(STORY_CLOSING_FIRST));
+});
+
+test('hintFromPlan und usesHint: Hinweis der Hexe aus dem Plan und im Text wiederfinden', () => {
+  assert.equal(hintFromPlan('Glocke fehlt. Hexe sagt: „Was klingt, will gefunden werden.“ Lösung: Nest.'), 'Was klingt, will gefunden werden.');
+  assert.equal(hintFromPlan('ohne Zitat'), '');
+  assert.equal(usesHint('Da fiel ihm ein: Was klingt, will gefunden werden!', 'Was klingt, will gefunden werden.'), true);
+  assert.equal(usesHint('Er ging nach Hause.', 'Was klingt, will gefunden werden.'), false);
+});
+
+test('Wendung bekommt die Worte der Hexe ausdrücklich; Protokoll sagt nur, ob sie aufgegriffen wurden', async () => {
+  const state = { ...cleanState({}), ep: 3, part: 3, target: 5, plan: 'Hexe sagt: „Läute erst, wenn er gähnt.“', summary: 's' };
+  const llm = new FakeLlm([story('Der Drache gähnte. Läute erst, wenn er gähnt, dachte Kunibert.')]);
+  const lines: string[] = [];
+  const original = console.log;
+  console.log = (...args: unknown[]) => { lines.push(args.join(' ')); };
+  try {
+    await new Brain(llm).handle('weiter', '', state);
+  } finally {
+    console.log = original;
+  }
+  assert.match(llm.calls[0].user, /Die Worte der Hexe lauteten: „Läute erst, wenn er gähnt\.“/);
+  const line = lines.find((l) => l.startsWith('Geschichte Teil 4/5'));
+  assert.match(line!, /Hinweis der Hexe aufgegriffen$/);
+  assert.ok(!line!.includes('gähnt'), 'kein Text im Protokoll');
+});
+
+test('Hinweis auf die Sprechtaste nur in den ersten beiden Folgen', async () => {
+  const third = await new Brain(new FakeLlm([story('Los.')])).handle('weiter', '', { ...cleanState({}), ep: 2, done: true, part: 5 });
+  assert.equal(third.story_state.ep, 3);
+  assert.ok(third.speech.endsWith(STORY_CLOSING) && !third.speech.endsWith(STORY_CLOSING_FIRST));
+});
+
+test('Antworten: Zahlen als Wörter, kein Markdown', async () => {
+  const result = await new Brain(new FakeLlm([answer('Ein Jahr hat **365** Tage.')])).handle('frage', 'wie viele tage hat ein jahr', {});
+  assert.equal(result.speech, 'Ein Jahr hat dreihundertfünfundsechzig Tage.');
+});
+
+test('Claude meldet zu früh "fertig": die Folge läuft bis zur geplanten Teilezahl weiter', async () => {
+  const state = { ...cleanState({}), ep: 2, part: 1, target: 5, plan: 'p', summary: 's' };
+  const early = await new Brain(new FakeLlm([story('Zwei.', { episode_finished: true })])).handle('weiter', '', state);
+  assert.equal(early.story_state.done, false);
+  assert.equal(early.story_state.part, 2);
+  assert.ok(early.speech.endsWith(STORY_CLOSING));
+
+  const trick = await new Brain(new FakeLlm([story('Vier.', { episode_finished: true })])).handle('weiter', '', { ...state, part: 3 });
+  assert.equal(trick.story_state.done, true, 'in der Wendung darf Claude die Folge beenden');
 });

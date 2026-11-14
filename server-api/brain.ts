@@ -4,9 +4,15 @@ import {
   EPISODE_CLOSING,
   EPISODE_SEEDS,
   EPISODE_SPARKS,
+  seasonOf,
+  seedsForSeason,
+  STORY_PAUSE_TEXT,
+  BEDTIME_HINT,
+  IDEA_HINT,
   NEXT_PHASE_PREVIEW,
   PHASE_HINTS,
   STORY_CLOSING,
+  STORY_CLOSING_FIRST,
   STORYTELLER_SYSTEM,
   type StoryPhase,
 } from './prompts.js';
@@ -48,7 +54,14 @@ export interface StoryState {
   last: string;
   /** Kernideen der letzten Folgen (Trank, Hinweis, Lösung), damit sie sich nicht wiederholen. */
   recent: string;
+  /** Wie oft Claude für den anstehenden Teil schon ausgefallen ist (0 oder 1, siehe STORY_PAUSE_TEXT). */
+  miss: number;
+  /** Zeitpunkt des letzten erzählten Teils (ms seit 1970), 0 = unbekannt. Für die Erinnerung nach langer Pause. */
+  at: number;
 }
+
+/** Nach so langer Pause zwischen zwei Teilen erinnert der nächste Teil kurz an das Wichtigste. */
+export const RECAP_AFTER_MS = 6 * 60 * 60 * 1000;
 
 /** Längen der Textfelder im Zustand (Zeichen). */
 const STATE_LIMITS = { seed: 300, summary: 900, threads: 400, hook: 300, plan: 800, wish: 200, last: 400, recent: 600 } as const;
@@ -148,6 +161,8 @@ export function cleanState(raw: any): StoryState {
       wish: '',
       last: '',
       recent: '',
+      miss: 0,
+      at: 0,
     };
   }
   const ep = Number(raw.ep) || 1;
@@ -167,6 +182,8 @@ export function cleanState(raw: any): StoryState {
     wish: cleanText(raw.wish, STATE_LIMITS.wish),
     last: cleanText(raw.last, STATE_LIMITS.last),
     recent: cleanText(raw.recent, STATE_LIMITS.recent),
+    miss: Math.max(0, Math.min(3, Math.floor(Number(raw.miss) || 0))),
+    at: Math.max(0, Math.floor(Number(raw.at) || 0)),
   };
 }
 
@@ -185,7 +202,7 @@ export function trimWords(text: string, maxWords: number): string {
 export const QUESTION_SCHEMA: JsonSchema = {
   type: 'object',
   properties: {
-    category: { type: 'string', enum: ['frage', 'geschichte', 'weiter', 'sicherheit', 'unklar'] },
+    category: { type: 'string', enum: ['frage', 'geschichte', 'weiter', 'idee', 'sicherheit', 'unklar'] },
     speech: { type: 'string' },
   },
   required: ['category', 'speech'],
@@ -198,7 +215,7 @@ export const STORY_SCHEMA: JsonSchema = {
       type: 'string',
       description:
         'Nur im ersten Teil einer Folge, sonst leer. Der Plan für die ganze Folge in drei bis fünf knappen Sätzen, nur für dich, wird nicht vorgelesen: ' +
-        'Anlass und Ziel; Nebenfigur mit Namen; der Hinweis der Hexe wörtlich; die kluge Lösung am Ende und wie der Hinweis dazu passt; wie der Wunsch des Kindes vorkommt.',
+        'Anlass und Ziel; Nebenfigur mit Namen; der Hinweis der Hexe wörtlich in „…“; die kluge Lösung am Ende und wie der Hinweis dazu passt; wie der Wunsch des Kindes vorkommt.',
     },
     text: {
       type: 'string',
@@ -232,6 +249,81 @@ export function storyPhase(part: number, target: number): StoryPhase {
 
 const pick = <T>(items: readonly T[]): T => items[Math.floor(Math.random() * items.length)];
 
+const ONES = ['null', 'eins', 'zwei', 'drei', 'vier', 'fünf', 'sechs', 'sieben', 'acht', 'neun', 'zehn', 'elf', 'zwölf',
+  'dreizehn', 'vierzehn', 'fünfzehn', 'sechzehn', 'siebzehn', 'achtzehn', 'neunzehn'];
+const TENS = ['', '', 'zwanzig', 'dreißig', 'vierzig', 'fünfzig', 'sechzig', 'siebzig', 'achtzig', 'neunzig'];
+
+/** Deutsche Zahlwörter von 0 bis 999 999 („einundzwanzig“, „hundertzwei“, „dreitausend“). */
+export function germanNumber(n: number): string {
+  if (!Number.isInteger(n) || n < 0 || n > 999_999) return String(n);
+  if (n < 20) return ONES[n];
+  if (n < 100) {
+    const unit = n % 10;
+    const ten = TENS[Math.floor(n / 10)];
+    return unit ? `${unit === 1 ? 'ein' : ONES[unit]}und${ten}` : ten;
+  }
+  if (n < 1000) {
+    const hundreds = Math.floor(n / 100);
+    const rest = n % 100;
+    return `${hundreds === 1 ? 'ein' : ONES[hundreds]}hundert${rest ? germanNumber(rest) : ''}`;
+  }
+  const thousands = Math.floor(n / 1000);
+  const rest = n % 1000;
+  return `${thousands === 1 ? 'ein' : germanNumber(thousands)}tausend${rest ? germanNumber(rest) : ''}`;
+}
+
+/** Ziffern, Uhrzeiten und gängige Abkürzungen als gesprochene Wörter. */
+export function spellOutForSpeech(text: string): string {
+  return text
+    .replace(/\bz\.\s?B\./g, 'zum Beispiel')
+    .replace(/\bu\.\s?a\./g, 'unter anderem')
+    .replace(/\busw\./g, 'und so weiter')
+    .replace(/\bca\./g, 'ungefähr')
+    .replace(/\bNr\.\s?/g, 'Nummer ')
+    .replace(/\b(\d{1,2}):(\d{2})\b(?:\s*Uhr\b)?/g, (_m, h: string, min: string) =>
+      `${germanNumber(Number(h)) === 'eins' ? 'ein' : germanNumber(Number(h))} Uhr${Number(min) ? ` ${germanNumber(Number(min))}` : ''}`)
+    .replace(/(?<![\d.,])(\d{1,6})(?![\d,]|\.\d)/g, (_m, digits: string, offset: number, whole: string) => {
+      const word = germanNumber(Number(digits));
+      // „1 Apfel“ → „ein Apfel“, alleinstehend „eins“.
+      return word === 'eins' && /^\s+\p{L}/u.test(whole.slice(offset + digits.length)) ? 'ein' : word;
+    });
+}
+
+export interface StoryMetrics {
+  words: number;
+  paragraphs: number;
+  sentences: number;
+  /** Durchschnittliche Wörter je Satz, eine Nachkommastelle. */
+  wordsPerSentence: number;
+  /** Sätze mit mehr als 20 Wörtern (für Kinderohren zu lang). */
+  longSentences: number;
+  /** Stellen mit wörtlicher Rede („…“). */
+  dialogue: number;
+  ploetzlich: number;
+}
+
+/** Messwerte eines Teils, ohne Text: für das Protokoll und `npm run probe:folge`. */
+export function storyMetrics(text: string): StoryMetrics {
+  const paragraphs = text.split(/\n\s*\n/).filter((p) => p.trim()).length;
+  const sentences = text.split(/(?<=[.!?…])[“”"]?\s+/).map((x) => x.trim()).filter(Boolean);
+  const counts = sentences.map((x) => x.split(/\s+/).filter(Boolean).length);
+  const words = text.split(/\s+/).filter(Boolean).length;
+  return {
+    words,
+    paragraphs,
+    sentences: sentences.length,
+    wordsPerSentence: sentences.length ? Math.round((words / sentences.length) * 10) / 10 : 0,
+    longSentences: counts.filter((c) => c > 20).length,
+    dialogue: (text.match(/„/g) || []).length,
+    ploetzlich: (text.match(/\bplötzlich\b/gi) || []).length,
+  };
+}
+
+export function formatMetrics(m: StoryMetrics): string {
+  return `${m.words} Wörter, ${m.paragraphs} Absätze, ${m.sentences} Sätze, ${String(m.wordsPerSentence).replace('.', ',')} Wörter je Satz, ` +
+    `${m.longSentences} lange Sätze, ${m.dialogue} Redeteile, ${m.ploetzlich}x „plötzlich“`;
+}
+
 /**
  * Glättet einen Geschichtentext für die Sprachausgabe: kein Markdown, keine Emojis, keine
  * Gedankenstriche oder Klammern, saubere Absätze (Leerzeile, dort macht die Stimme eine längere
@@ -249,6 +341,7 @@ export function prepareStoryText(raw: string): string {
     .split(/\n\s*\n+/)
     .map((paragraph) => paragraph.replace(/\s+/g, ' ').replace(/^[\s,]+/, '').trim())
     .filter(Boolean)
+    .map(spellOutForSpeech)
     .join('\n\n');
 }
 
@@ -276,11 +369,32 @@ export function rememberMotif(recent: string, motif: string): string {
   return joined.slice(0, STATE_LIMITS.recent);
 }
 
+/** Abends (19 bis 6 Uhr deutscher Zeit) gilt Schlafenszeit: ruhigere Teile (Kanon, Abschnitt 7). */
+export function isBedtime(date: Date): boolean {
+  const parts = new Intl.DateTimeFormat('de-DE', { timeZone: 'Europe/Berlin', hour: 'numeric', hourCycle: 'h23' }).formatToParts(date);
+  const hour = Number(parts.find((part) => part.type === 'hour')?.value);
+  return hour >= 19 || hour < 6;
+}
+
+/** Der Hinweis der Hexe aus dem Plan: der erste Text in „…“ (oder "…"), sonst leer. */
+export function hintFromPlan(plan: string): string {
+  const match = /[„"]([^“”"]{4,200})[“”"]/.exec(plan || '');
+  return match ? match[1].trim() : '';
+}
+
+/** Kommt der Hinweis im Text vor? Mindestens die Hälfte seiner längeren Wörter (ab vier Buchstaben). */
+export function usesHint(text: string, hint: string): boolean {
+  const words = (hint.toLowerCase().match(/\p{L}{4,}/gu) || []);
+  if (!words.length) return false;
+  const lower = text.toLowerCase();
+  return words.filter((word) => lower.includes(word)).length * 2 >= words.length;
+}
+
 /** Baut die Anfrage für einen Teil. Exportiert für Tests. */
 export function buildStoryPrompt(
   state: StoryState,
   part: number,
-  settings: { storyMinWords: number; storyMaxWords: number },
+  settings: { storyMinWords: number; storyMaxWords: number; bedtime?: boolean; nowMs?: number; idea?: string },
   retryNote = ''
 ): string {
   const target = state.target;
@@ -297,12 +411,21 @@ export function buildStoryPrompt(
     if (state.recent) lines.push(`Diese Ideen gab es in den letzten Folgen schon; erfinde diesmal etwas anderes: ${state.recent}`);
   } else {
     lines.push(`Plan der Folge: ${state.plan || 'nicht festgehalten; bleib bei dem, was bisher geschah'}`);
+    const hint = hintFromPlan(state.plan);
+    if (hint && phase === 'trick') {
+      lines.push(`Die Worte der Hexe lauteten: „${hint}“. Kunibert erinnert sich in diesem Teil an genau diese Worte, und die Lösung ergibt sich daraus.`);
+    }
     lines.push(`Bisher: ${state.summary}`);
     lines.push(`Offene Fäden: ${state.threads || 'keine'}`);
     if (state.last) lines.push(`So endete der vorige Teil: ${state.last}`);
+    if (state.at && settings.nowMs && settings.nowMs - state.at >= RECAP_AFTER_MS) {
+      lines.push('Seit dem vorigen Teil ist viel Zeit vergangen, vielleicht eine Nacht. Beginne mit zwei kurzen Sätzen, die wie beim Erzählen am Bett an das Wichtigste erinnern (wo Kunibert ist, was er sucht), ohne „Im letzten Teil“. Dann geht es nahtlos weiter.');
+    }
     if (state.hook) lines.push(`Anknüpfen an: ${state.hook}`);
   }
   if (state.wish) lines.push(`Wunsch des Kindes für diese Folge: «${state.wish}»`);
+  if (settings.bedtime) lines.push(BEDTIME_HINT);
+  if (settings.idea) lines.push(IDEA_HINT(cleanText(settings.idea, STATE_LIMITS.wish)));
   const preview = phase === 'finale' ? '' : NEXT_PHASE_PREVIEW[storyPhase(part + 1, target)];
   if (preview) lines.push(preview);
   if (retryNote) lines.push(retryNote);
@@ -310,7 +433,56 @@ export function buildStoryPrompt(
   return lines.join('\n');
 }
 
-export type BrainSettings = Pick<KunibertConfig, 'ageBracket' | 'partsPerEpisode' | 'storyMinWords' | 'storyMaxWords' | 'answerMaxWords' | 'sttPrompt'>;
+export type BrainSettings = Pick<KunibertConfig, 'ageBracket' | 'partsPerEpisode' | 'storyMinWords' | 'storyMaxWords' | 'answerMaxWords' | 'sttPrompt'> & {
+  /** Uhr für die Jahreszeit der Stimmung (austauschbar für Tests). */
+  now: () => Date;
+};
+
+/**
+ * Bausteine der Ersatzgeschichte (ohne Sprachmodell): drei verschiedene Geschenke der Hexe und
+ * drei Listen. Welche gilt, hängt an der Folgennummer, damit Kinder ohne Claude nicht immer
+ * dieselbe Folge hören.
+ */
+export const FALLBACK_VARIANTS = [
+  {
+    gift: 'Sie füllte etwas Goldenes in eine kleine grüne Flasche und gab sie ihm.',
+    hint: 'Nicht trinken. Wenn der Drache schnaubt, halte sie gegen den Wind.',
+    item: 'die grüne Flasche',
+    itemCap: 'Die grüne Flasche',
+    trick:
+      `Der Drache holte tief Luft. Gleich würde er schnauben. Da fielen Kunibert die Worte der Hexe ein: ` +
+      `„Wenn der Drache schnaubt, halte sie gegen den Wind.“\n\n` +
+      `Er zog die grüne Flasche hervor und zog den Korken heraus. Ein Duft nach Pfefferminz und Sommerblumen ` +
+      `wehte mit dem Bergwind direkt in die Nase des Drachen. Der Drache schnupperte, blinzelte und musste gewaltig niesen. „Hatschi!“\n\n` +
+      `Danach war er ganz ruhig. Er legte seinen schweren Kopf auf den warmen Felsen und brummte zufrieden wie eine riesige Katze. ` +
+      `Kunibert steckte sein Schwert weg und lächelte. Mit Klugheit war es viel leichter gegangen als mit Kraft.`,
+  },
+  {
+    gift: 'Sie nahm ein kleines silbernes Glöckchen von einem Haken und legte es ihm in die Hand.',
+    hint: 'Läute es erst, wenn der Drache gähnt. Vorher nützt es nichts.',
+    item: 'das silberne Glöckchen',
+    itemCap: 'Das silberne Glöckchen',
+    trick:
+      `Der Drache streckte sich vor seiner Höhle. Die Sonne wärmte die Felsen. Da riss er sein riesiges Maul auf und gähnte, ` +
+      `so laut, dass die Steine wackelten. „Läute es erst, wenn der Drache gähnt“, hatte die Hexe gesagt.\n\n` +
+      `Kunibert zog das silberne Glöckchen hervor und läutete, ganz leise. Bimm, bimm. Der Ton schwebte über den Berg wie ein Schlaflied.\n\n` +
+      `Die Augen des Drachen wurden schwer. Er rollte sich zusammen wie ein großer, warmer Hund und schnarchte, dass die Grashalme zitterten. ` +
+      `Kunibert lächelte und schlich auf Zehenspitzen davon. Manchmal ist ein leiser Ton stärker als ein Schwert.`,
+  },
+  {
+    gift: 'Sie gab ihm einen glatten, runden Stein mit einem Loch in der Mitte.',
+    hint: 'Schau durch den Stein, bevor du kämpfst. Dann siehst du, was der Drache wirklich will.',
+    item: 'den runden Stein',
+    itemCap: 'Der runde Stein',
+    trick:
+      `Der Drache stampfte vor seiner Höhle und schnaubte. Kunibert wollte schon sein Schwert ziehen. Doch dann dachte er an die Hexe: ` +
+      `„Schau durch den Stein, bevor du kämpfst.“\n\n` +
+      `Er hielt den runden Stein vor sein Auge und schaute hindurch. Da sah er etwas, das er vorher nicht bemerkt hatte. ` +
+      `Im Eingang der Höhle steckte ein riesiger Dorn im Fels, genau dort, wo der Drache sich hinlegen wollte.\n\n` +
+      `„Ach so!“, rief Kunibert. Er kletterte hinauf, zog und ruckelte, bis der Dorn herausfiel. Der Drache legte sich hin, ` +
+      `seufzte tief und blinzelte ihn freundlich an. Kunibert hatte gewonnen, ohne zu kämpfen.`,
+  },
+] as const;
 
 export class Brain {
   private readonly age: string;
@@ -319,6 +491,7 @@ export class Brain {
   private readonly storyMaxWords: number;
   private readonly answerMaxWords: number;
   private readonly sttPrompt: string;
+  private readonly now: () => Date;
 
   /**
    * Ohne Anbieter (kein Key) greifen die festen Fallback-Texte. Die Einstellungen
@@ -331,6 +504,7 @@ export class Brain {
     this.storyMaxWords = settings.storyMaxWords ?? config.storyMaxWords;
     this.answerMaxWords = settings.answerMaxWords ?? config.answerMaxWords;
     this.sttPrompt = settings.sttPrompt ?? config.sttPrompt;
+    this.now = settings.now ?? (() => new Date());
   }
 
   /**
@@ -437,6 +611,13 @@ export class Brain {
         if (parsed.category === 'weiter') {
           return await this.handleStory(!storyActive(state), state, '', timer);
         }
+        if (parsed.category === 'idee') {
+          // Idee für die laufende Folge: weitererzählen und die Idee einbauen. Läuft keine Folge,
+          // ist die Idee der Wunsch für eine neue.
+          return storyActive(state)
+            ? await this.handleStory(false, state, '', timer, transcript)
+            : await this.handleStory(true, state, transcript, timer);
+        }
         if (parsed.category === 'unklar') {
           // Das Sprachmodell hat die Äußerung als leer oder unverständlich eingestuft: um
           // Wiederholung bitten, statt mit dem Ersatztext unten auf Unverstandenes zu antworten.
@@ -449,7 +630,9 @@ export class Brain {
           };
         }
         if (parsed.category === 'frage' && parsed.speech) {
-          const speech = trimWords(parsed.speech, this.answerMaxWords + 20);
+          // Gleiche Vorlese-Glättung wie bei Geschichten: kein Markdown, Zahlen als Wörter.
+          const speech = prepareStoryText(trimWords(parsed.speech, this.answerMaxWords + 20));
+          if (!speech) throw new Error('Antwort des Sprachmodells ist leer');
           // Ausgabe-Check: bei Treffer greift der Fallback unten (catch-Pfad).
           if (timer.timeSync('ausgabecheck', () => screenOutput(speech, 'answer'))) {
             throw new Error('Antwort des Sprachmodells durch Ausgabe-Check abgelehnt');
@@ -529,7 +712,7 @@ export class Brain {
       ep: (state.ep || 0) + 1,
       part: 0,
       target: this.partsPerEpisode,
-      seed: `${pick(EPISODE_SEEDS)} ${pick(EPISODE_SPARKS)}`,
+      seed: `${pick(seedsForSeason(seasonOf(this.now())))} ${pick(EPISODE_SPARKS)}`,
       summary: '',
       threads: '',
       hook: '',
@@ -538,6 +721,8 @@ export class Brain {
       wish: cleanText(wish, STATE_LIMITS.wish),
       last: '',
       recent: state.recent,
+      miss: 0,
+      at: 0,
     };
   }
 
@@ -545,7 +730,8 @@ export class Brain {
     newEpisode: boolean,
     state: StoryState,
     wish: string,
-    timer: StageTimer
+    timer: StageTimer,
+    idea = ''
   ): Promise<TurnResult> {
     const current = newEpisode ? this.startEpisode(state, wish) : { ...state };
     const part = current.part + 1;
@@ -553,7 +739,8 @@ export class Brain {
 
     const llm = this.llm;
     if (llm) {
-      const settings = { storyMinWords: this.storyMinWords, storyMaxWords: this.storyMaxWords };
+      const now = this.now();
+      const settings = { storyMinWords: this.storyMinWords, storyMaxWords: this.storyMaxWords, bedtime: isBedtime(now), nowMs: now.getTime(), idea };
       let retryNote = '';
       // Höchstens zwei Versuche: Lehnt der Ausgabe-Check einen Teil ab, bekommt das Modell einen
       // Hinweis und schreibt ihn neu, wenn noch genug Zeit bleibt. Sonst greift die Ersatzgeschichte.
@@ -572,6 +759,18 @@ export class Brain {
           };
           const text = prepareStoryText(trimWords(String(parsed.text || ''), this.storyMaxWords + 50));
           if (!text) throw new Error('Geschichte des Sprachmodells ist leer');
+          const metrics = storyMetrics(text);
+          // Nur Zahlen ins Protokoll, nie der Text (CLAUDE.md).
+          const hint = phase === 'trick' ? hintFromPlan(current.plan) : '';
+          const hintNote = hint ? `, Hinweis der Hexe ${usesHint(text, hint) ? 'aufgegriffen' : 'nicht erkennbar'}` : '';
+          console.log(`Geschichte Teil ${part}/${current.target}: ${formatMetrics(metrics)}${hintNote}`);
+          // Viel zu kurz (abgeschnitten oder Zusammenfassung statt Szene): einmal neu, wenn Zeit bleibt.
+          // Nur mit echtem Zeitbudget (jede Geräteanfrage hat eins); ohne Budget gilt der Text, wie er ist.
+          const left = timer.remainingMs();
+          if (metrics.words < this.storyMinWords * 0.5 && attempt === 1 && Number.isFinite(left) && left >= STORY_RETRY_MIN_MS) {
+            retryNote = `Wichtig: Ein erster Entwurf war viel zu kurz. Erzähle diesen Teil als lebendige Szene mit ${this.storyMinWords} bis ${this.storyMaxWords} Wörtern.`;
+            continue;
+          }
           if (timer.timeSync('ausgabecheck', () => screenOutput(text, 'story'))) {
             if (attempt === 1 && timer.remainingMs() >= STORY_RETRY_MIN_MS) {
               console.warn(`LLM-Geschichte (${this.llmName}) durch Ausgabe-Check abgelehnt, zweiter Versuch`);
@@ -582,7 +781,9 @@ export class Brain {
             }
             throw new Error('Geschichte des Sprachmodells durch Ausgabe-Check abgelehnt');
           }
-          const done = Boolean(parsed.episode_finished) || phase === 'finale';
+          // Ende nur im Finale oder, wenn Claude es so will, frühestens in der Wendung. Ein früheres
+          // "fertig" würde die Folge für das Kind nach zwei Teilen abbrechen; dann zählt die Teilezahl.
+          const done = phase === 'finale' || (phase === 'trick' && Boolean(parsed.episode_finished));
           const plan = part === 1 ? cleanText(parsed.episode_plan, STATE_LIMITS.plan) : current.plan;
           const updatedState: StoryState = {
             ...current,
@@ -595,6 +796,8 @@ export class Brain {
             last: done ? '' : lastSentences(text),
             wish: done ? '' : current.wish,
             recent: done ? rememberMotif(current.recent, String(parsed.episode_motif || plan || '')) : current.recent,
+            miss: 0,
+            at: now.getTime(),
           };
           return this.storyResult(text, part, updatedState);
         } catch (err) {
@@ -604,11 +807,25 @@ export class Brain {
       }
     }
 
+    // Fällt Claude mitten in einer laufenden Claude-Folge aus (sie hat einen Plan), rückt die Folge
+    // einmal nicht weiter: eine kurze Pause, und der nächste Druck versucht denselben Teil. Erst beim
+    // zweiten Ausfall in Folge übernimmt die Ersatzgeschichte.
+    if (llm && !newEpisode && current.plan && !current.done && current.part >= 1 && current.miss < 1) {
+      return {
+        kind: 'weiter',
+        speech: STORY_PAUSE_TEXT,
+        story_state: { ...current, miss: current.miss + 1 },
+        fixed: 'pause',
+        wav: this.synthesizeWav(STORY_PAUSE_TEXT, 'hinweis'),
+      };
+    }
+
     return this.fallbackStory(newEpisode, state, wish);
   }
 
   private storyResult(text: string, part: number, state: StoryState): TurnResult {
-    const closing = state.done ? EPISODE_CLOSING : STORY_CLOSING;
+    // Den Hinweis auf die Sprechtaste hören Kinder in den ersten beiden Folgen; danach kennen sie ihn.
+    const closing = state.done ? EPISODE_CLOSING : part === 1 && state.ep <= 2 ? STORY_CLOSING_FIRST : STORY_CLOSING;
     // Leerzeile vor dem Abschluss: Die Stimme setzt dort eine längere Pause.
     const fullSpeech = `${text}\n\n${closing}`;
     return {
@@ -629,6 +846,7 @@ export class Brain {
     const phase = storyPhase(part, current.target);
     const wishKeyword = extractWishKeyword(current.wish || wish);
     const mood = EPISODE_SEEDS.find((seed) => current.seed.startsWith(seed)) ?? '';
+    const variant = FALLBACK_VARIANTS[(current.ep || 1) % FALLBACK_VARIANTS.length];
 
     let text = '';
     let summary = '';
@@ -657,12 +875,11 @@ export class Brain {
         `Kunibert ging vorsichtig in den düsteren Wald hinein. Tropfen perlten von den Farnen, und ` +
         `im Dickicht knackte ein Zweig. Dann sah er die Hütte der Hexe. Aus dem Schornstein stieg blauer Rauch.\n\n` +
         `Die Hexe stand an ihrem Topf und rührte. „Du gehst zum Drachen“, sagte sie, ohne aufzusehen. ` +
-        `Sie füllte etwas Goldenes in eine kleine grüne Flasche und gab sie ihm. ` +
-        `„Nicht trinken“, sagte sie. „Wenn der Drache schnaubt, halte sie gegen den Wind.“\n\n` +
-        `„Habt Dank“, sagte Kunibert und verbeugte sich. Er steckte die Flasche gut ein. ` +
+        `${variant.gift} „${variant.hint}“, sagte sie.\n\n` +
+        `„Habt Dank“, sagte Kunibert und verbeugte sich. Er steckte ${variant.item} gut ein. ` +
         `Bald wurde der Weg steiler. Die Bäume wurden weniger, und die Felsen des Berges kamen näher.`;
-      summary = `Die Hexe gab Kunibert eine grüne Flasche: nicht trinken, sondern gegen den Wind halten, wenn der Drache schnaubt.`;
-      threads = `Die Flasche der Hexe am Berg benutzen.`;
+      summary = `Die Hexe gab Kunibert ${variant.item} und sagte: „${variant.hint}“`;
+      threads = `${variant.itemCap} der Hexe am Berg benutzen.`;
       hook = `Kunibert erreicht den Aufstieg zur Drachenhöhle.`;
     } else if (phase === 'middle') {
       text =
@@ -671,19 +888,13 @@ export class Brain {
         `Da grollte es tief im Berg. Der Drache schob seinen großen Kopf aus der Höhle. Rauch kam aus seinen Nüstern, ` +
         `und seine goldenen Augen funkelten. Mit einem Schwung seines Schwanzes schob er Kunibert sanft, aber bestimmt den Hang hinunter.\n\n` +
         `Kunibert setzte sich auf einen Stein und atmete tief durch. „Mit Kraft geht das heute nicht“, murmelte er. ` +
-        `Er tastete nach seiner Tasche. Die kleine Flasche war noch da.`;
+        `Er tastete nach seiner Tasche. ${variant.itemCap} war noch da.`;
       summary = `Kunibert traf am Berg auf den Drachen und merkte, dass er eine List braucht.`;
-      threads = `Die Flasche der Hexe im richtigen Moment benutzen.`;
+      threads = `${variant.itemCap} der Hexe im richtigen Moment benutzen.`;
       hook = `Kunibert überlegt sich eine List.`;
     } else if (phase === 'trick') {
-      text =
-        `Der Drache holte tief Luft. Gleich würde er schnauben. Da fielen Kunibert die Worte der Hexe ein: ` +
-        `„Wenn der Drache schnaubt, halte sie gegen den Wind.“\n\n` +
-        `Er zog die grüne Flasche hervor und zog den Korken heraus. Ein Duft nach Pfefferminz und Sommerblumen ` +
-        `wehte mit dem Bergwind direkt in die Nase des Drachen. Der Drache schnupperte, blinzelte und musste gewaltig niesen. „Hatschi!“\n\n` +
-        `Danach war er ganz ruhig. Er legte seinen schweren Kopf auf den warmen Felsen und brummte zufrieden wie eine riesige Katze. ` +
-        `Kunibert steckte sein Schwert weg und lächelte. Mit Klugheit war es viel leichter gegangen als mit Kraft.`;
-      summary = `Kunibert beruhigte den Drachen mit dem Duft aus der Flasche der Hexe.`;
+      text = variant.trick;
+      summary = `Kunibert beruhigte den Drachen mit Klugheit und dem Geschenk der Hexe.`;
       threads = ``;
       hook = `Kunibert kehrt ins Dorf zurück.`;
     } else {
@@ -707,6 +918,8 @@ export class Brain {
       last: done ? '' : lastSentences(text),
       plan: done ? '' : current.plan,
       wish: done ? '' : current.wish,
+      miss: 0,
+      at: this.now().getTime(),
     };
     return this.storyResult(text, part, updatedState);
   }

@@ -564,7 +564,7 @@ describe('picastAI-API (echter Server)', () => {
 
     // Erzähltaste: keine Erkennung, keine Weiche (es gibt keinen Kindertext).
     assert.match(storyLine, /^Zeitmessung id=[0-9a-f]{8} modus=weiter status=200 erkennung_ms=- weiche_ms=- /);
-    assert.match(storyLine, / sprachausgabe_ms=\d+ gesamt_ms=\d+ /);
+    assert.match(storyLine, / sprachausgabe_ms=\d+ vorbereitet_ms=(\d+|-) gesamt_ms=\d+ /);
     assert.match(storyLine, / audio_s=\d+\.\d$/);
     assert.notEqual(questionLine.split(' ')[1], storyLine.split(' ')[1], 'jede Anfrage hat ihre eigene ID');
 
@@ -573,6 +573,25 @@ describe('picastAI-API (echter Server)', () => {
     for (const secret of ['Quokka', 'gute Frage', 'Dachzimmer', 'Kunibert erwachte', device.id, device.token]) {
       assert.ok(!newOutput.includes(secret), `"${secret}" darf nicht im Protokoll stehen`);
     }
+  });
+
+  it('Erzähltaste: der nächste Teil liegt vorbereitet bereit (ohne neue Sprachausgabe, ohne Text im Protokoll)', async () => {
+    const device = await registerDevice();
+    const since = output.length;
+    const first = await postStory(device);
+    assert.equal(first.status, 200, await first.clone().text());
+    const second = await postStory(device);
+    assert.equal(second.status, 200, await second.clone().text());
+    const body = (await second.json()) as { audio_url: string; session_end: boolean };
+    const audio = await fetchAudio(device, body.audio_url);
+    assert.equal(audio.status, 200);
+    assert.ok((await audio.arrayBuffer()).byteLength > 44, 'vorbereiteter Teil hat Ton');
+
+    const lines = await timingLinesSince(since, 2);
+    assert.equal(lines.length, 2, lines.join(' | '));
+    assert.match(lines[0], / sprachausgabe_ms=\d+ vorbereitet_ms=- /, 'erster Teil frisch erzeugt');
+    assert.match(lines[1], / sprachausgabe_ms=- vorbereitet_ms=\d+ /, 'zweiter Teil aus der Vorbereitung');
+    assert.ok(!output.slice(since).includes('Kunibert ging vorsichtig'), 'kein Geschichtentext im Protokoll');
   });
 
   it('Zeitmessung: Notlage ergibt eine Zeile, in der der Wortlaut fehlt', async () => {

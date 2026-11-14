@@ -71,6 +71,8 @@ export interface KunibertConfig {
   // Erzähl- & Pädagogik-Parameter
   ageBracket: string;
   partsPerEpisode: number;
+  /** Nächsten Geschichtenteil im Hintergrund vorbereiten (server-api/prefetch.ts). Aus mit PICASTAI_STORY_PREFETCH=0. */
+  storyPrefetch: boolean;
   storyMinWords: number;
   storyMaxWords: number;
   answerMaxWords: number;
@@ -320,6 +322,7 @@ export function loadConfig(): KunibertConfig {
 
     ageBracket: process.env.KUNIBERT_AGE || 'sechs bis zehn',
     partsPerEpisode: Math.min(12, Math.max(3, parseNum(process.env.KUNIBERT_PARTS_PER_EPISODE, 5))),
+    storyPrefetch: process.env.PICASTAI_STORY_PREFETCH?.trim() !== '0',
     storyMinWords,
     storyMaxWords,
     answerMaxWords: parseNum(process.env.KUNIBERT_ANSWER_MAX_WORDS, 80),
@@ -359,6 +362,7 @@ export function getSafeConfigSummary(config: KunibertConfig) {
     ttsVoice: config.ttsProvider === 'google' ? config.googleTtsVoice : config.ttsVoice,
     ageBracket: config.ageBracket,
     partsPerEpisode: config.partsPerEpisode,
+    storyPrefetch: config.storyPrefetch,
     storyWordRange: `${config.storyMinWords}–${config.storyMaxWords} Wörter`,
     answerMaxWords: config.answerMaxWords,
     emergencyNumberPrimary: config.emergencyNumberPrimary,

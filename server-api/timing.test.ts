@@ -63,7 +63,7 @@ test('Zeitmesser: Werte je Stufe, Gesamtzeit und Audiolänge erscheinen in der Z
   assert.equal(
     line,
     'Zeitmessung id=3f9a1c2b modus=frage status=200 erkennung_ms=1204 weiche_ms=2 sprachmodell_ms=3480 ' +
-      'ausgabecheck_ms=1 sprachausgabe_ms=2210 gesamt_ms=7050 sprachmodell_aufrufe=1 audio_s=12.0'
+      'ausgabecheck_ms=1 sprachausgabe_ms=2210 vorbereitet_ms=- gesamt_ms=7050 sprachmodell_aufrufe=1 audio_s=12.0'
   );
   assert.match(line!, LINE_FORMAT);
 });
@@ -174,7 +174,8 @@ test('Geschichtenwunsch als Frage: zwei Sprachmodell-Aufrufe, beide gezählt und
   ]);
   const timer = new TurnTimer(clock.now, '0a1b2c3e');
   timer.mode = 'frage';
-  const result = await new Brain(llm).handle('frage', 'erzähl mir bitte eine geschichte', {}, timer);
+  // Mindestlänge klein: Der kurze Testtext soll keinen zweiten Versuch auslösen.
+  const result = await new Brain(llm, { storyMinWords: 5 }).handle('frage', 'erzähl mir bitte eine geschichte', {}, timer);
   assert.equal(result.kind, 'geschichte');
   assert.equal(llm.calls, 2);
   const line = timer.logLine(200)!;

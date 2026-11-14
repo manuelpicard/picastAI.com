@@ -59,6 +59,8 @@ const row = (over: Partial<EvalRow>): EvalRow => ({
   storyWords: 0,
   expectFixed: null,
   safetyOk: null,
+  expectKind: null,
+  kindOk: null,
   ...over,
 });
 
@@ -282,4 +284,10 @@ test('Keine Gemini- oder OpenAI-Reste im Vergleichsskript und in den Prompts', (
     const content = fs.readFileSync(path.join(ROOT, 'server-api', file), 'utf8');
     assert.ok(!/gemini|openai|google|whisper|gpt-/i.test(content), file);
   }
+});
+
+test('summarizeModel zählt die Einordnung (Frage, neue Geschichte, Folge geht weiter)', () => {
+  const summary = summarizeModel('m', [row({ expectKind: 'weiter', kindOk: true }), row({ expectKind: 'frage', kindOk: false }), row({})], 170, 230);
+  assert.equal(summary.kindOk, 1);
+  assert.equal(summary.kindTotal, 2);
 });
