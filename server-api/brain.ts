@@ -78,7 +78,20 @@ export interface TurnResult {
   story_state: StoryState;
   fixed?: string;
   wav?: Buffer;
+  /** Der Text wurde schon Absatz für Absatz an einen StorySink gegeben (Ton-Strom, Punkt 71). */
+  streamed?: boolean;
 }
+
+/**
+ * Empfänger für den Ton-Strom (Punkt 71): Jeder Absatz kommt hierher, sobald Claude ihn fertig
+ * geschrieben und der Ausgabe-Check ihn freigegeben hat. `begin` kommt einmal vor dem ersten Absatz.
+ */
+export interface StorySink {
+  begin(info: { done: boolean }): void;
+  say(text: string): void;
+}
+
+const PARAGRAPH_SPLIT = /\n\s*\n+/;
 
 /** Längste Äußerung, die ins Sprachmodell geht (Kosten- und Missbrauchsgrenze; die Spracherkennung liefert höchstens 1000 Zeichen). */
 export const MAX_UTTERANCE_CHARS = 1000;
@@ -545,7 +558,8 @@ export class Brain {
     mode: 'frage' | 'geschichte' | 'weiter',
     rawTranscript: string,
     rawState: any,
-    timer: StageTimer = NO_TIMER
+    timer: StageTimer = NO_TIMER,
+    sink?: StorySink
   ): Promise<TurnResult> {
     const state = cleanState(rawState);
     const transcript = cleanText(rawTranscript, MAX_UTTERANCE_CHARS);
@@ -563,13 +577,13 @@ export class Brain {
 
     try {
       if (mode === 'frage') {
-        return await this.handleQuestion(transcript, state, timer);
+        return await this.handleQuestion(transcript, state, timer, sink);
       }
       if (mode === 'geschichte') {
-        return await this.handleStory(true, state, transcript, timer);
+        return await this.handleStory(true, state, transcript, timer, '', sink);
       }
       if (mode === 'weiter') {
-        return await this.handleStory(!storyActive(state), state, '', timer);
+        return await this.handleStory(!storyActive(state), state, '', timer, '', sink);
       }
     } catch (err) {
       console.error('Brain execution error:', err);
@@ -585,7 +599,7 @@ export class Brain {
     throw new Error('Unbekannter Modus');
   }
 
-  private async handleQuestion(transcript: string, state: StoryState, timer: StageTimer): Promise<TurnResult> {
+  private async handleQuestion(transcript: string, state: StoryState, timer: StageTimer, sink?: StorySink): Promise<TurnResult> {
     // Die Sicherheitsweiche lief schon (handle). Ein Abspann oder nur der Erkennungshinweis
     // ist keine Äußerung des Kindes: wie eine leere Erkennung behandeln.
     if (!transcript || isLikelySttArtifact(transcript, this.sttPrompt)) {
@@ -627,17 +641,17 @@ export class Brain {
           };
         }
         if (parsed.category === 'geschichte') {
-          return await this.handleStory(true, state, transcript, timer);
+          return await this.handleStory(true, state, transcript, timer, '', sink);
         }
         if (parsed.category === 'weiter') {
-          return await this.handleStory(!storyActive(state), state, '', timer);
+          return await this.handleStory(!storyActive(state), state, '', timer, '', sink);
         }
         if (parsed.category === 'idee') {
           // Idee für die laufende Folge: weitererzählen und die Idee einbauen. Läuft keine Folge,
           // ist die Idee der Wunsch für eine neue.
           return storyActive(state)
-            ? await this.handleStory(false, state, '', timer, transcript)
-            : await this.handleStory(true, state, transcript, timer);
+            ? await this.handleStory(false, state, '', timer, transcript, sink)
+            : await this.handleStory(true, state, transcript, timer, '', sink);
         }
         if (parsed.category === 'unklar') {
           // Das Sprachmodell hat die Äußerung als leer oder unverständlich eingestuft: um
@@ -753,7 +767,8 @@ export class Brain {
     state: StoryState,
     wish: string,
     timer: StageTimer,
-    idea = ''
+    idea = '',
+    sink?: StorySink
   ): Promise<TurnResult> {
     const current = newEpisode ? this.startEpisode(state, wish) : { ...state };
     const part = current.part + 1;
@@ -765,6 +780,27 @@ export class Brain {
       const settings = { storyMinWords: this.storyMinWords, storyMaxWords: this.storyMaxWords, bedtime: isBedtime(now), nowMs: now.getTime(), idea };
       let retryNote = '';
       let spent = 0;
+      // Ton-Strom: schon gesprochene Absätze. Sobald einer gesprochen ist, gibt es keinen zweiten
+      // Versuch mehr; ein Fehler danach endet mit der kurzen Pause (streamAbort).
+      const spoken: string[] = [];
+      let spokenWords = 0;
+      let rawDone = 0;
+      let blocked = false;
+      const speak = (raw: string): boolean => {
+        const paragraph = prepareStoryText(raw);
+        if (!paragraph) return true;
+        const words = paragraph.split(/\s+/).length;
+        if (spokenWords + words > this.storyMaxWords + 50) return false;
+        if (timer.timeSync('ausgabecheck', () => screenOutput(paragraph, 'story'))) {
+          blocked = true;
+          return false;
+        }
+        if (!spoken.length) sink!.begin({ done: phase === 'finale' });
+        spoken.push(paragraph);
+        spokenWords += words;
+        sink!.say(paragraph);
+        return true;
+      };
       // Höchstens zwei Versuche: Lehnt der Ausgabe-Check einen Teil ab, bekommt das Modell einen
       // Hinweis und schreibt ihn neu, wenn noch genug Zeit bleibt. Sonst greift die Ersatzgeschichte.
       for (let attempt = 1; attempt <= 2; attempt++) {
@@ -777,11 +813,44 @@ export class Brain {
             maxOutputTokens: 2000,
             timeoutMs: this.llmTimeoutMs(timer),
             onUsage: this.meter(timer, (usd) => { spent += usd; }),
+            // Nur im ersten Versuch und nur mit Empfänger: fertige Absätze sofort weitergeben.
+            ...(sink && attempt === 1 ? {
+              onText: (partial: string) => {
+                const pieces = partial.split(PARAGRAPH_SPLIT);
+                while (!blocked && rawDone < pieces.length - 1) {
+                  if (!speak(pieces[rawDone++])) { blocked = true; break; }
+                }
+              },
+            } : {}),
           })) as {
             text?: string; summary?: string; open_threads?: string; next_hook?: string;
             episode_finished?: boolean; episode_plan?: string; episode_motif?: string;
           };
-          const text = prepareStoryText(trimWords(String(parsed.text || ''), this.storyMaxWords + 50));
+          if (spoken.length || blocked) {
+            // Ton-Strom: den Rest sprechen; der Text des Teils ist genau das Gesprochene.
+            const pieces = String(parsed.text || '').split(PARAGRAPH_SPLIT);
+            while (!blocked && rawDone < pieces.length) {
+              if (!speak(pieces[rawDone++])) break;
+            }
+            if (blocked || !spoken.length) {
+              if (!spoken.length) {
+                // Nichts gesprochen: wie ein abgelehnter Teil behandeln (zweiter Versuch ohne Strom).
+                blocked = false;
+                rawDone = 0;
+                if (attempt === 1 && timer.remainingMs() >= STORY_RETRY_MIN_MS) {
+                  console.warn(`LLM-Geschichte (${this.llmName}) durch Ausgabe-Check abgelehnt, zweiter Versuch`);
+                  retryNote = 'Wichtig: Ein erster Entwurf wurde vom automatischen Prüfer abgelehnt. Schreib den Teil neu und vermeide jedes Wort über Blut, Tod, Sterben, Töten und Verletzungen, auch in Redewendungen.';
+                  continue;
+                }
+                throw new Error('Geschichte des Sprachmodells durch Ausgabe-Check abgelehnt');
+              }
+              console.warn(`LLM-Geschichte (${this.llmName}) mitten im Strom angehalten (${spoken.length} Absätze gesprochen)`);
+              return this.streamAbort(state, current, newEpisode, spoken, sink!);
+            }
+          }
+          const text = spoken.length
+            ? spoken.join('\n\n')
+            : prepareStoryText(trimWords(String(parsed.text || ''), this.storyMaxWords + 50));
           if (!text) {
             // Ohne erzwungenes Werkzeug (PR #55) kann eine Antwort leer sein: einmal neu, wenn Zeit bleibt.
             if (attempt === 1 && timer.remainingMs() >= STORY_RETRY_MIN_MS) {
@@ -799,11 +868,13 @@ export class Brain {
           // Viel zu kurz (abgeschnitten oder Zusammenfassung statt Szene): einmal neu, wenn Zeit bleibt.
           // Nur mit echtem Zeitbudget (jede Geräteanfrage hat eins); ohne Budget gilt der Text, wie er ist.
           const left = timer.remainingMs();
-          if (metrics.words < this.storyMinWords * 0.5 && attempt === 1 && Number.isFinite(left) && left >= STORY_RETRY_MIN_MS) {
+          if (!spoken.length && metrics.words < this.storyMinWords * 0.5 && attempt === 1 && Number.isFinite(left) && left >= STORY_RETRY_MIN_MS) {
             retryNote = `Wichtig: Ein erster Entwurf war viel zu kurz. Erzähle diesen Teil als lebendige Szene mit ${this.storyMinWords} bis ${this.storyMaxWords} Wörtern.`;
             continue;
           }
           if (timer.timeSync('ausgabecheck', () => screenOutput(text, 'story'))) {
+            // Treffer erst im ganzen Text (über Absätze hinweg): schon gesprochen, also anhalten.
+            if (spoken.length) return this.streamAbort(state, current, newEpisode, spoken, sink!);
             if (attempt === 1 && timer.remainingMs() >= STORY_RETRY_MIN_MS) {
               console.warn(`LLM-Geschichte (${this.llmName}) durch Ausgabe-Check abgelehnt, zweiter Versuch`);
               retryNote =
@@ -834,8 +905,12 @@ export class Brain {
           };
           // Kosten der ganzen Folge, wenn sie endet (Punkt 72b). Nur Zahlen.
           if (done) console.log(`Folge fertig: teile=${part} kosten_usd=${formatUsd(updatedState.usd)}`);
-          return this.storyResult(text, part, updatedState);
+          return this.storyResult(text, part, updatedState, spoken.length ? sink : undefined);
         } catch (err) {
+          if (spoken.length) {
+            console.warn(`LLM-Geschichte (${this.llmName}) mitten im Strom abgebrochen (${spoken.length} Absätze gesprochen):`, (err as Error)?.message || err);
+            return this.streamAbort(state, current, newEpisode, spoken, sink!);
+          }
           console.warn(`LLM-Geschichte (${this.llmName}) fehlgeschlagen, verwende Fallback:`, err);
           break;
         }
@@ -858,15 +933,36 @@ export class Brain {
     return this.fallbackStory(newEpisode, state, wish);
   }
 
-  private storyResult(text: string, part: number, state: StoryState): TurnResult {
+  /**
+   * Ton-Strom angehalten, nachdem schon Absätze gesprochen wurden (Ausgabe-Check schlägt an, Claude
+   * bricht ab). Gesagtes lässt sich nicht zurücknehmen: Kunibert macht die kurze Pause, und die Folge
+   * rückt nicht vor. Der nächste Druck erzählt den Teil neu; fällt Claude dann wieder aus, greift
+   * wie sonst die Ersatzfolge (STORY_PAUSE_TEXT, miss). Bei einer neuen Folge bleibt der alte Stand.
+   */
+  private streamAbort(state: StoryState, current: StoryState, newEpisode: boolean, spoken: string[], sink: StorySink): TurnResult {
+    sink.say(STORY_PAUSE_TEXT);
+    const base = newEpisode ? state : current;
+    return {
+      kind: 'weiter',
+      speech: [...spoken, STORY_PAUSE_TEXT].join('\n\n'),
+      story_state: { ...base, miss: Math.min(3, base.miss + 1) },
+      fixed: 'pause',
+      streamed: true,
+      wav: this.synthesizeWav(STORY_PAUSE_TEXT, 'hinweis'),
+    };
+  }
+
+  private storyResult(text: string, part: number, state: StoryState, sink?: StorySink): TurnResult {
     // Den Hinweis auf die Sprechtaste hören Kinder in den ersten beiden Folgen; danach kennen sie ihn.
     const closing = state.done ? EPISODE_CLOSING : part === 1 && state.ep <= 2 ? STORY_CLOSING_FIRST : STORY_CLOSING;
     // Leerzeile vor dem Abschluss: Die Stimme setzt dort eine längere Pause.
     const fullSpeech = `${text}\n\n${closing}`;
+    if (sink) sink.say(closing);
     return {
       kind: part === 1 ? 'geschichte' : 'weiter',
       speech: fullSpeech,
       story_state: state,
+      ...(sink ? { streamed: true } : {}),
       wav: this.synthesizeWav(fullSpeech, 'geschichte'),
     };
   }

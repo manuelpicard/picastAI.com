@@ -79,6 +79,19 @@ Die Story-Session wird für die Gerät-ID ausschließlich flüchtig im RAM gehal
 
 Erfordert wieder dieselben `Authorization`- und `X-Device-ID`-Header. Die WAV-Datei wird aus dem flüchtigen AudioStore geliefert und danach einmalig gelöscht. Die URL läuft ab, sobald die konfigurierte TTL erreicht ist.
 
+#### Ton-Strom (seit 14.11.2026, Punkt 71; Standard aus)
+
+Damit eine Geschichte nicht erst nach der ganzen Vertonung beginnt, kann der Server sie Absatz für Absatz ausliefern. Beide Seiten müssen zustimmen:
+
+- **Server:** `PICASTAI_AUDIO_STREAM=1` (Standard aus).
+- **Gerät:** Kopf `X-Kunibert-Audio-Stream: 1` bei `POST /v1/device/question` und `POST /v1/device/kunibert-story`. Der Pi-Client schickt ihn standardmäßig (`KUNIBERT_AUDIO_STREAM=0` schaltet ab). Die ESP32-Firmware schickt ihn nicht und bekommt deshalb unverändert eine ganze Datei (offen: Strom auch in der Firmware).
+
+Ablauf: Claude schreibt den Teil im Streaming. Jeder fertige Absatz geht durch den Ausgabe-Check und dann an die Sprachausgabe. Die Antwort auf den POST kommt, sobald der erste Absatz vertont ist, mit `"audio_stream": true`. `session_end` ist dann schon richtig gesetzt. Der GET auf die `audio_url` liefert `audio/wav` ohne `Content-Length` (chunked): einen 44-Byte-Kopf mit RIFF- und data-Länge `0xFFFFFFFF` („bis zum Ende“), dann PCM, sobald es entsteht, zwischen Absätzen 0,9 s Pause. Das Ende der Verbindung ist das Ende des Tons. Bricht die Sprachausgabe mittendrin ab, endet die Verbindung früher, und die Folge rückt nicht vor.
+
+Schlägt der Ausgabe-Check mitten im Teil an (oder bricht Claude ab, nachdem schon ein Absatz gesprochen wurde), wird der betroffene Absatz nie gesprochen. Kunibert sagt „Kunibert muss kurz überlegen …“, und die Folge rückt nicht vor; der nächste Druck erzählt den Teil neu, und beim nächsten Ausfall greift wie bisher die Ersatzfolge. Trifft es schon den ersten Absatz, ist noch nichts gesprochen: Dann schreibt Claude den Teil ohne Strom ein zweites Mal.
+
+Fragen, feste Texte, Ersatzgeschichten und vorbereitete Teile (`prefetch.ts`) kommen auch mit eingeschaltetem Strom als ganze Datei; `audio_stream` fehlt dann. Kommt eine neue Anfrage desselben Geräts, solange ein Strom noch im Hintergrund entsteht, wartet der Server auf dessen Stand.
+
 ## Fehlerantworten
 
 | Status | Body | Bedeutung für den Client |
@@ -123,7 +136,7 @@ PICASTAI_TTS_URL=http://127.0.0.1:8000/v1
 PICASTAI_TTS_MODEL=
 PICASTAI_TTS_VOICE=
 # Alternative Sprachausgabe: Google Cloud Text-to-Speech (PICASTAI_TTS_PROVIDER=google, PR #14), siehe docs/LLM-Anbieter.md
-PICASTAI_VOICE_TIMEOUT_MS=45000
+PICASTAI_VOICE_TIMEOUT_MS=90000
 ```
 
 Die Token-Datei beziehungsweise Prozessumgebung darf nur für den Serverdienst lesbar sein. Nicht in Git, Screenshots oder Logs eintragen.

@@ -138,6 +138,7 @@ Die Wirtin lachte nicht. Aber sie stellte ihm eine extra große Schale hin.
 
 Der Text wird von einer Sprachsynthese vorgelesen:
 - gliedere den Teil in drei bis fünf Absätze, getrennt durch eine Leerzeile; jeder Absatz ist ein Bild oder ein Schritt. Am Absatzende macht die Stimme eine längere Pause
+- der erste Absatz ist kurz, zwei oder drei Sätze: Er wird schon gesprochen, während du weiterschreibst
 - keine Überschriften, kein Markdown, keine Listen, keine Emojis, keine Sternchen, keine Klammern, keine Gedankenstriche (stattdessen Komma oder Punkt)
 - Zahlen und Uhrzeiten als Wörter; keine Abkürzungen
 - Ausrufezeichen sparsam; ein Satz mit drei Punkten am Ende ist eine kleine Atempause und höchstens zweimal pro Teil erlaubt

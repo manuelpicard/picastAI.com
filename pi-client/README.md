@@ -244,6 +244,8 @@ KUNIBERT_MAX_RECORD_SECONDS=15
 KUNIBERT_REQUEST_TIMEOUT=30
 KUNIBERT_PIPELINE_TIMEOUT=140
 KUNIBERT_AUDIO_TIMEOUT=45
+# Ton-Strom anfragen (nur wirksam mit PICASTAI_AUDIO_STREAM=1 am Server); 0 = immer ganze Datei
+KUNIBERT_AUDIO_STREAM=1
 KUNIBERT_RETRY_COUNT=1
 # Leer = Standardgerät; bei zwei USB-Geräten getrennt setzen (siehe "Erster Aufbau")
 KUNIBERT_INPUT_DEVICE=

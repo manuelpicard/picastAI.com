@@ -6,7 +6,8 @@ import { addUsage, formatUsd, ZERO_USAGE, type LlmUsage } from './costs.js';
 
 /** Die gemessenen Stufen einer Anfrage, in der Reihenfolge, in der sie ablaufen. */
 // vorbereitet: Wartezeit auf einen im Hintergrund vorbereiteten Geschichtenteil (server-api/prefetch.ts).
-export const TIMED_STAGES = ['erkennung', 'weiche', 'sprachmodell', 'ausgabecheck', 'sprachausgabe', 'vorbereitet'] as const;
+// erster_ton: Ton-Strom (Punkt 71), Zeit vom Start der Antwort bis zum ersten vertonten Absatz.
+export const TIMED_STAGES = ['erkennung', 'weiche', 'sprachmodell', 'ausgabecheck', 'sprachausgabe', 'vorbereitet', 'erster_ton'] as const;
 export type TimedStage = (typeof TIMED_STAGES)[number];
 
 /**
@@ -107,6 +108,11 @@ export class TurnTimer implements StageTimer {
   /** Merkt sich die Länge des Antwort-Audios; der Inhalt wird nicht aufbewahrt. */
   noteAudio(wav: Buffer | null | undefined): void {
     this.audioSeconds = wavSeconds(wav);
+  }
+
+  /** Länge eines Ton-Stroms in Sekunden (der Inhalt wird nicht aufbewahrt). */
+  noteAudioSeconds(seconds: number): void {
+    this.audioSeconds = Number.isFinite(seconds) && seconds >= 0 ? seconds : null;
   }
 
   /** Summiert Token und Kosten aller Sprachmodell-Aufrufe dieser Anfrage (nur Zahlen). */

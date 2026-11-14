@@ -822,3 +822,109 @@ test('Leere Antwort von Claude: zweiter Versuch statt Ersatzgeschichte', async (
   assert.equal(result.story_state.part, 2);
   assert.ok(!result.fixed);
 });
+
+// ---------------------------------------------------------------------------
+// Ton-Strom (Punkt 71, 14.11.2026): Absätze prüfen und weitergeben, sobald sie fertig sind
+// ---------------------------------------------------------------------------
+
+/** Wie FakeLlm, liefert den Text aber Stück für Stück über onText (wie das Streaming der API). */
+class StreamingFakeLlm implements LlmProvider {
+  readonly name = 'anthropic' as const;
+  readonly model = 'fake';
+  calls: LlmJsonRequest[] = [];
+  constructor(private responses: Array<{ result: Record<string, unknown>; failAfter?: number } | Error>) {}
+  async generateJson(request: LlmJsonRequest): Promise<Record<string, unknown>> {
+    this.calls.push(request);
+    const next = this.responses.shift();
+    if (!next) throw new Error('keine Antwort vorbereitet');
+    if (next instanceof Error) throw next;
+    const text = String(next.result.text ?? '');
+    if (request.onText) {
+      for (let i = 1; i <= text.length; i += 7) {
+        if (next.failAfter !== undefined && i > next.failAfter) throw new Error('Verbindung weg');
+        request.onText(text.slice(0, i));
+      }
+      request.onText(text);
+    }
+    return next.result;
+  }
+}
+
+const NO_TIMER_FOR_TEST = { time: <T>(_s: unknown, fn: () => Promise<T>) => fn(), timeSync: <T>(_s: unknown, fn: () => T) => fn(), remainingMs: () => Number.POSITIVE_INFINITY };
+const LONG_TIMER_FOR_TEST = { ...NO_TIMER_FOR_TEST, remainingMs: () => 110_000 };
+
+function recordingSink() {
+  const events: string[] = [];
+  return {
+    events,
+    sink: { begin: (info: { done: boolean }) => events.push(`begin:${info.done}`), say: (text: string) => events.push(text) },
+  };
+}
+
+const LONG_PARA = 'Kunibert ging über die knarrende Treppe hinunter und sah die Wirtin am Herd stehen.';
+
+test('Ton-Strom: fertige Absätze gehen der Reihe nach hinaus, dann der Abschluss; die Folge rückt vor', async () => {
+  const text = `${LONG_PARA}\n\nDraußen wartete schon der Kutscher.\n\nDie Räder rumpelten über das Pflaster.`;
+  const llm = new StreamingFakeLlm([{ result: story(text, { episode_plan: 'Plan' }) }]);
+  const { events, sink } = recordingSink();
+  const result = await new Brain(llm, { storyMinWords: 5 }).handle('geschichte', '', {}, NO_TIMER_FOR_TEST, sink);
+  assert.equal(events[0], 'begin:false');
+  assert.deepEqual(events.slice(1, 4), [LONG_PARA, 'Draußen wartete schon der Kutscher.', 'Die Räder rumpelten über das Pflaster.']);
+  assert.equal(events[4], STORY_CLOSING_FIRST);
+  assert.equal(result.streamed, true);
+  assert.equal(result.story_state.part, 1);
+  assert.equal(result.story_state.plan, 'Plan');
+  assert.ok(llm.calls[0].onText, 'Claude wird im Strom gefragt');
+});
+
+test('Ton-Strom: Ausgabe-Check schlägt im zweiten Absatz an: erster bleibt, dann Pause, Folge rückt nicht vor', async () => {
+  const text = `${LONG_PARA}\n\nDa lag ein toter Baum quer.\n\nDer dritte Absatz.`;
+  const state = { ...cleanState({}), ep: 2, part: 1, target: 5, plan: 'p', summary: 's' };
+  const llm = new StreamingFakeLlm([{ result: story(text) }]);
+  const { events, sink } = recordingSink();
+  const result = await new Brain(llm).handle('weiter', '', state, NO_TIMER_FOR_TEST, sink);
+  assert.deepEqual(events, ['begin:false', LONG_PARA, STORY_PAUSE_TEXT]);
+  assert.ok(!events.join(' ').includes('toter'), 'der abgelehnte Absatz wird nie gesprochen');
+  assert.equal(result.streamed, true);
+  assert.equal(result.story_state.part, 1, 'Teil wird beim nächsten Druck neu erzählt');
+  assert.equal(result.story_state.miss, 1);
+});
+
+test('Ton-Strom: Treffer schon im ersten Absatz: nichts gesprochen, zweiter Versuch ohne Strom', async () => {
+  const state = { ...cleanState({}), ep: 2, part: 1, target: 5, plan: 'p', summary: 's' };
+  const llm = new StreamingFakeLlm([
+    { result: story(`Ein toter Ast.\n\n${LONG_PARA}`) },
+    { result: story(`${LONG_PARA}\n\nAlles gut.`) },
+  ]);
+  const { events, sink } = recordingSink();
+  const result = await new Brain(llm).handle('weiter', '', state, LONG_TIMER_FOR_TEST, sink);
+  assert.deepEqual(events, []);
+  assert.equal(llm.calls.length, 2);
+  assert.equal(llm.calls[1].onText, undefined, 'zweiter Versuch ohne Strom');
+  assert.ok(!result.streamed);
+  assert.equal(result.story_state.part, 2);
+});
+
+test('Ton-Strom: Claude bricht nach dem ersten Absatz ab: Pause statt Ersatzgeschichte', async () => {
+  const state = { ...cleanState({}), ep: 2, part: 1, target: 5, plan: 'p', summary: 's' };
+  const text = `${LONG_PARA}\n\nZweiter Absatz, der nie ankommt.`;
+  const llm = new StreamingFakeLlm([{ result: story(text), failAfter: LONG_PARA.length + 10 }]);
+  const { events, sink } = recordingSink();
+  const result = await new Brain(llm).handle('weiter', '', state, NO_TIMER_FOR_TEST, sink);
+  assert.deepEqual(events, ['begin:false', LONG_PARA, STORY_PAUSE_TEXT]);
+  assert.equal(result.story_state.part, 1);
+});
+
+test('Ton-Strom: Finale meldet begin mit done=true; Fragen sprechen nichts in den Strom', async () => {
+  const state = { ...cleanState({}), ep: 2, part: 4, target: 5, plan: 'p', summary: 's' };
+  const { events, sink } = recordingSink();
+  const finale = await new Brain(new StreamingFakeLlm([{ result: story(`${LONG_PARA}\n\nEnde.`) }])).handle('weiter', '', state, NO_TIMER_FOR_TEST, sink);
+  assert.equal(events[0], 'begin:true');
+  assert.equal(events.at(-1), EPISODE_CLOSING);
+  assert.equal(finale.story_state.done, true);
+
+  const question = recordingSink();
+  const answerResult = await new Brain(new FakeLlm([answer('Blau.')])).handle('frage', 'Warum ist der Himmel blau?', {}, NO_TIMER_FOR_TEST, question.sink);
+  assert.deepEqual(question.events, []);
+  assert.ok(!answerResult.streamed);
+});

@@ -63,3 +63,10 @@ Zum Vergleich von Modellen mit Einzelfragen bleibt `npm run eval:llm`.
 - Ideen per Sprechtaste (`IDEA_HINT`): erst den Moment am Ende des vorigen Teils zu Ende erzählen, dann die Idee als Nächstes; nichts überspringen, Plan bleibt.
 - Lesbarkeit: höchstens zwei neue Figuren je Folge, ein Ort je Absatz, Ortswechsel ansagen.
 - Leere Antwort von Claude: zweiter Versuch statt Ersatzgeschichte.
+
+## Ton-Strom (Punkt 71, 14.11.2026, Schalter `PICASTAI_AUDIO_STREAM`, Standard aus)
+
+- Claude schreibt im Streaming (`onText` in `server-api/llm.ts`); `brain.ts` gibt jeden fertigen Absatz nach dem Ausgabe-Check an einen `StorySink`, `server-api/audio-stream.ts` vertont der Reihe nach, das Gerät spielt schon (Vertrag in `docs/picastAI-Pi-API.md`).
+- Der Plan (`episode_plan`) steht im Format vor dem Text; der Stream-Leser holt nur das Feld `text` heraus. Kommt der Plan später, wartet der erste Ton entsprechend länger, mehr passiert nicht.
+- Der erste Absatz eines Teils soll kurz sein (Anweisung in `prompts.ts`), damit der erste Ton früh kommt.
+- Treffer des Ausgabe-Checks mitten im Teil: Pause statt Fortsetzung, Folge rückt nicht vor (siehe API-Doku).

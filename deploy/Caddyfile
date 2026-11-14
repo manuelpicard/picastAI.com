@@ -20,6 +20,8 @@ kunibert.example {
 			max_size 3MB
 		}
 		reverse_proxy 127.0.0.1:3000 {
+			# Ton-Strom (PICASTAI_AUDIO_STREAM): jedes Stück sofort weitergeben, nicht puffern.
+			flush_interval -1
 			transport http {
 				# Zeitkette: Der Server hält für die ganze Anfrage ein gemeinsames Budget von 120 s
 				# ein (server-api/timing.ts), Caddy wartet 130 s, das Gerät 140 s

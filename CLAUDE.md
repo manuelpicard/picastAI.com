@@ -44,7 +44,7 @@ cd firmware/esp32-s3 && cc -std=c11 -Wall -Wextra -Werror -pedantic -fsanitize=a
 - Änderungen an `safety.ts` immer mit Sätzen in beiden Listen von `safety.test.ts` (muss anschlagen, darf nicht anschlagen). Lieber ein Fehlalarm als eine Lücke.
 - Server, Pi-Client und Firmware müssen zur Schnittstellen-Doku passen; Zeitkette Server 120 s, Caddy 130 s, Gerät 140 s.
 - Keine Schlüssel, Tokens oder Passwörter in Code, Tests, Doku oder Commits. Nie danach fragen.
-- Arbeit nur auf einem eigenen Branch mit Pull Request. Nie direkt auf `main` pushen, kein Force-Push. Mergen, Schließen und Löschen nur, wenn der Betreiber es ausdrücklich sagt.
-- Geparkte Themen (Stimme, Recht; die PRs dazu) nicht anfassen. Was geparkt ist, steht in `claude/aufgaben.md`.
+- Arbeit nur auf einem eigenen Branch mit Pull Request. Nie direkt auf `main` pushen, kein Force-Push. Seit 14.11.2026, 10:51 (Wort des Betreibers) mergt Claude PRs selbst, sobald die CI grün ist; Schließen und Löschen ebenso. Bestellen und Bezahlen nur nach Bestätigung des einzelnen Kaufs.
+- Seit 14.11.2026, 10:51 ist nichts mehr geparkt (Wort des Betreibers); auch Stimme, Recht und die PRs dazu dürfen bearbeitet werden. Offene Punkte stehen in `claude/aufgaben.md`.
 - Bis zur Rechtsprüfung testen nur Erwachsene. Vor dem ersten Kind: „Freigabe-Checkliste vor dem ersten Kind“ im Doc „Datenschutz-Folgenabschätzung“.
 - Texte für den Betreiber: Deutsch, einfache Sprache, kurze Sätze. „Getestet“ oder „grün“ nur, wenn es in dieser Sitzung geprüft wurde.
