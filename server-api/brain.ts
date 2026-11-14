@@ -419,7 +419,7 @@ export function buildStoryPrompt(
     lines.push(`Offene Fäden: ${state.threads || 'keine'}`);
     if (state.last) lines.push(`So endete der vorige Teil: ${state.last}`);
     if (state.at && settings.nowMs && settings.nowMs - state.at >= RECAP_AFTER_MS) {
-      lines.push('Seit dem vorigen Teil ist viel Zeit vergangen, vielleicht eine Nacht. Beginne mit zwei kurzen Sätzen, die wie beim Erzählen am Bett an das Wichtigste erinnern (wo Kunibert ist, was er sucht), ohne „Im letzten Teil“. Dann geht es nahtlos weiter.');
+      lines.push('Das Kind hat lange nicht zugehört (in der Geschichte ist keine Zeit vergangen, es ist derselbe Tag). Beginne mit zwei kurzen Sätzen, die wie beim Erzählen am Bett an das Wichtigste erinnern (wo Kunibert ist, was er sucht), ohne „Im letzten Teil“. Dann geht es nahtlos weiter.');
     }
     if (state.hook) lines.push(`Anknüpfen an: ${state.hook}`);
   }
@@ -454,8 +454,8 @@ export const FALLBACK_VARIANTS = [
       `„Wenn der Drache schnaubt, halte sie gegen den Wind.“\n\n` +
       `Er zog die grüne Flasche hervor und zog den Korken heraus. Ein Duft nach Pfefferminz und Sommerblumen ` +
       `wehte mit dem Bergwind direkt in die Nase des Drachen. Der Drache schnupperte, blinzelte und musste gewaltig niesen. „Hatschi!“\n\n` +
-      `Danach war er ganz ruhig. Er legte seinen schweren Kopf auf den warmen Felsen und brummte zufrieden wie eine riesige Katze. ` +
-      `Kunibert steckte sein Schwert weg und lächelte. Mit Klugheit war es viel leichter gegangen als mit Kraft.`,
+      `Er nieste und nieste und konnte kein Feuer mehr fauchen. Wütend brüllend kroch er zurück in seine Höhle. ` +
+      `Besiegt war er nicht. Aber für heute war der Berg frei, und Kunibert wusste jetzt: Mit Klugheit kommt er dem Drachen näher als mit Kraft.`,
   },
   {
     gift: 'Sie nahm ein kleines silbernes Glöckchen von einem Haken und legte es ihm in die Hand.',
@@ -466,8 +466,8 @@ export const FALLBACK_VARIANTS = [
       `Der Drache streckte sich vor seiner Höhle. Die Sonne wärmte die Felsen. Da riss er sein riesiges Maul auf und gähnte, ` +
       `so laut, dass die Steine wackelten. „Läute es erst, wenn der Drache gähnt“, hatte die Hexe gesagt.\n\n` +
       `Kunibert zog das silberne Glöckchen hervor und läutete, ganz leise. Bimm, bimm. Der Ton schwebte über den Berg wie ein Schlaflied.\n\n` +
-      `Die Augen des Drachen wurden schwer. Er rollte sich zusammen wie ein großer, warmer Hund und schnarchte, dass die Grashalme zitterten. ` +
-      `Kunibert lächelte und schlich auf Zehenspitzen davon. Manchmal ist ein leiser Ton stärker als ein Schwert.`,
+      `Die Augen des Drachen wurden schwer. Er knurrte noch einmal böse, dann sank sein Kopf auf den Felsen, und er schnarchte, dass die Grashalme zitterten. ` +
+      `Kunibert schlich auf Zehenspitzen an ihm vorbei. Besiegt war der Drache nicht. Aber heute hatte Kunibert gelernt, wie man ihn einschlafen lässt.`,
   },
   {
     gift: 'Sie gab ihm einen glatten, runden Stein mit einem Loch in der Mitte.',
@@ -478,9 +478,9 @@ export const FALLBACK_VARIANTS = [
       `Der Drache stampfte vor seiner Höhle und schnaubte. Kunibert wollte schon sein Schwert ziehen. Doch dann dachte er an die Hexe: ` +
       `„Schau durch den Stein, bevor du kämpfst.“\n\n` +
       `Er hielt den runden Stein vor sein Auge und schaute hindurch. Da sah er etwas, das er vorher nicht bemerkt hatte. ` +
-      `Im Eingang der Höhle steckte ein riesiger Dorn im Fels, genau dort, wo der Drache sich hinlegen wollte.\n\n` +
-      `„Ach so!“, rief Kunibert. Er kletterte hinauf, zog und ruckelte, bis der Dorn herausfiel. Der Drache legte sich hin, ` +
-      `seufzte tief und blinzelte ihn freundlich an. Kunibert hatte gewonnen, ohne zu kämpfen.`,
+      `Der Drache blickte immer wieder auf einen glänzenden Haufen hinter sich. Er bewachte etwas. Er wollte nur, dass niemand an seinen Schatz kam.\n\n` +
+      `„Ach so!“, flüsterte Kunibert. Er warf einen Kiesel weit nach links, so dass er laut klapperte. Sofort fuhr der Drache herum und fauchte in die falsche Richtung. ` +
+      `Kunibert huschte auf der anderen Seite den Pfad hinunter. Besiegt war der Drache nicht. Aber jetzt kannte Kunibert seine schwache Stelle.`,
   },
 ] as const;
 
@@ -762,7 +762,15 @@ export class Brain {
             episode_finished?: boolean; episode_plan?: string; episode_motif?: string;
           };
           const text = prepareStoryText(trimWords(String(parsed.text || ''), this.storyMaxWords + 50));
-          if (!text) throw new Error('Geschichte des Sprachmodells ist leer');
+          if (!text) {
+            // Ohne erzwungenes Werkzeug (PR #55) kann eine Antwort leer sein: einmal neu, wenn Zeit bleibt.
+            if (attempt === 1 && timer.remainingMs() >= STORY_RETRY_MIN_MS) {
+              console.warn(`LLM-Geschichte (${this.llmName}) leer, zweiter Versuch`);
+              retryNote = 'Wichtig: Rufe das Werkzeug auf und schreibe den ganzen Teil in das Feld text.';
+              continue;
+            }
+            throw new Error('Geschichte des Sprachmodells ist leer');
+          }
           const metrics = storyMetrics(text);
           // Nur Zahlen ins Protokoll, nie der Text (CLAUDE.md).
           const hint = phase === 'trick' ? hintFromPlan(current.plan) : '';
@@ -785,9 +793,9 @@ export class Brain {
             }
             throw new Error('Geschichte des Sprachmodells durch Ausgabe-Check abgelehnt');
           }
-          // Ende nur im Finale oder, wenn Claude es so will, frühestens in der Wendung. Ein früheres
-          // "fertig" würde die Folge für das Kind nach zwei Teilen abbrechen; dann zählt die Teilezahl.
-          const done = phase === 'finale' || (phase === 'trick' && Boolean(parsed.episode_finished));
+          // Ende nur im Finale: Eine Folge ist ein ganzer Tag und endet am Abend im Gasthaus (Wort des
+          // Betreibers 14.11., 10:42). Ein früheres "fertig" von Claude zählt nicht; es gilt die Teilezahl.
+          const done = phase === 'finale';
           const plan = part === 1 ? cleanText(parsed.episode_plan, STATE_LIMITS.plan) : current.plan;
           const updatedState: StoryState = {
             ...current,

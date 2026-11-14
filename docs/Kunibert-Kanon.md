@@ -46,9 +46,11 @@ Ihr Rat kann erst später verständlich werden, nebensächlich bleiben oder Kuni
 
 ### Der Drache
 
-Der Drache lebt in einer Höhle am Berg. In der Ursprungsgeschichte setzt er Klauen, Zähne und Feuer ein und kennt seine Höhle besser als Kunibert. Er ist eine echte Gefahr innerhalb des Abenteuers, aber keine Einladung zu Grausamkeit.
+Der Drache lebt in einer Höhle am Berg. In der Ursprungsgeschichte setzt er Klauen, Zähne und Feuer ein und kennt seine Höhle besser als Kunibert.
 
-Kunibert muss ihn nicht töten. In der Ursprungsgeschichte gelingt es Kunibert, den Drachen durch Beobachtung und eine veränderte Taktik zu überlisten; am Ende zieht sich der Drache in die Höhle zurück. Andere Folgen dürfen den Konflikt anders lösen: ausweichen, verhandeln, etwas zurückbringen oder feststellen, dass ein Missverständnis vorlag.
+**Festgelegt am 14.11.2026, 10:42 (Betreiber):** Der Drache ist eine böse Gestalt, vor der alle Angst haben, auch Kunibert. Ihn zu überlisten und zu besiegen ist Kuniberts großes, stets fernes Ziel. In keiner Folge gelingt der endgültige Sieg; an jedem Tag kommt Kunibert ein Stück näher (eine List, eine Rettung, eine Flucht, ein neues Wissen über den Drachen), und am Abend ist der Drache noch da. Der Drache wird nicht freundlich, nicht gezähmt und nicht zum Freund.
+
+Kindgerecht bleibt es trotzdem: Seine Bosheit zeigt sich in Feuer, Brüllen, Schatten, angesengten Dingen und darin, dass alle sich verstecken. Niemand wird sichtbar verletzt, niemand stirbt, kein Kind ist in Gefahr, und kein Teil endet mit einem Schreckmoment. In der Ursprungsgeschichte überlistet Kunibert ihn durch Beobachtung und eine veränderte Taktik; der Drache zieht sich in die Höhle zurück.
 
 **Offen:** Name, Sprache, Herkunft, Beweggründe und ob der Drache in jeder Folge derselbe ist, sind nicht festgelegt. Seine Welt darf geheimnisvoll bleiben.
 
@@ -76,7 +78,9 @@ Eine klassische Kunibert-Folge kann diesem lockeren Rhythmus folgen:
 4. **Schwierigkeit und Rückschlag:** Ein Plan funktioniert nicht sofort. Kunibert darf scheitern, zweifeln oder eine Pause brauchen.
 5. **Neue Sicht:** Eine Beobachtung, ein eigener Gedanke oder ein mehrdeutiger Hinweis hilft, die Lage anders zu betrachten.
 6. **Lösung:** Kunibert löst das konkrete Problem mit Klugheit, Geduld, Freundlichkeit oder Zusammenarbeit – nicht automatisch durch Kampf.
-7. **Ruhiger Abschluss:** Er kehrt häufig ins Gasthaus zurück, isst oder schläft und kann wieder im Dachzimmer erwachen.
+7. **Ruhiger Abschluss am Abend:** Er kehrt ins Gasthaus zurück, isst die Suppe der Wirtin und schläft im Dachzimmer ein.
+
+**Festgelegt am 14.11.2026, 10:42 (Betreiber):** Jede Folge ist genau ein Tag, vom Erwachen bis zum Einschlafen. Sie hat ein natürliches Ende; danach fragt der Erzähler nicht, ob das Kind wissen will, wie es weitergeht. Die nächste Folge ist der nächste Tag.
 
 Das Erwachen im Dachzimmer kann als wiederkehrender, leicht rätselhafter Rahmen dienen. **Es ist nicht festgelegt, ob dies ein Traum, ein Zeitsprung oder eine tatsächliche Wiederholung ist.** Die Erzählung soll diese Frage nicht endgültig beantworten müssen.
 
@@ -94,7 +98,7 @@ Das Erwachen im Dachzimmer kann als wiederkehrender, leicht rätselhafter Rahmen
 
 - Abenteuer und Gefahr dürfen spannend sein, aber nicht grausam oder grafisch. Keine ausgemalten Verletzungen, kein Blut, keine Tode und keine Angst-Enden.
 - Kunibert darf müde, traurig, erschrocken oder verletzt sein. Danach bekommt Erholung Raum; die Rückkehr ins Gasthaus und eine warme Mahlzeit können Geborgenheit vermitteln.
-- Der Drache darf bedrohlich wirken, wird aber nicht automatisch getötet oder als grundsätzlich böse erklärt.
+- Der Drache ist böse und bedrohlich (seit 14.11.2026), wird aber nie getötet; Kunibert vertreibt oder überlistet ihn für einen Tag.
 - Geschichten dürfen keine reale Gefahr verharmlosen. Wenn ein Kind von akuter Gefahr, Missbrauch, Selbstverletzung oder einem medizinischen Notfall spricht, wird die Erzählung unterbrochen und auf echte erwachsene Hilfe verwiesen. Das ist eine Produkt-Sicherheitsregel und kein Märchenmotiv.
 - Das Gerät verspricht keine Geheimhaltung, gibt sich nicht als Elternteil aus und ersetzt keine Bezugsperson.
 
@@ -123,7 +127,6 @@ Diese Motive sind literarische Möglichkeiten, keine psychologische Auswertung. 
 - Soll es feste Namen für Wirtin, Kutscher, Hexe oder Drache geben?
 - Ist Kunibert immer derselbe Ritter oder eine Figur, die in wiederkehrenden Varianten neu beginnt?
 - Welche Altersgruppe soll verbindlich angesprochen werden?
-- Welche Art von Ende wird für gewöhnliche Folgen und für Schlafenszeitfolgen bevorzugt?
 - Welche dauerhaften Fakten sollen in den Kanon aufgenommen werden, und welche bleiben bewusst offen?
 
 ## 9. Quellen im Repository

@@ -1,4 +1,4 @@
-# Erzähler-Engine (Stand 13.11.2026, nachts)
+# Erzähler-Engine (Stand 14.11.2026)
 
 So entsteht ein Teil einer Kunibert-Folge. Code: `server-api/brain.ts` (Ablauf, Zustand), `server-api/prompts.ts` (Texte an Claude), Kanon: `docs/Kunibert-Kanon.md`.
 
@@ -53,3 +53,13 @@ npm run probe:folge -- folge-probe --anzahl 5 --bewerten
 Erzeugt fünf Folgen nacheinander (wechselnde Wünsche: keiner, Einhorn, Fußball, zum Einschlafen, kleiner Drache), nimmt das Gedächtnis der letzten Folgen mit wie am Gerät und lässt jede Folge von Claude benoten: roter Faden, Lebendigkeit, kindgerecht, Vorlesbarkeit, Kanon, Wunsch (je 1 bis 5), dazu Begründung und ein Verbesserungsvorschlag. Übersicht mit Durchschnitten in `folge-probe/bewertung.md`, die Folgen in `folge-probe/folge-1/` usw. So lassen sich Änderungen an den Anweisungen mit Zahlen vergleichen. Die Bewertung ersetzt keinen Hörtest mit Erwachsenen. Kosten (Einschätzung): pro Folge fünf bis sechs Aufrufe an Claude.
 
 Zum Vergleich von Modellen mit Einzelfragen bleibt `npm run eval:llm`.
+
+## Runde 5 (14.11.2026): ein Tag, böser Drache, Ideen ohne Sprung
+
+- Eine Folge ist genau ein Tag (Morgen, Vormittag, Nachmittag, Gegenüber mit dem Drachen, Abend). Die Teile heißen weiter `start`, `weg`, `middle`, `trick`, `finale` (`PHASE_HINTS` in `server-api/prompts.ts`).
+- Die Wendung (`trick`) endet mit Kuniberts Idee als gespanntem Haltepunkt; wie die List ausgeht, erzählt das Finale, danach Abend im Gasthaus und Einschlafen. Die Folge endet nur im Finale (`brain.ts`); ein früheres `episode_finished` von Claude zählt nicht.
+- Der Abschluss nach dem Finale ist „Und so endete dieser Tag von Ritter Kunibert.“ ohne Frage nach dem Weiterhören.
+- Der Drache ist böse und das ferne Ziel; nie Freund, nie endgültig besiegt (Kanon, Abschnitt 3).
+- Ideen per Sprechtaste (`IDEA_HINT`): erst den Moment am Ende des vorigen Teils zu Ende erzählen, dann die Idee als Nächstes; nichts überspringen, Plan bleibt.
+- Lesbarkeit: höchstens zwei neue Figuren je Folge, ein Ort je Absatz, Ortswechsel ansagen.
+- Leere Antwort von Claude: zweiter Versuch statt Ersatzgeschichte.

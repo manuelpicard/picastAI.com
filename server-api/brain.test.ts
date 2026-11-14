@@ -3,7 +3,7 @@ import { screenOutput } from './safety.js';
 import test from 'node:test';
 import { Brain, buildStoryPrompt, FALLBACK_VARIANTS, formatMetrics, hintFromPlan, usesHint, isBedtime, germanNumber, spellOutForSpeech, storyMetrics, cleanState, cleanText, extractWishKeyword, FALLBACK_ANSWER_DE, isLikelySttArtifact, lastSentences, MAX_UTTERANCE_CHARS, prepareStoryText, rememberMotif, storyPhase, trimWords } from './brain.js';
 import type { LlmJsonRequest, LlmProvider } from './llm.js';
-import { BEDTIME_HINT, EPISODE_CLOSING, EPISODE_SEEDS_BY_SEASON, seasonOf, STORY_CLOSING, STORY_CLOSING_FIRST, STORY_PAUSE_TEXT } from './prompts.js';
+import { BEDTIME_HINT, EPISODE_CLOSING, IDEA_HINT, PHASE_HINTS, STORYTELLER_SYSTEM, EPISODE_SEEDS_BY_SEASON, seasonOf, STORY_CLOSING, STORY_CLOSING_FIRST, STORY_PAUSE_TEXT } from './prompts.js';
 import { SAFETY_RESPONSE_DE, UNCLEAR_RESPONSE_DE } from './safety.js';
 
 /** Fake-Anbieter: liefert vorbereitete Antworten oder wirft vorbereitete Fehler. */
@@ -514,7 +514,7 @@ test('Ersatzgeschichte erzählt durchgehend in der Vergangenheit (kein „erwach
 test('buildStoryPrompt: kurze Folge holt den Hinweis der Hexe in Teil 1', () => {
   const prompt = buildStoryPrompt({ ...cleanState({}), target: 3, seed: 'Nebel.' }, 1, { storyMinWords: 170, storyMaxWords: 230 });
   assert.match(prompt, /schon in diesem Teil die Hexe/);
-  assert.match(prompt, /Wendung mit der klugen Lösung/);
+  assert.match(prompt, /bekommt die kluge Idee/);
 });
 
 // ---------------------------------------------------------------------------
@@ -657,11 +657,11 @@ test('Lange Pause zwischen zwei Teilen: kurze Erinnerung am Anfang des nächsten
 
   now = new Date(t0.getTime() + 10 * 60 * 1000); // zehn Minuten später
   const second = await brain.handle('weiter', '', first.story_state);
-  assert.ok(!/viel Zeit vergangen/.test(llm.calls[1].user));
+  assert.ok(!/lange nicht zugehört/.test(llm.calls[1].user));
 
   now = new Date(t0.getTime() + 16 * 60 * 60 * 1000); // am nächsten Morgen
   await brain.handle('weiter', '', second.story_state);
-  assert.match(llm.calls[2].user, /viel Zeit vergangen/);
+  assert.match(llm.calls[2].user, /lange nicht zugehört.*derselbe Tag/);
 });
 
 test('cleanState: at bleibt eine ganze Zahl ab 0', () => {
@@ -762,7 +762,8 @@ test('Claude meldet zu früh "fertig": die Folge läuft bis zur geplanten Teilez
   assert.ok(early.speech.endsWith(STORY_CLOSING));
 
   const trick = await new Brain(new FakeLlm([story('Vier.', { episode_finished: true })])).handle('weiter', '', { ...state, part: 3 });
-  assert.equal(trick.story_state.done, true, 'in der Wendung darf Claude die Folge beenden');
+  assert.equal(trick.story_state.done, false, 'eine Folge ist ein ganzer Tag: Ende nur im Finale');
+  assert.ok(trick.speech.endsWith(STORY_CLOSING));
 });
 
 test('Frage während einer Folge: Claude bekommt die Zusammenfassung (nicht den Plan) mit', async () => {
@@ -777,4 +778,47 @@ test('Frage während einer Folge: Claude bekommt die Zusammenfassung (nicht den 
   const idle = new FakeLlm([answer('Blau.')]);
   await new Brain(idle).handle('frage', 'Warum ist der Himmel blau?', {});
   assert.ok(!idle.calls[0].user.includes('Bisher'));
+});
+
+// ---------------------------------------------------------------------------
+// Runde 5 (14.11.2026): ein Tag pro Folge, böser Drache als fernes Ziel, Ideen ohne Sprung
+// ---------------------------------------------------------------------------
+
+test('Erzählwelt: der Drache ist böse, wird nie Freund und nie endgültig besiegt; eine Folge ist ein Tag', () => {
+  const system = STORYTELLER_SYSTEM('6 bis 10');
+  assert.match(system, /Der Drache ist böse/);
+  assert.match(system, /In keiner Folge wird der Drache endgültig besiegt/);
+  assert.match(system, /Jede Folge ist genau ein Tag/);
+  assert.ok(!/verhandeln|Missverständnis aufklären/.test(system), 'kein freundlicher Ausweg mit dem Drachen mehr');
+  assert.match(PHASE_HINTS.finale, /schläft im Dachzimmer ein/);
+  assert.match(PHASE_HINTS.finale, /nicht endgültig besiegt/);
+  assert.match(PHASE_HINTS.trick, /im letzten Teil/);
+  assert.ok(!/nächsten Tag/.test(PHASE_HINTS.middle), 'keine Nacht mitten in der Folge');
+});
+
+test('Idee des Kindes: anknüpfen am Ende des vorigen Teils, nichts überspringen, Plan bleibt', () => {
+  const hint = IDEA_HINT('Kunibert soll sich verstecken');
+  assert.match(hint, /genau dort, wo der vorige Teil aufgehört hat/);
+  assert.match(hint, /Überspringe nichts/);
+  assert.match(hint, /Der Plan der Folge bleibt/);
+  assert.match(hint, /bleibt er trotzdem der böse Drache/);
+});
+
+test('Ende der Folge: Abschluss ohne Frage nach dem Weiterhören', async () => {
+  const state = { ...cleanState({}), ep: 2, part: 4, target: 5, plan: 'p', summary: 's' };
+  const result = await new Brain(new FakeLlm([story('Fünf.', { episode_finished: true })])).handle('weiter', '', state);
+  assert.equal(result.story_state.done, true);
+  assert.ok(result.speech.endsWith(EPISODE_CLOSING));
+  assert.ok(!/weitergeht|Erzähltaste/.test(EPISODE_CLOSING));
+});
+
+test('Leere Antwort von Claude: zweiter Versuch statt Ersatzgeschichte', async () => {
+  const state = { ...cleanState({}), ep: 2, part: 1, target: 5, plan: 'p', summary: 's' };
+  const llm = new FakeLlm([story(''), story('Zwei. Eine echte Szene.')]);
+  const timer = { time: <T>(_s: unknown, fn: () => Promise<T>) => fn(), timeSync: <T>(_s: unknown, fn: () => T) => fn(), remainingMs: () => 110_000 };
+  const result = await new Brain(llm).handle('weiter', '', state, timer as never);
+  assert.equal(llm.calls.length, 2);
+  assert.match(llm.calls[1].user, /Rufe das Werkzeug auf/);
+  assert.equal(result.story_state.part, 2);
+  assert.ok(!result.fixed);
 });
