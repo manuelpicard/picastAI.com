@@ -26,6 +26,8 @@ export interface KunibertConfig {
   llmTimeoutMs: number;
   anthropicApiKey: string | null;
   anthropicModel: string;
+  /** Preise für die Kostenzeile im Protokoll: "Eingabe,Ausgabe,CacheSchreiben,CacheLesen" in $ je Million Token; leer = Listenpreis nach Modellname (server-api/costs.ts). */
+  llmPrices: string;
   anthropicBaseUrl: string;
   /**
    * Arbeitsbereich (Workspace) für Claude, zum Beispiel wrkspc_01ABC… . Nötig bei Schlüsseln, die an eine
@@ -297,6 +299,7 @@ export function loadConfig(): KunibertConfig {
     llmTimeoutMs: Math.min(120_000, Math.max(3_000, parseNum(process.env.PICASTAI_LLM_TIMEOUT_MS, 30_000))),
     anthropicApiKey: process.env.ANTHROPIC_API_KEY?.trim() || null,
     anthropicModel: process.env.PICASTAI_ANTHROPIC_MODEL?.trim() || 'claude-sonnet-5-5',
+    llmPrices: process.env.PICASTAI_LLM_PRICES?.trim() || '',
     anthropicBaseUrl: (process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com').replace(/\/$/, ''),
     anthropicWorkspaceId: (() => {
       const value = process.env.PICASTAI_ANTHROPIC_WORKSPACE_ID?.trim() || '';

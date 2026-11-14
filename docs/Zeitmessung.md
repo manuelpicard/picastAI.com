@@ -37,6 +37,20 @@ Ein `-` heißt: Diese Stufe ist nicht gelaufen. Das ist etwas anderes als `0`. B
 
 Anfragen, die gleich abgewiesen werden (keine Anmeldung, zu viele Anfragen, keine Aufnahme), erzeugen keine Zeile.
 
+### Token und Kosten (seit 14.11.2026, Punkt 72b)
+
+Hat eine Anfrage Claude aufgerufen, hängt die Zeile fünf Felder an:
+
+```
+… audio_s=89.5 tokens_ein=3120 tokens_aus=910 cache_lesen=2480 cache_schreiben=0 kosten_usd=0.015598
+```
+
+- `tokens_ein`, `tokens_aus`, `cache_lesen`, `cache_schreiben`: Summe aller Aufrufe der Anfrage (Feld `usage` der Antwort von Anthropic).
+- `kosten_usd`: daraus berechnet mit den Listenpreisen in `server-api/costs.ts` (Sonnet 5.5: 2 $ Eingabe, 10 $ Ausgabe, 2,50 $ Cache schreiben, 0,10 $ Cache lesen je Million Token; abgerufen 14.11.2026 auf https://platform.claude.com/docs/en/about-claude/pricing). Andere Preise: `PICASTAI_LLM_PRICES=Eingabe,Ausgabe,CacheSchreiben,CacheLesen`. Unbekanntes Modell ohne Angabe: `kosten_usd=-`.
+- Vorbereitete Teile (`prefetch.ts`) bekommen eine eigene Zeile mit `modus=vorbereitung`.
+- Endet eine Folge, steht eine Zeile `Folge fertig: teile=5 kosten_usd=0.081234` im Protokoll: Summe aller Teile dieser Folge, auch der vorbereiteten. Fragen zwischendurch zählen nicht zur Folge.
+- Nie im Protokoll: Text der Geschichte, Äußerung des Kindes, Geräte-ID, Schlüssel.
+
 ## Pi
 
 Der Pi-Client schreibt, wie lange das Kind gewartet hat:

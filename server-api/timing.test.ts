@@ -8,9 +8,10 @@ import { budgetTimeoutMs, NO_TIMER, TIMED_STAGES, TTS_RESERVE_MS, TurnTimer, wav
 
 /** Alle Zeilen müssen genau dieser Form folgen: feste Schlüssel, Zahlen oder "-", sonst nichts. */
 const LINE_FORMAT = new RegExp(
-  '^Zeitmessung id=[0-9a-f]{8} modus=(frage|geschichte|weiter|-) status=(\\d{3}|abgebrochen)' +
+  '^Zeitmessung id=[0-9a-f]{8} modus=(frage|geschichte|weiter|vorbereitung|-) status=(\\d{3}|abgebrochen)' +
     TIMED_STAGES.map((stage) => ` ${stage}_ms=(\\d+|-)`).join('') +
-    ' gesamt_ms=\\d+ sprachmodell_aufrufe=\\d+ audio_s=(\\d+\\.\\d|-)$'
+    ' gesamt_ms=\\d+ sprachmodell_aufrufe=\\d+ audio_s=(\\d+\\.\\d|-)' +
+    '( tokens_ein=\\d+ tokens_aus=\\d+ cache_lesen=\\d+ cache_schreiben=\\d+ kosten_usd=(\\d+\\.\\d{6}|-))?$'
 );
 
 /** Fester Takt in Millisekunden, den die Tests selbst vorstellen. */
@@ -326,4 +327,43 @@ test('Zeitbudget: die Sicherheitsweiche läuft unabhängig vom Budget und antwor
   assert.equal(result.fixed, 'sicherheit');
   assert.equal(result.speech, SAFETY_RESPONSE_DE);
   assert.equal(llm.requests.length, 0);
+});
+
+test('Zeitmesser: Token und Kosten aller Sprachmodell-Aufrufe stehen am Ende der Zeile (nur Zahlen)', async () => {
+  const clock = fakeClock();
+  const timer = new TurnTimer(clock.now, 'abcdef01');
+  await timer.time('sprachmodell', async () => clock.advance(10));
+  timer.noteLlm({ input: 100, output: 50, cacheWrite: 0, cacheRead: 2000 }, 0.0007);
+  timer.noteLlm({ input: 10, output: 5, cacheWrite: 300, cacheRead: 0 }, 0.0001);
+  const line = timer.logLine(200)!;
+  assert.match(line, LINE_FORMAT);
+  assert.match(line, / tokens_ein=110 tokens_aus=55 cache_lesen=2000 cache_schreiben=300 kosten_usd=0\.000800$/);
+  const unpriced = new TurnTimer(clock.now, 'abcdef02');
+  await unpriced.time('sprachmodell', async () => clock.advance(1));
+  unpriced.noteLlm({ input: 1, output: 1, cacheWrite: 0, cacheRead: 0 }, null);
+  assert.match(unpriced.logLine(200)!, /kosten_usd=-$/);
+  const none = new TurnTimer(clock.now, 'abcdef03');
+  await none.time('sprachausgabe', async () => clock.advance(1));
+  assert.ok(!none.logLine(200)!.includes('tokens_'), 'ohne Sprachmodell keine Kostenfelder');
+});
+
+test('Brain meldet Token und Kosten an die Zeitmessung und summiert sie je Folge', async () => {
+  const usage = { input: 1000, output: 500, cacheWrite: 0, cacheRead: 0 };
+  const llm: LlmProvider = {
+    name: 'anthropic',
+    model: 'claude-sonnet-5-5',
+    async generateJson(request: LlmJsonRequest) {
+      request.onUsage?.(usage);
+      return { text: 'Kunibert ging los. '.repeat(30), summary: 's', open_threads: '', next_hook: 'h', episode_finished: false, episode_plan: 'p' };
+    },
+  };
+  const clock = fakeClock();
+  const timer = new TurnTimer(clock.now, 'abcdef04');
+  const brain = new Brain(llm, { storyMinWords: 5 });
+  const first = await brain.handle('geschichte', '', {}, timer);
+  // 1000 * 2 $ + 500 * 10 $ je Million = 0,007 $
+  assert.match(timer.logLine(200)!, /tokens_ein=1000 tokens_aus=500 cache_lesen=0 cache_schreiben=0 kosten_usd=0\.007000$/);
+  assert.equal(first.story_state.usd.toFixed(6), '0.007000');
+  const second = await brain.handle('weiter', '', first.story_state, new TurnTimer(clock.now, 'abcdef05'));
+  assert.equal(second.story_state.usd.toFixed(6), '0.014000');
 });

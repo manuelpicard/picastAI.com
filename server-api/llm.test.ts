@@ -198,3 +198,17 @@ test('AnthropicProvider: Arbeitsbereich-Kopf bei gesetzter ID; fehlender Arbeits
       && /PICASTAI_ANTHROPIC_WORKSPACE_ID/.test(error.message) && !/GEHEIMER/.test(error.message) && !error.transient
   );
 });
+
+test('AnthropicProvider meldet die Token-Zahlen der Antwort (onUsage)', async () => {
+  const provider = new AnthropicProvider({
+    apiKey: 'sk-test',
+    model: 'claude-test',
+    fetchImpl: fakeFetch(() => new Response(JSON.stringify({
+      content: [{ type: 'tool_use', name: 'antwort', input: { ok: true } }],
+      usage: { input_tokens: 7, output_tokens: 8, cache_creation_input_tokens: 9, cache_read_input_tokens: 10 },
+    }), { status: 200 })),
+  });
+  const seen: unknown[] = [];
+  await provider.generateJson({ ...REQUEST, onUsage: (usage) => seen.push(usage) });
+  assert.deepEqual(seen, [{ input: 7, output: 8, cacheWrite: 9, cacheRead: 10 }]);
+});

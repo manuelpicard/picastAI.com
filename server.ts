@@ -46,7 +46,22 @@ const voice = new VoicePipeline(config);
 const deviceStoryStates = new Map<string, StoryState>();
 // Nächster Geschichtenteil im Hintergrund (Sprachmodell und Sprachausgabe), siehe server-api/prefetch.ts.
 const prefetcher = new StoryPrefetcher(
-  async (state) => synthesizeIfConfigured(await brain.handle('weiter', '', state)),
+  async (state) => {
+    // Eigene Zeitmessung ohne Budget (läuft im Hintergrund): Die Zeile zeigt Dauer, Token und Kosten
+    // des vorbereiteten Teils, damit auch diese Aufrufe in den Kosten je Folge sichtbar sind.
+    const timer = new TurnTimer(undefined, undefined, Number.POSITIVE_INFINITY);
+    timer.mode = 'vorbereitung';
+    let ok = false;
+    try {
+      const result = await synthesizeTimed(await brain.handle('weiter', '', state, timer), timer);
+      timer.noteAudio(result.wav);
+      ok = true;
+      return result;
+    } finally {
+      const line = timer.logLine(ok ? 200 : 'abgebrochen');
+      if (line) console.log(line);
+    }
+  },
   { ttlMs: 30 * 60 * 1000, nextEpisodeTtlMs: 24 * 60 * 60 * 1000, enabled: config.storyPrefetch }
 );
 // Ein frisch erzeugter Teil braucht Claude und die Sprachausgabe. So viel Zeit bleibt mindestens

@@ -26,6 +26,7 @@ import {
 } from './safety.js';
 import { generateMelodyWav, generateToneWav } from './audio.js';
 import { config, type KunibertConfig } from './config.js';
+import { costUsd, formatUsd, pricesFor, type LlmPrices, type LlmUsage } from './costs.js';
 import { budgetTimeoutMs, MIN_LLM_MS, NO_TIMER, TTS_RESERVE_MS, type StageTimer } from './timing.js';
 
 /** Fester Ersatztext, wenn das Sprachmodell fehlt, ausfällt oder seine Antwort abgelehnt wurde. */
@@ -58,6 +59,8 @@ export interface StoryState {
   miss: number;
   /** Zeitpunkt des letzten erzählten Teils (ms seit 1970), 0 = unbekannt. Für die Erinnerung nach langer Pause. */
   at: number;
+  /** Bisherige Kosten der laufenden Folge für Claude in US-Dollar (nur fürs Protokoll, Punkt 72b). */
+  usd: number;
 }
 
 /** Nach so langer Pause zwischen zwei Teilen erinnert der nächste Teil kurz an das Wichtigste. */
@@ -163,6 +166,7 @@ export function cleanState(raw: any): StoryState {
       recent: '',
       miss: 0,
       at: 0,
+      usd: 0,
     };
   }
   const ep = Number(raw.ep) || 1;
@@ -184,6 +188,7 @@ export function cleanState(raw: any): StoryState {
     recent: cleanText(raw.recent, STATE_LIMITS.recent),
     miss: Math.max(0, Math.min(3, Math.floor(Number(raw.miss) || 0))),
     at: Math.max(0, Math.floor(Number(raw.at) || 0)),
+    usd: Math.max(0, Math.min(1000, Number(raw.usd) || 0)),
   };
 }
 
@@ -433,7 +438,7 @@ export function buildStoryPrompt(
   return lines.join('\n');
 }
 
-export type BrainSettings = Pick<KunibertConfig, 'ageBracket' | 'partsPerEpisode' | 'storyMinWords' | 'storyMaxWords' | 'answerMaxWords' | 'sttPrompt'> & {
+export type BrainSettings = Pick<KunibertConfig, 'ageBracket' | 'partsPerEpisode' | 'storyMinWords' | 'storyMaxWords' | 'answerMaxWords' | 'sttPrompt' | 'llmPrices'> & {
   /** Uhr für die Jahreszeit der Stimmung (austauschbar für Tests). */
   now: () => Date;
 };
@@ -492,6 +497,7 @@ export class Brain {
   private readonly answerMaxWords: number;
   private readonly sttPrompt: string;
   private readonly now: () => Date;
+  private readonly prices: LlmPrices | null;
 
   /**
    * Ohne Anbieter (kein Key) greifen die festen Fallback-Texte. Die Einstellungen
@@ -505,6 +511,16 @@ export class Brain {
     this.answerMaxWords = settings.answerMaxWords ?? config.answerMaxWords;
     this.sttPrompt = settings.sttPrompt ?? config.sttPrompt;
     this.now = settings.now ?? (() => new Date());
+    this.prices = llm ? pricesFor(llm.model, settings.llmPrices ?? config.llmPrices) : null;
+  }
+
+  /** Zählt Token und Kosten eines Aufrufs für die Zeitmessung (und optional für die Folge). Nur Zahlen. */
+  private meter(timer: StageTimer, onCost?: (usd: number) => void): (usage: LlmUsage) => void {
+    return (usage) => {
+      const usd = this.prices ? costUsd(usage, this.prices) : null;
+      timer.noteLlm?.(usage, usd);
+      if (onCost && usd !== null) onCost(usd);
+    };
   }
 
   /**
@@ -599,6 +615,7 @@ export class Brain {
           schemaName: 'kunibert_antwort',
           schema: QUESTION_SCHEMA,
           timeoutMs: this.llmTimeoutMs(timer),
+          onUsage: this.meter(timer),
         })) as { category?: string; speech?: string };
         if (parsed.category === 'sicherheit') {
           return {
@@ -727,6 +744,7 @@ export class Brain {
       recent: state.recent,
       miss: 0,
       at: 0,
+      usd: 0,
     };
   }
 
@@ -746,6 +764,7 @@ export class Brain {
       const now = this.now();
       const settings = { storyMinWords: this.storyMinWords, storyMaxWords: this.storyMaxWords, bedtime: isBedtime(now), nowMs: now.getTime(), idea };
       let retryNote = '';
+      let spent = 0;
       // Höchstens zwei Versuche: Lehnt der Ausgabe-Check einen Teil ab, bekommt das Modell einen
       // Hinweis und schreibt ihn neu, wenn noch genug Zeit bleibt. Sonst greift die Ersatzgeschichte.
       for (let attempt = 1; attempt <= 2; attempt++) {
@@ -757,6 +776,7 @@ export class Brain {
             schema: STORY_SCHEMA,
             maxOutputTokens: 2000,
             timeoutMs: this.llmTimeoutMs(timer),
+            onUsage: this.meter(timer, (usd) => { spent += usd; }),
           })) as {
             text?: string; summary?: string; open_threads?: string; next_hook?: string;
             episode_finished?: boolean; episode_plan?: string; episode_motif?: string;
@@ -810,7 +830,10 @@ export class Brain {
             recent: done ? rememberMotif(current.recent, String(parsed.episode_motif || plan || '')) : current.recent,
             miss: 0,
             at: now.getTime(),
+            usd: current.usd + spent,
           };
+          // Kosten der ganzen Folge, wenn sie endet (Punkt 72b). Nur Zahlen.
+          if (done) console.log(`Folge fertig: teile=${part} kosten_usd=${formatUsd(updatedState.usd)}`);
           return this.storyResult(text, part, updatedState);
         } catch (err) {
           console.warn(`LLM-Geschichte (${this.llmName}) fehlgeschlagen, verwende Fallback:`, err);
