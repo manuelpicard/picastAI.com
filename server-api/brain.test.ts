@@ -764,3 +764,17 @@ test('Claude meldet zu früh "fertig": die Folge läuft bis zur geplanten Teilez
   const trick = await new Brain(new FakeLlm([story('Vier.', { episode_finished: true })])).handle('weiter', '', { ...state, part: 3 });
   assert.equal(trick.story_state.done, true, 'in der Wendung darf Claude die Folge beenden');
 });
+
+test('Frage während einer Folge: Claude bekommt die Zusammenfassung (nicht den Plan) mit', async () => {
+  const state = { ...cleanState({}), ep: 2, part: 2, target: 5, plan: 'GEHEIM: Lösung', summary: 'Die Glocke ist weg, Kunibert sucht sie.' };
+  const llm = new FakeLlm([answer('Das weiß noch keiner. Drück die Erzähltaste, dann erfährst du es.')]);
+  const result = await new Brain(llm).handle('frage', 'Warum hat der Drache die Glocke?', state);
+  assert.equal(result.kind, 'frage');
+  assert.match(llm.calls[0].user, /Läuft gerade eine Kunibert-Geschichte: ja\nBisher in der laufenden Geschichte: Die Glocke ist weg/);
+  assert.ok(!llm.calls[0].user.includes('GEHEIM'));
+  assert.equal(result.story_state.part, 2, 'Frage ändert die Folge nicht');
+
+  const idle = new FakeLlm([answer('Blau.')]);
+  await new Brain(idle).handle('frage', 'Warum ist der Himmel blau?', {});
+  assert.ok(!idle.calls[0].user.includes('Bisher'));
+});
