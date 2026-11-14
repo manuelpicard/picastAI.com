@@ -587,7 +587,11 @@ export class Brain {
     if (llm) {
       try {
         const systemPrompt = ANSWER_SYSTEM(this.age, this.answerMaxWords);
-        const userPrompt = `Läuft gerade eine Kunibert-Geschichte: ${storyActive(state) ? 'ja' : 'nein'}\nErkannte Äußerung des Kindes: «${transcript}»`;
+        const active = storyActive(state);
+        // Läuft eine Folge, bekommt Claude ihren bisherigen Inhalt (nur die Zusammenfassung, nicht den
+        // Plan), damit Fragen zur Geschichte passend beantwortet werden, ohne die Auflösung zu verraten.
+        const storyContext = active && state.summary ? `\nBisher in der laufenden Geschichte: ${state.summary}` : '';
+        const userPrompt = `Läuft gerade eine Kunibert-Geschichte: ${active ? 'ja' : 'nein'}${storyContext}\nErkannte Äußerung des Kindes: «${transcript}»`;
 
         const parsed = await timer.time('sprachmodell', () => llm.generateJson({
           system: systemPrompt,
