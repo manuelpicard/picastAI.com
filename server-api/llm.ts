@@ -1,3 +1,4 @@
+import { usageFromAnthropic, type LlmUsage } from './costs.js';
 // Sprachmodell-Anbieter für Antworten und Geschichten (derzeit Anthropic/Claude).
 // Beide Aufrufstellen in brain.ts fragen strukturiertes JSON an; die Schicht bleibt
 // austauschbar, damit ein anderer zulässiger Anbieter ohne Umbau von brain.ts möglich ist.
@@ -23,6 +24,8 @@ export interface LlmJsonRequest {
   maxOutputTokens?: number;
   /** Obergrenze für diesen Aufruf aus dem Zeitbudget der Anfrage; die eigene Grenze des Anbieters gilt zusätzlich. */
   timeoutMs?: number;
+  /** Token-Zahlen jedes einzelnen Aufrufs (auch eines wiederholten); nur Zahlen. */
+  onUsage?: (usage: LlmUsage) => void;
 }
 
 export interface LlmProvider {
@@ -160,7 +163,8 @@ export class AnthropicProvider implements LlmProvider {
           response.status === 429 || response.status >= 500
         );
       }
-      const body = (await response.json()) as { content?: Array<{ type: string; input?: unknown }> };
+      const body = (await response.json()) as { content?: Array<{ type: string; input?: unknown }>; usage?: unknown };
+      if (request.onUsage) request.onUsage(usageFromAnthropic(body.usage));
       const block = body.content?.find((item) => item.type === 'tool_use');
       if (!block || !block.input || typeof block.input !== 'object' || Array.isArray(block.input)) {
         throw new LlmError('Anthropic: Antwort enthält kein Tool-Ergebnis', true);

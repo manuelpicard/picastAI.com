@@ -2,6 +2,7 @@
 // Schlüsselwörter: nie Transkripte, Antworttexte, Geräte-IDs oder Tokens.
 import { randomBytes } from 'node:crypto';
 import { decodeWavHeader } from './audio.js';
+import { addUsage, formatUsd, ZERO_USAGE, type LlmUsage } from './costs.js';
 
 /** Die gemessenen Stufen einer Anfrage, in der Reihenfolge, in der sie ablaufen. */
 // vorbereitet: Wartezeit auf einen im Hintergrund vorbereiteten Geschichtenteil (server-api/prefetch.ts).
@@ -27,6 +28,8 @@ export interface StageTimer {
   timeSync<T>(stage: TimedStage, fn: () => T): T;
   /** Verbleibende Zeit im Zeitbudget der Anfrage in Millisekunden (kann 0 sein; ohne Budget unendlich). */
   remainingMs(): number;
+  /** Token-Zahlen und Kosten (US-Dollar, null = Preis unbekannt) eines Sprachmodell-Aufrufs. */
+  noteLlm?(usage: LlmUsage, usd: number | null): void;
 }
 
 /** Misst nichts und kennt kein Budget. Standard für Aufrufer ohne Zeitmessung (Tests, eval-llm). */
@@ -64,6 +67,8 @@ export class TurnTimer implements StageTimer {
   /** Modus der Anfrage (frage, geschichte, weiter); "-" solange er nicht feststeht. */
   mode = '-';
   private audioSeconds: number | null = null;
+  private usage: LlmUsage | null = null;
+  private usd: number | null = null;
   private readonly startedAt: number;
   private readonly durations = new Map<TimedStage, number>();
   private readonly calls = new Map<TimedStage, number>();
@@ -104,6 +109,12 @@ export class TurnTimer implements StageTimer {
     this.audioSeconds = wavSeconds(wav);
   }
 
+  /** Summiert Token und Kosten aller Sprachmodell-Aufrufe dieser Anfrage (nur Zahlen). */
+  noteLlm(usage: LlmUsage, usd: number | null): void {
+    this.usage = addUsage(this.usage ?? ZERO_USAGE, usage);
+    if (usd !== null) this.usd = (this.usd ?? 0) + usd;
+  }
+
   /** Ob mindestens eine Stufe gelaufen ist. Abgewiesene Anfragen (401, 429, 400) sollen keine Zeile erzeugen. */
   get measured(): boolean {
     return this.durations.size > 0;
@@ -125,6 +136,11 @@ export class TurnTimer implements StageTimer {
     parts.push(`gesamt_ms=${Math.round(this.now() - this.startedAt)}`);
     parts.push(`sprachmodell_aufrufe=${this.calls.get('sprachmodell') ?? 0}`);
     parts.push(`audio_s=${this.audioSeconds === null ? '-' : this.audioSeconds.toFixed(1)}`);
+    if (this.usage) {
+      parts.push(`tokens_ein=${this.usage.input}`, `tokens_aus=${this.usage.output}`);
+      parts.push(`cache_lesen=${this.usage.cacheRead}`, `cache_schreiben=${this.usage.cacheWrite}`);
+      parts.push(`kosten_usd=${this.usd === null ? '-' : formatUsd(this.usd)}`);
+    }
     return parts.join(' ');
   }
 

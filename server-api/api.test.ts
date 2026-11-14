@@ -150,10 +150,12 @@ describe('picastAI-API (echter Server)', () => {
     fetch(base + new URL(audioUrl).pathname, { headers: deviceHeaders(device.id, device.token) });
 
   /** Die Zeitmessungs-Zeilen im Protokoll des Servers ab einer Position. Der Server schreibt sie erst nach der Antwort, daher wird kurz gewartet. */
+  /** Zeitmessung der Geräteanfragen; die Zeilen der Vorbereitung im Hintergrund (modus=vorbereitung) zählen nicht. */
   async function timingLinesSince(since: number, expected: number): Promise<string[]> {
     const deadline = Date.now() + 5_000;
     for (;;) {
-      const lines = output.slice(since).split('\n').map((line) => line.trim()).filter((line) => line.startsWith('Zeitmessung '));
+      const lines = output.slice(since).split('\n').map((line) => line.trim())
+        .filter((line) => line.startsWith('Zeitmessung ') && !line.includes(' modus=vorbereitung '));
       if (lines.length >= expected || Date.now() > deadline) return lines;
       await new Promise((resolve) => setTimeout(resolve, 25));
     }
