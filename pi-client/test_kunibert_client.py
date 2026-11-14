@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 
 from kunibert_client import (
     ApiError,
+    StreamedWav,
     ClientConfig,
     ClientState,
     DryRunAudio,
@@ -1179,6 +1180,85 @@ def _real_sounddevice():
     return sounddevice
 
 
+def _stream_header(rate=16000, channels=1, width=2):
+    header = bytearray(encode_wav(b"", rate, channels, width))
+    header[4:8] = (0xFFFFFFFF).to_bytes(4, "little")
+    header[40:44] = (0xFFFFFFFF).to_bytes(4, "little")
+    return bytes(header)
+
+
+class _FakeHttpResponse:
+    """Liefert die Bytes in kleinen Stücken (read1 wie http.client.HTTPResponse)."""
+
+    def __init__(self, data, piece=500, fail_at=None):
+        self.data = data
+        self.pos = 0
+        self.piece = piece
+        self.fail_at = fail_at
+        self.closed = False
+
+    def read(self, size=-1):
+        return self.read1(size)
+
+    def read1(self, size=-1):
+        if self.fail_at is not None and self.pos >= self.fail_at:
+            raise TimeoutError("timed out")
+        size = self.piece if size is None or size < 0 else min(size, self.piece)
+        out = self.data[self.pos:self.pos + size]
+        self.pos += len(out)
+        return out
+
+    def close(self):
+        self.closed = True
+
+
+class StreamedWavTests(unittest.TestCase):
+    """Ton-Strom (Punkt 71): Kopf prüfen, Stücke abspielen, während der Rest noch kommt."""
+
+    def test_header_is_checked(self):
+        with self.assertRaises(ApiError):
+            StreamedWav(_FakeHttpResponse(b"NOPE" * 20), ClientConfig())
+        with self.assertRaises(ApiError):
+            StreamedWav(_FakeHttpResponse(_stream_header(rate=24000) + b"\x00" * 10), ClientConfig())
+        stream = StreamedWav(_FakeHttpResponse(_stream_header() + b"\x01\x00" * 5), ClientConfig())
+        self.assertEqual(stream.sample_rate, 16000)
+
+    def test_read_all_gives_a_valid_wav(self):
+        pcm = b"\x01\x00" * 1000 + b"\x07"  # ein halbes Sample am Ende wird verworfen
+        wav = StreamedWav(_FakeHttpResponse(_stream_header() + pcm, piece=333), ClientConfig()).read_all()
+        validate_wav(wav, ClientConfig())
+        self.assertEqual(len(wav), 44 + 2000)
+
+    def test_play_stream_writes_whole_samples_in_order_and_closes(self):
+        pcm = bytes(range(256)) * 25
+        response = _FakeHttpResponse(_stream_header() + pcm, piece=333)
+        audio, sd = SoundDeviceSelectionTests()._audio()
+        audio.play_stream(StreamedWav(response, ClientConfig()))
+        out = sd.RawOutputStream.return_value.__enter__.return_value
+        written = [call.args[0] for call in out.write.call_args_list]
+        self.assertTrue(all(len(chunk) % 2 == 0 for chunk in written))
+        self.assertEqual(b"".join(written), pcm)
+        self.assertTrue(response.closed)
+
+    def test_play_stream_stops_on_press_and_ends_quietly_on_network_loss(self):
+        audio, sd = SoundDeviceSelectionTests()._audio()
+        checks = iter([False, True])
+        audio.play_stream(StreamedWav(_FakeHttpResponse(_stream_header() + b"\x00" * 64000), ClientConfig()),
+                          should_stop=lambda: next(checks))
+        out = sd.RawOutputStream.return_value.__enter__.return_value
+        out.abort.assert_called_once()
+        audio2, sd2 = SoundDeviceSelectionTests()._audio()
+        audio2.play_stream(StreamedWav(_FakeHttpResponse(_stream_header() + b"\x00" * 4000, fail_at=2044), ClientConfig()))
+        written = b"".join(call.args[0] for call in sd2.RawOutputStream.return_value.__enter__.return_value.write.call_args_list)
+        self.assertEqual(len(written), 2000, "bis zum Abbruch angekommene Stücke werden gespielt")
+
+    def test_client_asks_for_the_stream_only_when_enabled(self):
+        self.assertEqual(PicastApi(ClientConfig(device_token="t"))._stream_header, {"X-Kunibert-Audio-Stream": "1"})
+        self.assertEqual(PicastApi(ClientConfig(device_token="t", audio_stream=False))._stream_header, {})
+        with patch.dict(os.environ, {"KUNIBERT_AUDIO_STREAM": "0"}):
+            self.assertFalse(ClientConfig.from_env().audio_stream)
+
+
 @unittest.skipIf(_real_sounddevice() is None, "sounddevice mit PortAudio und Audiogerät nicht vorhanden")
 class RealSoundDeviceTests(unittest.TestCase):
     """Gegen die echte Bibliothek, ohne NumPy. In der CI über ein ALSA-Nullgerät (.github/workflows/tests.yml).
@@ -1193,6 +1273,10 @@ class RealSoundDeviceTests(unittest.TestCase):
         presses = iter([True, True, False])
         wav_bytes = audio.record_while_pressed(lambda: next(presses), 1.0)
         validate_wav(wav_bytes, ClientConfig())
+
+    def test_play_stream_with_the_real_library(self):
+        audio = SoundDeviceAudio(ClientConfig())
+        audio.play_stream(StreamedWav(_FakeHttpResponse(_stream_header() + b"\x00\x00" * 3200, piece=777), ClientConfig()))
 
     def test_stop_request_ends_playback_early(self):
         audio = SoundDeviceAudio(ClientConfig())

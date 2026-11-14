@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { resolveLlmProvider } from './config.js';
-import { AnthropicProvider, createLlmProvider, LlmError, parseJsonObject, type JsonSchema } from './llm.js';
+import { AnthropicProvider, createLlmProvider, LlmError, parseJsonObject, partialJsonString, type JsonSchema } from './llm.js';
 
 const SCHEMA: JsonSchema = {
   type: 'object',
@@ -211,4 +211,79 @@ test('AnthropicProvider meldet die Token-Zahlen der Antwort (onUsage)', async ()
   const seen: unknown[] = [];
   await provider.generateJson({ ...REQUEST, onUsage: (usage) => seen.push(usage) });
   assert.deepEqual(seen, [{ input: 7, output: 8, cacheWrite: 9, cacheRead: 10 }]);
+});
+
+// Ton-Strom (Punkt 71): Streaming der Messages-API
+
+function sseResponse(events: Array<Record<string, unknown>>, splitAt = 37): Response {
+  const raw = events.map((event) => `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`).join('');
+  const bytes = new TextEncoder().encode(raw);
+  // In ungeraden Stücken liefern, auch mitten in einem Ereignis und mitten in einem Umlaut.
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (let i = 0; i < bytes.length; i += splitAt) controller.enqueue(bytes.slice(i, i + splitAt));
+      controller.close();
+    },
+  });
+  return new Response(body, { status: 200, headers: { 'content-type': 'text/event-stream' } });
+}
+
+function toolEvents(input: Record<string, unknown>, pieceLength = 9): Array<Record<string, unknown>> {
+  const json = JSON.stringify(input);
+  const deltas = [];
+  for (let i = 0; i < json.length; i += pieceLength) {
+    deltas.push({ type: 'content_block_delta', index: 1, delta: { type: 'input_json_delta', partial_json: json.slice(i, i + pieceLength) } });
+  }
+  return [
+    { type: 'message_start', message: { usage: { input_tokens: 50, output_tokens: 1, cache_read_input_tokens: 400 } } },
+    { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } },
+    { type: 'content_block_start', index: 1, content_block: { type: 'tool_use', name: 'antwort', input: {} } },
+    ...deltas,
+    { type: 'content_block_stop', index: 1 },
+    { type: 'message_delta', delta: { stop_reason: 'tool_use' }, usage: { output_tokens: 77 } },
+    { type: 'message_stop' },
+  ];
+}
+
+test('partialJsonString: Text-Feld aus unvollständigem JSON, Schlüssel im Plan zählt nicht', () => {
+  const full = JSON.stringify({ episode_plan: 'mit "text": drin', text: 'Eins.\n\nZwei „ä“ \\ Ende' });
+  assert.equal(partialJsonString(full.slice(0, 20), 'text'), '');
+  assert.equal(partialJsonString(full, 'text'), 'Eins.\n\nZwei „ä“ \\ Ende');
+  const cut = full.indexOf('\\n');
+  assert.equal(partialJsonString(full.slice(0, cut + 1), 'text'), 'Eins.', 'angefangenes Escape wird weggelassen');
+});
+
+test('AnthropicProvider: Streaming liefert wachsenden Text, das ganze Ergebnis und die Token-Zahlen', async () => {
+  const input = { episode_plan: 'Plan', text: 'Kunibert erwachte.\n\nDie Treppe knarrte.', summary: 's' };
+  let body: Record<string, unknown> = {};
+  const provider = new AnthropicProvider({
+    apiKey: 'sk-test',
+    model: 'claude-test',
+    fetchImpl: fakeFetch((_url, init) => { body = JSON.parse(String(init.body)); return sseResponse(toolEvents(input)); }),
+  });
+  const seen: string[] = [];
+  const usage: unknown[] = [];
+  const result = await provider.generateJson({ ...REQUEST, onText: (text) => seen.push(text), onUsage: (u) => usage.push(u) });
+  assert.equal(body.stream, true);
+  assert.deepEqual(result, input);
+  assert.equal(seen.at(-1), input.text);
+  for (let i = 1; i < seen.length; i++) assert.ok(seen[i].startsWith(seen[i - 1]), 'Text wächst nur');
+  assert.deepEqual(usage, [{ input: 50, output: 77, cacheWrite: 0, cacheRead: 400 }]);
+});
+
+test('AnthropicProvider: Fehler im Stream nach angekommenem Text wird nicht wiederholt (nur Fehlercode)', async () => {
+  let calls = 0;
+  const events = toolEvents({ text: 'Schon gesprochen.\n\nmehr' }).slice(0, 6);
+  events.push({ type: 'error', error: { type: 'overloaded_error', message: 'geheimer Fließtext' } });
+  const provider = new AnthropicProvider({
+    apiKey: 'sk-test',
+    model: 'claude-test',
+    retryDelayMs: 0,
+    fetchImpl: fakeFetch(() => { calls++; return sseResponse(events); }),
+  });
+  await assert.rejects(
+    provider.generateJson({ ...REQUEST, onText: () => undefined }),
+    (error: Error) => error instanceof LlmError && /overloaded_error/.test(error.message) && !/geheim/.test(error.message)
+  );
+  assert.equal(calls, 1);
 });

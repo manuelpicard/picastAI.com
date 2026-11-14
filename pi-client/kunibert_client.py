@@ -95,6 +95,9 @@ class ClientConfig:
     filler_after_seconds: float = 2.5
     long_wait_seconds: float = 15.0
     answer_pause_seconds: float = 0.3
+    # Ton-Strom (Punkt 71): den Server bitten, Geschichten Absatz für Absatz zu schicken. Der
+    # Server macht das nur mit PICASTAI_AUDIO_STREAM=1; sonst kommt wie bisher eine ganze Datei.
+    audio_stream: bool = True
 
     @classmethod
     def from_env(cls, dry_run: bool = False) -> "ClientConfig":
@@ -142,6 +145,7 @@ class ClientConfig:
             filler_after_seconds=number("KUNIBERT_FILLER_AFTER_SECONDS", 2.5),
             long_wait_seconds=number("KUNIBERT_LONG_WAIT_SECONDS", 15.0),
             answer_pause_seconds=number("KUNIBERT_ANSWER_PAUSE_SECONDS", 0.3),
+            audio_stream=os.getenv("KUNIBERT_AUDIO_STREAM", "1").strip().lower() not in {"0", "false", "no", "nein", "aus"},
         )
 
 
@@ -204,6 +208,68 @@ class AudioInput(Protocol):
 
 class AudioOutput(Protocol):
     def play_wav(self, wav_bytes: bytes, should_stop: Optional[Callable[[], bool]] = None) -> None: ...
+
+
+class StreamedWav:
+    """Ein WAV-Ton-Strom vom Server (Punkt 71): Kopf schon gelesen und geprüft, der Rest kommt noch.
+
+    Der Kopf hat die Länge 0xFFFFFFFF („bis zum Ende“). ``read`` liefert, was gerade da ist
+    (höchstens ``size`` Bytes), und ``b""`` am Ende. Bricht die Verbindung ab, endet der Strom
+    einfach früher; das Kind hört dann, was schon angekommen ist.
+    """
+
+    HEADER_BYTES = 44
+
+    def __init__(self, response: Any, config: ClientConfig):
+        self._response = response
+        header = self._read_exact(self.HEADER_BYTES)
+        if len(header) < self.HEADER_BYTES or header[0:4] != b"RIFF" or header[8:12] != b"WAVE" \
+                or header[12:16] != b"fmt " or header[36:40] != b"data":
+            self.close()
+            raise ApiError("Ton-Strom ohne gültigen WAV-Kopf")
+        self.channels = int.from_bytes(header[22:24], "little")
+        self.sample_rate = int.from_bytes(header[24:28], "little")
+        self.sample_width = int.from_bytes(header[34:36], "little") // 8
+        if int.from_bytes(header[20:22], "little") != 1 or self.channels != config.channels \
+                or self.sample_width != config.sample_width or self.sample_rate != config.sample_rate:
+            self.close()
+            raise ApiError("Ton-Strom mit unerwartetem Format")
+
+    def _read_exact(self, size: int) -> bytes:
+        data = b""
+        while len(data) < size:
+            piece = self._response.read(size - len(data))
+            if not piece:
+                break
+            data += piece
+        return data
+
+    def read(self, size: int) -> bytes:
+        try:
+            reader = getattr(self._response, "read1", None)
+            return reader(size) if callable(reader) else self._response.read(size)
+        except (OSError, ValueError) as exc:
+            LOG.warning("Ton-Strom unterbrochen (%s); Wiedergabe endet hier", type(exc).__name__)
+            return b""
+
+    def read_all(self) -> bytes:
+        """Den ganzen Rest als WAV-Datei (für Ausgaben ohne Strom-Wiedergabe)."""
+        chunks = []
+        while True:
+            piece = self.read(65536)
+            if not piece:
+                break
+            chunks.append(piece)
+        self.close()
+        pcm = b"".join(chunks)
+        pcm = pcm[: len(pcm) - len(pcm) % (self.sample_width * self.channels)]
+        return encode_wav(pcm, self.sample_rate, self.channels, self.sample_width)
+
+    def close(self) -> None:
+        try:
+            self._response.close()
+        except Exception:  # noqa: BLE001 - Aufräumen darf nie scheitern
+            pass
 
 
 class Buttons(Protocol):
@@ -422,6 +488,47 @@ class SoundDeviceAudio:
         except Exception as exc:
             raise HardwareError(f"Audioausgabe fehlgeschlagen: {exc}") from exc
 
+    def play_stream(self, stream: "StreamedWav", should_stop: Optional[Callable[[], bool]] = None) -> None:
+        """Ton-Strom (Punkt 71): spielt, während der Rest noch vom Server kommt."""
+        _play_stream_with(self.sd, self.config, stream, should_stop, self._RAW_DTYPES)
+
+
+def _play_stream_with(sd: Any, config: ClientConfig, stream: "StreamedWav",
+                      should_stop: Optional[Callable[[], bool]], dtypes: dict[int, str]) -> None:
+    """Spielt einen Ton-Strom in Stücken von etwa 0,1 s, während er noch lädt."""
+    dtype = dtypes.get(stream.sample_width)
+    if dtype is None:
+        stream.close()
+        raise HardwareError(f"WAV mit {stream.sample_width * 8} Bit wird nicht unterstützt")
+    frame_bytes = stream.sample_width * stream.channels
+    chunk_bytes = max(1, stream.sample_rate // 10) * frame_bytes
+    rest = b""
+    try:
+        with sd.RawOutputStream(
+            samplerate=stream.sample_rate,
+            channels=stream.channels,
+            dtype=dtype,
+            device=config.output_device,
+        ) as output:
+            while True:
+                if should_stop is not None and should_stop():
+                    output.abort()
+                    return
+                piece = stream.read(chunk_bytes)
+                if not piece:
+                    break
+                data = rest + piece
+                usable = len(data) - len(data) % frame_bytes
+                rest = data[usable:]
+                if usable:
+                    output.write(data[:usable])
+    except HardwareError:
+        raise
+    except Exception as exc:
+        raise HardwareError(f"Audioausgabe fehlgeschlagen: {exc}") from exc
+    finally:
+        stream.close()
+
 
 class DryRunButtons:
     """No hardware; useful for API/state-machine smoke tests."""
@@ -441,6 +548,9 @@ class DryRunAudio:
 
     def play_wav(self, wav_bytes: bytes, should_stop: Optional[Callable[[], bool]] = None) -> None:
         LOG.info("Dry-run: würde WAV mit %d Bytes abspielen", len(wav_bytes))
+
+    def play_stream(self, stream: StreamedWav, should_stop: Optional[Callable[[], bool]] = None) -> None:
+        LOG.info("Dry-run: würde Ton-Strom mit %d Bytes abspielen", len(stream.read_all()))
 
 
 class DryRunLed:
@@ -624,13 +734,17 @@ class PicastApi:
             "User-Agent": "ritter-kunibert-pi/0.1",
         }
 
+    @property
+    def _stream_header(self) -> dict[str, str]:
+        return {"X-Kunibert-Audio-Stream": "1"} if self.config.audio_stream else {}
+
     def health(self) -> bool:
         if self.config.dry_run:
             return True
         status, _headers, body = self._request("GET", "/health", accept_json=True)
         return status == 200 and body.get("status") == "ok"
 
-    def ask_question(self, wav_bytes: bytes) -> bytes:
+    def ask_question(self, wav_bytes: bytes) -> bytes | StreamedWav:
         validate_wav(wav_bytes, self.config)
         fields = {
             "locale": self.config.locale,
@@ -640,11 +754,12 @@ class PicastApi:
         body, content_type = multipart_form(fields, "audio", "question.wav", wav_bytes, "audio/wav")
         response = self._with_retries("POST", "/v1/device/question", body, {
             **self._headers,
+            **self._stream_header,
             "Content-Type": content_type,
         }, timeout=self.config.pipeline_timeout_seconds)
         return self._download_audio(response)
 
-    def request_story(self) -> bytes:
+    def request_story(self) -> bytes | StreamedWav:
         payload = json.dumps({
             "locale": self.config.locale,
             "age_band": self.config.age_band,
@@ -653,11 +768,12 @@ class PicastApi:
         }).encode("utf-8")
         response = self._with_retries("POST", "/v1/device/kunibert-story", payload, {
             **self._headers,
+            **self._stream_header,
             "Content-Type": "application/json",
         }, timeout=self.config.pipeline_timeout_seconds)
         return self._download_audio(response)
 
-    def _download_audio(self, response: dict[str, Any]) -> bytes:
+    def _download_audio(self, response: dict[str, Any]) -> bytes | StreamedWav:
         audio_url = response.get("audio_url")
         if not isinstance(audio_url, str) or not audio_url:
             raise ApiError("API-Antwort enthält keine audio_url")
@@ -667,6 +783,8 @@ class PicastApi:
             raise ApiError("audio_url ist keine gültige Adresse") from exc
         if not same_origin(absolute_url, self.config.api_base_url):
             raise ApiError("audio_url verweist nicht auf denselben Origin wie die API")
+        if response.get("audio_stream") is True and self.config.audio_stream:
+            return self._open_stream(absolute_url)
         status, headers, data = self._request_absolute(
             "GET", absolute_url, None, self._headers, timeout=self.config.audio_timeout_seconds
         )
@@ -677,6 +795,21 @@ class PicastApi:
             raise ApiError("Server lieferte kein WAV-Audio")
         validate_wav(data, self.config)
         return data
+
+    def _open_stream(self, url: str) -> StreamedWav:
+        """Öffnet den Ton-Strom und lässt die Verbindung offen; abgespielt wird beim Lesen."""
+        request = Request(url, headers=self._headers, method="GET")
+        try:
+            raw = build_opener(NoRedirectHandler()).open(request, timeout=self.config.audio_timeout_seconds)
+        except HTTPError as exc:
+            raise ApiError(f"Audioabruf fehlgeschlagen (HTTP {exc.code})", status=exc.code, retryable=exc.code >= 500) from exc
+        except URLError as exc:
+            raise OSError(str(exc.reason)) from exc
+        content_type = raw.headers.get("Content-Type", "")
+        if raw.status != 200 or content_type.split(";")[0].lower() != "audio/wav":
+            raw.close()
+            raise ApiError("Server lieferte kein WAV-Audio")
+        return StreamedWav(raw, self.config)
 
     def _with_retries(self, method: str, path: str, body: bytes, headers: dict[str, str],
                       timeout: Optional[float] = None) -> dict[str, Any]:
@@ -950,7 +1083,7 @@ class KunibertClient:
         except Exception as exc:
             self.handle_error(exc)
 
-    def _play(self, response_wav: bytes) -> None:
+    def _play(self, response_wav: bytes | StreamedWav) -> None:
         """Spielt die Antwort ab.
 
         Ein Beenden des Dienstes bricht die Wiedergabe ab. Ein neuer Druck auf eine der beiden
@@ -972,7 +1105,14 @@ class KunibertClient:
                 stopped_by_press = True
             return stopped_by_press
 
-        self.audio_out.play_wav(response_wav, should_stop=should_stop)
+        if isinstance(response_wav, StreamedWav):
+            play_stream = getattr(self.audio_out, "play_stream", None)
+            if callable(play_stream):
+                play_stream(response_wav, should_stop=should_stop)
+            else:
+                self.audio_out.play_wav(response_wav.read_all(), should_stop=should_stop)
+        else:
+            self.audio_out.play_wav(response_wav, should_stop=should_stop)
         if self.stop_requested:
             self.transition(ClientState.SHUTDOWN)
             return
@@ -1112,8 +1252,10 @@ def main(argv: Optional[list[str]] = None) -> int:
             print("OK" if api.health() else "FEHLER")
             return 0
         if args.once == "story":
-            wav = api.request_story()
-            print(f"Story-Audio empfangen: {len(wav)} Bytes")
+            answer = api.request_story()
+            streamed = isinstance(answer, StreamedWav)
+            wav = answer.read_all() if isinstance(answer, StreamedWav) else answer
+            print(f"Story-Audio empfangen: {len(wav)} Bytes{' (Ton-Strom)' if streamed else ''}")
             return 0
     try:
         client = build_client(config, keyboard=args.keyboard)

@@ -75,6 +75,8 @@ export interface KunibertConfig {
   partsPerEpisode: number;
   /** Nächsten Geschichtenteil im Hintergrund vorbereiten (server-api/prefetch.ts). Aus mit PICASTAI_STORY_PREFETCH=0. */
   storyPrefetch: boolean;
+  /** Ton-Strom (Punkt 71): Geschichten Absatz für Absatz vertonen und ausliefern, für Geräte, die es anfragen. Standard aus. */
+  audioStream: boolean;
   storyMinWords: number;
   storyMaxWords: number;
   answerMaxWords: number;
@@ -321,11 +323,12 @@ export function loadConfig(): KunibertConfig {
     pocketTtsVoice: process.env.PICASTAI_POCKET_TTS_VOICE?.trim() || DEFAULT_POCKET_VOICE,
     pocketTtsTempo: process.env.PICASTAI_POCKET_TTS_TEMPO?.trim() || '',
     pocketTtsPauseMs: process.env.PICASTAI_POCKET_TTS_PAUSE_MS?.trim() || '',
-    voiceTimeoutMs: Math.min(120_000, Math.max(3_000, parseNum(process.env.PICASTAI_VOICE_TIMEOUT_MS, 45_000))),
+    voiceTimeoutMs: Math.min(120_000, Math.max(3_000, parseNum(process.env.PICASTAI_VOICE_TIMEOUT_MS, 90_000))),
 
     ageBracket: process.env.KUNIBERT_AGE || 'sechs bis zehn',
     partsPerEpisode: Math.min(12, Math.max(3, parseNum(process.env.KUNIBERT_PARTS_PER_EPISODE, 5))),
     storyPrefetch: process.env.PICASTAI_STORY_PREFETCH?.trim() !== '0',
+    audioStream: process.env.PICASTAI_AUDIO_STREAM?.trim() === '1',
     storyMinWords,
     storyMaxWords,
     answerMaxWords: parseNum(process.env.KUNIBERT_ANSWER_MAX_WORDS, 80),
@@ -366,6 +369,7 @@ export function getSafeConfigSummary(config: KunibertConfig) {
     ageBracket: config.ageBracket,
     partsPerEpisode: config.partsPerEpisode,
     storyPrefetch: config.storyPrefetch,
+    audioStream: config.audioStream,
     storyWordRange: `${config.storyMinWords}–${config.storyMaxWords} Wörter`,
     answerMaxWords: config.answerMaxWords,
     emergencyNumberPrimary: config.emergencyNumberPrimary,

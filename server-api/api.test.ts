@@ -566,7 +566,7 @@ describe('picastAI-API (echter Server)', () => {
 
     // Erzähltaste: keine Erkennung, keine Weiche (es gibt keinen Kindertext).
     assert.match(storyLine, /^Zeitmessung id=[0-9a-f]{8} modus=weiter status=200 erkennung_ms=- weiche_ms=- /);
-    assert.match(storyLine, / sprachausgabe_ms=\d+ vorbereitet_ms=(\d+|-) gesamt_ms=\d+ /);
+    assert.match(storyLine, / sprachausgabe_ms=\d+ vorbereitet_ms=(\d+|-) erster_ton_ms=- gesamt_ms=\d+ /);
     assert.match(storyLine, / audio_s=\d+\.\d$/);
     assert.notEqual(questionLine.split(' ')[1], storyLine.split(' ')[1], 'jede Anfrage hat ihre eigene ID');
 

@@ -15,7 +15,7 @@ sudo journalctl -u kunibert-server -n 200 --no-pager | grep Zeitmessung
 Beispiel:
 
 ```text
-Zeitmessung id=3f9a1c2b modus=frage status=200 erkennung_ms=1204 weiche_ms=0 sprachmodell_ms=3480 ausgabecheck_ms=0 sprachausgabe_ms=2210 vorbereitet_ms=- gesamt_ms=7050 sprachmodell_aufrufe=1 audio_s=12.4
+Zeitmessung id=3f9a1c2b modus=frage status=200 erkennung_ms=1204 weiche_ms=0 sprachmodell_ms=3480 ausgabecheck_ms=0 sprachausgabe_ms=2210 vorbereitet_ms=- erster_ton_ms=- gesamt_ms=7050 sprachmodell_aufrufe=1 audio_s=12.4
 ```
 
 | Feld | Bedeutung |
@@ -36,6 +36,12 @@ Zeitmessung id=3f9a1c2b modus=frage status=200 erkennung_ms=1204 weiche_ms=0 spr
 Ein `-` heißt: Diese Stufe ist nicht gelaufen. Das ist etwas anderes als `0`. Beispiele: Bei der Erzähltaste gibt es keinen Text vom Kind, also kein `erkennung_ms` und kein `weiche_ms`. Greift die Sicherheitsweiche, fragt der Server Claude nicht.
 
 Anfragen, die gleich abgewiesen werden (keine Anmeldung, zu viele Anfragen, keine Aufnahme), erzeugen keine Zeile.
+
+### Ton-Strom (seit 14.11.2026, Punkt 71)
+
+- `erster_ton_ms`: mit `PICASTAI_AUDIO_STREAM=1` die Zeit vom Start der Antwort bis zum ersten vertonten Absatz (ohne Strom `-`). Bei der Sprechtaste kommt `erkennung_ms` davor.
+- Bei einem Strom gibt es zwei Zeilen mit derselben `id`: die erste, wenn die Antwort hinausgeht (`modus=weiter`, `sprachmodell_ms=-`, weil Claude noch schreibt), die zweite, wenn alles vertont ist (`modus=weiter_strom` oder `frage_strom`, mit allen Werten und `audio_s`).
+- Messung: `node deploy/dryrun/strom-messung.mjs` (echtes Pocket auf `POCKET_URL`, Claude als Attrappe mit 14 s Schreibzeit). Ergebnis 14.11.2026 in der Cloud (2 Kerne): erster Ton ohne Strom nach 61,4 s, mit Strom nach 13,2 s, mit kurzem erstem Absatz nach 7,8 s; der Ton lag beim Abspielen immer mindestens 2,0 s vor (kein Aussetzer).
 
 ### Token und Kosten (seit 14.11.2026, Punkt 72b)
 

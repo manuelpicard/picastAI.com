@@ -127,6 +127,8 @@ before(async () => {
       PICASTAI_LLM_PROVIDER: 'anthropic',
       ANTHROPIC_API_KEY: 'attrappe-kein-echter-schluessel',
       ANTHROPIC_BASE_URL: `http://127.0.0.1:${mockPort}`,
+      // Ton-Strom (Punkt 71) an: Der Pi-Client fragt ihn standardmäßig an.
+      PICASTAI_AUDIO_STREAM: '1',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -164,13 +166,22 @@ test('Pi-Client: falsches Token wird abgelehnt', async () => {
   await assert.rejects(run('python3', [client, '--once', 'story'], { env }));
 });
 
-test('Pi-Client: --once story holt eine WAV-Datei über die audio_url', async () => {
+test('Pi-Client: --once story holt die erste Geschichte als Ton-Strom (Absatz für Absatz vertont)', async () => {
   const before = seen.speech;
   const { stdout } = await run('python3', [client, '--once', 'story'], { env: clientEnv() });
-  const match = stdout.match(/Story-Audio empfangen: (\d+) Bytes/);
+  const match = stdout.match(/Story-Audio empfangen: (\d+) Bytes \(Ton-Strom\)/);
   assert.ok(match, `unerwartete Ausgabe: ${stdout}`);
   assert.ok(Number(match[1]) > 44, 'WAV ist leer');
-  assert.ok(seen.speech > before, 'Sprachausgabe wurde nicht aufgerufen');
+  // Zwei Absätze und der Abschluss: drei getrennte Aufrufe der Sprachausgabe.
+  assert.ok(seen.speech >= before + 3, `Sprachausgabe ${seen.speech - before}-mal statt Absatz für Absatz`);
+  assert.match(serverLog, /Zeitmessung id=[0-9a-f]{8} modus=weiter_strom status=200 .* erster_ton_ms=\d+ /);
+});
+
+test('Pi-Client: ohne Ton-Strom (KUNIBERT_AUDIO_STREAM=0) kommt eine ganze WAV-Datei über die audio_url', async () => {
+  const { stdout } = await run('python3', [client, '--once', 'story'], { env: { ...clientEnv(), KUNIBERT_AUDIO_STREAM: '0' } });
+  const match = stdout.match(/Story-Audio empfangen: (\d+) Bytes\s*$/);
+  assert.ok(match, `unerwartete Ausgabe: ${stdout}`);
+  assert.ok(Number(match[1]) > 44, 'WAV ist leer');
 });
 
 test('Pi-Client: Frage mit Aufnahme läuft durch Erkennung, Sprachmodell und Sprachausgabe', async () => {

@@ -26,6 +26,14 @@ export interface LlmJsonRequest {
   timeoutMs?: number;
   /** Token-Zahlen jedes einzelnen Aufrufs (auch eines wiederholten); nur Zahlen. */
   onUsage?: (usage: LlmUsage) => void;
+  /**
+   * Streaming (Punkt 71): Anthropic liefert die Antwort Stück für Stück, und diese Funktion bekommt
+   * nach jedem Stück den bisher erhaltenen Wert des Felds `streamField` (Standard `text`). Das
+   * Ergebnis am Ende ist dasselbe Objekt wie ohne Streaming. Ist schon Text angekommen, wird bei einem
+   * Fehler nicht wiederholt (der Aufrufer hat ihn vielleicht schon verwendet).
+   */
+  onText?: (partial: string) => void;
+  streamField?: string;
 }
 
 export interface LlmProvider {
@@ -98,11 +106,15 @@ export class AnthropicProvider implements LlmProvider {
     const totalMs = Math.min(request.timeoutMs ?? Infinity, this.options.timeoutMs ?? 30_000);
     const deadline = Date.now() + totalMs;
     const retryDelayMs = this.options.retryDelayMs ?? 700;
+    let delivered = false;
+    const tracked: LlmJsonRequest = request.onText
+      ? { ...request, onText: (partial) => { if (partial) delivered = true; request.onText!(partial); } }
+      : request;
     try {
-      return await this.attempt(request, totalMs);
+      return await this.attempt(tracked, totalMs);
     } catch (error) {
       const left = deadline - Date.now() - retryDelayMs;
-      if (!(error instanceof LlmError) || !error.transient || left < MIN_RETRY_MS) throw error;
+      if (!(error instanceof LlmError) || !error.transient || left < MIN_RETRY_MS || delivered) throw error;
       await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
       return this.attempt(request, left);
     }
@@ -142,6 +154,7 @@ export class AnthropicProvider implements LlmProvider {
           // ("tool_choice: type tool and any are not supported"). Mit "auto" und der Anweisung in der
           // Werkzeugbeschreibung ruft das Modell das einzige Werkzeug trotzdem auf.
           tool_choice: { type: 'auto' },
+          ...(request.onText ? { stream: true } : {}),
         }),
         signal: controller.signal,
       });
@@ -163,6 +176,7 @@ export class AnthropicProvider implements LlmProvider {
           response.status === 429 || response.status >= 500
         );
       }
+      if (request.onText) return await readToolStream(response, request.onText, request.streamField ?? 'text', request.onUsage);
       const body = (await response.json()) as { content?: Array<{ type: string; input?: unknown }>; usage?: unknown };
       if (request.onUsage) request.onUsage(usageFromAnthropic(body.usage));
       const block = body.content?.find((item) => item.type === 'tool_use');
@@ -204,4 +218,117 @@ export function createLlmProvider(
     });
   }
   return null;
+}
+
+/**
+ * Liest den bisher angekommenen Wert eines Text-Felds aus unvollständigem JSON, zum Beispiel aus
+ * `{"episode_plan":"…","text":"Kunibert erwach` den Text „Kunibert erwach“. Ein angefangenes
+ * Escape am Ende wird weggelassen. Gesucht wird nur ein Schlüssel, der nicht selbst in einem
+ * String steht (ein `\"text\"` innerhalb des Plans zählt nicht).
+ */
+export function partialJsonString(json: string, key: string): string {
+  let index = 0;
+  let inString = false;
+  let depth = 0;
+  let stringStart = -1;
+  while (index < json.length) {
+    const char = json[index];
+    if (inString) {
+      if (char === '\\') { index += 2; continue; }
+      if (char === '"') {
+        inString = false;
+        // Ein Schlüssel auf oberster Ebene, gefolgt von einem Doppelpunkt?
+        const name = json.slice(stringStart + 1, index);
+        let after = index + 1;
+        while (after < json.length && /\s/.test(json[after])) after++;
+        if (depth === 1 && name === key && json[after] === ':') {
+          after++;
+          while (after < json.length && /\s/.test(json[after])) after++;
+          if (json[after] !== '"') return '';
+          return decodePartialString(json, after + 1);
+        }
+      }
+      index++;
+      continue;
+    }
+    if (char === '"') { inString = true; stringStart = index; }
+    else if (char === '{' || char === '[') depth++;
+    else if (char === '}' || char === ']') depth--;
+    index++;
+  }
+  return '';
+}
+
+function decodePartialString(json: string, start: number): string {
+  let out = '';
+  let index = start;
+  while (index < json.length) {
+    const char = json[index];
+    if (char === '"') return out;
+    if (char !== '\\') { out += char; index++; continue; }
+    const next = json[index + 1];
+    if (next === undefined) return out;
+    if (next === 'u') {
+      const hex = json.slice(index + 2, index + 6);
+      if (hex.length < 4) return out;
+      out += String.fromCharCode(parseInt(hex, 16));
+      index += 6;
+      continue;
+    }
+    const map: Record<string, string> = { n: '\n', t: '\t', r: '\r', b: '\b', f: '\f', '"': '"', '\\': '\\', '/': '/' };
+    out += map[next] ?? next;
+    index += 2;
+  }
+  return out;
+}
+
+/** Server-Sent Events der Messages-API lesen: Werkzeug-Eingabe zusammensetzen, Text weiterreichen, Token zählen. */
+async function readToolStream(
+  response: Response,
+  onText: (partial: string) => void,
+  field: string,
+  onUsage?: (usage: LlmUsage) => void
+): Promise<Record<string, unknown>> {
+  if (!response.body) throw new LlmError('Anthropic: leerer Stream');
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let toolJson = '';
+  let toolIndex: number | null = null;
+  let lastText = '';
+  let usage = { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 };
+  const handle = (data: string) => {
+    let event: Record<string, any>;
+    try { event = JSON.parse(data); } catch { return; }
+    if (event.type === 'message_start' && event.message?.usage) usage = { ...usage, ...event.message.usage };
+    else if (event.type === 'message_delta' && event.usage) usage = { ...usage, ...event.usage };
+    else if (event.type === 'content_block_start' && event.content_block?.type === 'tool_use' && toolIndex === null) toolIndex = event.index;
+    else if (event.type === 'content_block_delta' && event.index === toolIndex && event.delta?.type === 'input_json_delta') {
+      toolJson += String(event.delta.partial_json ?? '');
+      const text = partialJsonString(toolJson, field);
+      if (text !== lastText) { lastText = text; onText(text); }
+    } else if (event.type === 'error') {
+      // Nur der Fehlercode, nie der Fließtext (CLAUDE.md).
+      const code = String(event.error?.type ?? 'unbekannt').replace(/[^a-z_]/gi, '').slice(0, 40);
+      throw new LlmError(`Anthropic: Fehler im Stream (${code})`, code === 'overloaded_error' || code === 'api_error');
+    }
+  };
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (value) buffer += decoder.decode(value, { stream: true });
+    let cut: number;
+    while ((cut = buffer.indexOf('\n\n')) >= 0) {
+      const block = buffer.slice(0, cut);
+      buffer = buffer.slice(cut + 2);
+      const data = block.split('\n').filter((line) => line.startsWith('data:')).map((line) => line.slice(5).trim()).join('');
+      if (data) handle(data);
+    }
+    if (done) break;
+  }
+  if (onUsage) onUsage(usageFromAnthropic(usage));
+  if (toolIndex === null || !toolJson) throw new LlmError('Anthropic: Antwort enthält kein Tool-Ergebnis', true);
+  let input: unknown;
+  try { input = JSON.parse(toolJson); } catch { throw new LlmError('Anthropic: Tool-Ergebnis im Stream unvollständig', true); }
+  if (!input || typeof input !== 'object' || Array.isArray(input)) throw new LlmError('Anthropic: Antwort enthält kein Tool-Ergebnis', true);
+  return input as Record<string, unknown>;
 }

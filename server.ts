@@ -5,9 +5,10 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { DeviceRegistry, DeviceStoreError, RateLimiter, AudioStore } from './server-api/devices.js';
-import { Brain, FALLBACK_ANSWER_DE, StoryState } from './server-api/brain.js';
+import { Brain, FALLBACK_ANSWER_DE, StoryState, type StorySink } from './server-api/brain.js';
 import { STORY_PAUSE_TEXT } from './server-api/prompts.js';
 import { StoryPrefetcher } from './server-api/prefetch.js';
+import { PcmStream, StreamingSpeaker, StreamRegistry, streamingWavHeader } from './server-api/audio-stream.js';
 import { AudioError, decodeWavHeader, isPcmFormat, isSilentPcm16 } from './server-api/audio.js';
 import { config, getSafeConfigSummary, llmConfigWarnings, testSwitchWarnings, ttsProviderWarnings, voiceConfigWarnings } from './server-api/config.js';
 import { isAdminTokenConfigured, verifyAdminAuthorization } from './server-api/admin-auth.js';
@@ -44,6 +45,10 @@ const store = new AudioStore(
 const brain = new Brain();
 const voice = new VoicePipeline(config);
 const deviceStoryStates = new Map<string, StoryState>();
+// Ton-Strom (Punkt 71, server-api/audio-stream.ts): laufende Ströme und Antworten, die noch im
+// Hintergrund fertig werden. Eine neue Anfrage desselben Geräts wartet auf deren Stand.
+const streams = new StreamRegistry(config.audioTtlSeconds * 1000);
+const pendingTurns = new Map<string, Promise<void>>();
 // Nächster Geschichtenteil im Hintergrund (Sprachmodell und Sprachausgabe), siehe server-api/prefetch.ts.
 const prefetcher = new StoryPrefetcher(
   async (state) => {
@@ -160,6 +165,92 @@ function deviceResponse(
   return { body, turnId };
 }
 
+/** Wartet, bis eine im Hintergrund laufende Antwort desselben Geräts ihren Stand gespeichert hat. */
+async function waitForPendingTurn(deviceId: string): Promise<void> {
+  const pending = pendingTurns.get(deviceId);
+  if (pending) await pending.catch(() => undefined);
+}
+
+/** Ton-Strom nur, wenn er eingeschaltet ist, eine Sprachausgabe läuft und das Gerät ihn anfragt. */
+function wantsAudioStream(req: Request): boolean {
+  return config.audioStream && voice.ttsConfigured && req.get('x-kunibert-audio-stream') === '1';
+}
+
+/**
+ * Beantwortet eine Geräteanfrage. Ohne Ton-Strom wie bisher: Brain, dann die ganze Sprachausgabe,
+ * dann die Antwort. Mit Ton-Strom geht die Antwort hinaus, sobald der erste Absatz vertont ist; der
+ * Rest entsteht im Hintergrund, und erst danach werden Stand und Vorbereitung gespeichert. Fragen,
+ * feste Texte und Ersatzgeschichten sprechen nichts in den Strom und laufen den bisherigen Weg.
+ */
+async function respondTurn(
+  req: Request,
+  res: Response,
+  deviceId: string,
+  timer: TurnTimer,
+  type: 'answer' | 'kunibert_story',
+  run: (sink?: StorySink) => Promise<Awaited<ReturnType<Brain['handle']>>>
+): Promise<any> {
+  if (!wantsAudioStream(req)) {
+    const result = await synthesizeTimed(await run(), timer);
+    timer.noteAudio(result.wav);
+    rememberDeviceStoryState(deviceId, result.story_state);
+    const response = deviceResponse(req, deviceId, result, type);
+    // Hat die Anfrage eine Folge begonnen oder fortgesetzt, den nächsten Teil vorbereiten. Bei einer
+    // reinen Frage bleibt der Stand gleich, und eine laufende Vorbereitung bleibt gültig.
+    prefetcher.start(deviceId, result.story_state);
+    return res.json(response.body);
+  }
+
+  let done = false;
+  const speaker = new StreamingSpeaker((text) => timer.time('sprachausgabe', () => voice.synthesize(text)), config.audioSampleRate);
+  const sink: StorySink = { begin: (info) => { done = info.done; }, say: (text) => speaker.say(text) };
+  const resultPromise = run(sink);
+  resultPromise.catch(() => undefined);
+  let first: 'ton' | 'fertig';
+  try {
+    first = await timer.time('erster_ton', () => Promise.race([
+      speaker.firstAudio.then(() => 'ton' as const),
+      resultPromise.then((result) => (result.streamed ? speaker.firstAudio.then(() => 'ton' as const) : 'fertig' as const)),
+    ]));
+  } catch (error) {
+    speaker.abort();
+    throw error;
+  }
+  if (first === 'fertig') {
+    const result = await synthesizeTimed(await resultPromise, timer);
+    timer.noteAudio(result.wav);
+    rememberDeviceStoryState(deviceId, result.story_state);
+    const response = deviceResponse(req, deviceId, result, type);
+    prefetcher.start(deviceId, result.story_state);
+    return res.json(response.body);
+  }
+
+  const turnId = streams.put(deviceId, speaker.stream);
+  const finishing = (async () => {
+    let ok = false;
+    try {
+      const result = await resultPromise;
+      await speaker.finish();
+      // Erst wenn alles vertont ist, rückt die Folge vor (wie ohne Strom: kein Stand ohne Ton).
+      rememberDeviceStoryState(deviceId, result.story_state);
+      prefetcher.start(deviceId, result.story_state);
+      ok = true;
+    } catch (error) {
+      speaker.abort();
+      // Nur die Art des Fehlers, nie Text (CLAUDE.md).
+      console.warn('Ton-Strom abgebrochen:', (error as Error)?.name || 'Fehler');
+    } finally {
+      timer.noteAudioSeconds(speaker.stream.seconds);
+      timer.mode = `${timer.mode}_strom`;
+      const line = timer.logLine(ok ? 200 : 'abgebrochen');
+      if (line) console.log(line);
+      if (pendingTurns.get(deviceId) === finishing) pendingTurns.delete(deviceId);
+    }
+  })();
+  pendingTurns.set(deviceId, finishing);
+  return res.json({ type, audio_url: deviceAudioUrl(req, turnId), session_end: done, audio_stream: true });
+}
+
 function rememberDeviceStoryState(deviceId: string, state: StoryState): void {
   // Nur der kleine Story-State bleibt im RAM; Audio und Diagnosetexte werden
   // nicht zusätzlich in dieser Session-Map gespeichert.
@@ -245,15 +336,9 @@ app.post(
       // Eine stumme Aufnahme geht nicht erst an die Spracherkennung: Sie ergibt den Hinweis
       // "nicht verstanden" (Whisper würde bei Stille eher etwas erfinden).
       if (!transcript && !isSilentPcm16(req.file.buffer)) transcript = await transcribeOrEmpty(req.file.buffer, timer);
+      await waitForPendingTurn(deviceId);
       const state = deviceStoryStates.get(deviceId) || {};
-      const result = await synthesizeTimed(await brain.handle('frage', transcript, state, timer), timer);
-      timer.noteAudio(result.wav);
-      rememberDeviceStoryState(deviceId, result.story_state);
-      const response = deviceResponse(req, deviceId, result, 'answer');
-      // Hat die Frage eine Folge begonnen oder fortgesetzt, den nächsten Teil vorbereiten. Bei einer
-      // reinen Frage bleibt der Stand gleich, und eine laufende Vorbereitung bleibt gültig.
-      prefetcher.start(deviceId, result.story_state);
-      return res.json(response.body);
+      return await respondTurn(req, res, deviceId, timer, 'answer', (sink) => brain.handle('frage', transcript, state, timer, sink));
     } catch (err) {
       console.error('Error in /v1/device/question:', err);
       if (err instanceof VoiceProviderError) {
@@ -294,6 +379,7 @@ app.post(
     }
 
     try {
+      await waitForPendingTurn(deviceId);
       const state = deviceStoryStates.get(deviceId);
       // Die Erzähltaste setzt eine laufende Folge fort ("Drück noch einmal die
       // Erzähltaste") und beginnt nur dann eine neue, wenn keine läuft. Mit Modus
@@ -304,7 +390,10 @@ app.post(
         ? await timer.time('vorbereitet', () =>
           prefetcher.take(deviceId, state, Math.max(0, timer.remainingMs() - PREFETCH_FRESH_RESERVE_MS)))
         : null;
-      const result = prepared ?? await synthesizeTimed(await brain.handle('weiter', '', state || {}, timer), timer);
+      if (!prepared) {
+        return await respondTurn(req, res, deviceId, timer, 'kunibert_story', (sink) => brain.handle('weiter', '', state || {}, timer, sink));
+      }
+      const result = prepared;
       timer.noteAudio(result.wav);
       rememberDeviceStoryState(deviceId, result.story_state);
       const response = deviceResponse(req, deviceId, result, 'kunibert_story');
@@ -329,6 +418,8 @@ app.get('/v1/device/audio/:turn_id', (req: Request, res: Response): any => {
   }
 
   const turnId = String(req.params.turn_id);
+  const stream = streams.take(deviceId, turnId);
+  if (stream) return sendAudioStream(res, stream);
   const wav = store.take(deviceId, turnId);
   if (!wav || wav.length === 0) {
     return res.status(404).json({ error: 'not_found' });
@@ -340,6 +431,24 @@ app.get('/v1/device/audio/:turn_id', (req: Request, res: Response): any => {
   });
   return res.send(wav);
 });
+
+/**
+ * Schickt einen Ton-Strom als WAV unbekannter Länge (chunked). Fällt die Sprachausgabe mittendrin
+ * aus, endet die Verbindung vorzeitig; das Gerät spielt, was es hat.
+ */
+async function sendAudioStream(res: Response, stream: PcmStream): Promise<void> {
+  res.status(200).set({ 'Content-Type': 'audio/wav', 'Cache-Control': 'no-store', 'X-Kunibert-Audio-Stream': '1' });
+  res.write(streamingWavHeader(stream.sampleRate));
+  try {
+    for await (const chunk of stream.read()) {
+      if (res.destroyed) return;
+      if (!res.write(chunk)) await new Promise<void>((resolve) => { res.once('drain', resolve); res.once('close', resolve); });
+    }
+    res.end();
+  } catch {
+    res.destroy();
+  }
+}
 
 // POST /v1/turn
 app.post(
