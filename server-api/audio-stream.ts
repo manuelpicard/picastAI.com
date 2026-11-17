@@ -164,6 +164,18 @@ export class StreamRegistry {
     return this.items.size;
   }
 
+  /** Löscht alle noch nicht abgeholten Ströme eines Geräts (zum Beispiel beim Sperren). Gibt die Anzahl zurück. */
+  dropDevice(deviceId: string): number {
+    let removed = 0;
+    for (const [key, item] of this.items) {
+      if (item.deviceId === deviceId) {
+        this.items.delete(key);
+        removed++;
+      }
+    }
+    return removed;
+  }
+
   private purge(): void {
     const now = this.now();
     for (const [key, item] of this.items) if (item.expires < now) this.items.delete(key);

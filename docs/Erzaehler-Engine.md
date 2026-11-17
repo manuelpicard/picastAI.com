@@ -29,7 +29,7 @@ Ein Teil braucht Claude (Einschätzung 20 bis 30 s) und die Sprachausgabe (Pocke
 - Pocket am Stück oder je Absatz statt je Satz ist kaum schneller (gemessen 18,9 s und 18,4 s gegen 20,1 s für rund 150 Wörter); die Satzpausen bleiben deshalb.
 - Aus mit `PICASTAI_STORY_PREFETCH=0`.
 
-Der Zustand liegt nur im Arbeitsspeicher des Servers (je Gerät) und enthält keine Äußerungen außer dem Wunsch der laufenden Folge (höchstens 200 Zeichen, nach der Folge gelöscht).
+Der Zustand liegt nur im Arbeitsspeicher des Servers (je Gerät) und enthält keine Äußerungen außer dem Wunsch der laufenden Folge (höchstens 200 Zeichen, nach der Folge gelöscht). Er verfällt 24 Stunden nach der letzten Nutzung (vorläufig, Maßnahme M9; `server-api/story-states.ts`). Danach beginnt die nächste Erzählung eine neue Folge wie beim ersten Mal: mit Sprechtasten-Hinweis und ohne Gedächtnis der letzten Folgen. Die Erinnerung nach langer Pause (ab 6 Stunden) gilt also nur bis zu dieser Frist.
 
 Der Systemtext an Claude ist für alle Teile gleich und wird mit Prompt-Caching geschickt (`llm.ts`).
 

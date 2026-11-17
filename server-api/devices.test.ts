@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { DeviceRegistry, DeviceStoreError } from './devices.js';
+import { AudioStore, DeviceRegistry, DeviceStoreError } from './devices.js';
 import type { DeviceEntry, DeviceStore } from './devices.js';
 
 /** In-Memory-Attrappe für die dauerhafte Ablage (Firestore). */
@@ -250,4 +250,15 @@ test('Store-Fehler: weder Geräte-ID noch Fehlertext im Protokoll oder in der Me
       (error: unknown) => error instanceof DeviceStoreError && !error.message.includes('wohnzimmer-ben') && /permission-denied/.test(error.message)
     );
   });
+});
+
+test('AudioStore.dropDevice löscht nur das Audio dieses Geräts', () => {
+  const store = new AudioStore(120);
+  const a1 = store.put('a', Buffer.from('1'));
+  store.put('a', Buffer.from('2'));
+  const b1 = store.put('b', Buffer.from('3'));
+  assert.equal(store.dropDevice('a'), 2);
+  assert.equal(store.peek('a', a1), null);
+  assert.deepEqual(store.peek('b', b1), Buffer.from('3'));
+  assert.equal(store.dropDevice('a'), 0);
 });

@@ -64,7 +64,7 @@ Authentifizierung wie oben, JSON-Body:
 
 Jeder Aufruf erzählt den **nächsten Teil der laufenden Folge** (eine Folge hat standardmäßig fünf Teile, `KUNIBERT_PARTS_PER_EPISODE`) und beginnt nur dann eine neue Folge, wenn keine läuft oder die letzte beendet wurde. So passt es zum Satz am Ende jedes Teils: „Wenn du wissen willst, wie es weitergeht, drück noch einmal die Erzähltaste.“ `session_end` ist `true`, sobald der letzte Teil einer Folge gesprochen wurde. `locale` und `age_band` nimmt der Vertrag entgegen; es gilt derzeit de-DE und die serverseitig konfigurierte Altersgruppe (`KUNIBERT_AGE`). Einen Kinderwunsch trägt die Taste nicht; Wünsche äußert das Kind über die Sprechtaste („Erzähl mir eine Geschichte mit einem Einhorn“). Sagt das Kind über die Sprechtaste während einer laufenden Folge, was passieren soll („Kunibert soll den Drachen kitzeln“), erzählt der Server den nächsten Teil derselben Folge mit dieser Idee (Antwort `kind: "weiter"`). Nach Teil 1 weist der Schlusssatz darauf hin. Fällt das Sprachmodell mitten in einer Folge aus, kommt einmal der feste Satz „Kunibert muss kurz überlegen …“, und die Folge rückt nicht weiter.
 
-Die Story-Session wird für die Gerät-ID ausschließlich flüchtig im RAM gehalten. Turntexte und Storyzustände werden von den Geräte- und Turn-Endpunkten nicht in Firestore gespeichert. Nach einem Serverneustart beginnt die Story-Session neu. Die Antwort enthält eine kurzlebige Audio-URL:
+Die Story-Session wird für die Gerät-ID ausschließlich flüchtig im RAM gehalten. Turntexte und Storyzustände werden von den Geräte- und Turn-Endpunkten nicht in Firestore gespeichert. Nach einem Serverneustart beginnt die Story-Session neu. Sie verfällt außerdem 24 Stunden nach der letzten Nutzung (vorläufig, Maßnahme M9 der Datenschutz-Folgenabschätzung, seit 18.11.2026): Dann beginnt die nächste Erzählung eine neue Folge, und auch das Gedächtnis der letzten Folgen ist weg. Abgelaufenes räumt der Server stündlich auf, auch bei Geräten, die sich nicht mehr melden. Sperrt der Betreiber ein Gerät (`POST /api/devices/:id/revoke`), löscht der Server sofort dessen Stand, den vorbereiteten nächsten Teil und wartendes Audio. Die Antwort enthält eine kurzlebige Audio-URL:
 
 ```json
 {
@@ -192,7 +192,7 @@ Die `audio_url` aus der Antwort mit denselben Authentifizierungsheadern abrufen.
 - Fehlermeldungen der Sprachdienste und von Anthropic kommen nur als HTTP-Status mit Fehlercode ins Protokoll (zum Beispiel `HTTP 422 (string_too_long)`), nie mit ihrem Fließtext: Der kann den gesendeten Text enthalten (`server-api/provider-errors.ts`).
 - Audio nur im flüchtigen RAM, TTL standardmäßig 120 Sekunden.
 - Audio-URL benötigt erneut Geräteauthentifizierung.
-- Story-State, Rate-Limit und Audio sind im Prozessspeicher, nicht hochverfügbar. Die Geräteliste ist es nur ohne `PICASTAI_DEVICE_STORE=firestore`.
+- Story-State, Rate-Limit und Audio sind im Prozessspeicher, nicht hochverfügbar. Die Geräteliste ist es nur ohne `PICASTAI_DEVICE_STORE=firestore`. Der Story-State verfällt 24 Stunden nach der letzten Nutzung; `GET /api/status` zeigt nur die Anzahl (`storyStates`, `storyPrefetches`), keine Geräte-IDs und keine Inhalte.
 - Geräteverwaltung, Status und sichere Konfigurationsübersicht benötigen ein starkes Admin-Bearer-Token.
 - CORS akzeptiert nur exakt konfigurierte Browser-Ursprünge; ohne Allowlist gibt es keine Cross-Origin-Freigabe.
 - Firestore-Regeln verweigern direkte Clientzugriffe; serverseitige Admin-SDK-Zugriffe sind hiervon nicht erfasst.

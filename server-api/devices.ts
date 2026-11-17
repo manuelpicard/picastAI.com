@@ -263,6 +263,18 @@ export class AudioStore {
     return entry.wav;
   }
 
+  /** Löscht alles wartende Audio eines Geräts (zum Beispiel beim Sperren). Gibt die Anzahl zurück. */
+  public dropDevice(deviceId: string): number {
+    let removed = 0;
+    for (const [key, item] of this.items) {
+      if (item.deviceId === deviceId) {
+        this.items.delete(key);
+        removed++;
+      }
+    }
+    return removed;
+  }
+
   public peek(deviceId: string, turnId: string): Buffer | null {
     this.purge();
     const entry = this.items.get(turnId);

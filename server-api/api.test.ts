@@ -668,6 +668,33 @@ describe('picastAI-API (echter Server)', () => {
     });
     assert.equal(res.status, 401);
   });
+
+  it('Sperren eines Geräts löscht sofort seinen Stand der Geschichte, die Vorbereitung und wartendes Audio (M9)', async () => {
+    const admin = { Authorization: `Bearer ${ADMIN_TOKEN}` };
+    const status = async () => {
+      const res = await fetch(`${base}/api/status`, { headers: admin });
+      assert.equal(res.status, 200);
+      return (await res.json()) as { storyStates: number; storyPrefetches: number; audioStoreItems: number };
+    };
+    const device = await registerDevice();
+    const before = await status();
+    const story = await postStory(device);
+    assert.equal(story.status, 200, await story.clone().text());
+    const { audio_url: audioUrl } = (await story.json()) as { audio_url: string };
+    const during = await status();
+    assert.equal(during.storyStates, before.storyStates + 1, 'Stand gespeichert');
+    assert.equal(during.storyPrefetches, before.storyPrefetches + 1, 'nächster Teil wird vorbereitet');
+    assert.equal(during.audioStoreItems, before.audioStoreItems + 1, 'Audio wartet auf Abruf');
+
+    const revoked = await fetch(`${base}/api/devices/${device.id}/revoke`, { method: 'POST', headers: admin });
+    assert.equal(revoked.status, 200);
+    const afterRevoke = await status();
+    assert.equal(afterRevoke.storyStates, before.storyStates, 'Stand gelöscht');
+    assert.equal(afterRevoke.storyPrefetches, before.storyPrefetches, 'Vorbereitung verworfen');
+    assert.equal(afterRevoke.audioStoreItems, before.audioStoreItems, 'wartendes Audio gelöscht');
+    assert.ok(!JSON.stringify(afterRevoke).includes(device.id), 'Status nennt keine Geräte-IDs');
+    assert.equal((await fetchAudio(device, audioUrl)).status, 401, 'gesperrtes Gerät kommt nicht mehr an sein Audio');
+  });
 });
 
 // Ohne KUNIBERT_TEST_TRANSCRIPT=1 überhört der Server im Betrieb das Testfeld transcript

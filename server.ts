@@ -8,6 +8,7 @@ import { DeviceRegistry, DeviceStoreError, RateLimiter, AudioStore } from './ser
 import { Brain, FALLBACK_ANSWER_DE, StoryState, type StorySink } from './server-api/brain.js';
 import { STORY_PAUSE_TEXT } from './server-api/prompts.js';
 import { StoryPrefetcher } from './server-api/prefetch.js';
+import { StoryStateStore } from './server-api/story-states.js';
 import { PcmStream, StreamingSpeaker, StreamRegistry, streamingWavHeader } from './server-api/audio-stream.js';
 import { AudioError, decodeWavHeader, isPcmFormat, isSilentPcm16 } from './server-api/audio.js';
 import { config, getSafeConfigSummary, llmConfigWarnings, testSwitchWarnings, ttsProviderWarnings, voiceConfigWarnings } from './server-api/config.js';
@@ -44,7 +45,9 @@ const store = new AudioStore(
 );
 const brain = new Brain();
 const voice = new VoicePipeline(config);
-const deviceStoryStates = new Map<string, StoryState>();
+// Stand der laufenden Geschichte je Gerät: verfällt 24 Stunden nach der letzten Nutzung
+// (vorläufig, Maßnahme M9; server-api/story-states.ts). Danach beginnt eine neue Folge.
+const deviceStoryStates = new StoryStateStore();
 // Ton-Strom (Punkt 71, server-api/audio-stream.ts): laufende Ströme und Antworten, die noch im
 // Hintergrund fertig werden. Eine neue Anfrage desselben Geräts wartet auf deren Stand.
 const streams = new StreamRegistry(config.audioTtlSeconds * 1000);
@@ -69,6 +72,12 @@ const prefetcher = new StoryPrefetcher(
   },
   { ttlMs: 30 * 60 * 1000, nextEpisodeTtlMs: 24 * 60 * 60 * 1000, enabled: config.storyPrefetch }
 );
+// Stündlich aufräumen, auch bei Geräten, die sich nie wieder melden: abgelaufene Stände der
+// Geschichte samt ihrer Vorbereitung und abgelaufene Vorbereitungen.
+setInterval(() => {
+  for (const deviceId of deviceStoryStates.purge()) prefetcher.cancel(deviceId);
+  prefetcher.purge();
+}, 60 * 60 * 1000).unref();
 // Ein frisch erzeugter Teil braucht Claude und die Sprachausgabe. So viel Zeit bleibt mindestens
 // übrig, wenn der Server auf eine laufende Vorbereitung wartet und sie nicht rechtzeitig fertig wird.
 const PREFETCH_FRESH_RESERVE_MS = 70_000;
@@ -188,17 +197,14 @@ async function respondTurn(
   deviceId: string,
   timer: TurnTimer,
   type: 'answer' | 'kunibert_story',
+  generation: number,
   run: (sink?: StorySink) => Promise<Awaited<ReturnType<Brain['handle']>>>
 ): Promise<any> {
   if (!wantsAudioStream(req)) {
     const result = await synthesizeTimed(await run(), timer);
     timer.noteAudio(result.wav);
-    rememberDeviceStoryState(deviceId, result.story_state);
-    const response = deviceResponse(req, deviceId, result, type);
-    // Hat die Anfrage eine Folge begonnen oder fortgesetzt, den nächsten Teil vorbereiten. Bei einer
-    // reinen Frage bleibt der Stand gleich, und eine laufende Vorbereitung bleibt gültig.
-    prefetcher.start(deviceId, result.story_state);
-    return res.json(response.body);
+    advanceStory(deviceId, result.story_state, generation);
+    return res.json(deviceResponse(req, deviceId, result, type).body);
   }
 
   let done = false;
@@ -219,10 +225,8 @@ async function respondTurn(
   if (first === 'fertig') {
     const result = await synthesizeTimed(await resultPromise, timer);
     timer.noteAudio(result.wav);
-    rememberDeviceStoryState(deviceId, result.story_state);
-    const response = deviceResponse(req, deviceId, result, type);
-    prefetcher.start(deviceId, result.story_state);
-    return res.json(response.body);
+    advanceStory(deviceId, result.story_state, generation);
+    return res.json(deviceResponse(req, deviceId, result, type).body);
   }
 
   const turnId = streams.put(deviceId, speaker.stream);
@@ -232,8 +236,7 @@ async function respondTurn(
       const result = await resultPromise;
       await speaker.finish();
       // Erst wenn alles vertont ist, rückt die Folge vor (wie ohne Strom: kein Stand ohne Ton).
-      rememberDeviceStoryState(deviceId, result.story_state);
-      prefetcher.start(deviceId, result.story_state);
+      advanceStory(deviceId, result.story_state, generation);
       ok = true;
     } catch (error) {
       speaker.abort();
@@ -251,10 +254,25 @@ async function respondTurn(
   return res.json({ type, audio_url: deviceAudioUrl(req, turnId), session_end: done, audio_stream: true });
 }
 
-function rememberDeviceStoryState(deviceId: string, state: StoryState): void {
-  // Nur der kleine Story-State bleibt im RAM; Audio und Diagnosetexte werden
-  // nicht zusätzlich in dieser Session-Map gespeichert.
-  deviceStoryStates.set(deviceId, state);
+/**
+ * Speichert den neuen Stand der Geschichte und bereitet den nächsten Teil vor. Nur der kleine
+ * Story-State bleibt im RAM; Audio und Diagnosetexte werden hier nicht gespeichert. Wurde der Stand
+ * des Geräts gelöscht, während die Antwort entstand (zum Beispiel weil der Betreiber das Gerät
+ * gesperrt hat), bleibt er gelöscht: `generation` stammt vom Beginn der Anfrage.
+ */
+function advanceStory(deviceId: string, state: StoryState, generation: number): void {
+  if (!deviceStoryStates.set(deviceId, state, generation)) return;
+  // Hat die Anfrage eine Folge begonnen oder fortgesetzt, den nächsten Teil vorbereiten. Bei einer
+  // reinen Frage bleibt der Stand gleich, und eine laufende Vorbereitung bleibt gültig.
+  prefetcher.start(deviceId, state);
+}
+
+/** Vergisst alles, was der Server zur Geschichte eines Geräts hält: Stand, Vorbereitung, wartendes Audio. */
+function forgetDeviceStory(deviceId: string): void {
+  deviceStoryStates.delete(deviceId);
+  prefetcher.cancel(deviceId);
+  store.dropDevice(deviceId);
+  streams.dropDevice(deviceId);
 }
 
 async function transcribeOrEmpty(wav: Buffer, timer: StageTimer = NO_TIMER): Promise<string> {
@@ -315,6 +333,8 @@ app.post(
     const deviceId = res.locals.deviceId as string;
     const timer = res.locals.timer as TurnTimer;
     timer.mode = 'frage';
+    // Wird der Stand des Geräts während dieser Anfrage gelöscht, speichert sie ihn nicht neu.
+    const generation = deviceStoryStates.generation(deviceId);
 
     if (!limiter.allow(deviceId)) {
       return res.status(429).json({ error: 'rate_limited' });
@@ -338,7 +358,7 @@ app.post(
       if (!transcript && !isSilentPcm16(req.file.buffer)) transcript = await transcribeOrEmpty(req.file.buffer, timer);
       await waitForPendingTurn(deviceId);
       const state = deviceStoryStates.get(deviceId) || {};
-      return await respondTurn(req, res, deviceId, timer, 'answer', (sink) => brain.handle('frage', transcript, state, timer, sink));
+      return await respondTurn(req, res, deviceId, timer, 'answer', generation, (sink) => brain.handle('frage', transcript, state, timer, sink));
     } catch (err) {
       console.error('Error in /v1/device/question:', err);
       if (err instanceof VoiceProviderError) {
@@ -366,6 +386,7 @@ app.post(
     } catch {
       return res.status(401).json({ error: 'unauthorized' });
     }
+    const generation = deviceStoryStates.generation(deviceId);
 
     if (!limiter.allow(deviceId)) {
       return res.status(429).json({ error: 'rate_limited' });
@@ -391,14 +412,12 @@ app.post(
           prefetcher.take(deviceId, state, Math.max(0, timer.remainingMs() - PREFETCH_FRESH_RESERVE_MS)))
         : null;
       if (!prepared) {
-        return await respondTurn(req, res, deviceId, timer, 'kunibert_story', (sink) => brain.handle('weiter', '', state || {}, timer, sink));
+        return await respondTurn(req, res, deviceId, timer, 'kunibert_story', generation, (sink) => brain.handle('weiter', '', state || {}, timer, sink));
       }
       const result = prepared;
       timer.noteAudio(result.wav);
-      rememberDeviceStoryState(deviceId, result.story_state);
-      const response = deviceResponse(req, deviceId, result, 'kunibert_story');
-      prefetcher.start(deviceId, result.story_state);
-      return res.json(response.body);
+      advanceStory(deviceId, result.story_state, generation);
+      return res.json(deviceResponse(req, deviceId, result, 'kunibert_story').body);
     } catch (err) {
       console.error('Error in /v1/device/kunibert-story:', err);
       if (err instanceof VoiceProviderError) {
@@ -593,7 +612,10 @@ app.post('/api/devices', requireAdminAuth, async (req: Request, res: Response): 
 });
 
 app.post('/api/devices/:id/revoke', requireAdminAuth, async (req: Request, res: Response): Promise<any> => {
-  const { success, persisted } = await registry.revokeAndPersist(String(req.params.id));
+  const deviceId = String(req.params.id);
+  const { success, persisted } = await registry.revokeAndPersist(deviceId);
+  // Ein gesperrtes Gerät braucht seine Geschichte nicht mehr (Stand, Vorbereitung, wartendes Audio).
+  if (success) forgetDeviceStory(deviceId);
   return res.json({ success, persisted });
 });
 
@@ -606,6 +628,9 @@ app.get('/api/status', requireAdminAuth, (req: Request, res: Response) => {
   res.json({
     rateLimit: limiter.getStatus(deviceId),
     audioStoreItems: store.count,
+    // Nur Zahlen, keine Geräte-IDs und keine Inhalte.
+    storyStates: deviceStoryStates.count,
+    storyPrefetches: prefetcher.size,
     llm: brain.llmName,
     config: getSafeConfigSummary(config),
   });
