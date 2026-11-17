@@ -22,6 +22,12 @@ Angelegt am 17.11.2026, 20:15, von Claude (Chat). Gepflegt von den Läufen des W
 - Fertig, wenn: gemergt, CI grün. Außerhalb von `NODE_ENV=production` läuft der Probelauf am Rechner ohne Kopplung weiter (mit Test belegt). `docs/picastAI-Pi-API.md` passt.
 - Offen (Recht, keine Rechtsberatung): Die Einwilligung liegt nur im Arbeitsspeicher. Siehe E2.
 
+### A2 · Restlimit-PR der Woche übernehmen (wiederkehrend)
+- Rolle: Prüfen · Prio: 1 · Status: offen (wiederkehrend, bleibt „offen“)
+- Nur von Freitag 08:00 bis Sonntag 23:59 und nur, wenn ein offener PR „Restlimit-Runde <Jahr>-KW<nn>“ einer vergangenen Woche existiert. Sonst überspringen.
+- Ziel: Die älteren Aufgaben „Kunibert Restlimit (Mi, Do, Fr)“ arbeiten mit eigenem Auftrag auf dem Branch `restlimit/<Jahr>-KW<nn>` in einem Entwurfs-PR und mergen nicht. Diesen PR sichten. Was gut ist und noch nicht in `main` steckt, als eigene Autopilot-PRs „[Autopilot A2] …“ übernehmen (mit Tests und unabhängiger Prüfung). Doppelt Gebautes verwerfen. Danach den Entwurfs-PR mit Verweis schließen und den Branch löschen (letzten Commit-Hash im Bericht nennen). PR #49 (KW46) gehört zu A1, nicht hierher.
+- Fertig, wenn: Der Restlimit-PR der Woche ist geschlossen, übernommene Teile sind gemergt, der Bericht steht im letzten A2-PR.
+
 ### B1 · Sprechtaste schneller (Einordnung)
 - Rolle: Bauen · Prio: 1 · Status: offen · Bezug: Nr. 76
 - Ziel: Nach der Sprechtaste ordnet Claude erst ein (Frage, Idee, Geschichte …) und schreibt dann. Die Einordnung kostet rund 4 s. Erst messen (Attrappe mit realistischen Zeiten, `deploy/dryrun/`), dann beschleunigen: zum Beispiel Einordnung und Antwort in einem Aufruf, ein kleineres Modell (Claude Haiku) nur für die Einordnung oder eine sichere Vorab-Regel für eindeutige Fälle.
