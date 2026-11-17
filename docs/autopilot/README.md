@@ -24,7 +24,9 @@ Der Wochen-Autopilot sind geplante Aufgaben in der Cloud (Claude Code). Sie arbe
 
 ## Wie die Läufe sich abstimmen
 
-- Ein Punkt ist belegt, solange ein offener PR mit `[Autopilot <ID>]` im Titel existiert. Ein Entwurf ohne Push seit mehr als 4 Stunden gilt als verwaist und wird vom nächsten Lauf übernommen.
+- Ein Punkt ist belegt, solange ein offener PR mit `[Autopilot <ID>]` im Titel existiert. Die erste Zeile des PR-Texts sagt „Status: in Arbeit (…)“ oder „Status: fertig“.
+- Ein PR „in Arbeit“ ohne Push seit mehr als 4 Stunden gilt als verwaist. Der nächste Lauf übernimmt ihn.
+- Sind drei (im Endspurt sechs) Autopilot-PRs offen, macht ein Lauf erst einen davon fertig, bevor er Neues beginnt.
 - Erledigt ist ein Punkt, wenn sein PR gemergt ist. Der PR setzt den Status in `backlog.md` selbst.
 - Jeder PR wird vor dem Merge von einem unabhängigen Unteragenten geprüft. Gemergt wird nur, wenn alle Checks grün sind.
 - Ist `main` rot, hat die Reparatur Vorrang vor allem anderen.
