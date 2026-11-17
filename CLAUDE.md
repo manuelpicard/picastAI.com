@@ -5,6 +5,7 @@ Vernetztes Sprach-Spielzeug für Kinder von 6 bis 10 Jahren: Sprechtaste (Frage)
 ## Wo der aktuelle Stand steht
 
 - Aufgaben, Entscheidungen und Geparktes: im Claude-Projekt „Ritter Kunibert“, Datei `claude/aufgaben.md`, dazu das Stand-Dokument mit dem neuesten Datum in der Überschrift. Diese Dateien liegen **nicht** im Repo.
+- Seit 17.11.2026 arbeitet der Wochen-Autopilot (geplante Aufgaben) die Arbeitsliste `docs/autopilot/backlog.md` ab; Ablauf und Grenzen in `docs/autopilot/README.md`. PRs des Autopiloten haben `[Autopilot <ID>]` im Titel.
 - `docs/ai-context/` ist ein Archiv (Oktober bis 1.11.2026) und nicht der aktuelle Stand.
 - Geräte: Prototyp auf Raspberry Pi 5 (`pi-client/`), Endgerät ESP32-S3 (`firmware/esp32-s3/`). Beide sprechen dieselbe Schnittstelle: `docs/picastAI-Pi-API.md`.
 
