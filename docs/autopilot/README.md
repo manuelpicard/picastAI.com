@@ -16,11 +16,13 @@ Der Wochen-Autopilot sind geplante Aufgaben in der Cloud (Claude Code). Sie arbe
 
 | Aufgabe | Zeiten (Europe/Berlin) | Rolle |
 |---|---|---|
-| Kunibert Autopilot · Bauen | 00:07, 06:07, 13:07, 19:07 (Fr bis Mi) | Punkte mit Rolle „Bauen“ umsetzen, testen, prüfen lassen, mergen |
-| Kunibert Autopilot · Prüfen | 03:07, 16:07 (Fr bis Mi) | gemergte PRs unabhängig prüfen, Sicherheit, Datenschutz, Tests |
-| Kunibert Autopilot · Recherche | 10:37 (Fr bis Mi) | Recherche mit Quellen, Doku gegen Code |
-| Kunibert Autopilot · Planen & Bericht | 09:13 und 22:13 (täglich) | Arbeitsliste pflegen; abends Tagesbericht, freitags Wochenbericht |
-| Kunibert Autopilot · Endspurt (Mi, Do, Fr) | Mi 22:58, Do stündlich :03, Fr 00:03 bis 07:03 | wie „Bauen“, mit Endspurt-Regeln |
+| Kunibert Autopilot · Bauen | täglich 00:07, 06:07, 13:07, 19:07 | Punkte mit Rolle „Bauen“ umsetzen, testen, prüfen lassen, mergen |
+| Kunibert Autopilot · Prüfen | täglich 03:07, 16:07 | gemergte PRs unabhängig prüfen, Sicherheit, Datenschutz, Tests |
+| Kunibert Autopilot · Recherche | täglich 10:37 | Recherche mit Quellen, Doku gegen Code |
+| Kunibert Autopilot · Planen & Bericht | täglich 09:13 und 22:13 | Arbeitsliste pflegen; abends Tagesbericht, freitags Wochenbericht |
+| Kunibert Restlimit (Mi, Do, Fr) | Mi 22:58, Do stündlich :03, Fr 00:03 bis 07:03 | ältere Aufgaben mit eigenem Auftrag vom 13.11.: arbeiten auf `restlimit/<Jahr>-KW<nn>` in einem Entwurfs-PR und mergen nicht. Der Autopilot übernimmt Brauchbares freitags (Punkt A2 der Arbeitsliste) |
+
+Im Endspurt arbeiten die Läufe des Autopiloten so lange weiter, bis das Limit greift. Dazu kommen die stündlichen Restlimit-Läufe.
 
 ## Wie die Läufe sich abstimmen
 
