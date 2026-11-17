@@ -170,3 +170,13 @@ Angelegt am 17.11.2026, 20:15, von Claude (Chat). Gepflegt von den Läufen des W
 ---
 
 ## Neue Punkte (von den Läufen angehängt)
+
+### N1117-2214-a · Checkliste für den ersten Pi-Durchlauf mit dem Rechner als Server
+- Rolle: Bauen · Prio: 1 · Status: offen · Bezug: Nr. 37, 53, 65
+- Ziel: `deploy/CHECKLISTE.md` geht von einem gemieteten Linux-Server aus: Teil A mit DNS, Caddy und HTTPS; Teil C mit `journalctl`, `sudo docker stop speaches` und `systemctl status`. Der erste Durchlauf mit dem Pi läuft aber mit dem Rechner als Server im selben WLAN (Weg B, `pi-client/README.md`, Abschnitt „Später: der Pi im selben WLAN“). Die Checkliste bekommt einen eigenen Teil A für Weg B (Windows und PowerShell: Token, feste IPv4-Adresse, Firewall nur für „Private Netzwerke“, `NODE_ENV=production`, `HOST=0.0.0.0`, Ton-Strom an). Teil C nennt die Befehle für beide Wege: wo das Server-Protokoll und die Zeilen `Zeitmessung` stehen, wie man den Sprachserver anhält, wie man den Speicher prüft.
+- Fertig, wenn: gemergt. Jeder Befehl ist gegen den Code, `pi-client/README.md` und `deploy/EINRICHTUNG.md` geprüft. Der Bericht sagt, dass nichts davon am Pi oder unter Windows gelaufen ist. Den Rest der Einrichtung prüft danach I2.
+
+### N1117-2214-b · Pi-Installer im Trockenlauf testen, Rechte der Token-Datei
+- Rolle: Prüfen · Prio: 1 · Status: offen · Bezug: Nr. 37
+- Ziel: `pi-client/install_raspberry_pi.sh` ist das Erste, was am neuen Pi läuft. Die CI prüft davon bisher nur die Schreibweise (`shellcheck`), nicht das Verhalten. Ein Test führt den Installer in einer frischen Debian-Umgebung aus (zum Beispiel in einem Container in der CI, `systemctl` als Attrappe) und prüft: Dienstkonto, Verzeichnisse, `kunibert.env` (Werte, Rechte, Besitzer), Dienstdatei (`User=`, `EnvironmentFile=`), `KUNIBERT_PIPELINE_TIMEOUT=140`, ein zweiter Lauf schadet nicht, das Token steht nie in der Ausgabe. Dazu die Rechte der Token-Datei klären: Der Installer setzt `0640` mit Gruppe `audio`; `deploy/CHECKLISTE.md` und `pi-client/README.md` sagen `600`. `systemd` liest die Datei als root. Der Abschnitt „Manuell starten“ in `pi-client/README.md` liest sie aber als normaler Nutzer. Die Entscheidung kommt als „vorläufig“ in den Bericht.
+- Fertig, wenn: Der Test läuft in der CI. Code und Doku sagen dasselbe zu den Rechten. Was nur am echten Pi prüfbar ist (Audio, Tasten, LED), steht im Bericht.
