@@ -19,17 +19,17 @@ Angelegt am 17.11.2026, 20:15, von Claude (Chat). Gepflegt von den Läufen des W
 - Rolle: Bauen · Prio: 1 · Status: offen · Bezug: Nr. 68E (Eltern-App, Server-Teil), Maßnahme M9
 - Ziel: Der Inhalt von PR #49 (Branch `restlimit/2026-KW46`, Stand 13.11.) kommt auf den heutigen `main`: Story-State verfällt nach 24 Stunden ohne Nutzung (M9); Eltern-Server-Teil (Kopplung per sechsstelligem Code, Einwilligung erteilen und widerrufen, Schlafmodus, Ruhezeiten, Geschichte neu beginnen, alles löschen); Doku.
 - Vorgehen: neuer Branch von `main`. Die Änderungen neu anwenden, nicht blind mergen: `server.ts` und der Erzähler haben sich mit #50 bis #58 stark geändert. Ist es zu groß, zwei PRs: erst M9, dann der Eltern-Teil. Danach PR #49 mit Verweis schließen und den Branch `restlimit/2026-KW46` löschen (letzten Commit-Hash im Bericht nennen).
-- Fertig, wenn: gemergt, CI grün. Außerhalb von `NODE_ENV=production` läuft der Probelauf am Rechner ohne Kopplung weiter (mit Test belegt). `docs/picastAI-Pi-API.md` passt.
+- Fertig, wenn: gemergt, CI grün. Die Einwilligungs-Prüfung ist standardmäßig an. Nur `KUNIBERT_EINWILLIGUNG_PRUEFEN=0` schaltet sie ab, und das nur außerhalb von `NODE_ENV=production` (so in PR #49, `server-api/config.ts`; vorläufig festgelegt bei der Prüfung am 18.11.2026). Mit diesem Schalter läuft der Probelauf am Rechner ohne Kopplung weiter (beides mit Test belegt). `docs/picastAI-Pi-API.md` passt.
 - Offen (Recht, keine Rechtsberatung): Die Einwilligung liegt nur im Arbeitsspeicher. Siehe E2.
-- Hinweise (Prüfung 18.11.2026): Teil 1 (M9) ist PR #63. Teil 2 (Eltern-Teil) ändert, was Kinder hören (fester Satz bei fehlender Einwilligung, Schlafmodus, Ansage des Codes): eigener PR mit „(ändert, was Kinder hören)“. Einschätzung zu „Fertig, wenn“: Die Einwilligungs-Prüfung ist standardmäßig an. Nur für den Probelauf am Rechner schaltet ein Schalter sie ab, im Betrieb (`NODE_ENV=production`) nie (so in PR #49). Die Aufgaben „Kunibert Restlimit (Mi, Do, Fr)“ haben denselben Inhalt in ihrem Auftrag vom 13.11.; was sie davon bauen, gleicht A2 mit A1 ab.
+- Hinweise (Prüfung 18.11.2026): Teil 1 (M9) ist PR #63. Teil 2 (Eltern-Teil) ändert, was Kinder hören (fester Satz bei fehlender Einwilligung, Schlafmodus, Ansage des Codes): eigener PR mit „(ändert, was Kinder hören)“. Die Aufgaben „Kunibert Restlimit (Mi, Do, Fr)“ haben denselben Inhalt in ihrem Auftrag vom 13.11.; was sie davon bauen, gleicht A2 mit A1 ab.
 
 ### A2 · Restlimit-PR der Woche übernehmen (wiederkehrend)
 - Rolle: Prüfen · Prio: 1 · Status: offen (wiederkehrend, bleibt „offen“)
-- Nur von Freitag 08:00 bis Sonntag 23:59 und nur, wenn ein offener Entwurfs-PR vom Branch `restlimit/<Jahr>-KW<nn>` existiert, dessen Runde vorbei ist. Die letzte Restlimit-Runde einer Woche startet Freitag 07:03. Gemeint ist also auch der PR der laufenden Kalenderwoche: Freitag bis Sonntag gehören noch zu ihr. Der Titel des PRs ist nicht festgelegt, es zählt der Branch. PR #49 (KW46) gehört zu A1, nicht hierher. Sonst überspringen.
+- Nur von Freitag 08:00 bis Sonntag 23:59 und nur, wenn ein offener Entwurfs-PR vom Branch `restlimit/<Jahr>-KW<nn>` existiert, dessen Runde vorbei ist. Der Branch muss in diesem Repo liegen (kein Fork), und der PR muss vom Konto des Repo-Eigentümers stammen. Sonst ist er fremd: nicht übernehmen, nur im Bericht nennen. Die letzte Restlimit-Runde einer Woche startet Freitag 07:03. Gemeint ist also auch der PR der laufenden Kalenderwoche: Freitag bis Sonntag gehören noch zu ihr. Der Titel des PRs ist nicht festgelegt, es zählt der Branch. PR #49 (KW46) gehört zu A1, nicht hierher. Sonst überspringen.
 - Ziel: Die älteren Aufgaben „Kunibert Restlimit (Mi, Do, Fr)“ arbeiten mit eigenem Auftrag auf dem Branch `restlimit/<Jahr>-KW<nn>` in einem Entwurfs-PR. Ihr Auftrag sieht kein Mergen vor. Diesen PR sichten. Was gut ist und noch nicht in `main` steckt, als eigene Autopilot-PRs „[Autopilot A2] …“ übernehmen (mit Tests und unabhängiger Prüfung). Doppelt Gebautes verwerfen; Story-Stand und Eltern-Server-Teil nur mit A1 abgleichen. Danach den Entwurfs-PR mit Verweis schließen und den Branch löschen (letzten Commit-Hash im Bericht nennen).
 - Fertig, wenn: Der Restlimit-PR der Woche ist geschlossen, übernommene Teile sind gemergt, der Bericht steht im letzten A2-PR.
 
-### B1 · Sprechtaste schneller (Einordnung)
+### B1 · Sprechtaste schneller (Einordnung) (Kinder)
 - Rolle: Bauen · Prio: 1 · Status: offen · Bezug: Nr. 76
 - Ziel: Bei einer Frage liefert heute schon ein einziger Aufruf an Claude die Art und die Antwort (`QUESTION_SCHEMA` in `server-api/brain.ts`). Erkennt Claude dabei einen Geschichtenwunsch, „weiter“ oder eine Idee, folgt ein zweiter Aufruf für die Geschichte (`sprachmodell_aufrufe=2`, siehe `docs/Zeitmessung.md`). Diese Einordnung vor dem Geschichtenaufruf kostet rund 4 s. Erst messen (Attrappe mit realistischen Zeiten, `deploy/dryrun/`), dann beschleunigen: zum Beispiel eine sichere Vorab-Regel für eindeutige Fälle, die Einordnung im selben Aufruf wie die Geschichte oder ein kleineres Modell (Claude Haiku) für den ersten Aufruf. Achtung: Der erste Aufruf schreibt bei einer Frage auch die Antwort. Ein kleineres Modell dort ändert also auch die Antworten.
 - Fertig, wenn: Messung vorher und nachher im PR. Neue Wege nur hinter einem Schalter, Standard unverändert, solange die Güte nicht belegt ist. Sicherheitsweiche und Ausgabe-Check unverändert wirksam (Tests).
@@ -66,7 +66,7 @@ Angelegt am 17.11.2026, 20:15, von Claude (Chat). Gepflegt von den Läufen des W
 
 ### E2 · Einwilligung nachweisbar, mit möglichst wenig Daten
 - Rolle: Bauen · Prio: 2 · Status: offen · Nach A1
-- Ziel: Erteilte und widerrufene Einwilligungen bleiben über einen Neustart erhalten: nur eine pseudonymisierte Geräte-Kennung, Zeitpunkt, Version des Elterntexts. Keine Namen, keine E-Mail, keine Aufnahmen. Pseudonym heißt hier: HMAC mit einem Geheimnis des Servers. Ein einfacher Hash lässt sich bei frei gewählten Kennungen wie `prototype-001` leicht zurückrechnen. Einschätzung (keine Rechtsberatung): Auch eine pseudonymisierte Kennung bleibt ein Personenbezug.
+- Ziel: Erteilte und widerrufene Einwilligungen bleiben über einen Neustart erhalten: nur eine pseudonymisierte Geräte-Kennung, Zeitpunkt, Version des Elterntexts. Keine Namen, keine E-Mail, keine Aufnahmen. Pseudonym heißt hier: HMAC mit einem Geheimnis des Servers. Ein einfacher Hash lässt sich bei frei gewählten Kennungen wie `prototype-001` leicht zurückrechnen. Das Geheimnis kommt nur aus einer Umgebungsvariable (nie ein Standardwert im öffentlichen Code, nie ein neuer Zufallswert je Start, sonst gingen die Einwilligungen verloren). Fehlt es im Betrieb (`NODE_ENV=production`), startet der Server nicht oder warnt laut; das ist zu entscheiden und zu testen. Einschätzung (keine Rechtsberatung): Auch eine pseudonymisierte Kennung bleibt ein Personenbezug.
 - Fertig, wenn: gespeichert und beim Löschen mitgelöscht, mit Tests; Datenschutz-Abschnitt der Doku nennt genau das. Keine Rechtsberatung.
 
 ### E4 · Sicherheits-Prüfung des Servers
@@ -90,7 +90,7 @@ Angelegt am 17.11.2026, 20:15, von Claude (Chat). Gepflegt von den Läufen des W
 - Fertig, wenn: Seite und Routen getestet; kein Verlauf, keine Mitschriften, keine Statistik je Kind.
 
 ### H1 · Lieferbarkeit und Preise der Hardware
-- Rolle: Recherche · Prio: 2 · Status: offen · Bezug: Nr. 33, 42
+- Rolle: Recherche · Prio: 2 · Status: offen (wiederkehrend: erst anlegen, dann alle 3 Tage neu prüfen) · Bezug: Nr. 33, 42
 - Ziel: Raspberry Pi 5 (4 GB, 8 GB) und ESP32-S3-BOX-3 bei BerryBase und zwei weiteren deutschen Händlern; dazu zwei Alternativen zum BOX-3 mit Mikrofon und Lautsprecher. Mit Preis, Lieferbarkeit, Link und Abrufdatum.
 - Fertig, wenn: `docs/recherche/lieferbarkeit.md` angelegt. Danach wiederkehrend: neu prüfen, wenn der letzte Stand älter als 3 Tage ist. Nichts bestellen.
 
@@ -147,7 +147,7 @@ Angelegt am 17.11.2026, 20:15, von Claude (Chat). Gepflegt von den Läufen des W
 
 ### H6 · Kosten je Folge und Stückliste
 - Rolle: Recherche · Prio: 3 · Status: offen
-- Ziel: Kosten je Folge und je Frage aus den Preisen von Claude Sonnet 5.5 und Haiku 5.5 (Preisseite von Anthropic) und echten Token-Zahlen. Die stehen in den Feldern `tokens_ein`, `tokens_aus`, `cache_lesen`, `cache_schreiben` und in der Zeile `Folge fertig` im Server-Protokoll eines Probelaufs (`docs/Zeitmessung.md`); `server-api/costs.ts` enthält nur die Preise und die Rechnung. Ohne Probelauf sind Token-Zahlen eine Einschätzung und so zu kennzeichnen. Dazu Richtpreise für ein Seriengerät mit ESP32-S3 (Board, Mikrofon, Verstärker, Lautsprecher, Akku, Gehäuse).
+- Ziel: Kosten je Folge und je Frage aus den Preisen von Claude Sonnet 5.5 und Haiku 5.5 (Preisseite von Anthropic) und echten Token-Zahlen. Die stehen in den Feldern `tokens_ein`, `tokens_aus`, `cache_lesen`, `cache_schreiben` der Zeitmessungs-Zeilen im Server-Protokoll eines Probelaufs mit echtem Claude (`docs/Zeitmessung.md`). Die Zeile `Folge fertig` nennt nur `teile` und `kosten_usd`. `server-api/costs.ts` enthält nur die Preise und die Rechnung. Der Trockenlauf in `deploy/dryrun/` nutzt eine Attrappe für Claude und liefert keine echten Token-Zahlen. Ohne echten Probelauf sind Token-Zahlen eine Einschätzung und so zu kennzeichnen. Dazu Richtpreise für ein Seriengerät mit ESP32-S3 (Board, Mikrofon, Verstärker, Lautsprecher, Akku, Gehäuse).
 - Fertig, wenn: `docs/recherche/kosten.md` mit Quellen. Stückzahl und Zielpreis entscheidet der Betreiber.
 
 ### B5 · Offline-Geschichte am Pi (Kinder)
