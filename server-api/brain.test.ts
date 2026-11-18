@@ -692,6 +692,44 @@ test('Ersatzgeschichte: drei verschiedene Listen, jede besteht den Ausgabe-Check
   assert.equal(tricks.size, 3);
 });
 
+// Erzählregeln des Betreibers vom 14.11.2026 (docs/Kunibert-Kanon.md, „Der Drache“): Der Drache ist böse und
+// gefürchtet, auch von Kunibert. Ihn zu überlisten und zu besiegen bleibt das ferne Ziel; er wird nicht sanft,
+// nicht gezähmt, nicht zum Freund. Das gilt auch für die festen Texte ohne Claude (Punkt B4).
+const DRAGON_DEFEATED_OR_TAME = /besiegt ihn|besiegte ihn|hat ihn besiegt|ist besiegt|am ende hilft|sanft|zahm|gezähmt|beruhigt|freund/i;
+
+test('Feste Antworten zu Kunibert und zum Drachen folgen den Erzählregeln vom 14.11. (B4)', async () => {
+  const brain = new Brain(null);
+  const kunibert = await brain.handle('frage', 'wer ist kunibert', {});
+  const dragon = await brain.handle('frage', 'wo wohnt der drache', {});
+  for (const result of [kunibert, dragon]) {
+    assert.equal(result.fixed, 'ersatz');
+    assert.equal(screenOutput(result.speech, 'answer'), false, result.speech);
+    assert.ok(!DRAGON_DEFEATED_OR_TAME.test(result.speech), result.speech);
+    assert.match(result.speech, /eines tages/i, 'Sieg bleibt das ferne Ziel');
+  }
+  assert.match(kunibert.speech, /bösen Drachen/);
+  assert.match(dragon.speech, /böse/);
+  assert.match(dragon.speech, /Angst/);
+});
+
+test('Ersatzfolge: Drache bleibt böse und unbesiegt, auch im Stand für Claude (B4)', async () => {
+  for (let ep = 1; ep <= 3; ep++) {
+    const brain = new Brain(null);
+    let state: unknown = { ...cleanState({}), ep, done: true, part: 5 };
+    for (let i = 0; i < 5; i++) {
+      const result = await brain.handle('weiter', '', state);
+      const text = result.speech.replace(EPISODE_CLOSING, '');
+      assert.ok(!/sanft|zahm|gezähmt|freund/i.test(text), text);
+      // Die Zusammenfassung geht als Stand der Geschichte an Claude (Fragen zur Folge, nächster Teil).
+      assert.ok(!DRAGON_DEFEATED_OR_TAME.test(result.story_state.summary), result.story_state.summary);
+      if (storyPhase(result.story_state.part, result.story_state.target) === 'trick') {
+        assert.match(result.story_state.summary, /Besiegt war der Drache nicht/);
+      }
+      state = result.story_state;
+    }
+  }
+});
+
 test('Idee des Kindes während einer Folge: Folge geht weiter, die Idee steht in der Anfrage', async () => {
   const state = { ...cleanState({}), ep: 2, part: 2, target: 5, plan: 'Plan', summary: 's' };
   const llm = new FakeLlm([{ category: 'idee', speech: '' }, story('Kunibert kitzelte den Drachen.')]);

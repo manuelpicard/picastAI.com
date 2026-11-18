@@ -708,9 +708,10 @@ export class Brain {
       speech =
         'Ritter Kunibert ist ein mutiger, höflicher und großzügiger Ritter. ' +
         'Er wohnt im Dachzimmer eines Gasthauses, fährt mit einem Kutscher über holprige Pflastersteine, ' +
-        'trifft im düsteren Wald eine geheimnisvolle Hexe und zieht immer wieder auf den Berg zum Drachen. ' +
-        'Manchmal verliert er, dann isst er Suppe, schläft und versucht es am nächsten Tag wieder. ' +
-        'Am Ende hilft ihm seine Klugheit. Wenn du eine Geschichte hören willst, drück die Erzähltaste.';
+        'trifft im düsteren Wald eine geheimnisvolle Hexe und zieht immer wieder auf den Berg zum bösen Drachen, ' +
+        'vor dem alle Angst haben, auch er. Er will ihn eines Tages mit Klugheit überlisten und besiegen. ' +
+        'Jeden Tag kommt er ein Stück näher, und abends isst er Suppe im Gasthaus und schläft. ' +
+        'Wenn du eine Geschichte hören willst, drück die Erzähltaste.';
     } else if (has('himmel') && has('blau')) {
       speech =
         'Der Himmel wirkt blau, weil das weiße Sonnenlicht in der Luft auf winzig kleine Teilchen trifft ' +
@@ -723,8 +724,9 @@ export class Brain {
         'Sprich am besten mit einem Erwachsenen, den du lieb hast, oder nimm ein Kuscheltier in den Arm.';
     } else if (has('drache', 'drachen')) {
       speech =
-        'Der Drache wohnt oben auf dem Berg in einer dunklen Höhle. Er ist gewaltig und spuckt Rauch, ' +
-        'aber Ritter Kunibert besiegt ihn nie mit Gewalt, sondern immer mit Klugheit und ein bisschen Geduld.';
+        'Der Drache wohnt oben am Berg in einer dunklen Höhle. Er ist böse, brüllt und spuckt Feuer, ' +
+        'und alle haben Angst vor ihm, sogar Ritter Kunibert. Eines Tages will Kunibert ihn überlisten, ' +
+        'mit Klugheit und nicht mit Gewalt. Jeden Tag lernt er ein bisschen mehr über ihn.';
     } else {
       speech = FALLBACK_ANSWER_DE;
     }
@@ -1017,7 +1019,8 @@ export class Brain {
         `Der Weg am Berg war steil und steinig. Kleine Kiesel rollten unter Kuniberts Stiefeln ins Tal. ` +
         `Je näher er der Höhle kam, desto wärmer wurde die Luft.\n\n` +
         `Da grollte es tief im Berg. Der Drache schob seinen großen Kopf aus der Höhle. Rauch kam aus seinen Nüstern, ` +
-        `und seine goldenen Augen funkelten. Mit einem Schwung seines Schwanzes schob er Kunibert sanft, aber bestimmt den Hang hinunter.\n\n` +
+        `und seine goldenen Augen funkelten. Er brüllte so laut, dass die Steine bebten, und eine Feuerzunge sengte das Gras am Weg an. ` +
+        `Kunibert sprang schnell hinter einen Felsen und wartete, bis der Drache wieder in seiner Höhle verschwand.\n\n` +
         `Kunibert setzte sich auf einen Stein und atmete tief durch. „Mit Kraft geht das heute nicht“, murmelte er. ` +
         `Er tastete nach seiner Tasche. ${variant.itemCap} war noch da.`;
       summary = `Kunibert traf am Berg auf den Drachen und merkte, dass er eine List braucht.`;
@@ -1025,7 +1028,7 @@ export class Brain {
       hook = `Kunibert überlegt sich eine List.`;
     } else if (phase === 'trick') {
       text = variant.trick;
-      summary = `Kunibert beruhigte den Drachen mit Klugheit und dem Geschenk der Hexe.`;
+      summary = `Kunibert überlistete den Drachen mit dem Geschenk der Hexe. Besiegt war der Drache nicht.`;
       threads = ``;
       hook = `Kunibert kehrt ins Dorf zurück.`;
     } else {
