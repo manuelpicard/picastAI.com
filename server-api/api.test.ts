@@ -1051,6 +1051,8 @@ describe('picastAI-API im Betrieb ohne Testschalter', () => {
       PICASTAI_TTS_URL: `http://127.0.0.1:${fake.port}`,
       PICASTAI_TTS_MODEL: 'test-tts',
       PICASTAI_TTS_VOICE: 'test-voice',
+      // Wirkt im Betrieb nicht: Die Einwilligung wird trotzdem geprüft (siehe unten).
+      KUNIBERT_EINWILLIGUNG_PRUEFEN: '0',
     };
     if (process.env.HOME) env.HOME = process.env.HOME;
     if (process.env.TMPDIR) env.TMPDIR = process.env.TMPDIR;
@@ -1068,7 +1070,14 @@ describe('picastAI-API im Betrieb ohne Testschalter', () => {
       if (Date.now() > deadline) throw new Error(`Server nicht rechtzeitig bereit:\n${output}`);
       await new Promise((resolve) => setTimeout(resolve, 250));
     }
-    // Im Betrieb antwortet der Server erst nach der Einwilligung der Eltern.
+    // Im Betrieb lässt sich die Prüfung der Einwilligung nicht abschalten: Trotz
+    // KUNIBERT_EINWILLIGUNG_PRUEFEN=0 kommt ohne Einwilligung nur der feste Hinweis.
+    const headers = { Authorization: `Bearer ${ENV_DEVICE_TOKEN}`, 'X-Device-ID': ENV_DEVICE_ID };
+    const blocked = await fetch(`${base}/v1/device/question`, { method: 'POST', headers, body: questionForm(wav16k()) });
+    assert.equal(blocked.status, 200, await blocked.clone().text());
+    assert.equal(((await blocked.json()) as { session_end?: boolean }).session_end, true);
+    assert.equal(fake.state.transcriptions, 0, 'im Betrieb ging die Aufnahme ohne Einwilligung an die Spracherkennung');
+    // Danach einwilligen wie die Eltern.
     await pairAndConsent(base, ADMIN_TOKEN, ENV_DEVICE_ID);
   });
 
@@ -1112,5 +1121,68 @@ describe('picastAI-API im Betrieb ohne Testschalter', () => {
     });
     assert.equal(res.status, 400);
     assert.equal(((await res.json()) as { error: string }).error, 'audio_required');
+  });
+});
+
+describe('Probelauf am Rechner: KUNIBERT_EINWILLIGUNG_PRUEFEN=0 (ohne NODE_ENV=production)', () => {
+  let child: ChildProcess;
+  let fake: { server: http.Server; state: FakeSpeechService; port: number };
+  let base = '';
+  let output = '';
+
+  before(async () => {
+    fake = await startFakeSpeechService();
+    const port = await freePort();
+    base = `http://127.0.0.1:${port}`;
+    const env: Record<string, string> = {
+      PATH: process.env.PATH || '',
+      HOST: '127.0.0.1',
+      PORT: String(port),
+      PICASTAI_DEVICE_ID: ENV_DEVICE_ID,
+      PICASTAI_DEVICE_TOKEN: ENV_DEVICE_TOKEN,
+      PICASTAI_PUBLIC_BASE_URL: PUBLIC_BASE_URL,
+      PICASTAI_STT_URL: `http://127.0.0.1:${fake.port}`,
+      PICASTAI_STT_MODEL: 'test-stt',
+      PICASTAI_TTS_URL: `http://127.0.0.1:${fake.port}`,
+      PICASTAI_TTS_MODEL: 'test-tts',
+      PICASTAI_TTS_VOICE: 'test-voice',
+      KUNIBERT_EINWILLIGUNG_PRUEFEN: '0',
+    };
+    if (process.env.HOME) env.HOME = process.env.HOME;
+    if (process.env.TMPDIR) env.TMPDIR = process.env.TMPDIR;
+    child = spawn(process.execPath, ['--import', 'tsx', 'server.ts'], { cwd: ROOT, env, stdio: ['ignore', 'pipe', 'pipe'] });
+    child.stdout?.on('data', (chunk: Buffer) => (output += chunk));
+    child.stderr?.on('data', (chunk: Buffer) => (output += chunk));
+    const deadline = Date.now() + 60_000;
+    for (;;) {
+      if (child.exitCode !== null) throw new Error(`Server vorzeitig beendet (Code ${child.exitCode}):\n${output}`);
+      try {
+        if ((await fetch(`${base}/health`)).ok) break;
+      } catch {
+        // noch nicht bereit
+      }
+      if (Date.now() > deadline) throw new Error(`Server nicht rechtzeitig bereit:\n${output}`);
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+  });
+
+  after(async () => {
+    if (child && child.exitCode === null) {
+      const exited = new Promise((resolve) => child.once('exit', resolve));
+      child.kill('SIGTERM');
+      await exited;
+    }
+    if (fake) await new Promise<void>((resolve) => fake.server.close(() => resolve()));
+  });
+
+  it('ohne Kopplung und ohne Einwilligung geht die Frage durch Erkennung und Antwort', async () => {
+    const headers = { Authorization: `Bearer ${ENV_DEVICE_TOKEN}`, 'X-Device-ID': ENV_DEVICE_ID };
+    const res = await fetch(`${base}/v1/device/question`, { method: 'POST', headers, body: questionForm(wav16k()) });
+    assert.equal(res.status, 200, await res.clone().text());
+    assert.equal(fake.state.transcriptions, 1, 'die Aufnahme ging an die Spracherkennung');
+    assert.ok(
+      !fake.state.speechInputs.some((text) => text.includes('müssen mich deine Eltern')),
+      'im Probelauf mit dem Schalter kein Hinweis auf die Einwilligung'
+    );
   });
 });
