@@ -710,6 +710,17 @@ test('Feste Antworten zu Kunibert und zum Drachen folgen den Erzählregeln vom 1
   assert.match(kunibert.speech, /bösen Drachen/);
   assert.match(dragon.speech, /böse/);
   assert.match(dragon.speech, /Angst/);
+  // Auch „Ich habe Angst vor dem Drachen“ oder ein Papierdrachen landen hier: Die Antwort sagt, dass es um den
+  // Drachen aus den Geschichten geht, und endet ruhig.
+  assert.match(dragon.speech, /^In den Geschichten von Ritter Kunibert/);
+  assert.match(dragon.speech, /gibt nicht auf/);
+  assert.match(dragon.speech, /besiegen/);
+  // Kurze Sätze für Kinder von 6 bis 10 Jahren.
+  for (const result of [kunibert, dragon]) {
+    for (const sentence of result.speech.split(/(?<=[.!?])\s+/)) {
+      assert.ok(sentence.split(/\s+/).length <= 20, sentence);
+    }
+  }
 });
 
 test('Ersatzfolge: Drache bleibt böse und unbesiegt, auch im Stand für Claude (B4)', async () => {
@@ -719,7 +730,10 @@ test('Ersatzfolge: Drache bleibt böse und unbesiegt, auch im Stand für Claude 
     for (let i = 0; i < 5; i++) {
       const result = await brain.handle('weiter', '', state);
       const text = result.speech.replace(EPISODE_CLOSING, '');
-      assert.ok(!/sanft|zahm|gezähmt|freund/i.test(text), text);
+      assert.ok(!DRAGON_DEFEATED_OR_TAME.test(text), text);
+      // Kein Missverständnis-Motiv: Der Drache bleibt böse (Erzählregeln vom 14.11.).
+      assert.ok(!/wirklich will|wollte nur/i.test(text), text);
+      assert.ok(!/wirklich will|wollte nur/i.test(result.story_state.summary), result.story_state.summary);
       // Die Zusammenfassung geht als Stand der Geschichte an Claude (Fragen zur Folge, nächster Teil).
       assert.ok(!DRAGON_DEFEATED_OR_TAME.test(result.story_state.summary), result.story_state.summary);
       if (storyPhase(result.story_state.part, result.story_state.target) === 'trick') {
@@ -727,6 +741,25 @@ test('Ersatzfolge: Drache bleibt böse und unbesiegt, auch im Stand für Claude 
       }
       state = result.story_state;
     }
+  }
+});
+
+test('Ersatzfolge endet am selben Tag mit dem Einschlafen, ohne Nachfrage (Erzählregeln vom 14.11., B4)', async () => {
+  for (let ep = 1; ep <= 3; ep++) {
+    const brain = new Brain(null);
+    let state: unknown = { ...cleanState({}), ep, done: true, part: 5 };
+    let finale = '';
+    for (let i = 0; i < 5; i++) {
+      const result = await brain.handle('weiter', '', state);
+      if (result.story_state.done) finale = result.speech;
+      state = result.story_state;
+    }
+    assert.ok(finale, 'Die Folge ist nach fünf Teilen zu Ende');
+    assert.ok(finale.endsWith(EPISODE_CLOSING), finale);
+    const text = finale.replace(EPISODE_CLOSING, '');
+    assert.match(text, /schlief/, 'Eine Folge endet mit dem Einschlafen');
+    assert.ok(!/Morgen|wieder öffnete/.test(text), 'Kein Sprung in den nächsten Tag');
+    assert.ok(!text.includes('?'), 'Ein natürliches Ende fragt nicht nach');
   }
 });
 

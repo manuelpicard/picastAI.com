@@ -489,14 +489,14 @@ export const FALLBACK_VARIANTS = [
   },
   {
     gift: 'Sie gab ihm einen glatten, runden Stein mit einem Loch in der Mitte.',
-    hint: 'Schau durch den Stein, bevor du kämpfst. Dann siehst du, was der Drache wirklich will.',
+    hint: 'Schau durch den Stein, bevor du kämpfst. Dann siehst du seine schwache Stelle.',
     item: 'den runden Stein',
     itemCap: 'Der runde Stein',
     trick:
       `Der Drache stampfte vor seiner Höhle und schnaubte. Kunibert wollte schon sein Schwert ziehen. Doch dann dachte er an die Hexe: ` +
       `„Schau durch den Stein, bevor du kämpfst.“\n\n` +
       `Er hielt den runden Stein vor sein Auge und schaute hindurch. Da sah er etwas, das er vorher nicht bemerkt hatte. ` +
-      `Der Drache blickte immer wieder auf einen glänzenden Haufen hinter sich. Er bewachte etwas. Er wollte nur, dass niemand an seinen Schatz kam.\n\n` +
+      `Der Drache blickte immer wieder auf einen glänzenden Haufen hinter sich. Er bewachte gierig seinen Schatz.\n\n` +
       `„Ach so!“, flüsterte Kunibert. Er warf einen Kiesel weit nach links, so dass er laut klapperte. Sofort fuhr der Drache herum und fauchte in die falsche Richtung. ` +
       `Kunibert huschte auf der anderen Seite den Pfad hinunter. Besiegt war der Drache nicht. Aber jetzt kannte Kunibert seine schwache Stelle.`,
   },
@@ -707,10 +707,9 @@ export class Brain {
     if (has('kunibert', 'kuniberts')) {
       speech =
         'Ritter Kunibert ist ein mutiger, höflicher und großzügiger Ritter. ' +
-        'Er wohnt im Dachzimmer eines Gasthauses, fährt mit einem Kutscher über holprige Pflastersteine, ' +
-        'trifft im düsteren Wald eine geheimnisvolle Hexe und zieht immer wieder auf den Berg zum bösen Drachen, ' +
-        'vor dem alle Angst haben, auch er. Er will ihn eines Tages mit Klugheit überlisten und besiegen. ' +
-        'Jeden Tag kommt er ein Stück näher, und abends isst er Suppe im Gasthaus und schläft. ' +
+        'Er wohnt im Dachzimmer eines Gasthauses und trifft im düsteren Wald eine geheimnisvolle Hexe. ' +
+        'Immer wieder zieht er auf den Berg zum bösen Drachen, vor dem alle Angst haben. ' +
+        'Eines Tages will er ihn mit Klugheit überlisten und besiegen. ' +
         'Wenn du eine Geschichte hören willst, drück die Erzähltaste.';
     } else if (has('himmel') && has('blau')) {
       speech =
@@ -724,9 +723,9 @@ export class Brain {
         'Sprich am besten mit einem Erwachsenen, den du lieb hast, oder nimm ein Kuscheltier in den Arm.';
     } else if (has('drache', 'drachen')) {
       speech =
-        'Der Drache wohnt oben am Berg in einer dunklen Höhle. Er ist böse, brüllt und spuckt Feuer, ' +
-        'und alle haben Angst vor ihm, sogar Ritter Kunibert. Eines Tages will Kunibert ihn überlisten, ' +
-        'mit Klugheit und nicht mit Gewalt. Jeden Tag lernt er ein bisschen mehr über ihn.';
+        'In den Geschichten von Ritter Kunibert wohnt der Drache oben am Berg in einer dunklen Höhle. ' +
+        'Er ist böse, brüllt und spuckt Feuer, und alle haben Angst vor ihm. ' +
+        'Aber Kunibert ist klug und gibt nicht auf. Eines Tages will er ihn mit Klugheit überlisten und besiegen.';
     } else {
       speech = FALLBACK_ANSWER_DE;
     }
@@ -1020,8 +1019,8 @@ export class Brain {
         `Je näher er der Höhle kam, desto wärmer wurde die Luft.\n\n` +
         `Da grollte es tief im Berg. Der Drache schob seinen großen Kopf aus der Höhle. Rauch kam aus seinen Nüstern, ` +
         `und seine goldenen Augen funkelten. Er brüllte so laut, dass die Steine bebten, und eine Feuerzunge sengte das Gras am Weg an. ` +
-        `Kunibert sprang schnell hinter einen Felsen und wartete, bis der Drache wieder in seiner Höhle verschwand.\n\n` +
-        `Kunibert setzte sich auf einen Stein und atmete tief durch. „Mit Kraft geht das heute nicht“, murmelte er. ` +
+        `Kunibert sprang schnell hinter einen Felsen und hielt den Atem an.\n\n` +
+        `Hinter dem Felsen atmete er tief durch. „Mit Kraft geht das heute nicht“, murmelte er. ` +
         `Er tastete nach seiner Tasche. ${variant.itemCap} war noch da.`;
       summary = `Kunibert traf am Berg auf den Drachen und merkte, dass er eine List braucht.`;
       threads = `${variant.itemCap} der Hexe im richtigen Moment benutzen.`;
@@ -1038,7 +1037,7 @@ export class Brain {
         `Im Gasthaus stellte die Wirtin ihm eine dampfende Schale Gemüsesuppe hin. ` +
         `Kunibert aß mit großem Hunger und bedankte sich. Dann stieg er die knarrende Treppe hinauf in sein Dachzimmer.\n\n` +
         `Er legte sich unter den schiefen Balken und schloss die Augen. Draußen war es still. ` +
-        `Und als er die Augen wieder öffnete, war es Morgen, und durch das kleine Fenster sah er den Berg.`;
+        `Bald schlief er tief und fest.`;
     }
 
     const done = phase === 'finale';
