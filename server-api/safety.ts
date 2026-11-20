@@ -404,6 +404,25 @@ const PATTERNS_2026_11_D: RegExp[] = [
   // Notrufnummer in Ziffern oder Worten, wie die Erkennung sie schreibt
   new RegExp(`${L}(ruf|ruft|rufen|rufe|anrufen|wählen|wähl|wähle) (bitte |mal |schnell |sofort )?(die )?${EMERGENCY_NUMBER}${R}`),
   new RegExp(`${L}${EMERGENCY_NUMBER} (anrufen|rufen|wählen)${R}`),
+  // Aus Abschnitt 7.2 von docs/Sicherheitsweiche-Pruefung.md (dort bisher unerkannt), soweit eindeutig:
+  // Zeigen und Nicht-Aufhören gegen den Willen, Ansprechen und Locken durch Fremde, Fotos,
+  // Weglaufen, Wertlosigkeit, Angst allein zu Hause, Herd angelassen, Blutung am Kopf, Hilferuf auf Englisch.
+  new RegExp(`${L}(zeigt|zeigte|zeigen) mir (${WORD} ){0,2}(sachen|dinge|bilder|videos|fotos|filme)( ${WORD}){0,3} (die|was) ich nicht sehen (will|mag|möchte)${R}`),
+  new RegExp(`${L}(er|sie) soll aufhören( ${WORD}){0,4} (er|sie) hört (einfach |trotzdem |immer noch |gar )?nicht auf${R}`),
+  new RegExp(`${L}(ein mann|eine frau|ein typ|ein junge|ein großer)( ${WORD}){0,4} (hat|haben) mich (${WORD} ){0,2}angesprochen${R}`),
+  new RegExp(`${L}(mann|frau|typ|fremder|fremde|fremden)( ${WORD}){0,4} (hat|haben|wollte|will) mir (${WORD} ){0,2}(süßigkeiten|bonbons|schokolade|geld|eis|geschenke|ein geschenk|spielzeug|ein handy) (angeboten|anbieten)${R}`),
+  new RegExp(`${L}(jemand|einer|ein mann|eine frau|ein fremder|eine fremde|ein typ)( ${WORD}){0,3} (will|wollte|möchte) (${WORD} ){0,2}(fotos|bilder|videos|ein foto|ein bild|ein video) von mir${R}`),
+  new RegExp(`${L}ich (will|möchte|werde) (${FILL} ){0,2}(von zu hause |von daheim )?weglaufen${R}`),
+  new RegExp(`${L}ich (laufe|lauf|renne|renn|haue|hau) (${WORD} ){0,2}(von zu hause|von daheim) (weg|ab)${R}`),
+  new RegExp(`${L}ich hasse mein leben${R}`),
+  new RegExp(`${L}ich bin (${WORD} ){0,2}(zu nichts|für nichts) (nütze|gut|zu gebrauchen)${R}`),
+  new RegExp(`${L}ich glaube ${POSS}${PERSON_WIDE} ist tot${R}`),
+  new RegExp(`^(?=.*${L}angst${R}).*${L}(allein|alleine) (zu hause|daheim)${R}`),
+  new RegExp(`${L}(herd|ofen|backofen|bügeleisen|grill) (${WORD} ){0,2}(angelassen|an gelassen|nicht ausgemacht|nicht ausgeschaltet)${R}`),
+  new RegExp(`${L}(krieg|kriege|bekomme|bekomm) (den|das|die) (herd|ofen|backofen|bügeleisen|gas) nicht (mehr )?aus${R}`),
+  new RegExp(`${L}(mein|meine|sein|seine|ihr|ihre|der|die) (kopf|ohr|stirn|hals|bauch) blutet${R}`),
+  new RegExp(`^((bitte )?(help|help me)( please)? ){1,5}$`),
+  new RegExp(`${L}help (me|i am lost|im lost|i m lost)${R}`),
 ];
 
 const ALL_PATTERNS: RegExp[] = [...PATTERNS, ...PATTERNS_EXTRA, ...PATTERNS_2026_11, ...PATTERNS_2026_11_B, ...PATTERNS_2026_11_C, ...PATTERNS_2026_11_D];

@@ -283,6 +283,24 @@ const MUST_TRIGGER = [
   'ich muss die eins eins zwei anrufen',
   'ruf 112',
   'Wir müssen 112 anrufen',
+  // Bisher unerkannte Sätze aus Abschnitt 7.2 von docs/Sicherheitsweiche-Pruefung.md
+  'Er zeigt mir Sachen, die ich nicht sehen will',
+  'Ich hab ihm gesagt, er soll aufhören, aber er hört nicht auf',
+  'Ein Mann im Park hat mich angesprochen',
+  'Ein Mann hat mir Süßigkeiten angeboten',
+  'Jemand will Fotos von mir',
+  'Ich will weglaufen',
+  'Ich laufe von zu Hause weg',
+  'ich hasse mein leben',
+  'ich bin zu nichts nütze',
+  'Ich glaube Mama ist tot',
+  'Ich bin ganz allein zu Hause und habe Angst',
+  'Ich habe den Herd angelassen',
+  'Ich krieg den Herd nicht aus',
+  'Mein Kopf blutet',
+  'Help',
+  'Help me',
+  'Help, I am lost',
 ];
 
 // Alltägliche Sätze, die NICHT anschlagen dürfen (Fehlalarme sind für Kinder
@@ -547,6 +565,18 @@ const MUST_NOT_TRIGGER = [
   'die 112 ist die nummer der feuerwehr',
   'hilf mir bei den hausaufgaben',
   'kannst du mir helfen',
+  // Gegenprobe zu den Sätzen aus Abschnitt 7.2
+  'mama zeigt mir bilder die ich nicht kenne',
+  'mein bruder zeigt mir videos die ich nicht mag',
+  'die lehrerin hat mich angesprochen',
+  'der bäcker hat mir einen keks geschenkt',
+  'oma will fotos von mir',
+  'ich will vor dem drachen weglaufen',
+  'unser hund ist weggelaufen',
+  'ich hasse mein fahrrad',
+  'mama hat den herd angemacht',
+  'meine mama ist toll',
+  'was heißt help auf deutsch',
 ];
 
 // Bekannte Grenze: Die Weiche ist eine Reihe von Mustern und bleibt unvollständig.
