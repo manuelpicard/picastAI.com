@@ -31,6 +31,8 @@ export interface StageTimer {
   remainingMs(): number;
   /** Token-Zahlen und Kosten (US-Dollar, null = Preis unbekannt) eines Sprachmodell-Aufrufs. */
   noteLlm?(usage: LlmUsage, usd: number | null): void;
+  /** Eine Protokollzeile dieser Anfrage (nur Zahlen und feste Wörter). Ohne: console.log. */
+  log?(line: string): void;
 }
 
 /** Misst nichts und kennt kein Budget. Standard für Aufrufer ohne Zeitmessung (Tests, eval-llm). */
@@ -132,7 +134,7 @@ export class TurnTimer implements StageTimer {
    * ausgabecheck_ms=0 sprachausgabe_ms=2210 gesamt_ms=7050 sprachmodell_aufrufe=1 audio_s=12.4
    * Gibt null zurück, wenn keine Stufe gemessen wurde.
    */
-  logLine(status: number | 'abgebrochen'): string | null {
+  logLine(status: number | 'abgebrochen' | 'verworfen'): string | null {
     if (!this.measured) return null;
     const parts = [`Zeitmessung id=${this.id}`, `modus=${this.mode}`, `status=${status}`];
     for (const stage of TIMED_STAGES) {
@@ -148,6 +150,17 @@ export class TurnTimer implements StageTimer {
       parts.push(`kosten_usd=${this.usd === null ? '-' : formatUsd(this.usd)}`);
     }
     return parts.join(' ');
+  }
+
+  /**
+   * Übernimmt Stufen, Aufrufe, Token und Kosten einer anderen Messung, zum Beispiel einer Geschichte,
+   * die schon während der Einordnung begann (Punkt B1). Danach stehen sie in der Zeile dieser Anfrage.
+   */
+  absorb(other: TurnTimer): void {
+    for (const [stage, duration] of other.durations) this.durations.set(stage, (this.durations.get(stage) ?? 0) + duration);
+    for (const [stage, count] of other.calls) this.calls.set(stage, (this.calls.get(stage) ?? 0) + count);
+    if (other.usage) this.usage = addUsage(this.usage ?? ZERO_USAGE, other.usage);
+    if (other.usd !== null) this.usd = (this.usd ?? 0) + other.usd;
   }
 
   private add(stage: TimedStage, duration: number): void {

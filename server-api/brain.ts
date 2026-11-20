@@ -27,7 +27,7 @@ import {
 import { generateMelodyWav, generateToneWav } from './audio.js';
 import { config, type KunibertConfig } from './config.js';
 import { costUsd, formatUsd, pricesFor, type LlmPrices, type LlmUsage } from './costs.js';
-import { budgetTimeoutMs, MIN_LLM_MS, NO_TIMER, TTS_RESERVE_MS, type StageTimer } from './timing.js';
+import { budgetTimeoutMs, MIN_LLM_MS, NO_TIMER, TTS_RESERVE_MS, TurnTimer, type StageTimer, type TimedStage } from './timing.js';
 
 /** Fester Ersatztext, wenn das Sprachmodell fehlt, ausfällt oder seine Antwort abgelehnt wurde. */
 export const FALLBACK_ANSWER_DE =
@@ -451,7 +451,7 @@ export function buildStoryPrompt(
   return lines.join('\n');
 }
 
-export type BrainSettings = Pick<KunibertConfig, 'ageBracket' | 'partsPerEpisode' | 'storyMinWords' | 'storyMaxWords' | 'answerMaxWords' | 'sttPrompt' | 'llmPrices'> & {
+export type BrainSettings = Pick<KunibertConfig, 'ageBracket' | 'partsPerEpisode' | 'storyMinWords' | 'storyMaxWords' | 'answerMaxWords' | 'sttPrompt' | 'llmPrices' | 'parallelClassification'> & {
   /** Uhr für die Jahreszeit der Stimmung (austauschbar für Tests). */
   now: () => Date;
 };
@@ -502,6 +502,136 @@ export const FALLBACK_VARIANTS = [
   },
 ] as const;
 
+// ---------------------------------------------------------------------------
+// Punkt B1: Einordnung und Geschichte gleichzeitig (Schalter KUNIBERT_EINORDNUNG_PARALLEL=1)
+// ---------------------------------------------------------------------------
+
+/** Welcher Geschichtenaufruf zu einer Einordnung gehört: neue Folge, weitererzählen, Idee einbauen. */
+export type StoryCall = 'neu' | 'weiter' | 'idee';
+
+/**
+ * Der Geschichtenaufruf, den handleQuestion für eine Kategorie der Einordnung macht, oder null für
+ * Frage, Sicherheit, unklar. Eine Idee ohne laufende Folge ist der Wunsch für eine neue Folge.
+ */
+export function storyCallFor(category: string | null | undefined, active: boolean): StoryCall | null {
+  if (category === 'geschichte') return 'neu';
+  if (category === 'weiter') return 'weiter';
+  if (category === 'idee') return active ? 'idee' : 'neu';
+  return null;
+}
+
+const QUESTION_START = /^(wer|wen|wem|wessen|was|warum|wieso|weshalb|weswegen|wann|wo|woher|wohin|womit|wofür|welche[rsmn]?|wieviel|wieviele|wie viel|wie viele|wie lange|wie alt|wie groß|wie heißt|wie hoch|wie weit)(?![a-zäöüß])/;
+
+/**
+ * Vorab-Regel (Punkt B1): Klingt die Äußerung nach einem Geschichtenwunsch, nach „weiter“ oder, in einer
+ * laufenden Folge, nach einer Idee? Die Regel entscheidet nichts. Sie sagt nur, welcher Geschichtenaufruf
+ * schon gleichzeitig mit der Einordnung starten darf. Was das Kind hört, bestimmt weiter die Einordnung
+ * durch Claude. Liegt die Regel daneben, kostet das einen verworfenen Aufruf; zu vorsichtig kostet nichts.
+ */
+export function likelyStoryTurn(transcript: string, active: boolean): 'geschichte' | 'weiter' | 'idee' | null {
+  const text = transcript.toLowerCase().replace(/\s+/g, ' ').trim();
+  if (!text) return null;
+  const words = new Set(text.split(/[^a-zäöüß]+/).filter(Boolean));
+  const has = (...candidates: string[]) => candidates.some((word) => words.has(word));
+  const asksWeiter = has('weiter', 'weitererzählen', 'weitermachen') || /\bwie geht('?s| es) (jetzt |denn )?weiter\b/.test(text);
+  // Wissensfragen und Fragen zur Geschichte („Warum hat der Drache die Glocke?“) nicht vorab erzählen.
+  if (QUESTION_START.test(text) && !asksWeiter) return null;
+  if (active && has('soll', 'sollen', 'sollte', 'sollten', 'muss', 'müssen') && !has('neue', 'neues', 'andere')) return 'idee';
+  if (asksWeiter) return 'weiter';
+  if (has('geschichte', 'geschichten', 'märchen', 'gutenachtgeschichte') &&
+    has('erzähl', 'erzähle', 'erzählen', 'erzählst', 'hören', 'will', 'möchte', 'möchtest', 'magst', 'bitte', 'noch', 'neue', 'wünsche')) return 'geschichte';
+  return null;
+}
+
+/**
+ * Hält die Absätze einer früh gestarteten Geschichte zurück, bis die Einordnung sie freigibt
+ * (`release`), oder verwirft sie (`drop`). Vorher geht nichts an den Lautsprecher.
+ */
+class HeldSink {
+  private queue: Array<() => void> = [];
+  private stateOfGate: 'halten' | 'frei' | 'verworfen' = 'halten';
+  readonly sink: StorySink;
+
+  constructor(target: StorySink) {
+    this.sink = {
+      begin: (info) => this.push(() => target.begin(info)),
+      say: (text) => this.push(() => target.say(text)),
+    };
+  }
+
+  private push(fn: () => void): void {
+    if (this.stateOfGate === 'frei') fn();
+    else if (this.stateOfGate === 'halten') this.queue.push(fn);
+  }
+
+  release(): void {
+    if (this.stateOfGate !== 'halten') return;
+    this.stateOfGate = 'frei';
+    for (const fn of this.queue.splice(0)) fn();
+  }
+
+  drop(): void {
+    this.stateOfGate = 'verworfen';
+    this.queue = [];
+  }
+}
+
+/**
+ * Messung der früh gestarteten Geschichte: eigene Stufen, Token und Kosten, aber das Zeitbudget der
+ * Anfrage. Wird die Geschichte genommen, übernimmt die Anfrage die Werte (`TurnTimer.absorb`); wird sie
+ * verworfen, steht ihr Verbrauch in einer eigenen Zeile mit `modus=vorab_verworfen` (nur Zahlen).
+ */
+class EarlyStoryTimer implements StageTimer {
+  readonly turn: TurnTimer;
+  private lines: string[] = [];
+
+  constructor(private readonly parent: StageTimer) {
+    this.turn = new TurnTimer(undefined, parent instanceof TurnTimer ? parent.id : undefined, Number.POSITIVE_INFINITY);
+    this.turn.mode = 'vorab_verworfen';
+  }
+
+  time<T>(stage: TimedStage, fn: () => Promise<T>): Promise<T> {
+    return this.turn.time(stage, fn);
+  }
+
+  timeSync<T>(stage: TimedStage, fn: () => T): T {
+    return this.turn.timeSync(stage, fn);
+  }
+
+  remainingMs(): number {
+    return this.parent.remainingMs();
+  }
+
+  noteLlm(usage: LlmUsage, usd: number | null): void {
+    this.turn.noteLlm(usage, usd);
+  }
+
+  /** Zeilen der Geschichte (zum Beispiel „Geschichte Teil 1/5: …“) erst schreiben, wenn sie genommen wird. */
+  log(line: string): void {
+    this.lines.push(line);
+  }
+
+  /** Schreibt die zurückgehaltenen Zeilen (Geschichte genommen) über die Messung der Anfrage. */
+  flushTo(parent: StageTimer): void {
+    for (const line of this.lines.splice(0)) logTurn(parent, line);
+  }
+}
+
+/** Protokollzeile einer Anfrage über ihre Messung (eine früh gestartete Geschichte hält sie zurück). */
+function logTurn(timer: StageTimer, line: string): void {
+  if (timer.log) timer.log(line);
+  else console.log(line);
+}
+
+/** Eine Geschichte, die gleichzeitig mit der Einordnung begonnen hat. */
+interface EarlyStory {
+  readonly call: StoryCall;
+  /** Gibt die zurückgehaltenen Absätze frei und liefert das Ergebnis. */
+  use(): Promise<TurnResult>;
+  /** Verwirft die Geschichte; nichts davon wird gesprochen oder gespeichert. */
+  discard(): void;
+}
+
 export class Brain {
   private readonly age: string;
   private readonly partsPerEpisode: number;
@@ -511,6 +641,7 @@ export class Brain {
   private readonly sttPrompt: string;
   private readonly now: () => Date;
   private readonly prices: LlmPrices | null;
+  private readonly parallelClassification: boolean;
 
   /**
    * Ohne Anbieter (kein Key) greifen die festen Fallback-Texte. Die Einstellungen
@@ -525,6 +656,43 @@ export class Brain {
     this.sttPrompt = settings.sttPrompt ?? config.sttPrompt;
     this.now = settings.now ?? (() => new Date());
     this.prices = llm ? pricesFor(llm.model, settings.llmPrices ?? config.llmPrices) : null;
+    this.parallelClassification = settings.parallelClassification ?? config.parallelClassification;
+  }
+
+  /**
+   * Startet einen Geschichtenaufruf schon während der Einordnung (Punkt B1). Es sind genau die Aufrufe,
+   * die handleQuestion nach der Einordnung machen würde. Absätze gehen erst nach `use()` hinaus.
+   */
+  private startEarlyStory(call: StoryCall, state: StoryState, transcript: string, timer: StageTimer, sink?: StorySink): EarlyStory {
+    const held = sink ? new HeldSink(sink) : null;
+    const early = new EarlyStoryTimer(timer);
+    const promise =
+      call === 'neu' ? this.handleStory(true, state, transcript, early, '', held?.sink)
+        : call === 'weiter' ? this.handleStory(!storyActive(state), state, '', early, '', held?.sink)
+          : this.handleStory(false, state, '', early, transcript, held?.sink);
+    promise.catch(() => undefined);
+    let settled = false;
+    return {
+      call,
+      use: async () => {
+        settled = true;
+        held?.release();
+        const result = await promise;
+        if (timer instanceof TurnTimer) timer.absorb(early.turn);
+        early.flushTo(timer);
+        return result;
+      },
+      discard: () => {
+        if (settled) return;
+        settled = true;
+        held?.drop();
+        // Der Aufruf läuft zu Ende (er lässt sich nicht abbrechen); sein Verbrauch kommt ins Protokoll.
+        void promise.catch(() => undefined).finally(() => {
+          const line = early.turn.logLine('verworfen');
+          if (line) console.log(line);
+        });
+      },
+    };
   }
 
   /** Zählt Token und Kosten eines Aufrufs für die Zeitmessung (und optional für die Folge). Nur Zahlen. */
@@ -615,6 +783,10 @@ export class Brain {
     // Wenn ein Sprachmodell konfiguriert ist, befragen
     const llm = this.llm;
     if (llm) {
+      // Punkt B1 (Schalter, Standard aus): Klingt die Äußerung nach einer Geschichte, beginnt sie schon
+      // jetzt, gleichzeitig mit der Einordnung. Gesprochen wird erst, wenn die Einordnung passt.
+      const guessed = this.parallelClassification ? storyCallFor(likelyStoryTurn(transcript, storyActive(state)), storyActive(state)) : null;
+      const early = guessed ? this.startEarlyStory(guessed, state, transcript, timer, sink) : null;
       try {
         const systemPrompt = ANSWER_SYSTEM(this.age, this.answerMaxWords);
         const active = storyActive(state);
@@ -631,6 +803,12 @@ export class Brain {
           timeoutMs: this.llmTimeoutMs(timer),
           onUsage: this.meter(timer),
         })) as { category?: string; speech?: string };
+        if (early) {
+          // Dieselbe Geschichte, die die Einordnung jetzt verlangen würde: nehmen. Sonst verwerfen, und
+          // es geht weiter wie ohne Schalter (auch bei "sicherheit").
+          if (parsed.category !== 'sicherheit' && storyCallFor(parsed.category, active) === early.call) return await early.use();
+          early.discard();
+        }
         if (parsed.category === 'sicherheit') {
           return {
             kind: 'hinweis',
@@ -680,6 +858,8 @@ export class Brain {
           };
         }
       } catch (llmErr) {
+        // Fällt die Einordnung aus, gilt wie ohne Schalter der feste Ersatz, nicht die frühe Geschichte.
+        early?.discard();
         console.warn(`LLM-Antwort (${this.llmName}) fehlgeschlagen, verwende Fallback:`, llmErr);
       }
     }
@@ -865,7 +1045,7 @@ export class Brain {
           // Nur Zahlen ins Protokoll, nie der Text (CLAUDE.md).
           const hint = phase === 'trick' ? hintFromPlan(current.plan) : '';
           const hintNote = hint ? `, Hinweis der Hexe ${usesHint(text, hint) ? 'aufgegriffen' : 'nicht erkennbar'}` : '';
-          console.log(`Geschichte Teil ${part}/${current.target}: ${formatMetrics(metrics)}${hintNote}`);
+          logTurn(timer, `Geschichte Teil ${part}/${current.target}: ${formatMetrics(metrics)}${hintNote}`);
           // Viel zu kurz (abgeschnitten oder Zusammenfassung statt Szene): einmal neu, wenn Zeit bleibt.
           // Nur mit echtem Zeitbudget (jede Geräteanfrage hat eins); ohne Budget gilt der Text, wie er ist.
           const left = timer.remainingMs();
@@ -905,7 +1085,7 @@ export class Brain {
             usd: current.usd + spent,
           };
           // Kosten der ganzen Folge, wenn sie endet (Punkt 72b). Nur Zahlen.
-          if (done) console.log(`Folge fertig: teile=${part} kosten_usd=${formatUsd(updatedState.usd)}`);
+          if (done) logTurn(timer, `Folge fertig: teile=${part} kosten_usd=${formatUsd(updatedState.usd)}`);
           return this.storyResult(text, part, updatedState, spoken.length ? sink : undefined);
         } catch (err) {
           if (spoken.length) {

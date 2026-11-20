@@ -367,3 +367,29 @@ test('Brain meldet Token und Kosten an die Zeitmessung und summiert sie je Folge
   const second = await brain.handle('weiter', '', first.story_state, new TurnTimer(clock.now, 'abcdef05'));
   assert.equal(second.story_state.usd.toFixed(6), '0.014000');
 });
+
+test('absorb: übernimmt Stufen, Aufrufe, Token und Kosten einer früh gestarteten Geschichte (B1)', async () => {
+  let now = 0;
+  const turn = new TurnTimer(() => now, 'aaaa0000');
+  turn.mode = 'frage';
+  await turn.time('sprachmodell', async () => { now += 4000; });
+  turn.noteLlm({ input: 100, output: 10, cacheRead: 0, cacheWrite: 0 }, 0.001);
+  const early = new TurnTimer(() => now, 'aaaa0000', Number.POSITIVE_INFINITY);
+  await early.time('sprachmodell', async () => { now += 9000; });
+  early.timeSync('ausgabecheck', () => undefined);
+  early.noteLlm({ input: 1000, output: 300, cacheRead: 0, cacheWrite: 0 }, 0.0075);
+  turn.absorb(early);
+  const line = turn.logLine(200) ?? '';
+  assert.match(line, / sprachmodell_ms=13000 /);
+  assert.match(line, / ausgabecheck_ms=0 /);
+  assert.match(line, / sprachmodell_aufrufe=2 /);
+  assert.match(line, / tokens_ein=1100 tokens_aus=310 /);
+  assert.match(line, / kosten_usd=0\.008500/);
+});
+
+test('logLine: Status "verworfen" für eine früh gestartete Geschichte, die niemand hört (B1)', async () => {
+  const early = new TurnTimer(() => 0, 'bbbb1111', Number.POSITIVE_INFINITY);
+  early.mode = 'vorab_verworfen';
+  await early.time('sprachmodell', async () => undefined);
+  assert.match(early.logLine('verworfen') ?? '', /^Zeitmessung id=bbbb1111 modus=vorab_verworfen status=verworfen /);
+});
