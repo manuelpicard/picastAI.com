@@ -112,6 +112,12 @@ check(
   q.status === 200 && qb.type === 'answer' && typeof qb.audio_url === 'string',
   `POST /v1/device/question -> ${q.status} type=${qb.type} session_end=${qb.session_end} (${qMs} ms)`
 );
+// Ohne Einwilligung der Eltern käme nur der feste Hinweis (session_end: true), ohne Erkennung und
+// ohne Sprachmodell. Vorher deploy/eltern-einwilligung.mjs aufrufen (ERGEBNIS.md, „Selbst wiederholen“).
+check(
+  qb.session_end !== true,
+  'Antwort ist kein fester Hinweis (Einwilligung erteilt, kein Schlafmodus)'
+);
 if (q.status !== 200) {
   console.log('       Antwort:', JSON.stringify(qb));
   process.exit(1);

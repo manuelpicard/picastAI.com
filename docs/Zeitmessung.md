@@ -6,7 +6,7 @@ Ein Kind wartet im Test 7 bis 9 Sekunden auf die Antwort auf eine kurze Frage un
 
 ## Server
 
-Je Anfrage an `/v1/device/question`, `/v1/device/kunibert-story` und `/v1/turn` eine Zeile. Ansehen auf dem Server:
+Je Anfrage an `/v1/device/question`, `/v1/device/kunibert-story`, `/v1/device/pairing-code` und `/v1/turn` eine Zeile. Ansehen auf dem Server:
 
 ```bash
 sudo journalctl -u kunibert-server -n 200 --no-pager | grep Zeitmessung
@@ -21,7 +21,7 @@ Zeitmessung id=3f9a1c2b modus=frage status=200 erkennung_ms=1204 weiche_ms=0 spr
 | Feld | Bedeutung |
 | --- | --- |
 | `id` | Zufällige Nummer der Anfrage (8 Zeichen). Sie hat nichts mit Gerät oder Inhalt zu tun. |
-| `modus` | `frage` (Sprechtaste), `weiter` (Erzähltaste) oder bei `/v1/turn` der gesendete Modus (`frage`, `geschichte`, `weiter`). |
+| `modus` | `frage` (Sprechtaste), `weiter` (Erzähltaste), `kopplung` (Kopplungscode für die Eltern) oder bei `/v1/turn` der gesendete Modus (`frage`, `geschichte`, `weiter`). |
 | `status` | Antwortcode an das Gerät. `200` ist gut, `503` heißt: Sprachdienst gerade nicht erreichbar. `abgebrochen` heißt: Das Gerät hat aufgelegt, bevor die Antwort fertig war. |
 | `erkennung_ms` | Spracherkennung (Aufnahme in Text umwandeln). |
 | `weiche_ms` | Sicherheitsweiche (prüft den Text des Kindes auf Notlagen). |

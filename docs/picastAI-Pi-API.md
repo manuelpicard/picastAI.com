@@ -110,7 +110,7 @@ Gleiche Anmeldung wie oben. Das Gerät ruft die Route auf, wenn beide Tasten 5 S
 { "type": "pairing_code", "audio_url": "https://…/v1/device/audio/t_…", "expires_in": 600 }
 ```
 
-Der Code steht nicht in der Antwort und nicht im Protokoll; das Gerät spielt die `audio_url` ab wie bei einer Antwort. Die Route zählt zum Rate-Limit des Geräts.
+Der Code steht nicht in der Antwort (auch nicht mit `KUNIBERT_DIAGNOSTIC_TEXT=1`) und nicht im Protokoll; das Gerät spielt die `audio_url` ab wie bei einer Antwort. Den Sprechtext mit dem Code bekommt die Sprachausgabe, mit `PICASTAI_TTS_PROVIDER=google` also Google. Die Route zählt zum Rate-Limit des Geräts.
 
 ## Eltern (Server-Teil der Eltern-App)
 
@@ -122,8 +122,8 @@ Die Eltern koppeln ihr Handy einmal mit dem Gerät. Danach hält ein Cookie `kb_
 | `GET /v1/eltern/status` | Aktueller Stand: `einwilligung {erteilt, zeitpunkt}`, `schlafmodus`, `ruhezeiten {von, bis}` oder `null` |
 | `PUT /v1/eltern/einwilligung` | Einwilligung erteilen |
 | `DELETE /v1/eltern/einwilligung` | Einwilligung widerrufen; Stand der Geschichte, Vorbereitung und wartendes Audio werden gelöscht |
-| `PUT /v1/eltern/einstellungen` `{"schlafmodus":true, "ruhezeiten":{"von":"19:00","bis":"07:00"}}` | Schlafmodus und Ruhezeiten (Felder einzeln möglich; `ruhezeiten: null` löscht sie). Ungültige Werte: 400 `invalid_settings` |
-| `POST /v1/eltern/geschichte-neu` | Die nächste Erzählung beginnt eine neue Folge |
+| `PUT /v1/eltern/einstellungen` `{"schlafmodus":true, "ruhezeiten":{"von":"19:00","bis":"07:00"}}` | Schlafmodus und Ruhezeiten (Felder einzeln möglich; `ruhezeiten: null` löscht sie). Ungültige Werte und gleicher Beginn und gleiches Ende: 400 `invalid_settings` |
+| `POST /v1/eltern/geschichte-neu` | Löscht den Stand der Geschichte samt Gedächtnis der letzten Folgen und den vorbereiteten Teil: Die nächste Erzählung beginnt eine neue Folge wie beim ersten Mal |
 | `DELETE /v1/eltern/daten` | Alles löschen: Einwilligung, Einstellungen, alle Eltern-Tokens des Geräts, Kopplungscodes, Geschichte, wartendes Audio. Das Cookie wird gelöscht. Die Geräte-Anmeldung bleibt. |
 
 Ohne gültiges Cookie oder für ein gesperrtes Gerät: 401. Es gibt keinen Verlauf, keine Mitschriften und keine Statistik je Kind. Vorläufig liegt alles nur im Arbeitsspeicher (dauerhaft: Punkt E2): Nach einem Neustart des Servers müssen die Eltern neu koppeln und neu einwilligen. Die Weboberfläche unter `/eltern` kommt später (Punkt D2). Hinter Caddy (`deploy/Caddyfile`) sind `/v1/eltern/*` und `/api/*` von außen gesperrt; bis D2 erreicht man sie nur auf dem Server selbst oder im eigenen WLAN.
@@ -200,6 +200,8 @@ npm install
 export PICASTAI_DEVICE_ID=prototype-001
 export PICASTAI_DEVICE_TOKEN=test-token-kunibert-2026
 export KUNIBERT_DIAGNOSTIC_TEXT=1
+# Ohne Kopplung (nur ohne NODE_ENV=production): sonst kommt nur der feste Hinweis zur Einwilligung
+export KUNIBERT_EINWILLIGUNG_PRUEFEN=0
 npm run dev
 ```
 

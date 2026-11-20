@@ -748,14 +748,14 @@ app.post('/v1/device/pairing-code', requireDevice, startTurnTimer, async (req: R
       audio_url: deviceAudioUrl(req, turnId),
       expires_in: expiresInSeconds,
     };
-    if (config.diagnosticText) body.text = speech;
+    // Kein Feld text, auch nicht mit KUNIBERT_DIAGNOSTIC_TEXT: Der Code soll nur als Ton das Gerät verlassen.
     return res.json(body);
   } catch (err) {
     if (err instanceof VoiceProviderError) {
       return res.status(err.retryable ? 503 : 502).json({ error: 'voice_provider_failed', retryable: err.retryable });
     }
-    // Ohne Fehlertext: Er könnte den Code enthalten.
-    console.error('Fehler in /v1/device/pairing-code:', (err as Error)?.name || 'Fehler');
+    // Fester Text ohne Einzelheiten des Fehlers: Sie könnten den Code enthalten.
+    console.error('Fehler in /v1/device/pairing-code.');
     return res.status(500).json({ error: 'internal_error' });
   }
 });
@@ -856,7 +856,12 @@ app.put('/v1/eltern/einstellungen', requireJson, requireParent, (req: Request, r
   if ('schlafmodus' in body && typeof body.schlafmodus !== 'boolean') {
     return res.status(400).json({ error: 'invalid_settings' });
   }
-  if ('ruhezeiten' in body && body.ruhezeiten !== null && !(isValidTime(body.ruhezeiten?.von) && isValidTime(body.ruhezeiten?.bis))) {
+  // Gleicher Beginn und gleiches Ende wären keine Ruhezeit (eltern.ts): lieber ablehnen als still nichts tun.
+  if (
+    'ruhezeiten' in body &&
+    body.ruhezeiten !== null &&
+    !(isValidTime(body.ruhezeiten?.von) && isValidTime(body.ruhezeiten?.bis) && body.ruhezeiten.von !== body.ruhezeiten.bis)
+  ) {
     return res.status(400).json({ error: 'invalid_settings' });
   }
   if ('schlafmodus' in body) parents.setSleep(deviceId, body.schlafmodus);

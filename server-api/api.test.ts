@@ -33,6 +33,10 @@ interface FakeSpeechService {
   speechHold: Promise<void> | null;
   /** Wie viele Anfragen an die Sprachausgabe gerade an `speechHold` warten. */
   speechWaiting: number;
+  /** Hält die Spracherkennung an, bis das Versprechen erfüllt ist (Widerruf während der Erkennung). */
+  transcriptionHold: Promise<void> | null;
+  /** Wie viele Anfragen an die Spracherkennung gerade an `transcriptionHold` warten. */
+  transcriptionWaiting: number;
 }
 
 function freePort(): Promise<number> {
@@ -57,6 +61,8 @@ function startFakeSpeechService(): Promise<{ server: http.Server; state: FakeSpe
     transcriptionFails: false,
     speechHold: null,
     speechWaiting: 0,
+    transcriptionHold: null,
+    transcriptionWaiting: 0,
   };
   const server = http.createServer((req, res) => {
     const chunks: Buffer[] = [];
@@ -87,6 +93,11 @@ function startFakeSpeechService(): Promise<{ server: http.Server; state: FakeSpe
       }
       if (req.url === '/audio/transcriptions') {
         state.transcriptions++;
+        if (state.transcriptionHold) {
+          state.transcriptionWaiting++;
+          await state.transcriptionHold;
+          state.transcriptionWaiting--;
+        }
         if (state.transcriptionFails) {
           res.writeHead(500);
           res.end('absichtlicher Testfehler');
@@ -815,7 +826,8 @@ describe('picastAI-API (echter Server)', () => {
     const transcriptionsBefore = fake.state.transcriptions;
     const spokenBefore = fake.state.speechInputs.length;
 
-    const question = await postQuestion(device, questionForm(wav16k(), { transcript: 'erzähl mir was' }));
+    // Ohne Feld transcript: Ohne die Prüfung ginge die Aufnahme an die Spracherkennung.
+    const question = await postQuestion(device, questionForm(wav16k()));
     assert.equal(question.status, 200, await question.clone().text());
     const qBody = (await question.json()) as { type: string; audio_url: string; session_end: boolean };
     assert.equal(qBody.type, 'answer');
@@ -926,9 +938,13 @@ describe('picastAI-API (echter Server)', () => {
     assert.equal((await elternJson(cookie, 'PUT', 'einstellungen', { schlafmodus: false })).status, 200);
 
     // Ruhezeiten rund um jetzt (eine Stunde davor bis eine Stunde danach, Berliner Zeit): gesperrt.
-    const quiet = await elternJson(cookie, 'PUT', 'einstellungen', { ruhezeiten: { von: berlinTime(-60), bis: berlinTime(60) } });
+    // Einmal berechnen: Springt zwischen zwei Aufrufen die Minute, passt der Vergleich sonst nicht.
+    const quietHours = { von: berlinTime(-60), bis: berlinTime(60) };
+    const quiet = await elternJson(cookie, 'PUT', 'einstellungen', { ruhezeiten: quietHours });
     assert.equal(quiet.status, 200);
-    assert.deepEqual(((await quiet.json()) as { ruhezeiten: unknown }).ruhezeiten, { von: berlinTime(-60), bis: berlinTime(60) });
+    assert.deepEqual(((await quiet.json()) as { ruhezeiten: unknown }).ruhezeiten, quietHours);
+    // Gleicher Beginn und gleiches Ende wären keine Ruhezeit: abgelehnt statt still wirkungslos.
+    assert.equal((await elternJson(cookie, 'PUT', 'einstellungen', { ruhezeiten: { von: '19:00', bis: '19:00' } })).status, 400);
     const t0 = fake.state.transcriptions;
     assert.equal((await ask()).status, 200);
     assert.equal(fake.state.transcriptions, t0, 'in den Ruhezeiten keine Spracherkennung');
@@ -993,6 +1009,40 @@ describe('picastAI-API (echter Server)', () => {
     } finally {
       fake.state.speechHold = null;
       release();
+    }
+  });
+
+  it('Widerruf oder Schlafmodus während der Spracherkennung: Die Äußerung geht nicht an den Erzähler', async () => {
+    for (const change of ['widerruf', 'schlafmodus'] as const) {
+      const device = await registerBareDevice();
+      const cookie = await pairAndConsent(base, ADMIN_TOKEN, device.id);
+      const spokenBefore = fake.state.speechInputs.length;
+      let release!: () => void;
+      fake.state.transcriptionHold = new Promise<void>((resolve) => (release = resolve));
+      try {
+        // Ohne Feld transcript: Die Aufnahme muss durch die Spracherkennung.
+        const pending = postQuestion(device, questionForm(wav16k()));
+        const deadline = Date.now() + 5_000;
+        while (fake.state.transcriptionWaiting === 0 && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 25));
+        assert.ok(fake.state.transcriptionWaiting > 0, 'Server wartet auf die Spracherkennung');
+        const changed =
+          change === 'widerruf'
+            ? await elternJson(cookie, 'DELETE', 'einwilligung')
+            : await elternJson(cookie, 'PUT', 'einstellungen', { schlafmodus: true });
+        assert.equal(changed.status, 200);
+        fake.state.transcriptionHold = null;
+        release();
+        const res = await pending;
+        assert.equal(res.status, 200, await res.clone().text());
+        // Eine normale Antwort hätte session_end: false (siehe oben); true heißt: fester Satz.
+        assert.equal(((await res.json()) as { session_end: boolean }).session_end, true, `${change}: nur der feste Satz`);
+        const expected = change === 'widerruf' ? CONSENT_MISSING_DE : SLEEPING_DE;
+        const spoken = fake.state.speechInputs.slice(spokenBefore);
+        assert.ok(spoken.every((text) => text === expected), `${change}: gesprochen wurde ${spoken.join(' | ')}`);
+      } finally {
+        fake.state.transcriptionHold = null;
+        release();
+      }
     }
   });
 

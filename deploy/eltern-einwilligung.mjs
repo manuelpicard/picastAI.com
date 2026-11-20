@@ -50,7 +50,13 @@ const codeRes = await call(`/api/devices/${encodeURIComponent(deviceId)}/kopplun
 });
 if (codeRes.status === 503) fail('Am Server fehlt PICASTAI_ADMIN_TOKEN, oder es ist kürzer als 32 Zeichen.');
 if (codeRes.status === 401) fail('Das Betreiber-Token passt nicht zum Server.');
-if (codeRes.status === 404) fail('Das Gerät ist am Server nicht angelegt oder gesperrt.');
+if (codeRes.status === 404) {
+  // Unser Server antwortet mit {"error":"not_found"}; eine 404 ohne diesen Inhalt kommt von Caddy,
+  // das /api/* von außen sperrt.
+  const body = await codeRes.json().catch(() => null);
+  if (body?.error === 'not_found') fail('Das Gerät ist am Server nicht angelegt oder gesperrt.');
+  fail('Die Betreiber-Route ist unter dieser Adresse gesperrt. Auf dem Server selbst gegen http://127.0.0.1:3000 aufrufen.');
+}
 if (codeRes.status !== 200) fail(`Kopplungscode: HTTP ${codeRes.status}.`);
 const { code } = await codeRes.json();
 

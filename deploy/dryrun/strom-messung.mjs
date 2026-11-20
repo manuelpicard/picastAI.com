@@ -42,6 +42,8 @@ async function startServer(stream) {
       PICASTAI_STORY_PREFETCH: '0',
       PICASTAI_VOICE_TIMEOUT_MS: '110000',
       PICASTAI_AUDIO_STREAM: stream ? '1' : '0',
+      // Messung ohne Kopplung (nur ohne NODE_ENV=production möglich), sonst misst sie den festen Hinweis.
+      KUNIBERT_EINWILLIGUNG_PRUEFEN: '0',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
