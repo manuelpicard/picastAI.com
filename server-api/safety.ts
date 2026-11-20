@@ -415,6 +415,8 @@ const PATTERNS_2026_11_D: RegExp[] = [
   new RegExp(`${L}ich (will|möchte|werde) (${FILL} ){0,2}(von zu hause |von daheim )?weglaufen${R}`),
   new RegExp(`${L}ich (laufe|lauf|renne|renn|haue|hau) (${WORD} ){0,2}(von zu hause|von daheim) (weg|ab)${R}`),
   new RegExp(`${L}ich hasse mein leben${R}`),
+  // Wie „ich will nicht mehr“ (nur am Satzende oder vor einem neuen Satzteil). Nicht: „nicht mehr weiter hören“.
+  new RegExp(`${L}ich (will|kann|mag) (${FILL} ){0,2}nicht mehr weiter(?= *$| ${CONTINUATION}${R})`),
   new RegExp(`${L}ich bin (${WORD} ){0,2}(zu nichts|für nichts) (nütze|gut|zu gebrauchen)${R}`),
   new RegExp(`${L}ich glaube ${POSS}${PERSON_WIDE} ist tot${R}`),
   new RegExp(`^(?=.*${L}angst${R}).*${L}(allein|alleine) (zu hause|daheim)${R}`),
