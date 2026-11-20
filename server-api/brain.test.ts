@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
 import { screenOutput } from './safety.js';
 import test from 'node:test';
-import { Brain, buildStoryPrompt, FALLBACK_VARIANTS, formatMetrics, hintFromPlan, usesHint, isBedtime, germanNumber, spellOutForSpeech, storyMetrics, cleanState, cleanText, extractWishKeyword, FALLBACK_ANSWER_DE, isLikelySttArtifact, lastSentences, MAX_UTTERANCE_CHARS, prepareStoryText, rememberMotif, storyPhase, trimWords } from './brain.js';
+import { Brain, likelyStoryTurn, storyCallFor, buildStoryPrompt, FALLBACK_VARIANTS, formatMetrics, hintFromPlan, usesHint, isBedtime, germanNumber, spellOutForSpeech, storyMetrics, cleanState, cleanText, extractWishKeyword, FALLBACK_ANSWER_DE, isLikelySttArtifact, lastSentences, MAX_UTTERANCE_CHARS, prepareStoryText, rememberMotif, storyPhase, trimWords } from './brain.js';
 import type { LlmJsonRequest, LlmProvider } from './llm.js';
 import { BEDTIME_HINT, EPISODE_CLOSING, IDEA_HINT, PHASE_HINTS, STORYTELLER_SYSTEM, EPISODE_SEEDS_BY_SEASON, seasonOf, STORY_CLOSING, STORY_CLOSING_FIRST, STORY_PAUSE_TEXT } from './prompts.js';
 import { SAFETY_RESPONSE_DE, UNCLEAR_RESPONSE_DE } from './safety.js';
+import { TurnTimer } from './timing.js';
 
 /** Fake-Anbieter: liefert vorbereitete Antworten oder wirft vorbereitete Fehler. */
 class FakeLlm implements LlmProvider {
@@ -998,4 +999,388 @@ test('Ton-Strom: Finale meldet begin mit done=true; Fragen sprechen nichts in de
   const answerResult = await new Brain(new FakeLlm([answer('Blau.')])).handle('frage', 'Warum ist der Himmel blau?', {}, NO_TIMER_FOR_TEST, question.sink);
   assert.deepEqual(question.events, []);
   assert.ok(!answerResult.streamed);
+});
+
+// ---------------------------------------------------------------------------
+// Punkt B1: Einordnung und Geschichte gleichzeitig (Schalter KUNIBERT_EINORDNUNG_PARALLEL=1)
+// ---------------------------------------------------------------------------
+
+test('B1, Vorab-Regel: Geschichtenwunsch, weiter und Idee; Fragen nicht', () => {
+  const cases: Array<[string, boolean, ReturnType<typeof likelyStoryTurn>]> = [
+    ['Erzähl mir eine Geschichte von einem Einhorn', false, 'geschichte'],
+    ['erzähl mir bitte eine geschichte', false, 'geschichte'],
+    ['kannst du mir eine geschichte erzählen', false, 'geschichte'],
+    ['ich will eine gutenachtgeschichte hören', false, 'geschichte'],
+    ['noch eine Geschichte bitte', true, 'geschichte'],
+    ['ich will eine neue Geschichte, die soll lustig sein', true, 'geschichte'],
+    ['Wie geht es weiter', true, 'weiter'],
+    ['erzähl weiter', true, 'weiter'],
+    ['Kunibert soll den Drachen kitzeln', true, 'idee'],
+    ['die hexe soll ihm helfen', true, 'idee'],
+    ['Kunibert soll den Drachen kitzeln', false, null],
+    ['Was ist eine Geschichte', false, null],
+    ['Warum hat der Drache die Glocke', true, null],
+    ['warum soll kunibert das tun', true, null],
+    ['wofür braucht man eine Geschichte', false, null],
+    ['wie groß ist ein Drache', true, null],
+    ['warum ist der himmel blau', false, null],
+    ['Muss Kunibert jetzt kämpfen', true, null],
+    ['Soll ich dir was sagen', true, null],
+    ['Ich muss jetzt Zähne putzen', true, null],
+    ['Ich hab noch eine Frage zur Geschichte', true, null],
+    ['der drache sollst du austricksen', true, 'idee'],
+    ['Darf ich noch eine Geschichte hören', false, 'geschichte'],
+    ['', false, null],
+  ];
+  for (const [said, active, expected] of cases) assert.equal(likelyStoryTurn(said, active), expected, `${said} (läuft: ${active})`);
+});
+
+test('B1, Zuordnung: dieselben Geschichtenaufrufe wie nach der Einordnung', () => {
+  assert.equal(storyCallFor('geschichte', false), 'neu');
+  assert.equal(storyCallFor('geschichte', true), 'neu');
+  assert.equal(storyCallFor('weiter', true), 'weiter');
+  assert.equal(storyCallFor('idee', true), 'idee');
+  assert.equal(storyCallFor('idee', false), 'neu', 'Idee ohne laufende Folge ist der Wunsch einer neuen');
+  for (const other of ['frage', 'sicherheit', 'unklar', undefined, null]) assert.equal(storyCallFor(other, true), null);
+});
+
+/** Fake für B1: Die Einordnung wartet, bis der Test sie freigibt; Geschichten kommen sofort (im Strom, wenn gefragt). */
+class GatedFakeLlm implements LlmProvider {
+  readonly name = 'anthropic' as const;
+  readonly model = 'fake';
+  calls: LlmJsonRequest[] = [];
+  private open!: () => void;
+  private readonly gate = new Promise<void>((resolve) => (this.open = resolve));
+  constructor(private readonly classification: Record<string, unknown> | Error, private readonly stories: Array<Record<string, unknown>>) {}
+  release(): void {
+    this.open();
+  }
+  async generateJson(request: LlmJsonRequest): Promise<Record<string, unknown>> {
+    this.calls.push(request);
+    if (request.schemaName === 'kunibert_antwort') {
+      await this.gate;
+      if (this.classification instanceof Error) throw this.classification;
+      return this.classification;
+    }
+    const next = this.stories.shift();
+    if (!next) throw new Error('keine Geschichte vorbereitet');
+    const text = String(next.text ?? '');
+    if (request.onText) {
+      for (let i = 1; i <= text.length; i += 7) request.onText(text.slice(0, i));
+      request.onText(text);
+    }
+    return next;
+  }
+}
+
+async function waitForCalls(llm: GatedFakeLlm, count: number): Promise<void> {
+  for (let i = 0; i < 200 && llm.calls.length < count; i++) await new Promise((resolve) => setImmediate(resolve));
+}
+
+/** Fängt die Zeilen von console.log ab (die Zeile der verworfenen Geschichte). */
+async function capturingLog<T>(fn: () => Promise<T>): Promise<{ result: T; lines: string[] }> {
+  const lines: string[] = [];
+  const original = console.log;
+  const originalWarn = console.warn;
+  console.log = (...args: unknown[]) => { lines.push(args.map(String).join(' ')); };
+  console.warn = () => {};
+  try {
+    const result = await fn();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    return { result, lines };
+  } finally {
+    console.log = original;
+    console.warn = originalWarn;
+  }
+}
+
+const B1_WISH = 'Erzähl mir eine Geschichte von einem Einhorn';
+const B1_TEXT = `${LONG_PARA}\n\nDraußen wartete schon der Kutscher.`;
+
+test('B1: Geschichtenwunsch, Schalter an: Geschichte beginnt gleichzeitig mit der Einordnung und wird genommen', async () => {
+  const llm = new GatedFakeLlm(answer('', 'geschichte'), [story(B1_TEXT, { episode_plan: 'Plan' })]);
+  const pending = new Brain(llm, { parallelClassification: true, storyMinWords: 5 }).handle('frage', B1_WISH, {});
+  await waitForCalls(llm, 2);
+  assert.equal(llm.calls.length, 2, 'Geschichte läuft schon, während die Einordnung noch wartet');
+  assert.ok(llm.calls.some((call) => call.schemaName === 'kunibert_antwort'), 'Einordnung läuft');
+  const early = llm.calls.find((call) => call.schemaName !== 'kunibert_antwort');
+  assert.match(early?.user ?? '', /Einhorn/, 'Wunsch des Kindes ist dabei');
+  llm.release();
+  const result = await pending;
+  assert.equal(result.kind, 'geschichte');
+  assert.equal(result.story_state.part, 1);
+  assert.match(result.story_state.wish, /Einhorn/);
+  assert.equal(llm.calls.length, 2, 'kein zweiter Geschichtenaufruf');
+});
+
+test('B1: Schalter aus (Standard): erst die Einordnung, dann die Geschichte', async () => {
+  const llm = new GatedFakeLlm(answer('', 'geschichte'), [story(B1_TEXT, { episode_plan: 'Plan' })]);
+  const pending = new Brain(llm, { storyMinWords: 5 }).handle('frage', B1_WISH, {});
+  await waitForCalls(llm, 2);
+  assert.equal(llm.calls.length, 1, 'ohne Schalter wartet die Geschichte auf die Einordnung');
+  llm.release();
+  const result = await pending;
+  assert.equal(result.kind, 'geschichte');
+  assert.equal(llm.calls.length, 2);
+});
+
+test('B1, Ton-Strom: Absätze bleiben zurück, bis die Einordnung passt, dann gehen sie der Reihe nach hinaus', async () => {
+  const llm = new GatedFakeLlm(answer('', 'geschichte'), [story(B1_TEXT, { episode_plan: 'Plan' })]);
+  const { events, sink } = recordingSink();
+  const pending = new Brain(llm, { parallelClassification: true, storyMinWords: 5 }).handle('frage', B1_WISH, {}, NO_TIMER_FOR_TEST, sink);
+  await waitForCalls(llm, 2);
+  for (let i = 0; i < 50; i++) await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(events, [], 'vor der Einordnung wird nichts gesprochen');
+  llm.release();
+  const result = await pending;
+  assert.equal(events[0], 'begin:false');
+  assert.deepEqual(events.slice(1, 3), [LONG_PARA, 'Draußen wartete schon der Kutscher.']);
+  assert.equal(events[3], STORY_CLOSING_FIRST);
+  assert.equal(result.streamed, true);
+});
+
+test('B1: Einordnung sagt Frage: die frühe Geschichte wird verworfen, nichts davon gesprochen, Verbrauch im Protokoll', async () => {
+  const llm = new GatedFakeLlm(answer('Ein Einhorn ist ein Fabeltier mit einem Horn.'), [story(B1_TEXT, { episode_plan: 'Plan' })]);
+  const { events, sink } = recordingSink();
+  const timer = new TurnTimer();
+  const { result, lines } = await capturingLog(async () => {
+    const pending = new Brain(llm, { parallelClassification: true, storyMinWords: 5 }).handle('frage', B1_WISH, {}, timer, sink);
+    await waitForCalls(llm, 2);
+    llm.release();
+    return pending;
+  });
+  assert.equal(result.kind, 'frage');
+  assert.equal(result.speech, 'Ein Einhorn ist ein Fabeltier mit einem Horn.');
+  assert.deepEqual(events, [], 'kein Absatz der verworfenen Geschichte');
+  assert.equal(result.story_state.part, 0, 'keine Folge begonnen');
+  const discarded = lines.filter((line) => line.includes('modus=vorab_verworfen'));
+  assert.equal(discarded.length, 1, lines.join(' | '));
+  assert.match(discarded[0], new RegExp(`^Zeitmessung id=${timer.id} modus=vorab_verworfen status=verworfen .*sprachmodell_aufrufe=1 `));
+  assert.ok(!lines.some((line) => line.startsWith('Geschichte Teil')), 'keine Zeile für einen Teil, den niemand hört');
+  assert.ok(!discarded[0].includes('Einhorn') && !discarded[0].includes('Kunibert'), 'nur Zahlen');
+});
+
+test('B1: Einordnung sagt Sicherheit: fester Sicherheitshinweis, nichts von der Geschichte', async () => {
+  const llm = new GatedFakeLlm(answer('', 'sicherheit'), [story(B1_TEXT, { episode_plan: 'Plan' })]);
+  const { events, sink } = recordingSink();
+  const { result } = await capturingLog(async () => {
+    const pending = new Brain(llm, { parallelClassification: true, storyMinWords: 5 }).handle('frage', B1_WISH, {}, NO_TIMER_FOR_TEST, sink);
+    await waitForCalls(llm, 2);
+    llm.release();
+    return pending;
+  });
+  assert.equal(result.fixed, 'sicherheit');
+  assert.equal(result.speech, SAFETY_RESPONSE_DE);
+  assert.deepEqual(events, []);
+});
+
+test('B1: Einordnung fällt aus: fester Ersatz wie ohne Schalter, nicht die frühe Geschichte', async () => {
+  const llm = new GatedFakeLlm(new Error('HTTP 529'), [story(B1_TEXT, { episode_plan: 'Plan' })]);
+  const { events, sink } = recordingSink();
+  const { result } = await capturingLog(async () => {
+    const pending = new Brain(llm, { parallelClassification: true, storyMinWords: 5 }).handle('frage', B1_WISH, {}, NO_TIMER_FOR_TEST, sink);
+    await waitForCalls(llm, 2);
+    llm.release();
+    return pending;
+  });
+  const expected = await silent(() => new Brain(new FakeLlm([new Error('HTTP 529')]), { storyMinWords: 5 }).handle('frage', B1_WISH, {}))();
+  assert.equal(result.kind, expected.kind, 'gleicher fester Ersatz wie ohne Schalter');
+  assert.equal(result.fixed, expected.fixed);
+  assert.equal(result.story_state.plan, expected.story_state.plan);
+  assert.ok(!result.speech.includes(LONG_PARA), 'nichts aus der frühen Geschichte im Ersatz');
+  assert.deepEqual(events, [], 'nichts von der frühen Geschichte');
+});
+
+test('B1: Vorab-Regel liegt daneben (weiter statt neue Folge): verwerfen und den richtigen Aufruf machen', async () => {
+  const state = { ...cleanState({}), ep: 2, part: 2, target: 5, plan: 'p', summary: 's' };
+  const llm = new GatedFakeLlm(answer('', 'geschichte'), [story(B1_TEXT), story(B1_TEXT, { episode_plan: 'Neuer Plan' })]);
+  const { result } = await capturingLog(async () => {
+    const pending = new Brain(llm, { parallelClassification: true, storyMinWords: 5 }).handle('frage', 'erzähl weiter', state);
+    await waitForCalls(llm, 2);
+    llm.release();
+    return pending;
+  });
+  assert.equal(llm.calls.length, 3, 'Einordnung, verworfene Fortsetzung, neue Folge');
+  assert.equal(result.story_state.part, 1, 'neue Folge, wie die Einordnung es verlangt');
+  assert.equal(result.story_state.ep, 3);
+});
+
+test('B1: Idee in einer laufenden Folge: Fortsetzung mit der Idee startet gleichzeitig und wird genommen', async () => {
+  const state = { ...cleanState({}), ep: 2, part: 2, target: 5, plan: 'p', summary: 's' };
+  const llm = new GatedFakeLlm(answer('', 'idee'), [story(B1_TEXT)]);
+  const pending = new Brain(llm, { parallelClassification: true, storyMinWords: 5 }).handle('frage', 'Kunibert soll den Drachen kitzeln', state);
+  await waitForCalls(llm, 2);
+  assert.equal(llm.calls.length, 2);
+  const early = llm.calls.find((call) => call.schemaName !== 'kunibert_antwort');
+  assert.match(early?.user ?? '', /Drachen kitzeln/, 'die Idee steht im Auftrag für den Teil');
+  llm.release();
+  const result = await pending;
+  assert.equal(result.story_state.part, 3);
+  assert.equal(result.story_state.ep, 2, 'dieselbe Folge');
+});
+
+test('B1, Zeitmessung: Die genommene Geschichte zählt in der Zeile der Anfrage (zwei Aufrufe)', async () => {
+  const llm = new GatedFakeLlm(answer('', 'geschichte'), [story(B1_TEXT, { episode_plan: 'Plan' })]);
+  const timer = new TurnTimer();
+  timer.mode = 'frage';
+  const pending = new Brain(llm, { parallelClassification: true, storyMinWords: 5 }).handle('frage', B1_WISH, {}, timer);
+  await waitForCalls(llm, 2);
+  llm.release();
+  await pending;
+  assert.match(timer.logLine(200) ?? '', / sprachmodell_aufrufe=2 /);
+});
+
+/** Fake für B1 mit zwei Toren: Die Einordnung wartet auf `classify()`, die Geschichte gibt jeden Absatz erst nach `step()` heraus. */
+class SteppedFakeLlm implements LlmProvider {
+  readonly name = 'anthropic' as const;
+  readonly model = 'fake';
+  calls: LlmJsonRequest[] = [];
+  classify!: () => void;
+  private readonly classified = new Promise<void>((resolve) => (this.classify = resolve));
+  private steps: Array<() => void> = [];
+  constructor(private readonly classification: Record<string, unknown>, private readonly stories: Array<Record<string, unknown>>) {}
+  async generateJson(request: LlmJsonRequest): Promise<Record<string, unknown>> {
+    this.calls.push(request);
+    if (request.schemaName === 'kunibert_antwort') {
+      await this.classified;
+      return this.classification;
+    }
+    const next = this.stories.shift();
+    if (!next) throw new Error('keine Geschichte vorbereitet');
+    const paragraphs = String(next.text ?? '').split('\n\n');
+    let sent = '';
+    for (let i = 0; i < paragraphs.length; i++) {
+      await new Promise<void>((resolve) => this.steps.push(resolve));
+      sent += (i ? '\n\n' : '') + paragraphs[i];
+      request.onText?.(sent + (i < paragraphs.length - 1 ? '\n\n' : ''));
+    }
+    return next;
+  }
+  /** Gibt den nächsten Absatz der Geschichte heraus; false, wenn keiner wartet. */
+  step(): boolean {
+    const next = this.steps.shift();
+    if (next) next();
+    return Boolean(next);
+  }
+}
+
+const ticks = async (count = 20) => {
+  for (let i = 0; i < count; i++) await new Promise((resolve) => setImmediate(resolve));
+};
+const B1_THREE = `${LONG_PARA}\n\nZweiter Absatz hier.\n\nDritter Absatz hier.`;
+
+test('B1, Ton-Strom: Verwerfen, während die frühe Geschichte noch kommt: auch spätere Absätze werden nie gesprochen', async () => {
+  const llm = new SteppedFakeLlm(answer('Ein Einhorn ist ein Fabeltier.'), [story(B1_THREE, { episode_plan: 'Plan' })]);
+  const { events, sink } = recordingSink();
+  const { result } = await capturingLog(async () => {
+    const pending = new Brain(llm, { parallelClassification: true, storyMinWords: 5 }).handle('frage', B1_WISH, {}, NO_TIMER_FOR_TEST, sink);
+    await ticks();
+    llm.step();
+    await ticks(5);
+    llm.classify();
+    const done = await pending;
+    while (llm.step()) await ticks(5);
+    await ticks();
+    return done;
+  });
+  assert.equal(result.kind, 'frage');
+  assert.deepEqual(events, []);
+});
+
+test('B1, Ton-Strom: Freigabe, während die Geschichte noch kommt: Reihenfolge bleibt, der Rest geht direkt hinaus', async () => {
+  const llm = new SteppedFakeLlm(answer('', 'geschichte'), [story(B1_THREE, { episode_plan: 'Plan' })]);
+  const { events, sink } = recordingSink();
+  const pending = new Brain(llm, { parallelClassification: true, storyMinWords: 5 }).handle('frage', B1_WISH, {}, NO_TIMER_FOR_TEST, sink);
+  await ticks();
+  llm.step();
+  await ticks(5);
+  assert.deepEqual(events, [], 'vor der Einordnung nichts');
+  llm.classify();
+  await ticks();
+  assert.deepEqual(events, ['begin:false', LONG_PARA], 'der zurückgehaltene erste Absatz geht nach der Einordnung hinaus');
+  while (llm.step()) await ticks(5);
+  const result = await pending;
+  assert.equal(result.streamed, true);
+  assert.deepEqual(events.slice(1, 4), [LONG_PARA, 'Zweiter Absatz hier.', 'Dritter Absatz hier.']);
+});
+
+test('B1, Ton-Strom: Ausgabe-Check stoppt den zweiten Absatz: Gesprochenes und Stand wie ohne Schalter', async () => {
+  const state = { ...cleanState({}), ep: 2, part: 2, target: 5, plan: 'p', summary: 's' };
+  const text = `${LONG_PARA}\n\nDa lag ein toter Baum quer.\n\nDer dritte Absatz.`;
+  const run = async (parallel: boolean) => {
+    const llm = new SteppedFakeLlm(answer('', 'weiter'), [story(text)]);
+    const { events, sink } = recordingSink();
+    const { result } = await capturingLog(async () => {
+      const pending = new Brain(llm, { parallelClassification: parallel, storyMinWords: 5 }).handle('frage', 'erzähl weiter', state, NO_TIMER_FOR_TEST, sink);
+      await ticks();
+      if (parallel) while (llm.step()) await ticks(5);
+      llm.classify();
+      await ticks();
+      while (llm.step()) await ticks(5);
+      return pending;
+    });
+    return { events, result };
+  };
+  const off = await run(false);
+  const on = await run(true);
+  assert.deepEqual(on.events, off.events);
+  assert.ok(on.events.includes(STORY_PAUSE_TEXT), 'kurze Pause statt des abgelehnten Absatzes');
+  assert.ok(!on.events.join(' ').includes('toter'));
+  assert.equal(on.result.speech, off.result.speech);
+  assert.deepEqual(on.result.story_state, off.result.story_state);
+});
+
+test('B1: Sicherheitsweiche greift vor dem frühen Start: kein Aufruf an Claude', async () => {
+  const llm = new GatedFakeLlm(answer('', 'geschichte'), [story(B1_TEXT)]);
+  const result = await new Brain(llm, { parallelClassification: true }).handle('frage', 'Erzähl mir eine Geschichte, ich will nicht mehr leben', {});
+  assert.equal(result.speech, SAFETY_RESPONSE_DE);
+  assert.equal(llm.calls.length, 0);
+});
+
+test('B1: Einordnung sagt unklar: frühe Geschichte verworfen, Bitte um Wiederholung', async () => {
+  const llm = new GatedFakeLlm(answer('', 'unklar'), [story(B1_TEXT, { episode_plan: 'Plan' })]);
+  const { events, sink } = recordingSink();
+  const { result } = await capturingLog(async () => {
+    const pending = new Brain(llm, { parallelClassification: true, storyMinWords: 5 }).handle('frage', B1_WISH, {}, NO_TIMER_FOR_TEST, sink);
+    await waitForCalls(llm, 2);
+    llm.release();
+    return pending;
+  });
+  assert.equal(result.fixed, 'unklar');
+  assert.equal(result.speech, UNCLEAR_RESPONSE_DE);
+  assert.deepEqual(events, []);
+});
+
+test('B1: Verworfene Geschichte macht keinen zweiten Versuch und schreibt keine Warnungen', async () => {
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => (release = resolve));
+  const storyCalls: string[] = [];
+  const llm: LlmProvider = {
+    name: 'anthropic',
+    model: 'fake',
+    generateJson: async (request: LlmJsonRequest) => {
+      if (request.schemaName === 'kunibert_antwort') return answer('Ein Einhorn ist ein Fabeltier.');
+      storyCalls.push(request.schemaName);
+      await gate;
+      // Der erste Entwurf fällt durch den Ausgabe-Check; ohne Verwerfen käme ein zweiter Versuch.
+      return story('Der Drache war tot.');
+    },
+  };
+  const timer = new TurnTimer();
+  const warnings: string[] = [];
+  const originalWarn = console.warn;
+  const { result, lines } = await capturingLog(async () => {
+    const done = await new Brain(llm, { parallelClassification: true, storyMinWords: 5 }).handle('frage', B1_WISH, {}, timer);
+    console.warn = (...args: unknown[]) => { warnings.push(args.map(String).join(' ')); };
+    release();
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    console.warn = originalWarn;
+    return done;
+  });
+  console.warn = originalWarn;
+  assert.equal(result.kind, 'frage');
+  assert.equal(storyCalls.length, 1, 'kein zweiter Versuch nach dem Verwerfen');
+  const discarded = lines.find((line) => line.includes('modus=vorab_verworfen')) ?? '';
+  assert.match(discarded, / sprachmodell_aufrufe=1 /);
+  assert.deepEqual(warnings, [], 'keine Warnung zu einem Teil, den niemand hört');
 });

@@ -31,7 +31,7 @@ Angelegt am 17.11.2026, 20:15, von Claude (Chat). Gepflegt von den Läufen des W
 - Stand 20.11.2026 (Planung): Für KW47 gibt es keinen Restlimit-PR und keinen Branch `restlimit/2026-KW47`. Alle Läufe der Aufgaben „Kunibert Restlimit (Mi, Do, Fr)“ vom 18. bis 20.11. brachen am Nutzungslimit ab. Diese Woche nichts zu übernehmen. Um 22:55 erneut geprüft: unverändert. Nächste Restlimit-Runde ab Mittwoch, 25.11., 22:58 (KW48).
 
 ### B1 · Sprechtaste schneller (Einordnung) (Kinder)
-- Rolle: Bauen · Prio: 1 · Status: offen · Bezug: Nr. 76
+- Rolle: Bauen · Prio: 1 · Status: erledigt (PR #73, 20.11.2026) · Bezug: Nr. 76
 - Ziel: Bei einer Frage liefert heute schon ein einziger Aufruf an Claude die Art und die Antwort (`QUESTION_SCHEMA` in `server-api/brain.ts`). Erkennt Claude dabei einen Geschichtenwunsch, „weiter“ oder eine Idee, folgt ein zweiter Aufruf für die Geschichte (`sprachmodell_aufrufe=2`, siehe `docs/Zeitmessung.md`). Diese Einordnung vor dem Geschichtenaufruf kostet rund 4 s. Erst messen (Attrappe mit realistischen Zeiten, `deploy/dryrun/`), dann beschleunigen: zum Beispiel eine sichere Vorab-Regel für eindeutige Fälle, die Einordnung im selben Aufruf wie die Geschichte oder ein kleineres Modell (Claude Haiku) für den ersten Aufruf. Achtung: Der erste Aufruf schreibt bei einer Frage auch die Antwort. Ein kleineres Modell dort ändert also auch die Antworten.
 - Fertig, wenn: Messung vorher und nachher im PR. Neue Wege nur hinter einem Schalter, Standard unverändert, solange die Güte nicht belegt ist. Sicherheitsweiche und Ausgabe-Check unverändert wirksam (Tests).
 
@@ -282,3 +282,18 @@ Angelegt am 17.11.2026, 20:15, von Claude (Chat). Gepflegt von den Läufen des W
 - Rolle: Prüfen · Prio: 3 · Status: offen (wiederkehrend, bleibt „offen“)
 - Ziel: Offene PRs von `dependabot[bot]` sichten, zum Beispiel PR #72 (firebase-admin 14.5.0 auf 14.5.1, seit 20.11.). Nur, wenn ein solcher PR offen ist; sonst überspringen. Die Änderungsliste des Pakets lesen (nur Originalquellen). Gemergt wird nach denselben Regeln wie jeder PR (`docs/autopilot/README.md`: Prüfung durch einen Unteragenten; alle Checks grün, mindestens `test`, `pi-audio` und `firestore-emulator` gelaufen). Patch- und Minor-Updates dürfen so gemergt werden. Major-Updates (für npm abgeschaltet mit PR #52, für GitHub Actions nicht) nicht mergen, sondern im Bericht für den Betreiber nennen. Nichts an den Einstellungen von Dependabot ändern. Andere PRs ohne „[Autopilot“ im Titel fasst dieser Punkt nicht an.
 - Fertig, wenn (je Lauf mit offenem Dependabot-PR): Dependabot-PRs gemergt oder mit Grund offen gelassen. Ein kleiner PR „[Autopilot N1120-2214-c] …“ ergänzt hier „zuletzt TT.MM.JJJJ, PR #n“ und nennt die Dependabot-PRs.
+
+### N1120-2300-a · Sprechtaste: ersten Absatz schon vor der Einordnung vertonen (Kinder)
+- Rolle: Bauen · Prio: 2 · Status: offen · Bezug: B1, PR #73
+- Ziel: Mit `KUNIBERT_EINORDNUNG_PARALLEL=1` (PR #73) wartet der erste Absatz der frühen Geschichte auf die Einordnung und wird erst danach vertont. Der Rest bis zur Wartezeit der Erzähltaste ist diese Vertonung (gemessen mit Attrappen am 20.11.2026: 6,7 s gegen 5,4 s). Den ersten Absatz schon vorher vertonen, aber erst nach der Einordnung ausliefern. Kein Ton und keine `audio_url` vor der Einordnung; sagt sie etwas anderes, wird auch der Ton verworfen.
+- Fertig, wenn: Messung vorher und nachher mit `deploy/dryrun/sprechtaste-messung.mjs`; Test, dass vor der Einordnung nichts zum Gerät geht (auch im Ton-Strom-Weg in `server.ts`); Standard unverändert aus.
+
+### N1120-2300-b · Verworfene frühe Aufrufe an Claude abbrechen
+- Rolle: Bauen · Prio: 4 · Status: offen · Bezug: B1, PR #73
+- Ziel: Eine verworfene frühe Geschichte läuft heute zu Ende (`server-api/llm.ts` kennt kein Abbrechen von außen). Ein `AbortSignal` im Aufruf spart die restlichen Token. Kein zweiter Versuch nach dem Abbruch (schon heute so, siehe `EarlyStoryTimer.stop`).
+- Fertig, wenn: Test mit Attrappe: Nach dem Verwerfen endet der Aufruf; die Zeile `modus=vorab_verworfen` zeigt weniger Token; Fehler im Abbruch fallen nicht als Fehler der Anfrage auf.
+
+### N1120-2300-c · Vorab-Regel der Sprechtaste nach dem Probelauf nachschärfen
+- Rolle: Prüfen · Prio: 3 · Status: offen · Bezug: B1, PR #73
+- Ziel: `likelyStoryTurn` (`server-api/brain.ts`) mit echten Äußerungen prüfen: Wie oft liegt sie daneben (Zeilen `modus=vorab_verworfen` im Protokoll), welche Wünsche und Ideen übersieht sie („Noch eine“, „weiterlesen“, „Was passiert dann“)? Nur mit Sätzen von Erwachsenen; keine Äußerungen ins Repo, nur gebaute Beispielsätze.
+- Fertig, wenn: Tabelle in `server-api/brain.test.ts` ergänzt; Anteil der verworfenen Aufrufe aus dem Probelauf im PR (nur Zahlen).

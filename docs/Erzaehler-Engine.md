@@ -64,6 +64,18 @@ Zum Vergleich von Modellen mit Einzelfragen bleibt `npm run eval:llm`.
 - Lesbarkeit: höchstens zwei neue Figuren je Folge, ein Ort je Absatz, Ortswechsel ansagen.
 - Leere Antwort von Claude: zweiter Versuch statt Ersatzgeschichte.
 
+## Einordnung parallel zur Geschichte (Punkt B1, 20.11.2026, Schalter `KUNIBERT_EINORDNUNG_PARALLEL`, Standard aus)
+
+An der Sprechtaste ordnet Claude die Äußerung erst ein (Frage, Geschichte, weiter, Idee, Sicherheit, unklar; `QUESTION_SCHEMA` in `brain.ts`). Bei einer Geschichte folgt ein zweiter Aufruf. Die Einordnung kostet rund 4 s (Einschätzung im Probelauf).
+
+- Mit dem Schalter prüft eine Vorab-Regel (`likelyStoryTurn` in `brain.ts`), ob die Äußerung nach Geschichtenwunsch, „weiter“ oder (in einer laufenden Folge) nach einer Idee klingt. Wenn ja, startet der Server genau den Geschichtenaufruf, den die Einordnung danach verlangen würde, schon gleichzeitig mit ihr (`storyCallFor`).
+- Gesprochen wird nichts, bevor die Einordnung da ist: Die fertigen Absätze bleiben zurück (`HeldSink`). Passt die Einordnung, gehen sie der Reihe nach hinaus. Sagt sie etwas anderes (Frage, Sicherheit, unklar, eine andere Art Geschichte) oder fällt sie aus, wird die frühe Geschichte verworfen, und es geht weiter wie ohne Schalter.
+- Die Sicherheitsweiche läuft vorher wie immer (greift sie, startet nichts); die Kategorie „sicherheit“ der Einordnung gilt weiter; jeder Absatz geht durch den Ausgabe-Check. Beide Aufrufe sind dieselben wie ohne Schalter (gleiche Anweisungen). Im Normalfall ändert sich nur die Wartezeit.
+- Grenzfälle: Die frühe Geschichte bestimmt Uhrzeit-Werte (Schlafenszeit, Zeitpunkt des Teils) rund 4 s früher. Braucht die Einordnung sehr lange (etwa 50 s) und fällt der erste Entwurf durch den Ausgabe-Check, hat die frühe Geschichte noch Zeit für den zweiten Versuch, wo ohne Schalter schon die Ersatzgeschichte käme.
+- Kosten: Liegt die Vorab-Regel daneben, ist ein Aufruf an Claude umsonst (Zeile `modus=vorab_verworfen`, `docs/Zeitmessung.md`). Der verworfene Aufruf läuft zu Ende, aber ohne zweiten Versuch und ohne Warnzeilen; Abbrechen ist offen.
+- Daten: Die Äußerung des Kindes steht dann schon vor der Einordnung im zweiten Aufruf (derselbe Empfänger, Anthropic). Ohne Schalter bekommt Claude sie bei einem Geschichtenwunsch auch zweimal, aber erst nach der Einordnung; mit Schalter auch dann, wenn die Einordnung danach „Frage“ oder „sicherheit“ sagt. Einschätzung: für die Datenschutz-Folgenabschätzung vermerken (keine Rechtsberatung).
+- Gemessen am 20.11.2026 mit Attrappen: erster Ton beim Geschichtenwunsch 9,5 s → 6,7 s, bei einer Idee 9,4 s → 6,6 s, Fragen unverändert (`docs/Zeitmessung.md`). Mit dem echten Claude nicht gemessen (offen).
+
 ## Ton-Strom (Punkt 71, 14.11.2026, Schalter `PICASTAI_AUDIO_STREAM`, Standard aus)
 
 - Claude schreibt im Streaming (`onText` in `server-api/llm.ts`); `brain.ts` gibt jeden fertigen Absatz nach dem Ausgabe-Check an einen `StorySink`, `server-api/audio-stream.ts` vertont der Reihe nach, das Gerät spielt schon (Vertrag in `docs/picastAI-Pi-API.md`).

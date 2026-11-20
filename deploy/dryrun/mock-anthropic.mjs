@@ -9,6 +9,21 @@ const delayMs = Number(process.env.MOCK_DELAY_MS || 0);
 // gleichmäßig verteilt (wie Claude Token für Token). Ohne Streaming kommt die Antwort erst danach.
 const writeMs = Number(process.env.MOCK_WRITE_MS || 0);
 const longStory = process.env.MOCK_LONG_STORY === '1';
+// Für die Messung der Sprechtaste (deploy/dryrun/sprechtaste-messung.mjs): So lange braucht die
+// Einordnung (Werkzeug kunibert_antwort). Ohne Angabe wie MOCK_WRITE_MS.
+const answerMs = process.env.MOCK_ANSWER_MS === undefined ? writeMs : Number(process.env.MOCK_ANSWER_MS);
+// Mit MOCK_CATEGORIES=1 ordnet die Attrappe die Äußerung des Kindes grob ein wie Claude: Geschichtenwunsch
+// („Geschichte“), weiter, Idee („soll“), sonst Frage. Ohne den Schalter ist alles eine Frage (wie bisher).
+const categories = process.env.MOCK_CATEGORIES === '1';
+
+/** Kategorie für die Äußerung des Kindes im Nutzer-Text der Einordnung (zwischen « und »). */
+function categoryFor(userText) {
+  const said = (userText.match(/«([^»]*)»/)?.[1] ?? '').toLowerCase();
+  if (/geschichte|märchen/.test(said)) return 'geschichte';
+  if (/\bweiter\b/.test(said)) return 'weiter';
+  if (/\bsoll\b/.test(said) && /kunibert-geschichte: ja/i.test(userText)) return 'idee';
+  return 'frage';
+}
 
 const ANSWER = {
   category: 'frage',
@@ -58,20 +73,25 @@ http
         }
         let tool = '';
         let stream = false;
+        let userText = '';
         try {
           const body = JSON.parse(raw);
           tool = body.tools?.[0]?.name ?? '';
           stream = body.stream === true;
+          const content = body.messages?.[0]?.content;
+          userText = typeof content === 'string' ? content : JSON.stringify(content ?? '');
         } catch {
           // ungültiger Body: wie eine Frage behandeln
         }
-        const input = tool === 'kunibert_geschichte' ? (longStory ? LONG_STORY : STORY) : ANSWER;
+        const category = categories ? categoryFor(userText) : 'frage';
+        const answer = category === 'frage' ? ANSWER : { category, speech: '' };
+        const input = tool === 'kunibert_geschichte' ? (longStory ? LONG_STORY : STORY) : answer;
         const usage = { input_tokens: 1200, output_tokens: 300, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
         if (!stream) {
           setTimeout(() => {
             res.writeHead(200, { 'content-type': 'application/json' });
             res.end(JSON.stringify({ content: [{ type: 'tool_use', name: tool, input }], usage }));
-          }, writeMs);
+          }, tool === 'kunibert_geschichte' ? writeMs : answerMs);
           return;
         }
         // Streaming wie die echte API (Server-Sent Events): die Werkzeug-Eingabe in kleinen Stücken.

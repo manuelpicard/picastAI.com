@@ -43,6 +43,21 @@ Anfragen, die gleich abgewiesen werden (keine Anmeldung, zu viele Anfragen, kein
 - Bei einem Strom gibt es zwei Zeilen mit derselben `id`: die erste, wenn die Antwort hinausgeht (`modus=weiter`, `sprachmodell_ms=-`, weil Claude noch schreibt), die zweite, wenn alles vertont ist (`modus=weiter_strom` oder `frage_strom`, mit allen Werten und `audio_s`).
 - Messung: `node deploy/dryrun/strom-messung.mjs` (echtes Pocket auf `POCKET_URL`, Claude als Attrappe mit 14 s Schreibzeit). Ergebnis 14.11.2026 in der Cloud (2 Kerne): erster Ton ohne Strom nach 61,4 s, mit Strom nach 13,2 s, mit kurzem erstem Absatz nach 7,8 s; der Ton lag beim Abspielen immer mindestens 2,0 s vor (kein Aussetzer).
 
+### Einordnung parallel zur Geschichte (seit 20.11.2026, Punkt B1, Schalter `KUNIBERT_EINORDNUNG_PARALLEL=1`)
+
+- Mit dem Schalter laufen bei einem Geschichtenwunsch, einer Idee oder „weiter“ an der Sprechtaste zwei Aufrufe an Claude gleichzeitig (Einordnung und Geschichte). `sprachmodell_ms` ist die Summe beider und kann deshalb größer sein als die Wartezeit; `sprachmodell_aufrufe=2` wie ohne Schalter.
+- Wird die früh begonnene Geschichte verworfen (die Einordnung sagt etwas anderes), steht ihr Verbrauch in einer eigenen Zeile mit derselben `id`, `modus=vorab_verworfen` und `status=verworfen` (nur Zahlen, wie alle Zeilen). Ihre Zeilen „Geschichte Teil …“ und „Folge fertig …“ und ihre Warnungen fehlen, denn niemand hört diesen Teil.
+- Messung: `node deploy/dryrun/sprechtaste-messung.mjs` (Claude und Sprachausgabe als Attrappen: 4 s Einordnung, 14 s Schreibzeit, Pocket-Tempo; Server wie im Probelauf mit Ton-Strom). Ergebnis 20.11.2026 in der Cloud, erster Ton nach der Sprechtaste:
+
+| Fall | ohne Schalter | mit Schalter |
+|---|---|---|
+| Geschichtenwunsch („Erzähl mir eine Geschichte von einem Einhorn“) | 9,5 s | 6,7 s |
+| Idee in der laufenden Folge („Kunibert soll den Drachen kitzeln“) | 9,4 s | 6,6 s |
+| Frage („Warum ist der Himmel blau“) | 8,6 s | 8,6 s |
+| zum Vergleich: Erzähltaste (keine Einordnung) | 5,4 s | 5,4 s |
+
+  Zahlen aus Attrappen: Sie zeigen den Unterschied, nicht die Wartezeit mit dem echten Claude. Der Rest bis zur Erzähltaste ist die Einordnung selbst: Den ersten Absatz vertont der Server erst, wenn sie passt.
+
 ### Token und Kosten (seit 14.11.2026, Punkt 72b)
 
 Hat eine Anfrage Claude aufgerufen, hängt die Zeile fünf Felder an:

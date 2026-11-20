@@ -197,6 +197,22 @@ test('Arbeitsbereichs-ID: Format geprüft, ungültige wird mit Warnung ignoriert
   assert.match(llmConfigWarnings({ PICASTAI_ANTHROPIC_WORKSPACE_ID: 'falsch' })[0], /PICASTAI_ANTHROPIC_WORKSPACE_ID ist ungültig/);
 });
 
+test('KUNIBERT_EINORDNUNG_PARALLEL: nur mit 1 an, Standard aus (Punkt B1)', () => {
+  const before = process.env.KUNIBERT_EINORDNUNG_PARALLEL;
+  try {
+    delete process.env.KUNIBERT_EINORDNUNG_PARALLEL;
+    assert.equal(loadConfig().parallelClassification, false);
+    process.env.KUNIBERT_EINORDNUNG_PARALLEL = 'ja';
+    assert.equal(loadConfig().parallelClassification, false, 'nur genau 1 schaltet ein');
+    process.env.KUNIBERT_EINORDNUNG_PARALLEL = ' 1 ';
+    assert.equal(loadConfig().parallelClassification, true);
+    assert.equal(getSafeConfigSummary(loadConfig()).parallelClassification, true, 'steht in der Übersicht');
+  } finally {
+    if (before === undefined) delete process.env.KUNIBERT_EINORDNUNG_PARALLEL;
+    else process.env.KUNIBERT_EINORDNUNG_PARALLEL = before;
+  }
+});
+
 test('Einwilligungs-Prüfung: standardmäßig an, nur außerhalb des Betriebs mit =0 aus', () => {
   assert.equal(isConsentRequired({}), true, 'Standard ist an, auch im Probelauf');
   assert.equal(isConsentRequired({ KUNIBERT_EINWILLIGUNG_PRUEFEN: '1' }), true);

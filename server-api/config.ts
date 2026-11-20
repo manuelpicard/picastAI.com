@@ -77,6 +77,12 @@ export interface KunibertConfig {
   storyPrefetch: boolean;
   /** Ton-Strom (Punkt 71): Geschichten Absatz für Absatz vertonen und ausliefern, für Geräte, die es anfragen. Standard aus. */
   audioStream: boolean;
+  /**
+   * Punkt B1: Klingt eine Äußerung an der Sprechtaste nach Geschichte, Idee oder „weiter“, startet die
+   * Geschichte gleichzeitig mit der Einordnung (server-api/brain.ts, likelyStoryTurn). An mit
+   * KUNIBERT_EINORDNUNG_PARALLEL=1, Standard aus.
+   */
+  parallelClassification: boolean;
   storyMinWords: number;
   storyMaxWords: number;
   answerMaxWords: number;
@@ -344,6 +350,7 @@ export function loadConfig(): KunibertConfig {
     partsPerEpisode: Math.min(12, Math.max(3, parseNum(process.env.KUNIBERT_PARTS_PER_EPISODE, 5))),
     storyPrefetch: process.env.PICASTAI_STORY_PREFETCH?.trim() !== '0',
     audioStream: process.env.PICASTAI_AUDIO_STREAM?.trim() === '1',
+    parallelClassification: process.env.KUNIBERT_EINORDNUNG_PARALLEL?.trim() === '1',
     storyMinWords,
     storyMaxWords,
     answerMaxWords: parseNum(process.env.KUNIBERT_ANSWER_MAX_WORDS, 80),
@@ -386,6 +393,7 @@ export function getSafeConfigSummary(config: KunibertConfig) {
     partsPerEpisode: config.partsPerEpisode,
     storyPrefetch: config.storyPrefetch,
     audioStream: config.audioStream,
+    parallelClassification: config.parallelClassification,
     storyWordRange: `${config.storyMinWords}–${config.storyMaxWords} Wörter`,
     answerMaxWords: config.answerMaxWords,
     emergencyNumberPrimary: config.emergencyNumberPrimary,
