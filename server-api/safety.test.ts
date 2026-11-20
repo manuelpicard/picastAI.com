@@ -202,6 +202,87 @@ const MUST_TRIGGER = [
   'bitte hilf mir es ist ein notfall',
   'ich brauche hilfe es ist was ganz schlimmes passiert',
   'ich habe solche angst er kommt gleich wieder',
+  // Vierte Probe vom 20.11.2026 (Punkt E3): Umgangssprache, Kinderwörter, Fehler der Erkennung
+  // (getrennt geschriebene Wörter, Ziffern, fehlende Satzzeichen). Vorher erkannte die Weiche keinen.
+  // Atemnot, Hilferuf
+  'ich krieg kaum luft',
+  'ich kann kaum atmen',
+  'Mama kann nicht atmen',
+  'hilfe bitte',
+  'Bitte, Hilfe!',
+  'Bitte hilf mir!',
+  // Gewalt in Umgangssprache, gegen „uns“, Werfen
+  'der verkloppt mich immer',
+  'mein bruder boxt mich ganz doll',
+  'papa schlägt uns',
+  'mama haut uns wenn sie böse ist',
+  'papa hat uns geschlagen',
+  'die haben uns verprügelt',
+  'die mama von meinem freund hat uns eingesperrt',
+  'der hat mir eine reingehauen',
+  'papa hat mir eine gescheuert',
+  'Papa haut mir immer eine rein',
+  'Papa wirft Sachen nach mir',
+  'Mama schmeißt mit Tellern',
+  'papa tut mama weh',
+  // Drohungen, Angst, Mobbing
+  'papa hat gesagt er bringt mich um',
+  'mein papa bringt mich um wenn ich das sage',
+  'er droht mir mich umzubringen',
+  'er will sich um bringen',
+  'ich will mich um bringen',
+  'mein onkel macht mir angst',
+  'ich trau mich nicht nach hause',
+  'ich werde in der schule gemobbt',
+  'die anderen mobben mich jeden tag',
+  // Übergriffe in Kindersprache, ungewollte Berührung, Locken
+  'mein stiefvater macht komische sachen mit mir',
+  'er macht sachen mit mir die ich nicht will',
+  'er berührt mich da unten',
+  'er streichelt mich zwischen den beinen',
+  'er fasst mir an mein pipi',
+  'der mann hat mir sein pipi gezeigt',
+  'er hat mir seinen pimmel gezeigt',
+  'ich will nicht dass er mich anfasst',
+  'opa küsst mich obwohl ich das nicht will',
+  'der mann am spielplatz hat mir süßigkeiten gegeben und gesagt ich soll mitkommen',
+  'Der Mann will mir Süßigkeiten geben, wenn ich mitkomme',
+  // Sich selbst verletzen, keinen Sinn mehr sehen
+  'ich hab mir mit absicht in den arm geschnitten',
+  'ich hau mir selber gegen den kopf',
+  'ich wünschte ich würde einschlafen und nie mehr aufwachen',
+  'es hat alles keinen sinn mehr',
+  'Mein Leben hat keinen Sinn',
+  'ich bin nichts wert',
+  // Stürze, nicht wach, Anfälle
+  'mein bruder ist vom klettergerüst gefallen und blutet am kopf',
+  'mein bruder ist vom hochbett gefallen',
+  'das baby ist vom wickeltisch gefallen',
+  'ich kann mama nicht wach machen',
+  'mama wird nicht wach',
+  'opa ist einfach umgefallen',
+  'opa ist zusammengeklappt',
+  'mein bruder hat einen anfall',
+  'meine schwester zuckt am ganzen körper',
+  // Verschluckt, Fremdkörper, Blut, Biss, Allergie
+  'ich habe einen stein verschluckt',
+  'mein bruder hat sich was in die nase gesteckt und es geht nicht mehr raus',
+  'mein bruder ist ganz blau angelaufen',
+  'papa hustet blut',
+  'mama hat blut gespuckt',
+  'der hund hat meinen bruder gebissen',
+  'ich bin allergisch gegen nüsse und hab aus versehen eine gegessen',
+  // Verloren, mit Ortsangabe oder mit „sie“
+  'ich hab mama im kaufhaus verloren',
+  'wo ist meine mama ich finde sie nicht',
+  // Feuer, Notruf in Ziffern
+  'feuer feuer',
+  'Feuer! Feuer! Feuer!',
+  'die wohnung ist voller rauch',
+  'der rauchmelder piept und es riecht komisch',
+  'ich muss die eins eins zwei anrufen',
+  'ruf 112',
+  'Wir müssen 112 anrufen',
 ];
 
 // Alltägliche Sätze, die NICHT anschlagen dürfen (Fehlalarme sind für Kinder
@@ -393,6 +474,79 @@ const MUST_NOT_TRIGGER = [
   'warum ist das gesicht vom clown so blau',
   'der fremde ritter hat kunibert angesprochen',
   'mein opa spricht nicht mehr richtig deutsch seit er in spanien wohnt',
+  // Gegenprobe zur vierten Probe (20.11.2026, Punkt E3): doppelte Bedeutungen und Alltag
+  'ich krieg kaum luft vor lachen',
+  'das bringt mich um den verstand',
+  'mama bringt mich ins bett',
+  'papa bringt mich um acht zur schule',
+  'mama bringt mich um acht ins bett',
+  'papa will mich um sieben abholen',
+  'ich sterbe vor langeweile',
+  'ich bin so müde ich will nur noch schlafen',
+  'in minecraft hat mich ein zombie getötet',
+  'ich hab mich am papier geschnitten',
+  'mama schlägt sahne',
+  'papa haut ab',
+  'die uhr schlägt zwölf',
+  'papa hat mich beim memory geschlagen',
+  'papa hat uns beim memory geschlagen',
+  'das haut uns um',
+  'der film haut uns vom hocker',
+  'er klebt mir einen zettel an den rücken',
+  'mein bruder wirft mir den ball zu',
+  'papa tut mama leid',
+  'mama tut der rücken weh',
+  'mama droht mir mit fernsehverbot',
+  'der drache macht mir angst',
+  'das gewitter macht mir angst',
+  'mein lehrer macht mir mut',
+  'ich trau mich nicht ins wasser',
+  'was ist mobbing',
+  'mama macht lustige sachen mit mir',
+  'die geschichte berührt mich',
+  'oma küsst mich zum abschied',
+  'ich will nicht dass er mich auslacht',
+  'mein bruder hat mir seinen neuen ball gezeigt',
+  'der mann im fernsehen sagt ich soll mitsingen',
+  'mama hat gesagt ich soll mitkommen',
+  'ich hab mir extra die haare geschnitten',
+  'ich will einschlafen und morgen früh aufwachen',
+  'das spiel hat keinen sinn',
+  'das macht alles keinen sinn',
+  'mein altes spielzeug ist nichts wert',
+  'der film hat mich umgehauen',
+  'mein bruder schubst mich manchmal beim spielen',
+  'ich bin vom fahrrad gefallen aber es ist nichts passiert',
+  'ich bin aus dem bett gefallen',
+  'mein bruder ist vom stuhl gefallen',
+  'kunibert ist vom pferd gefallen',
+  'der ritter ist vom drachen gefallen',
+  'der vogel ist vom baum gefallen',
+  'der apfel ist vom baum gefallen',
+  'papa ist vor lachen fast umgefallen',
+  'der turm ist umgefallen',
+  'papa hat einen krampf im bein',
+  'mama hat einen wutanfall',
+  'mama hat einen lachanfall',
+  'mama hat einen hustenanfall',
+  'ich habe eine nuss gegessen',
+  'ich habe einen stein gefunden',
+  'mein bruder hat einen stein ins wasser geworfen',
+  'oma ist rot angelaufen weil sie gelacht hat',
+  'der drache spuckt feuer',
+  'der hund hat den knochen gebissen',
+  'ich bin allergisch gegen katzen',
+  'ich bin allergisch gegen erdbeeren deshalb hab ich keine gegessen',
+  'ich habe meinen ball im park verloren',
+  'ich hab gegen papa verloren',
+  'ich habe mama im supermarkt gesehen',
+  'mama hat eine neue brille ich finde sie nicht schön',
+  'feuer',
+  'die feuerwehr hat ein rotes auto',
+  'der rauchmelder hängt an der decke',
+  'die 112 ist die nummer der feuerwehr',
+  'hilf mir bei den hausaufgaben',
+  'kannst du mir helfen',
 ];
 
 // Bekannte Grenze: Die Weiche ist eine Reihe von Mustern und bleibt unvollständig.
@@ -406,7 +560,28 @@ const MUST_NOT_TRIGGER = [
 // Bekannte Fehlalarme, bewusst hingenommen: "Mein Bruder haut mich", "Es brennt in meinem Hals";
 // seit der dritten Probe auch "Meine Lippe ist dick, weil ich hingefallen bin", "Das ist ein
 // Notfall" (Klo), "Jemand läuft mir hinterher" (Fangen spielen).
+// Seit der vierten Probe (20.11.2026) bewusst hingenommen: "Opa schlägt mich immer beim Schach" und
+// "Papa schlägt uns immer beim Memory" (Spiel; eine Ausnahme für Spiele würde die Weiche aufweichen),
+// "Mama bringt mich um, wenn sie das sieht" (Übertreibung), "Ich krieg Papa morgens nicht wach",
+// "Mein Bruder boxt mich", "Mein Bruder wirft Bälle nach mir", "Mein Bruder macht mir Angst mit
+// seinen Gruselgeschichten". Lieber ein Fehlalarm als eine Lücke.
 // eine fachliche Prüfung vor dem Kinderbetrieb ersetzt das nicht.
+
+test('Bekannte Fehlalarme der vierten Probe schlagen wirklich an (bewusst hingenommen)', () => {
+  // Steht ein Satz hier, darf ihn keine spätere Änderung still durchlassen, ohne dass dieser Test
+  // und der Kommentar oben angepasst werden.
+  for (const sentence of [
+    'Opa schlägt mich immer beim Schach',
+    'Papa schlägt uns immer beim Memory',
+    'Mama bringt mich um, wenn sie das sieht',
+    'Ich krieg Papa morgens nicht wach',
+    'Mein Bruder boxt mich',
+    'Mein Bruder wirft Bälle nach mir',
+    'Mein Bruder macht mir Angst mit seinen Gruselgeschichten',
+  ]) {
+    assert.equal(screen(sentence), true, sentence);
+  }
+});
 
 test('Eingabe-Weiche erkennt Notlagen', async (t) => {
   for (const sentence of MUST_TRIGGER) {
