@@ -16,7 +16,7 @@ Angelegt am 17.11.2026, 20:15, von Claude (Chat). Gepflegt von den Läufen des W
 ---
 
 ### A1 · PR #49 auf den heutigen Stand bringen und abschließen
-- Rolle: Bauen · Prio: 1 · Status: offen (Teil 1 von 2 erledigt, PR #63) · Bezug: Nr. 68E (Eltern-App, Server-Teil), Maßnahme M9
+- Rolle: Bauen · Prio: 1 · Status: erledigt (PR #69, 20.11.2026; Teil 1: PR #63) · Bezug: Nr. 68E (Eltern-App, Server-Teil), Maßnahme M9
 - Ziel: Der Inhalt von PR #49 (Branch `restlimit/2026-KW46`, Stand 13.11.) kommt auf den heutigen `main`: Story-State verfällt nach 24 Stunden ohne Nutzung (M9); Eltern-Server-Teil (Kopplung per sechsstelligem Code, Einwilligung erteilen und widerrufen, Schlafmodus, Ruhezeiten, Geschichte neu beginnen, alles löschen); Doku.
 - Vorgehen: neuer Branch von `main`. Die Änderungen neu anwenden, nicht blind mergen: `server.ts` und der Erzähler haben sich mit #50 bis #58 stark geändert. Ist es zu groß, zwei PRs: erst M9, dann der Eltern-Teil. Danach PR #49 mit Verweis schließen und den Branch `restlimit/2026-KW46` löschen (letzten Commit-Hash im Bericht nennen).
 - Fertig, wenn: gemergt, CI grün. Die Einwilligungs-Prüfung ist standardmäßig an. Nur `KUNIBERT_EINWILLIGUNG_PRUEFEN=0` schaltet sie ab, und das nur außerhalb von `NODE_ENV=production` (so in PR #49, `server-api/config.ts`; vorläufig festgelegt bei der Prüfung am 18.11.2026). Mit diesem Schalter läuft der Probelauf am Rechner ohne Kopplung weiter (beides mit Test belegt). `docs/picastAI-Pi-API.md` passt.
@@ -89,6 +89,7 @@ Angelegt am 17.11.2026, 20:15, von Claude (Chat). Gepflegt von den Läufen des W
 - Rolle: Bauen · Prio: 2 · Status: offen · Nach A1 · Bezug: Nr. 68E (PR C)
 - Ziel: Schlichte Seite auf dem Kunibert-Server für das Handy, ohne fremde Dienste und ohne externe Schriften: koppeln, einwilligen und widerrufen, Schlafmodus, Ruhezeiten, Geschichte neu beginnen, alles löschen, Infoseite. Deutsch, einfache Sprache.
 - Fertig, wenn: Seite und Routen getestet; kein Verlauf, keine Mitschriften, keine Statistik je Kind.
+- Hinweise (20.11.2026, nach PR #69): Die Routen `/v1/eltern/*` gibt es (`docs/picastAI-Pi-API.md`, Abschnitt „Eltern“). `deploy/Caddyfile` lässt sie von außen noch nicht durch; die Seite braucht `/eltern` und `/v1/eltern/*` dort. Das Eltern-Cookie hat mit `NODE_ENV=production` immer `Secure`: Im Heimnetz über http behält ein Browser es nicht. Für den Test im eigenen WLAN entscheiden (zum Beispiel HTTPS über Tailscale oder `Secure` nur über HTTPS).
 
 ### H1 · Lieferbarkeit und Preise der Hardware
 - Rolle: Recherche · Prio: 2 · Status: offen (wiederkehrend: erst anlegen, dann alle 3 Tage neu prüfen) · Bezug: Nr. 33, 42
@@ -228,6 +229,7 @@ Angelegt am 17.11.2026, 20:15, von Claude (Chat). Gepflegt von den Läufen des W
 - Rolle: Bauen · Prio: 1 · Status: offen · Bezug: Maßnahme M9, PR #63, A1 Teil 2
 - Ziel: Der Server prüft nur direkt nach dem Hochladen, ob das Gerät noch zugelassen ist. Sperrt man das Gerät, während die Spracherkennung läuft, geht danach noch die Äußerung des Kindes an Claude. Erst dann kommt 401 (Prüfung von PR #63, mit Attrappen nachvollzogen). `stillAuthorized` direkt vor jedem Aufruf von `respondTurn` in `server.ts` prüfen (Frage und Erzähltaste), ebenso vor `advanceStory`. Mit `PICASTAI_DEVICE_STORE=firestore`: im Speicher sofort sperren und die Geschichte vergessen, danach dauerhaft speichern (`server-api/devices.ts`). `/v1/turn` antwortet nach dem Sperren mit 401 statt 200 und legt keinen Ton ab, oder `docs/picastAI-Pi-API.md` nennt die Ausnahme.
 - Fertig, wenn: Test am echten Server mit Claude-Attrappe (`ANTHROPIC_BASE_URL`) und angehaltener Spracherkennung: nach dem Sperren kein Aufruf an Claude. Dazu Tests für das Sperren im Ton-Strom, beim Abholen einer Vorbereitung und für den Fünf-Minuten-Takt. `docs/picastAI-Pi-API.md` passt. Lässt sich mit N1120-0939-c verbinden.
+- Stand 20.11.2026 (PR #69): `/v1/device/question` prüft nach der Spracherkennung `refusalFor` (Sperre, Einwilligung, Schlafmodus), bevor die Äußerung an Claude geht; die Erzähltaste prüft nach dem Warten auf eine laufende Anfrage. Ein Test mit angehaltener Spracherkennung fehlt noch. `/v1/turn` prüft weiter nur zu Beginn (so in `docs/picastAI-Pi-API.md` genannt). Offen bleiben auch die Reihenfolge mit Firestore und die Tests unter „Fertig, wenn“.
 - Gefunden bei der Prüfung von PR #63 (20.11.2026).
 
 ### N1120-1610-c · Frist von 24 Stunden mit einer Uhr, die nicht springt
