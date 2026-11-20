@@ -196,18 +196,18 @@ Angelegt am 17.11.2026, 20:15, von Claude (Chat). Gepflegt von den Läufen des W
 
 ### N1120-0939-a · Hörproben aus dem Oktober aufräumen
 - Rolle: Bauen · Prio: 2 · Status: offen · Bezug: feste Regel „Sprachmodell ist Claude“, Erzählregeln vom 14.11.
-- Ziel: `hoerproben/Hoerprobe-zum-Mitlesen.md` und die zwei mp3-Dateien in `hoerproben/` sind vom 2.10.2026. Sie zeigen den alten Kanon (der Drache wird befriedet), und die Texte kamen laut Zeile 3 von einem Modell eines anderen Anbieters. Das widerspricht der Regel „Sprachmodell ist Claude, auch nicht als Beispiel“. Den Ordner löschen und alle Verweise im Repo anpassen (zum Beispiel `README.md`, `docs/`). Im Git-Verlauf bleibt er erhalten (letzten Commit-Hash im Bericht nennen). Neue Hörproben mit Claude und der Pocket-Stimme brauchen den Sprachserver: eigener Punkt, wenn der Testserver läuft.
+- Ziel: `hoerproben/Hoerprobe-zum-Mitlesen.md` und die zwei mp3-Dateien in `hoerproben/` sind vom 2.10.2026. Sie zeigen den alten Kanon (der Drache wird befriedet), und die Texte kamen laut Zeile 3 von einem Modell eines anderen Anbieters. Das widerspricht der Regel „Sprachmodell ist Claude, auch nicht als Beispiel“. Den Ordner löschen und alle Verweise im Repo anpassen: Route `/hoerproben` in `server.ts`, `src/components/HoerprobenPlayer.tsx` und der Reiter „Hörproben“ in `src/App.tsx` (Simulator und Dashboard), `README.md`, `ORGANIZATION.md`, Kommentar in `.gitignore`. Im Git-Verlauf bleibt er erhalten (letzten Commit-Hash im Bericht nennen). Neue Hörproben mit Claude und der Pocket-Stimme brauchen den Sprachserver: eigener Punkt, wenn der Testserver läuft.
 - Fertig, wenn: gemergt, CI grün, keine Verweise ins Leere (Suche nach `hoerproben` im Repo).
 - Gefunden bei der Prüfung von PR #66 (20.11.2026).
 
 ### N1120-0939-b · Ersatzfolge mit drei Teilen: Die Hexe fehlt (Kinder)
 - Rolle: Bauen · Prio: 3 · Status: offen
-- Ziel: Mit `KUNIBERT_PARTS_PER_EPISODE=3` springt `storyPhase` in `server-api/brain.ts` vom Teil „start“ direkt zur List („trick“). Der Teil „weg“ mit der Hexe fällt weg. Die List zitiert sie aber („Da fielen Kunibert die Worte der Hexe ein“). Bei drei Teilen muss die Hexe vorher vorkommen, zum Beispiel am Ende des ersten Teils. Standard sind fünf Teile; dort passt es.
+- Ziel: Mit `KUNIBERT_PARTS_PER_EPISODE=3` springt `storyPhase` in `server-api/brain.ts` vom Teil „start“ direkt zur List („trick“). Der Teil „weg“ mit der Hexe fällt weg. Die List zitiert sie aber („Da fielen Kunibert die Worte der Hexe ein“). Bei drei Teilen muss die Hexe vorher vorkommen, zum Beispiel am Ende des ersten Teils. Standard sind fünf Teile; dort passt es. Mit Claude gilt das schon: `server-api/brain.ts` gibt Claude dafür einen eigenen Hinweis. Es geht nur um die Ersatzfolge ohne Claude (`fallbackStory`).
 - Fertig, wenn: Test für 3, 5 und 12 Teile: Jede Ersatzfolge nennt die Hexe und ihr Geschenk, bevor die List sie zitiert; Ausgabe-Check grün. Eigener PR mit „(ändert, was Kinder hören)“.
 - Gefunden bei der Prüfung von PR #66 (20.11.2026).
 
 ### N1120-0939-c · Sperren bricht auch laufende Antworten ab
 - Rolle: Bauen · Prio: 3 · Status: offen · Bezug: Maßnahme M9, PR #63
-- Ziel: Seit PR #63 legen Anfragen nach dem Sperren eines Geräts nichts mehr ab und antworten mit 401. Ein Ton-Strom, den das Gerät schon abspielt, läuft aber zu Ende. Claude und die Sprachausgabe arbeiten für diese Anfrage noch fertig (Kosten). Laufende Sprecher (`StreamingSpeaker`) und Vorbereitungen je Gerät merken und beim Sperren abbrechen. Dasselbe soll später „alles löschen“ aus A1 Teil 2 nutzen.
+- Ziel: Seit PR #63 legen Anfragen nach dem Sperren eines Geräts nichts mehr ab und antworten mit 401. Vorbereitungen und noch nicht abgeholte Ströme verwirft `forgetDeviceStory` in `server.ts` schon. Ein Ton-Strom, den das Gerät schon abspielt, läuft aber zu Ende. Claude und die Sprachausgabe arbeiten für diese Anfrage noch fertig (Kosten). Laufende Sprecher (`StreamingSpeaker`) je Gerät merken und beim Sperren abbrechen. Dasselbe soll später „alles löschen“ aus A1 Teil 2 nutzen.
 - Fertig, wenn: Test am echten Server (wie in `server-api/api.test.ts`): Nach dem Sperren endet ein laufender Ton-Strom, und die Sprachausgabe bekommt keine neuen Sätze mehr. `docs/picastAI-Pi-API.md` angepasst.
 - Gefunden bei der Prüfung von PR #63 (20.11.2026).
