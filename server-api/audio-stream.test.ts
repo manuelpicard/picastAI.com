@@ -82,3 +82,14 @@ test('StreamRegistry: nur einmal abrufbar, nur für das eigene Gerät, mit Ablau
   now = 2000;
   assert.equal(registry.take('dev-a', late), null);
 });
+
+test('StreamRegistry.dropDevice: löscht nur die Ströme dieses Geräts', () => {
+  const registry = new StreamRegistry(60_000);
+  const a1 = registry.put('dev-a', new PcmStream(RATE));
+  registry.put('dev-a', new PcmStream(RATE));
+  const b1 = registry.put('dev-b', new PcmStream(RATE));
+  assert.equal(registry.dropDevice('dev-a'), 2);
+  assert.equal(registry.take('dev-a', a1), null);
+  assert.ok(registry.take('dev-b', b1));
+  assert.equal(registry.dropDevice('dev-a'), 0);
+});

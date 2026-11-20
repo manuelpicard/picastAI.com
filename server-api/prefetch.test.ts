@@ -107,3 +107,18 @@ test('Folgenanfang gilt länger als ein Teil mitten in der Folge', async () => {
   assert.ok(await prefetcher.take('a', ended, 100), 'Folgenanfang nach 50 s noch da');
   assert.equal(await prefetcher.take('b', state(), 100), null, 'Teil mitten in der Folge verfallen');
 });
+
+test('purge löscht abgelaufene Vorbereitungen auch ohne Abholen, gültige bleiben', async () => {
+  let now = 0;
+  const prefetcher = new StoryPrefetcher(async () => result(), { ttlMs: 1000, nextEpisodeTtlMs: 100_000, now: () => now });
+  const ended = state({ part: 5, done: true });
+  prefetcher.start('mitten', state());
+  prefetcher.start('ende', ended);
+  now = 5000;
+  assert.equal(prefetcher.purge(), 1);
+  assert.equal(prefetcher.has('mitten'), false, 'Teil mitten in der Folge nach 30-min-Frist (hier 1 s) weg');
+  assert.equal(prefetcher.has('ende'), true, 'Folgenanfang mit längerer Frist bleibt');
+  now = 200_000;
+  assert.equal(prefetcher.purge(), 1);
+  assert.equal(prefetcher.size, 0);
+});

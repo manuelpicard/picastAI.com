@@ -27,6 +27,10 @@ interface FakeSpeechService {
   transcript: string;
   /** Spracherkennung antwortet mit HTTP 500. */
   transcriptionFails: boolean;
+  /** Hält die Sprachausgabe an, bis das Versprechen erfüllt ist (Sperren während einer Antwort). */
+  speechHold: Promise<void> | null;
+  /** Wie viele Anfragen an die Sprachausgabe gerade an `speechHold` warten. */
+  speechWaiting: number;
 }
 
 function freePort(): Promise<number> {
@@ -49,12 +53,19 @@ function startFakeSpeechService(): Promise<{ server: http.Server; state: FakeSpe
     speechRejectsWithInput: false,
     transcript: 'warum ist der himmel blau',
     transcriptionFails: false,
+    speechHold: null,
+    speechWaiting: 0,
   };
   const server = http.createServer((req, res) => {
     const chunks: Buffer[] = [];
     req.on('data', (chunk: Buffer) => chunks.push(chunk));
-    req.on('end', () => {
+    req.on('end', async () => {
       if (req.url === '/audio/speech') {
+        if (state.speechHold) {
+          state.speechWaiting++;
+          await state.speechHold;
+          state.speechWaiting--;
+        }
         if (state.speechFails) {
           res.writeHead(500);
           res.end('absichtlicher Testfehler');
@@ -667,6 +678,105 @@ describe('picastAI-API (echter Server)', () => {
       headers: deviceHeaders('simulator-web', 'sim-web-token-xyz-123'),
     });
     assert.equal(res.status, 401);
+  });
+
+  it('Sperren eines Geräts löscht sofort seinen Stand der Geschichte, die Vorbereitung und wartendes Audio (M9)', async () => {
+    const admin = { Authorization: `Bearer ${ADMIN_TOKEN}` };
+    const status = async () => {
+      const res = await fetch(`${base}/api/status`, { headers: admin });
+      assert.equal(res.status, 200);
+      return (await res.json()) as { storyStates: number; storyPrefetches: number; audioStoreItems: number };
+    };
+    const device = await registerDevice();
+    const before = await status();
+    const story = await postStory(device);
+    assert.equal(story.status, 200, await story.clone().text());
+    const { audio_url: audioUrl } = (await story.json()) as { audio_url: string };
+    const during = await status();
+    assert.equal(during.storyStates, before.storyStates + 1, 'Stand gespeichert');
+    assert.equal(during.storyPrefetches, before.storyPrefetches + 1, 'nächster Teil wird vorbereitet');
+    assert.equal(during.audioStoreItems, before.audioStoreItems + 1, 'Audio wartet auf Abruf');
+
+    const revoked = await fetch(`${base}/api/devices/${device.id}/revoke`, { method: 'POST', headers: admin });
+    assert.equal(revoked.status, 200);
+    const afterRevoke = await status();
+    assert.equal(afterRevoke.storyStates, before.storyStates, 'Stand gelöscht');
+    assert.equal(afterRevoke.storyPrefetches, before.storyPrefetches, 'Vorbereitung verworfen');
+    assert.equal(afterRevoke.audioStoreItems, before.audioStoreItems, 'wartendes Audio gelöscht');
+    assert.ok(!JSON.stringify(afterRevoke).includes(device.id), 'Status nennt keine Geräte-IDs');
+    assert.equal((await fetchAudio(device, audioUrl)).status, 401, 'gesperrtes Gerät kommt nicht mehr an sein Audio');
+  });
+
+  const adminStatus = async () => {
+    const res = await fetch(`${base}/api/status`, { headers: { Authorization: `Bearer ${ADMIN_TOKEN}` } });
+    assert.equal(res.status, 200);
+    return (await res.json()) as { storyStates: number; storyPrefetches: number; audioStoreItems: number };
+  };
+  const revokeDevice = async (device: { id: string }) => {
+    const res = await fetch(`${base}/api/devices/${device.id}/revoke`, { method: 'POST', headers: { Authorization: `Bearer ${ADMIN_TOKEN}` } });
+    assert.equal(res.status, 200);
+  };
+
+  it('Sperren, während die Aufnahme hochlädt: Die Frage speichert nichts und antwortet mit 401 (M9)', async () => {
+    const device = await registerDevice();
+    const before = await adminStatus();
+    // Multipart-Körper von Hand, in zwei Stücken: Der Server meldet das Gerät an, sobald die Kopfzeilen da sind,
+    // und liest die Aufnahme danach.
+    const boundary = 'kunibert-test-grenze';
+    const head = Buffer.from(
+      `--${boundary}\r\nContent-Disposition: form-data; name="transcript"\r\n\r\nerzähl mir eine geschichte\r\n` +
+      `--${boundary}\r\nContent-Disposition: form-data; name="audio"; filename="question.wav"\r\nContent-Type: audio/wav\r\n\r\n`
+    );
+    const tail = Buffer.concat([wav16k(), Buffer.from(`\r\n--${boundary}--\r\n`)]);
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const body = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        controller.enqueue(new Uint8Array(head));
+        await gate;
+        controller.enqueue(new Uint8Array(tail));
+        controller.close();
+      },
+    });
+    const pending = fetch(`${base}/v1/device/question`, {
+      method: 'POST',
+      headers: { ...deviceHeaders(device.id, device.token), 'Content-Type': `multipart/form-data; boundary=${boundary}` },
+      body,
+      duplex: 'half',
+    } as RequestInit);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    await revokeDevice(device);
+    release();
+    const res = await pending;
+    assert.equal(res.status, 401, await res.clone().text());
+    const after = await adminStatus();
+    assert.equal(after.storyStates, before.storyStates, 'kein Stand für das gesperrte Gerät');
+    assert.equal(after.storyPrefetches, before.storyPrefetches, 'keine Vorbereitung für das gesperrte Gerät');
+    assert.equal(after.audioStoreItems, before.audioStoreItems, 'kein Audio für das gesperrte Gerät');
+  });
+
+  it('Sperren, während die Antwort vertont wird: kein Stand, kein Audio, Antwort 401 (M9)', async () => {
+    const device = await registerDevice();
+    const before = await adminStatus();
+    let release!: () => void;
+    fake.state.speechHold = new Promise<void>((resolve) => (release = resolve));
+    try {
+      const pending = postStory(device);
+      const deadline = Date.now() + 5_000;
+      while (fake.state.speechWaiting === 0 && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 25));
+      assert.ok(fake.state.speechWaiting > 0, 'Server wartet auf die Sprachausgabe');
+      await revokeDevice(device);
+      release();
+      const res = await pending;
+      assert.equal(res.status, 401, await res.clone().text());
+      const after = await adminStatus();
+      assert.equal(after.storyStates, before.storyStates, 'kein Stand für das gesperrte Gerät');
+      assert.equal(after.storyPrefetches, before.storyPrefetches, 'keine Vorbereitung für das gesperrte Gerät');
+      assert.equal(after.audioStoreItems, before.audioStoreItems, 'kein Audio für das gesperrte Gerät');
+    } finally {
+      fake.state.speechHold = null;
+      release();
+    }
   });
 });
 
