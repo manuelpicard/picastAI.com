@@ -33,6 +33,8 @@ export interface StageTimer {
   noteLlm?(usage: LlmUsage, usd: number | null): void;
   /** Eine Protokollzeile dieser Anfrage (nur Zahlen und feste Wörter). Ohne: console.log. */
   log?(line: string): void;
+  /** Eine Warnung dieser Anfrage (nur feste Wörter und Fehlercodes). Ohne: console.warn. */
+  warn?(...args: unknown[]): void;
 }
 
 /** Misst nichts und kennt kein Budget. Standard für Aufrufer ohne Zeitmessung (Tests, eval-llm). */

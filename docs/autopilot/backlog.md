@@ -31,7 +31,7 @@ Angelegt am 17.11.2026, 20:15, von Claude (Chat). Gepflegt von den Läufen des W
 - Stand 20.11.2026 (Planung): Für KW47 gibt es keinen Restlimit-PR und keinen Branch `restlimit/2026-KW47`. Alle Läufe der Aufgaben „Kunibert Restlimit (Mi, Do, Fr)“ vom 18. bis 20.11. brachen am Nutzungslimit ab. Diese Woche nichts zu übernehmen.
 
 ### B1 · Sprechtaste schneller (Einordnung) (Kinder)
-- Rolle: Bauen · Prio: 1 · Status: offen · Bezug: Nr. 76
+- Rolle: Bauen · Prio: 1 · Status: erledigt (PR #73, 20.11.2026) · Bezug: Nr. 76
 - Ziel: Bei einer Frage liefert heute schon ein einziger Aufruf an Claude die Art und die Antwort (`QUESTION_SCHEMA` in `server-api/brain.ts`). Erkennt Claude dabei einen Geschichtenwunsch, „weiter“ oder eine Idee, folgt ein zweiter Aufruf für die Geschichte (`sprachmodell_aufrufe=2`, siehe `docs/Zeitmessung.md`). Diese Einordnung vor dem Geschichtenaufruf kostet rund 4 s. Erst messen (Attrappe mit realistischen Zeiten, `deploy/dryrun/`), dann beschleunigen: zum Beispiel eine sichere Vorab-Regel für eindeutige Fälle, die Einordnung im selben Aufruf wie die Geschichte oder ein kleineres Modell (Claude Haiku) für den ersten Aufruf. Achtung: Der erste Aufruf schreibt bei einer Frage auch die Antwort. Ein kleineres Modell dort ändert also auch die Antworten.
 - Fertig, wenn: Messung vorher und nachher im PR. Neue Wege nur hinter einem Schalter, Standard unverändert, solange die Güte nicht belegt ist. Sicherheitsweiche und Ausgabe-Check unverändert wirksam (Tests).
 
@@ -259,3 +259,19 @@ Angelegt am 17.11.2026, 20:15, von Claude (Chat). Gepflegt von den Läufen des W
 - Ziel: (1) `server-api/brain.test.ts`: Die Suche nach altem Kanon erkennt „Kunibert besiegte den Drachen“, „zähmte“ und „wurde friedlich“ nicht. Die Prüfung „Besiegt war der Drache nicht“ steht in einem `if`. Die Tests hängen an `KUNIBERT_PARTS_PER_EPISODE` (mit 7 scheitert der Finale-Test). Feste Teilezahl im Test, breitere Suche, zählen, ob der List-Teil erreicht wurde. (2) `deploy/ansagen.json` und `server-api/ansagen.test.ts` verweisen auf `server-api/ansage.ts` (KI-Ansage beim ersten Einschalten); `server-api/ansagen.ts` und `docs/Ansagen.md` sagen, diese Ansage komme aus dem Server. Die Datei und eine Route dafür gibt es nicht. Als „offen“ kennzeichnen und auf H3 verweisen. (3) `docs/Erzaehler-Engine.md` (Abschnitt zur Vorbereitung) und `server-api/prefetch.ts` (Kommentar „Datenschutz“) sagen, eine Vorbereitung enthalte keine Äußerung des Kindes. Mitten in der Folge enthält sie den Wunsch (`story_state.wish`). Das ergänzen.
 - Fertig, wenn: gemergt, CI grün; `KUNIBERT_PARTS_PER_EPISODE=7 npm test` grün.
 - Gefunden bei der Prüfung von PR #63 und PR #66 (20.11.2026).
+
+### N1120-2300-a · Sprechtaste: ersten Absatz schon vor der Einordnung vertonen (Kinder)
+- Rolle: Bauen · Prio: 2 · Status: offen · Bezug: B1, PR #73
+- Ziel: Mit `KUNIBERT_EINORDNUNG_PARALLEL=1` (PR #73) wartet der erste Absatz der frühen Geschichte auf die Einordnung und wird erst danach vertont. Der Rest bis zur Wartezeit der Erzähltaste ist diese Vertonung (gemessen mit Attrappen am 20.11.2026: 6,7 s gegen 5,4 s). Den ersten Absatz schon vorher vertonen, aber erst nach der Einordnung ausliefern. Kein Ton und keine `audio_url` vor der Einordnung; sagt sie etwas anderes, wird auch der Ton verworfen.
+- Fertig, wenn: Messung vorher und nachher mit `deploy/dryrun/sprechtaste-messung.mjs`; Test, dass vor der Einordnung nichts zum Gerät geht (auch im Ton-Strom-Weg in `server.ts`); Standard unverändert aus.
+
+### N1120-2300-b · Verworfene frühe Aufrufe an Claude abbrechen
+- Rolle: Bauen · Prio: 4 · Status: offen · Bezug: B1, PR #73
+- Ziel: Eine verworfene frühe Geschichte läuft heute zu Ende (`server-api/llm.ts` kennt kein Abbrechen von außen). Ein `AbortSignal` im Aufruf spart die restlichen Token. Kein zweiter Versuch nach dem Abbruch (schon heute so, siehe `EarlyStoryTimer.stop`).
+- Fertig, wenn: Test mit Attrappe: Nach dem Verwerfen endet der Aufruf; die Zeile `modus=vorab_verworfen` zeigt weniger Token; Fehler im Abbruch fallen nicht als Fehler der Anfrage auf.
+
+### N1120-2300-c · Vorab-Regel der Sprechtaste nach dem Probelauf nachschärfen
+- Rolle: Prüfen · Prio: 3 · Status: offen · Bezug: B1, PR #73
+- Ziel: `likelyStoryTurn` (`server-api/brain.ts`) mit echten Äußerungen prüfen: Wie oft liegt sie daneben (Zeilen `modus=vorab_verworfen` im Protokoll), welche Wünsche und Ideen übersieht sie („Noch eine“, „weiterlesen“, „Was passiert dann“)? Nur mit Sätzen von Erwachsenen; keine Äußerungen ins Repo, nur gebaute Beispielsätze.
+- Fertig, wenn: Tabelle in `server-api/brain.test.ts` ergänzt; Anteil der verworfenen Aufrufe aus dem Probelauf im PR (nur Zahlen).
+

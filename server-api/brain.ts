@@ -536,7 +536,15 @@ export function likelyStoryTurn(transcript: string, active: boolean): 'geschicht
   const asksWeiter = has('weiter', 'weitererzählen', 'weitermachen') || /\bwie geht('?s| es) (jetzt |denn )?weiter\b/.test(text);
   // Wissensfragen und Fragen zur Geschichte („Warum hat der Drache die Glocke?“) nicht vorab erzählen.
   if (QUESTION_START.test(text) && !asksWeiter) return null;
-  if (active && has('soll', 'sollen', 'sollte', 'sollten', 'muss', 'müssen') && !has('neue', 'neues', 'andere')) return 'idee';
+  const first = text.split(/[^a-zäöüß]+/).find(Boolean) ?? '';
+  // Eine Idee sagt, was in der Geschichte passieren soll („Kunibert soll …“, „Die Hexe soll …“). Nicht:
+  // Ja-Nein-Fragen mit dem Modalverb vorn („Muss Kunibert kämpfen?“), Sätze über das Kind selbst
+  // („Ich muss Zähne putzen“) oder „Ich habe eine Frage“.
+  const ideaCue = has('soll', 'sollen', 'sollte', 'sollten', 'sollst', 'muss', 'müssen');
+  const modalFirst = ['soll', 'sollen', 'sollte', 'sollst', 'muss', 'müssen', 'musst', 'darf', 'dürfen', 'darfst', 'kann', 'kannst', 'können', 'könnte', 'will', 'willst', 'möchte', 'möchtest'].includes(first);
+  const aboutChild = ['ich', 'wir', 'mama', 'papa', 'mein', 'meine'].includes(first);
+  if (has('frage', 'fragen')) return null;
+  if (active && ideaCue && !modalFirst && !aboutChild && !has('neue', 'neues', 'andere')) return 'idee';
   if (asksWeiter) return 'weiter';
   if (has('geschichte', 'geschichten', 'märchen', 'gutenachtgeschichte') &&
     has('erzähl', 'erzähle', 'erzählen', 'erzählst', 'hören', 'will', 'möchte', 'möchtest', 'magst', 'bitte', 'noch', 'neue', 'wünsche')) return 'geschichte';
@@ -584,6 +592,8 @@ class HeldSink {
 class EarlyStoryTimer implements StageTimer {
   readonly turn: TurnTimer;
   private lines: string[] = [];
+  private warnings: unknown[][] = [];
+  private stopped = false;
 
   constructor(private readonly parent: StageTimer) {
     this.turn = new TurnTimer(undefined, parent instanceof TurnTimer ? parent.id : undefined, Number.POSITIVE_INFINITY);
@@ -598,8 +608,9 @@ class EarlyStoryTimer implements StageTimer {
     return this.turn.timeSync(stage, fn);
   }
 
+  /** Nach dem Verwerfen keine Zeit mehr: kein zweiter Versuch, kein neuer Aufruf an Claude. */
   remainingMs(): number {
-    return this.parent.remainingMs();
+    return this.stopped ? 0 : this.parent.remainingMs();
   }
 
   noteLlm(usage: LlmUsage, usd: number | null): void {
@@ -608,11 +619,23 @@ class EarlyStoryTimer implements StageTimer {
 
   /** Zeilen der Geschichte (zum Beispiel „Geschichte Teil 1/5: …“) erst schreiben, wenn sie genommen wird. */
   log(line: string): void {
-    this.lines.push(line);
+    if (!this.stopped) this.lines.push(line);
   }
 
-  /** Schreibt die zurückgehaltenen Zeilen (Geschichte genommen) über die Messung der Anfrage. */
+  warn(...args: unknown[]): void {
+    if (!this.stopped) this.warnings.push(args);
+  }
+
+  /** Verworfen: Zeilen und Warnungen weg, und es darf nichts mehr neu beginnen. */
+  stop(): void {
+    this.stopped = true;
+    this.lines = [];
+    this.warnings = [];
+  }
+
+  /** Schreibt die zurückgehaltenen Zeilen und Warnungen (Geschichte genommen) über die Messung der Anfrage. */
   flushTo(parent: StageTimer): void {
+    for (const args of this.warnings.splice(0)) warnTurn(parent, ...args);
     for (const line of this.lines.splice(0)) logTurn(parent, line);
   }
 }
@@ -621,6 +644,12 @@ class EarlyStoryTimer implements StageTimer {
 function logTurn(timer: StageTimer, line: string): void {
   if (timer.log) timer.log(line);
   else console.log(line);
+}
+
+/** Warnung einer Anfrage über ihre Messung; eine verworfene frühe Geschichte schreibt keine. */
+function warnTurn(timer: StageTimer, ...args: unknown[]): void {
+  if (timer.warn) timer.warn(...args);
+  else console.warn(...args);
 }
 
 /** Eine Geschichte, die gleichzeitig mit der Einordnung begonnen hat. */
@@ -686,7 +715,9 @@ export class Brain {
         if (settled) return;
         settled = true;
         held?.drop();
-        // Der Aufruf läuft zu Ende (er lässt sich nicht abbrechen); sein Verbrauch kommt ins Protokoll.
+        early.stop();
+        // Der laufende Aufruf endet normal (er lässt sich nicht abbrechen), aber ohne zweiten Versuch;
+        // sein Verbrauch kommt ins Protokoll.
         void promise.catch(() => undefined).finally(() => {
           const line = early.turn.logLine('verworfen');
           if (line) console.log(line);
@@ -1019,13 +1050,13 @@ export class Brain {
                 blocked = false;
                 rawDone = 0;
                 if (attempt === 1 && timer.remainingMs() >= STORY_RETRY_MIN_MS) {
-                  console.warn(`LLM-Geschichte (${this.llmName}) durch Ausgabe-Check abgelehnt, zweiter Versuch`);
+                  warnTurn(timer, `LLM-Geschichte (${this.llmName}) durch Ausgabe-Check abgelehnt, zweiter Versuch`);
                   retryNote = 'Wichtig: Ein erster Entwurf wurde vom automatischen Prüfer abgelehnt. Schreib den Teil neu und vermeide jedes Wort über Blut, Tod, Sterben, Töten und Verletzungen, auch in Redewendungen.';
                   continue;
                 }
                 throw new Error('Geschichte des Sprachmodells durch Ausgabe-Check abgelehnt');
               }
-              console.warn(`LLM-Geschichte (${this.llmName}) mitten im Strom angehalten (${spoken.length} Absätze gesprochen)`);
+              warnTurn(timer, `LLM-Geschichte (${this.llmName}) mitten im Strom angehalten (${spoken.length} Absätze gesprochen)`);
               return this.streamAbort(state, current, newEpisode, spoken, sink!);
             }
           }
@@ -1035,7 +1066,7 @@ export class Brain {
           if (!text) {
             // Ohne erzwungenes Werkzeug (PR #55) kann eine Antwort leer sein: einmal neu, wenn Zeit bleibt.
             if (attempt === 1 && timer.remainingMs() >= STORY_RETRY_MIN_MS) {
-              console.warn(`LLM-Geschichte (${this.llmName}) leer, zweiter Versuch`);
+              warnTurn(timer, `LLM-Geschichte (${this.llmName}) leer, zweiter Versuch`);
               retryNote = 'Wichtig: Rufe das Werkzeug auf und schreibe den ganzen Teil in das Feld text.';
               continue;
             }
@@ -1057,7 +1088,7 @@ export class Brain {
             // Treffer erst im ganzen Text (über Absätze hinweg): schon gesprochen, also anhalten.
             if (spoken.length) return this.streamAbort(state, current, newEpisode, spoken, sink!);
             if (attempt === 1 && timer.remainingMs() >= STORY_RETRY_MIN_MS) {
-              console.warn(`LLM-Geschichte (${this.llmName}) durch Ausgabe-Check abgelehnt, zweiter Versuch`);
+              warnTurn(timer, `LLM-Geschichte (${this.llmName}) durch Ausgabe-Check abgelehnt, zweiter Versuch`);
               retryNote =
                 'Wichtig: Ein erster Entwurf wurde vom automatischen Prüfer abgelehnt. Schreib den Teil neu und vermeide ' +
                 'jedes Wort über Blut, Tod, Sterben, Töten und Verletzungen, auch in Redewendungen.';
@@ -1089,10 +1120,10 @@ export class Brain {
           return this.storyResult(text, part, updatedState, spoken.length ? sink : undefined);
         } catch (err) {
           if (spoken.length) {
-            console.warn(`LLM-Geschichte (${this.llmName}) mitten im Strom abgebrochen (${spoken.length} Absätze gesprochen):`, (err as Error)?.message || err);
+            warnTurn(timer, `LLM-Geschichte (${this.llmName}) mitten im Strom abgebrochen (${spoken.length} Absätze gesprochen):`, (err as Error)?.message || err);
             return this.streamAbort(state, current, newEpisode, spoken, sink!);
           }
-          console.warn(`LLM-Geschichte (${this.llmName}) fehlgeschlagen, verwende Fallback:`, err);
+          warnTurn(timer, `LLM-Geschichte (${this.llmName}) fehlgeschlagen, verwende Fallback:`, err);
           break;
         }
       }

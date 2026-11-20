@@ -46,7 +46,7 @@ Anfragen, die gleich abgewiesen werden (keine Anmeldung, zu viele Anfragen, kein
 ### Einordnung parallel zur Geschichte (seit 20.11.2026, Punkt B1, Schalter `KUNIBERT_EINORDNUNG_PARALLEL=1`)
 
 - Mit dem Schalter laufen bei einem Geschichtenwunsch, einer Idee oder „weiter“ an der Sprechtaste zwei Aufrufe an Claude gleichzeitig (Einordnung und Geschichte). `sprachmodell_ms` ist die Summe beider und kann deshalb größer sein als die Wartezeit; `sprachmodell_aufrufe=2` wie ohne Schalter.
-- Wird die früh begonnene Geschichte verworfen (die Einordnung sagt etwas anderes), steht ihr Verbrauch in einer eigenen Zeile mit derselben `id`, `modus=vorab_verworfen` und `status=verworfen` (nur Zahlen, wie alle Zeilen). Ihre Zeile „Geschichte Teil …“ fehlt, denn niemand hört diesen Teil.
+- Wird die früh begonnene Geschichte verworfen (die Einordnung sagt etwas anderes), steht ihr Verbrauch in einer eigenen Zeile mit derselben `id`, `modus=vorab_verworfen` und `status=verworfen` (nur Zahlen, wie alle Zeilen). Ihre Zeilen „Geschichte Teil …“ und „Folge fertig …“ und ihre Warnungen fehlen, denn niemand hört diesen Teil.
 - Messung: `node deploy/dryrun/sprechtaste-messung.mjs` (Claude und Sprachausgabe als Attrappen: 4 s Einordnung, 14 s Schreibzeit, Pocket-Tempo; Server wie im Probelauf mit Ton-Strom). Ergebnis 20.11.2026 in der Cloud, erster Ton nach der Sprechtaste:
 
 | Fall | ohne Schalter | mit Schalter |
