@@ -41,7 +41,7 @@ Angelegt am 17.11.2026, 20:15, von Claude (Chat). Gepflegt von den Läufen des W
 - Fertig, wenn: Server, Pi-Client, Schnittstellen-Doku und Tests (auch e2e) passen. Für die Firmware ein eigener Folgepunkt. Ohne Meldung verhält sich alles wie heute.
 
 ### E3 · Sicherheitsweiche: mehr Testsätze, Lücken schließen
-- Rolle: Prüfen · Prio: 1 · Status: offen · Bezug: Nr. 22
+- Rolle: Prüfen · Prio: 1 · Status: erledigt (PR #71, 20.11.2026) · Bezug: Nr. 22
 - Ziel: Die Listen in `server-api/safety.test.ts` um realistische Fälle erweitern: Fehler der Spracherkennung (falsch erkannte Wörter, fehlende Satzzeichen), Umgangssprache, Formulierungen von Kindern, Wörter mit doppelter Bedeutung. Lücken in `server-api/safety.ts` schließen. Lieber ein Fehlalarm als eine Lücke.
 - Fertig, wenn: neue Sätze in beiden Listen („muss anschlagen“, „darf nicht anschlagen“), alle grün, `docs/Sicherheitsweiche-Pruefung.md` ergänzt.
 
@@ -211,3 +211,9 @@ Angelegt am 17.11.2026, 20:15, von Claude (Chat). Gepflegt von den Läufen des W
 - Ziel: Seit PR #63 legen Anfragen nach dem Sperren eines Geräts nichts mehr ab und antworten mit 401. Vorbereitungen und noch nicht abgeholte Ströme verwirft `forgetDeviceStory` in `server.ts` schon. Ein Ton-Strom, den das Gerät schon abspielt, läuft aber zu Ende. Claude und die Sprachausgabe arbeiten für diese Anfrage noch fertig (Kosten). Laufende Sprecher (`StreamingSpeaker`) je Gerät merken und beim Sperren abbrechen. Dasselbe soll später „alles löschen“ aus A1 Teil 2 nutzen.
 - Fertig, wenn: Test am echten Server (wie in `server-api/api.test.ts`): Nach dem Sperren endet ein laufender Ton-Strom, und die Sprachausgabe bekommt keine neuen Sätze mehr. `docs/picastAI-Pi-API.md` angepasst.
 - Gefunden bei der Prüfung von PR #63 (20.11.2026).
+
+### N1120-0950-a · Ohne Claude: „nicht weitererzählen“ startet eine Geschichte (Kinder)
+- Rolle: Bauen · Prio: 3 · Status: offen
+- Ziel: Ohne Claude (kein Schlüssel, Ausfall) sucht `fallbackQuestion` in `server-api/brain.ts` nur nach Wörtern. „bitte nicht weitererzählen“, „ich will keine geschichte“ und „hör auf zu erzählen“ beginnen deshalb eine Geschichte (am 20.11.2026 mit dem Code ausprobiert). Verneinte Wünsche („nicht“, „kein“, „keine“, „aufhören“, „stopp“) sollen keine Geschichte starten. Stattdessen ein kurzer fester Satz oder die allgemeine Antwort.
+- Fertig, wenn: Tests in `server-api/brain.test.ts` für verneinte und bejahte Wünsche. Eigener PR mit „(ändert, was Kinder hören)“.
+- Gefunden bei E3 (PR #71, 20.11.2026).
