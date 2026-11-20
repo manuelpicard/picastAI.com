@@ -329,11 +329,14 @@ const ART = '((mein|meine|meinen|meinem|meiner|der|die|dem|den) )?';
 // Spiele und Sport, bei denen „geschlagen“ „besiegt“ heißt (nur für das Perfekt mit Wörtern dazwischen)
 const GAME = '(schach|memory|uno|mühle|dame|halma|mensch ärgere dich nicht|kartenspiel|karten|quartett|videospiel|computerspiel|fußball|tischtennis|tennis|badminton|federball|basketball|handball|volleyball|wettrennen|rennen|wettlauf|wettschwimmen|armdrücken|quiz|mario kart|fifa)';
 // Gegen den Willen, in beiden Wortstellungen („obwohl ich das nicht wollte“, „aber ich will das nicht“)
+// Subjekt zwischen „hat“ und „mich“ („Und dann hat er mich geschlagen“, „Gestern hat Papa mich gehauen“)
+const SUBJ = `(er|sie|jemand|einer|der|die|man|${ART}${PERSON_WIDE}|(der|die|ein|eine|dieser|diese) (${WORD} )?(mann|frau|typ|junge|fremde|fremder))`;
+const NUM = '(null|eins|zwei|drei|vier|fünf|sechs|sieben|acht|neun|zehn)';
 const UNWANTED = '((obwohl|aber|und) ich (das |es )?(gar )?nicht (will|wollte|mag|mochte|möchte)|(aber|und) ich (will|wollte|mag|mochte|möchte) (das|es) (gar )?nicht)';
 
 const PATTERNS_2026_11_D: RegExp[] = [
   // Atemnot mit „kaum“ und bei anderen Personen. Nicht: „vor Lachen“.
-  new RegExp(`^(?!.*${L}vor (lauter )?lachen${R}).*${L}ich (habe|hab|bekomme|bekomm|kriege|krieg) (gerade |ganz |fast )?(kaum|fast keine|so gut wie keine)( noch)? luft( mehr)?${R}`),
+  new RegExp(`^(?!.*${L}vor (lauter )?lachen${R}).*${L}ich (habe|hab|bekomme|bekomm|kriege|krieg) (gerade |ganz |fast )?(kaum|fast keine|so gut wie keine|schlecht|nur schlecht|ganz schlecht)( noch)? luft( mehr)?${R}`),
   new RegExp(`^(?!.*${L}vor (lauter )?lachen${R}).*${L}ich kann (gerade |fast )?(kaum|fast nicht|gar nicht|überhaupt nicht|nicht richtig|nicht gut|nur schlecht|ganz schlecht|schlecht) (noch |mehr )?atmen${R}`),
   new RegExp(`${L}(${WHO}|das baby|${POSS}baby) (kriegt|bekommt|hat) (ganz )?(kaum|fast keine)( noch)? luft${R}`),
   new RegExp(`${L}(${WHO}|das baby|${POSS}baby) kann (kaum|nicht|nicht mehr|gar nicht|nicht richtig|nicht gut|schlecht) (noch |mehr )?atmen${R}`),
@@ -368,7 +371,7 @@ const PATTERNS_2026_11_D: RegExp[] = [
   new RegExp(`${L}(hat|haben) mich (${WORD} ){0,2}gemobbt${R}`),
   // Übergriffe in Kindersprache, ungewollte Berührung, Locken mit Versprechen
   new RegExp(`${L}(macht|machen|machte) (${WORD} ){0,2}(komische|eklige|ekelige|ekelhafte|schlimme|unangenehme|geheime|seltsame) (sachen|dinge|spiele|spielchen) mit mir${R}`),
-  new RegExp(`${L}(sachen|dinge) mit mir( ${WORD}){0,3} (die|was) ich nicht (will|mag|möchte)${R}`),
+  new RegExp(`${L}(sachen|dinge) mit mir( ${WORD}){0,3} (die|was) ich nicht (will|wollte|mag|mochte|möchte)${R}`),
   new RegExp(`${L}(berührt|berühren|streichelt|streicheln|fasst|fassen|grapscht|grabscht|küsst|küssen) mich (${WORD} ){0,2}(da unten|untenrum|am po|am popo|zwischen den beinen|an der brust|an meinem ${KID_BODY}|am ${KID_BODY}|an der ${KID_BODY}|unter der (decke|bettdecke|hose|unterhose))${R}`),
   new RegExp(`${L}(fasst|fassen|fasste|greift|greifen|griff|langt|langen) mir (${WORD} ){0,2}(an|in) (mein|meinen|meine|den|die|das) (${KID_BODY}|po|popo|brust|unterhose|hose)${R}`),
   new RegExp(`${L}(hat|haben) mir (${WORD} ){0,2}(seinen|sein|seine|ihren|ihr|ihre) ${KID_BODY} gezeigt${R}`),
@@ -395,7 +398,7 @@ const PATTERNS_2026_11_D: RegExp[] = [
   new RegExp(`${L}(zuckt|zucken|zuckte|krampft|krampfen|krampfte) (${WORD} ){0,2}(am ganzen körper|ganz komisch|ganz doll|die ganze zeit)${R}`),
   // Verschluckte Dinge, Fremdkörper in Nase oder Ohr
   new RegExp(`${L}${SMALL_PERSON} (habe|hab|hat) (${WORD} ){0,3}(stein|steinchen|kieselstein|kiesel|büroklammer|haarspange|haarklammer|ohrring|kronkorken|radiergummi|legoteil|spielzeugteil|reißzwecke|sicherheitsnadel|scherbe|glasscherbe) (verschluckt|geschluckt|in die nase gesteckt|ins ohr gesteckt)${R}`),
-  new RegExp(`^(?=.*${L}(in die nase|in der nase|ins ohr|in das ohr|im ohr|in dem ohr|in den hals|im hals)${R}).*${L}(geht|kommt|kriegt|krieg|kriege|bekommt|bekomme|bekomm) (${WORD} ){0,3}nicht (mehr )?raus${R}`),
+  new RegExp(`^(?=.*(?<!wasser )${L}(in die nase|in der nase|ins ohr|in das ohr|im ohr|in dem ohr|in den hals|im hals)${R}).*${L}(geht|kommt|kriegt|krieg|kriege|bekommt|bekomme|bekomm) (${WORD} ){0,3}nicht (mehr )?raus${R}`),
   // Blau angelaufen, Blut gespuckt, Tierbiss bei anderen, allergische Reaktion
   new RegExp(`${L}(ist|sind|wird|werden|bin) (${WORD} )?(ganz |so |total )?(blau|lila) angelaufen${R}`),
   new RegExp(`${L}(spuckt|spuckte|spucken|hustet|hustete|husten|kotzt|kotzte|erbricht|bricht) (${WORD} ){0,2}blut${R}`),
@@ -424,8 +427,9 @@ const PATTERNS_2026_11_D: RegExp[] = [
   new RegExp(`${L}ich (laufe|lauf|renne|renn|haue|hau) (${WORD} ){0,2}(von zu hause|von zuhause|von daheim) (weg|ab)${R}`),
   new RegExp(`${L}ich hasse mein leben${R}`),
   // Wie „ich will nicht mehr“ (nur am Satzende oder vor einem neuen Satzteil). Nicht: „nicht mehr weiter hören“,
-  // „ich will nicht mehr weiter, ich will eine andere Geschichte“ (Wunsch nach einer anderen Geschichte).
-  new RegExp(`^(?!.*${L}(geschichte|geschichten|erzähl[a-zäöüß]*|hören|anhören|zuhören|folge)${R}).*${L}ich (will|kann|mag) (${FILL} ){0,2}nicht mehr weiter(?= *$| ${CONTINUATION}${R})`),
+  // „ich will nicht mehr weiter, ich will eine andere Geschichte“. Ausgenommen ist nur dieser Wunsch, nicht jedes
+  // „erzählen“ oder „hören“ („Ich kann nicht mehr weiter, ich muss dir was erzählen“ schlägt an).
+  new RegExp(`^(?!.*${L}((andere|anderen|neue|neuen|nächste|nächsten) (geschichte|folge)|(was|etwas) anderes (hören|erzählen))${R}).*${L}ich (will|kann|mag) (${FILL} ){0,2}nicht mehr weiter(?= *$| ${CONTINUATION}${R})`),
   new RegExp(`${L}ich bin (${WORD} ){0,2}(zu nichts|für nichts) (nütze|gut|zu gebrauchen)${R}`),
   new RegExp(`${L}ich (glaube|glaub) ${ART}${PERSON_WIDE} ist tot${R}`),
   new RegExp(`^(?=.*${L}angst${R}).*${L}(allein|alleine) (zu hause|zuhause|daheim)${R}`),
@@ -437,22 +441,29 @@ const PATTERNS_2026_11_D: RegExp[] = [
   // Nachtrag nach der unabhängigen Prüfung vom 20.11.2026 (PR #71).
   // Perfekt mit Wörtern dazwischen („Papa hat mich wieder geschlagen“). Nur „geschlagen“ heißt auch
   // „im Spiel besiegt“; deshalb nur dort eine enge Ausnahme für genannte Spiele und Spielstände.
-  new RegExp(`^(?!.*${L}(beim|im|bei|in) ${GAME}${R})(?!.*${L}(knapp|haushoch|zu (null|eins|zwei|drei|vier|fünf|sechs|sieben|acht|neun|zehn))${R}).*${L}(hat|haben|hatte|hatten) (mich|uns) (${WORD} ){1,3}geschlagen${R}`),
-  new RegExp(`^(?!.*${L}(aus versehen|ausversehen)${R}).*${L}(hat|haben|hatte|hatten) (mich|uns) (${WORD} ){1,3}(gehauen|getreten|gewürgt|verhauen|verprügelt|geohrfeigt)${R}`),
+  // Die Ausnahmen gelten nur für die Wörter zwischen „mich“ und dem Partizip: „Papa hat mich gestern geschlagen,
+  // weil ich beim Fußball verloren habe“ schlägt an.
+  new RegExp(`${L}(hat|haben|hatte|hatten) (${SUBJ} )?(mich|uns) ((?!((beim|im|bei|in) ${GAME}|knapp|haushoch|zu ${NUM})${R})${WORD} ){0,3}geschlagen${R}`),
+  new RegExp(`${L}(hat|haben|hatte|hatten) (${SUBJ} )?(mich|uns) ((?!(aus versehen|ausversehen)${R})${WORD} ){0,3}(gehauen|getreten|gewürgt|verhauen|verprügelt|geohrfeigt|eingesperrt)${R}`),
   // Übergriffe im Perfekt und im Hauptsatz nach „aber“ und „und“
-  new RegExp(`${L}(hat|haben|hatte) mich (${WORD} ){0,2}(da unten|untenrum|am po|am popo|zwischen den beinen|an der brust|an meinem ${KID_BODY}|am ${KID_BODY}|an der ${KID_BODY}|unter der (decke|bettdecke|hose|unterhose)) (${WORD} )?(berührt|gestreichelt|angefasst|angegrapscht|angegrabscht|begrapscht|begrabscht|geküsst)${R}`),
-  new RegExp(`${L}(hat|haben|hatte) mich (${WORD} ){0,2}(geküsst|gestreichelt|berührt|angefasst|angegrapscht|begrapscht|ausgezogen)( ${WORD}){0,4} ${UNWANTED}${R}`),
+  new RegExp(`${L}(hat|haben|hatte) (${SUBJ} )?mich (${WORD} ){0,2}(da unten|untenrum|am po|am popo|zwischen den beinen|an der brust|an meinem ${KID_BODY}|am ${KID_BODY}|an der ${KID_BODY}|unter der (decke|bettdecke|hose|unterhose)) (${WORD} )?(berührt|gestreichelt|angefasst|angegrapscht|angegrabscht|begrapscht|begrabscht|geküsst)${R}`),
+  new RegExp(`${L}(hat|haben|hatte) (${SUBJ} )?mich (${WORD} ){0,2}(geküsst|gestreichelt|berührt|angefasst|angegrapscht|begrapscht|ausgezogen)( ${WORD}){0,4} ${UNWANTED}${R}`),
   new RegExp(`${L}(küsst|küsste|küssen|streichelt|streichelte|streicheln|berührt|berührte|berühren|fasst|fasste|fassen) mich( ${WORD}){0,4} (aber|und) ich (will|wollte|mag|mochte|möchte) (das|es) (gar )?nicht${R}`),
   new RegExp(`${L}(hat|haben|hatte) (${WORD} ){0,2}(komische|eklige|ekelige|ekelhafte|schlimme|unangenehme|geheime|seltsame) (sachen|dinge|spiele|spielchen) mit mir (${WORD} )?gemacht${R}`),
-  new RegExp(`${L}(hat|haben|hatte) mir (${WORD} ){0,2}(sachen|dinge|bilder|videos|fotos|filme) gezeigt( ${WORD}){0,3} (die|was) ich nicht sehen (will|wollte|mag|mochte|möchte|darf|durfte|soll|sollte)${R}`),
+  new RegExp(`${L}(hat|haben|hatte) (${SUBJ} )?mir (${WORD} ){0,2}(sachen|dinge|bilder|videos|fotos|filme) gezeigt( ${WORD}){0,3} (die|was) ich nicht sehen (will|wollte|mag|mochte|möchte|darf|durfte|soll|sollte)${R}`),
   // Drohung in umgekehrter Wortstellung („Wenn ich das sage, bringt er mich um“). Nicht: „um acht“.
   new RegExp(`${L}(bringt|bringen|würde|wird) (${POSS}${PERSON_WIDE}|er|sie|der|die) (mich|uns) (${WORD} )?um(?= *$| (wenn|weil|und|aber|falls|sonst|sagt|hat|ich|er|sie)${R})`),
   // Hilferuf als ganze Äußerung mit Anrede („Kunibert, hilf mir!“, „Mama, Hilfe!“, „Hilfe, Feuer!“)
-  new RegExp(`^(?=.*${L}(hilfe|hilf mir|helft mir)${R})((hilfe|hilf mir|helft mir|bitte|feuer|schnell|ritter|kunibert|mama|mami|papa|papi) ){1,12}$`),
-  // „Der Mann macht mir Angst“. Nicht: Film, Buch, Geschichte, Traum.
-  new RegExp(`^(?!.*${L}(film|fernsehen|fernseher|video|buch|geschichte|traum|albtraum|spiel|märchen|serie)${R}).*${L}(der|dieser|ein|so ein) (fremde |fremder |komische |komischer |große |großer )?(mann|typ|junge) (${WORD} ){0,3}macht mir (${WORD} ){0,2}angst${R}`),
+  new RegExp(`^(?=.*${L}(hilfe|hilf mir|helft mir|hilf uns|helft uns)${R})((hilfe|hilf mir|helft mir|hilf uns|helft uns|bitte|feuer|schnell|polizei|feuerwehr|krankenwagen|notarzt|ritter|kunibert|mama|mami|papa|papi|oma|omi|opa|opi|jemand|irgendjemand|irgendwer) ){1,12}$`),
+  // „Der Mann macht mir Angst“. Nicht: „der Mann im Film“ (nur direkt hinter „Mann“ ausgenommen).
+  new RegExp(`${L}(der|dieser|ein|so ein) (fremde |fremder |komische |komischer |große |großer )?(mann|typ|junge) (?!(im|in dem|in der|aus dem|aus der|in einem|in einer) (film|fernsehen|fernseher|video|buch|geschichte|traum|albtraum|spiel|märchen|serie|comic)${R})(${WORD} ){0,3}macht mir (${WORD} ){0,2}angst${R}`),
   // Werfen im Perfekt, Locken im Präsens
-  new RegExp(`${L}(hat|haben|hatte) (${WORD} ){0,3}nach (mir|uns) (geworfen|geschmissen)${R}`),
+  new RegExp(`${L}(hat|haben|hatte) ((?!(schneeball|schneebälle|schneebällen|ball|bälle|bällen|kissen|wasserbombe|wasserbomben|konfetti|laub|blätter)${R})${WORD} ){0,3}nach (mir|uns) (geworfen|geschmissen)${R}`),
+  new RegExp(`${L}(hat|haben|hatte) (${SUBJ} )?mit (tellern|gläsern|flaschen|messern|stühlen|sachen|gegenständen) (${WORD} )?(geworfen|geschmissen)${R}`),
+  // Gewalt zwischen Erwachsenen mit Artikel („Papa schlägt die Mama“)
+  new RegExp(`${L}${POSS}${PARENTS} (schlägt|haut|tritt|würgt|verprügelt|verhaut) (der|die|den|dem) ${PERSON_WIDE}${R}`),
+  // „Ich will nicht mehr weiterleben“ (ohne Ausnahme)
+  new RegExp(`${L}ich (will|möchte|mag|kann|wollte) (${FILL} ){0,2}nicht (mehr )?(weiterleben|weiter leben)${R}`),
   new RegExp(`${L}(mann|frau|typ|fremder|fremde|fremden)( ${WORD}){0,4} (bietet|bot|bieten) mir (${WORD} ){0,2}(süßigkeiten|bonbons|schokolade|geld|eis|geschenke|ein geschenk|spielzeug|ein handy) an${R}`),
 ];
 

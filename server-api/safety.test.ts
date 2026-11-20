@@ -351,6 +351,28 @@ const MUST_TRIGGER = [
   'Ich hab die Herdplatte angelassen',
   'Ein Mann bietet mir Süßigkeiten an',
   'Die anderen Kinder hauen mich',
+  // Zweite Runde der Prüfung (20.11.2026): Ausnahmen nur an ihrer Stelle, umgekehrte Wortstellung im Perfekt
+  'Ich will nicht mehr weiter, ich hab es Mama erzählt, aber sie glaubt mir nicht',
+  'Ich kann nicht mehr weiter, ich muss dir was erzählen',
+  'Ich kann das Schreien nicht mehr hören, ich will nicht mehr weiter',
+  'Papa hat mich gestern geschlagen, weil ich beim Fußball verloren habe',
+  'Papa hat mich gestern gehauen, weil ich aus Versehen das Glas kaputt gemacht habe',
+  'Mama hat mich wieder gehauen, nur weil ich aus Versehen gekleckert habe',
+  'Der Mann im Park macht mir Angst, er will ein Spiel mit mir spielen',
+  'Der Mann macht mir Angst, er hat mir ein Video gezeigt',
+  'Ich will nicht mehr weiterleben',
+  'Ich will nicht mehr weiter leben',
+  'Und dann hat er mich geschlagen',
+  'Gestern hat Papa mich gehauen',
+  'Dann hat er mich da unten angefasst',
+  'er hat sachen mit mir gemacht die ich nicht wollte',
+  'ich krieg schlecht luft',
+  'Papa schlägt die Mama',
+  'Mama hat mit Tellern geschmissen',
+  'Opa, Hilfe!',
+  'Hilfe, Polizei!',
+  'Kunibert, hilf uns!',
+  'Mein Bruder war im Wasser und hat sich einen Stein ins Ohr gesteckt und er geht nicht mehr raus',
 ];
 
 // Alltägliche Sätze, die NICHT anschlagen dürfen (Fehlalarme sind für Kinder
@@ -656,6 +678,11 @@ const MUST_NOT_TRIGGER = [
   'ich bin gern zuhause',
   'ich habe die herdplatte ausgemacht',
   'Papa hat mich vom Kindergarten abgeholt',
+  'Ich hab Wasser im Ohr und es geht nicht raus',
+  'Die Kinder haben Schneebälle nach uns geworfen',
+  'Die Mannschaft hat uns knapp geschlagen',
+  'Der Mann aus dem Fernsehen macht mir Angst',
+  'Gestern hat Opa mich beim Schach geschlagen',
 ];
 
 // Bekannte Grenze: Die Weiche ist eine Reihe von Mustern und bleibt unvollständig.
@@ -677,7 +704,7 @@ const MUST_NOT_TRIGGER = [
 // bringt sie mich um", "Mama kriegt einen Anfall, wenn sie das sieht", "Ein Junge aus meiner Klasse hat
 // mich angesprochen", "Der Rauchmelder piept, weil die Batterie leer ist", "Wann muss man die 112
 // anrufen?", "Die andere Mannschaft hat uns geschlagen", "Der Drache spuckt Blut" und "Mein Bruder hat
-// mich beim Spielen geschlagen" (schlagen oder besiegen?). Lieber ein Fehlalarm als eine Lücke.
+// mich beim Spielen geschlagen" (schlagen oder besiegen?), "Papa, hilf mir!". Lieber ein Fehlalarm als eine Lücke.
 // eine fachliche Prüfung vor dem Kinderbetrieb ersetzt das nicht.
 
 test('Bekannte Fehlalarme der vierten Probe schlagen wirklich an (bewusst hingenommen)', () => {
@@ -699,6 +726,7 @@ test('Bekannte Fehlalarme der vierten Probe schlagen wirklich an (bewusst hingen
     'Die andere Mannschaft hat uns geschlagen',
     'Der Drache spuckt Blut',
     'Mein Bruder hat mich beim Spielen geschlagen',
+    'Papa, hilf mir!',
   ]) {
     assert.equal(screen(sentence), true, sentence);
   }
