@@ -219,7 +219,8 @@ export class AudioStore {
 
   constructor(private ttlSeconds: number = 120, private maxPerDevice: number = 5) {}
 
-  private purge(): void {
+  /** Löscht abgelaufenes Audio (bei jedem Zugriff und regelmäßig über `purgeExpired`). */
+  public purge(): void {
     const now = Date.now() / 1000;
     for (const [key, item] of this.items.entries()) {
       if (item.expires < now) {
@@ -261,6 +262,18 @@ export class AudioStore {
     // Nach einmaligem Abruf löschen (exakt wie im Python-Server)
     this.items.delete(turnId);
     return entry.wav;
+  }
+
+  /** Löscht alles wartende Audio eines Geräts (zum Beispiel beim Sperren). Gibt die Anzahl zurück. */
+  public dropDevice(deviceId: string): number {
+    let removed = 0;
+    for (const [key, item] of this.items) {
+      if (item.deviceId === deviceId) {
+        this.items.delete(key);
+        removed++;
+      }
+    }
+    return removed;
   }
 
   public peek(deviceId: string, turnId: string): Buffer | null {

@@ -15,6 +15,7 @@
 // Er liegt nur im Arbeitsspeicher und wird beim Abholen gelöscht. Ein Teil mitten in einer Folge
 // gilt 30 Minuten (wer später weiterhört, bekommt einen frischen Teil mit kurzer Erinnerung), ein
 // vorbereiteter Folgenanfang 24 Stunden (die nächste Folge kommt oft erst am nächsten Tag).
+// Abgelaufenes räumt der Server alle fünf Minuten auf (`purge`, aufgerufen von `purgeExpired` in `story-states.ts`).
 import type { StoryState, TurnResult } from './brain.js';
 
 export interface PrefetchEntry {
@@ -104,6 +105,21 @@ export class StoryPrefetcher {
   /** Verwirft eine Vorbereitung (zum Beispiel nach einer neuen Folge über die Sprechtaste). */
   cancel(deviceId: string): void {
     this.entries.delete(deviceId);
+  }
+
+  /**
+   * Löscht abgelaufene Vorbereitungen, auch von Geräten, die sich nicht mehr melden (der Server
+   * ruft das regelmäßig auf). Gibt zurück, wie viele es waren.
+   */
+  purge(): number {
+    let removed = 0;
+    for (const [deviceId, entry] of this.entries) {
+      if (this.expired(entry)) {
+        this.entries.delete(deviceId);
+        removed++;
+      }
+    }
+    return removed;
   }
 
   /** Für Tests und Statusanzeige. */
