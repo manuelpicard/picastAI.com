@@ -28,6 +28,7 @@ Angelegt am 17.11.2026, 20:15, von Claude (Chat). Gepflegt von den Läufen des W
 - Nur von Freitag 08:00 bis Sonntag 23:59 und nur, wenn ein offener Entwurfs-PR vom Branch `restlimit/<Jahr>-KW<nn>` existiert, dessen Runde vorbei ist. Der Branch muss in diesem Repo liegen (kein Fork), und der PR muss vom Konto des Repo-Eigentümers stammen. Sonst ist er fremd: nicht übernehmen, nur im Bericht nennen. Die letzte Restlimit-Runde einer Woche startet Freitag 07:03. Gemeint ist also auch der PR der laufenden Kalenderwoche: Freitag bis Sonntag gehören noch zu ihr. Der Titel des PRs ist nicht festgelegt, es zählt der Branch. PR #49 (KW46) gehört zu A1, nicht hierher. Sonst überspringen.
 - Ziel: Die älteren Aufgaben „Kunibert Restlimit (Mi, Do, Fr)“ arbeiten mit eigenem Auftrag auf dem Branch `restlimit/<Jahr>-KW<nn>` in einem Entwurfs-PR. Ihr Auftrag sieht kein Mergen vor. Diesen PR sichten. Was gut ist und noch nicht in `main` steckt, als eigene Autopilot-PRs „[Autopilot A2] …“ übernehmen (mit Tests und unabhängiger Prüfung). Doppelt Gebautes verwerfen; Story-Stand und Eltern-Server-Teil nur mit A1 abgleichen. Danach den Entwurfs-PR mit Verweis schließen und den Branch löschen (letzten Commit-Hash im Bericht nennen).
 - Fertig, wenn: Der Restlimit-PR der Woche ist geschlossen, übernommene Teile sind gemergt, der Bericht steht im letzten A2-PR.
+- Stand 20.11.2026 (Planung): Für KW47 gibt es keinen Restlimit-PR und keinen Branch `restlimit/2026-KW47`. Alle Läufe der Aufgaben „Kunibert Restlimit (Mi, Do, Fr)“ vom 18. bis 20.11. brachen am Nutzungslimit ab. Diese Woche nichts zu übernehmen.
 
 ### B1 · Sprechtaste schneller (Einordnung) (Kinder)
 - Rolle: Bauen · Prio: 1 · Status: offen · Bezug: Nr. 76
@@ -40,7 +41,7 @@ Angelegt am 17.11.2026, 20:15, von Claude (Chat). Gepflegt von den Läufen des W
 - Fertig, wenn: Server, Pi-Client, Schnittstellen-Doku und Tests (auch e2e) passen. Für die Firmware ein eigener Folgepunkt. Ohne Meldung verhält sich alles wie heute.
 
 ### E3 · Sicherheitsweiche: mehr Testsätze, Lücken schließen
-- Rolle: Prüfen · Prio: 1 · Status: offen · Bezug: Nr. 22
+- Rolle: Prüfen · Prio: 1 · Status: erledigt (PR #71, 20.11.2026) · Bezug: Nr. 22
 - Ziel: Die Listen in `server-api/safety.test.ts` um realistische Fälle erweitern: Fehler der Spracherkennung (falsch erkannte Wörter, fehlende Satzzeichen), Umgangssprache, Formulierungen von Kindern, Wörter mit doppelter Bedeutung. Lücken in `server-api/safety.ts` schließen. Lieber ein Fehlalarm als eine Lücke.
 - Fertig, wenn: neue Sätze in beiden Listen („muss anschlagen“, „darf nicht anschlagen“), alle grün, `docs/Sicherheitsweiche-Pruefung.md` ergänzt.
 
@@ -192,3 +193,69 @@ Angelegt am 17.11.2026, 20:15, von Claude (Chat). Gepflegt von den Läufen des W
 - Zwei Fragen vorläufig entscheiden und testen: (1) Zweiter Lauf: Der Installer schreibt `kunibert.env` jedes Mal neu. Fehlt dabei das Token (zum Beispiel eine leere Variable beim Aufruf mit `--non-interactive` aus `pi-client/README.md`), steht danach ein leeres Token in der Datei, nur mit einer Warnung. Auch Änderungen mit `sudoedit` gehen verloren. Ein zweiter Lauf mit denselben Angaben ändert nichts; was ein Lauf ohne Token mit einem vorhandenen Token macht, wird entschieden. (2) Rechte von Datei und Ordner: Der Installer setzt `/etc/kunibert` auf `0750` und `kunibert.env` auf `0640`, beide mit Gruppe `audio`. `deploy/CHECKLISTE.md` und `pi-client/README.md` sagen `600`; die Anleitung von Hand legt den Ordner ohne Gruppe an. `systemd` liest die Datei als root (Einschätzung). Der Abschnitt „Manuell starten“ in `pi-client/README.md` liest sie aber als normaler Nutzer.
 - Dazu (Prüfung von PR #61, 18.11.): (3) Token auf der Befehlszeile: Die Anleitung übergibt das Token mit `--api-token` (`pi-client/README.md`, dazu die Hilfe in `pi-client/install_raspberry_pi.sh` und die Anzeige in `src/components/ArchitectureViewer.tsx`; Teil B von `deploy/CHECKLISTE.md` verweist auf diese Anleitung). Dann steht es in der Prozessliste, im Shell-Verlauf und je nach sudo-Einstellung im Journal (Einschätzung, am Pi nicht geprüft). Ziel: Das Token kommt nur über die verdeckte Abfrage oder aus einer Datei. (4) Wer das Token lesen darf: Mit `0640` und Gruppe `audio` kann jedes Mitglied von `audio` es lesen. Ziel: nur root und das Dienstkonto. (5) „Ändert nichts“ beim zweiten Lauf heißt: `kunibert.env`, Dienstdatei, Rechte und Besitzer bleiben gleich. `pip install --upgrade` und die Sicherung von `/etc/asound.conf` laufen bei jedem Lauf.
 - Fertig, wenn: Der Test läuft grün in der CI. Code und Doku sagen dasselbe zu Token und Rechten. `pi-client/README.md` verweist auf den Test. Was nur am echten Pi prüfbar ist (Audio, Tasten, LED, Gruppen des Standardnutzers), steht im Bericht.
+
+### N1120-0939-a · Hörproben aus dem Oktober aufräumen
+- Rolle: Bauen · Prio: 2 · Status: offen · Bezug: feste Regel „Sprachmodell ist Claude“, Erzählregeln vom 14.11.
+- Ziel: `hoerproben/Hoerprobe-zum-Mitlesen.md` und die zwei mp3-Dateien in `hoerproben/` sind vom 2.10.2026. Sie zeigen den alten Kanon (der Drache wird befriedet), und die Texte kamen laut Zeile 3 von einem Modell eines anderen Anbieters. Das widerspricht der Regel „Sprachmodell ist Claude, auch nicht als Beispiel“. Den Ordner löschen und alle Verweise im Repo anpassen: Route `/hoerproben` in `server.ts`, `src/components/HoerprobenPlayer.tsx` und der Reiter „Hörproben“ in `src/App.tsx` (Simulator und Dashboard), `README.md`, `ORGANIZATION.md`, Kommentar in `.gitignore`. Im Git-Verlauf bleibt er erhalten (letzten Commit-Hash im Bericht nennen). Neue Hörproben mit Claude und der Pocket-Stimme brauchen den Sprachserver: eigener Punkt, wenn der Testserver läuft.
+- Fertig, wenn: gemergt, CI grün, keine Verweise ins Leere (Suche nach `hoerproben` im Repo). Das Archiv `docs/ai-context/` bleibt unverändert; dort darf der Reiter weiter erwähnt sein (Prüfung von PR #70).
+- Gefunden bei der Prüfung von PR #66 (20.11.2026).
+
+### N1120-0939-b · Ersatzfolge mit drei Teilen: Die Hexe fehlt (Kinder)
+- Rolle: Bauen · Prio: 3 · Status: offen
+- Ziel: Mit `KUNIBERT_PARTS_PER_EPISODE=3` springt `storyPhase` in `server-api/brain.ts` vom Teil „start“ direkt zur List („trick“). Der Teil „weg“ mit der Hexe fällt weg. Die List zitiert sie aber („Da fielen Kunibert die Worte der Hexe ein“). Bei drei Teilen muss die Hexe vorher vorkommen, zum Beispiel am Ende des ersten Teils. Standard sind fünf Teile; dort passt es. Mit Claude gilt das schon: `server-api/brain.ts` gibt Claude dafür einen eigenen Hinweis. Es geht nur um die Ersatzfolge ohne Claude (`fallbackStory`).
+- Fertig, wenn: Test für 3, 5 und 12 Teile: Jede Ersatzfolge nennt die Hexe und ihr Geschenk, bevor die List sie zitiert; Ausgabe-Check grün. Eigener PR mit „(ändert, was Kinder hören)“.
+- Gefunden bei der Prüfung von PR #66 (20.11.2026).
+
+### N1120-0939-c · Sperren bricht auch laufende Antworten ab
+- Rolle: Bauen · Prio: 3 · Status: offen · Bezug: Maßnahme M9, PR #63
+- Ziel: Seit PR #63 legen Anfragen nach dem Sperren eines Geräts nichts mehr ab und antworten mit 401. Vorbereitungen und noch nicht abgeholte Ströme verwirft `forgetDeviceStory` in `server.ts` schon. Ein Ton-Strom, den das Gerät schon abspielt, läuft aber zu Ende. Claude und die Sprachausgabe arbeiten für diese Anfrage noch fertig (Kosten). Laufende Sprecher (`StreamingSpeaker`) je Gerät merken und beim Sperren abbrechen. Dasselbe soll später „alles löschen“ aus A1 Teil 2 nutzen.
+- Fertig, wenn: Test am echten Server (wie in `server-api/api.test.ts`): Nach dem Sperren endet ein laufender Ton-Strom, und die Sprachausgabe bekommt keine neuen Sätze mehr. `docs/picastAI-Pi-API.md` angepasst.
+- Gefunden bei der Prüfung von PR #63 (20.11.2026).
+
+### N1120-0950-a · Ohne Claude: „nicht weitererzählen“ startet eine Geschichte (Kinder)
+- Rolle: Bauen · Prio: 3 · Status: offen
+- Ziel: Ohne Claude (kein Schlüssel, Ausfall) sucht `fallbackQuestion` in `server-api/brain.ts` nur nach Wörtern. „bitte nicht weitererzählen“, „ich will keine geschichte“ und „hör auf zu erzählen“ beginnen deshalb eine Geschichte (am 20.11.2026 mit dem Code ausprobiert). Verneinte Wünsche („nicht“, „kein“, „keine“, „aufhören“, „stopp“) sollen keine Geschichte starten. Stattdessen ein kurzer fester Satz oder die allgemeine Antwort.
+- Fertig, wenn: Tests in `server-api/brain.test.ts` für verneinte und bejahte Wünsche. Eigener PR mit „(ändert, was Kinder hören)“.
+- Gefunden bei E3 (PR #71, 20.11.2026).
+
+### N1120-1610-a · Sicherheitsweiche: Schreibweisen der echten Spracherkennung
+- Rolle: Prüfen · Prio: 3 · Status: offen · Bezug: E3, Nr. 22
+- Ziel: Die Muster in `server-api/safety.ts` setzen Umlaute und ß voraus. Schreibt die Spracherkennung „ae“, „oe“, „ue“ oder „ss“ (zum Beispiel „Süssigkeiten“), rutschen Sätze durch („Ein Mann hat mir Süssigkeiten angeboten“). Mit dem eigenen Sprachserver und Aufnahmen von Erwachsenen prüfen, welche Schreibweisen wirklich vorkommen (auch Zahlen, Zusammen- und Getrenntschreibung). Erst dann die Muster anpassen. `normalize()` nicht blind umschreiben (sonst wird aus „feuer“ etwas anderes). Braucht den laufenden Sprachserver.
+- Fertig, wenn: Ergebnis mit Beispielen in `docs/Sicherheitsweiche-Pruefung.md`; gefundene Lücken mit Sätzen in beiden Listen von `server-api/safety.test.ts`. Keine Aufnahmen von Kindern.
+- Gefunden bei der Prüfung von PR #71 (20.11.2026).
+
+### N1120-1610-b · Nach dem Sperren nichts mehr an Claude geben
+- Rolle: Bauen · Prio: 1 · Status: offen · Bezug: Maßnahme M9, PR #63, A1 Teil 2
+- Ziel: Der Server prüft nur direkt nach dem Hochladen, ob das Gerät noch zugelassen ist. Sperrt man das Gerät, während die Spracherkennung läuft, geht danach noch die Äußerung des Kindes an Claude. Erst dann kommt 401 (Prüfung von PR #63, mit Attrappen nachvollzogen). `stillAuthorized` direkt vor jedem Aufruf von `respondTurn` in `server.ts` prüfen (Frage und Erzähltaste), ebenso vor `advanceStory`. Mit `PICASTAI_DEVICE_STORE=firestore`: im Speicher sofort sperren und die Geschichte vergessen, danach dauerhaft speichern (`server-api/devices.ts`). `/v1/turn` antwortet nach dem Sperren mit 401 statt 200 und legt keinen Ton ab, oder `docs/picastAI-Pi-API.md` nennt die Ausnahme.
+- Fertig, wenn: Test am echten Server mit Claude-Attrappe (`ANTHROPIC_BASE_URL`) und angehaltener Spracherkennung: nach dem Sperren kein Aufruf an Claude. Dazu Tests für das Sperren im Ton-Strom, beim Abholen einer Vorbereitung und für den Fünf-Minuten-Takt. `docs/picastAI-Pi-API.md` passt. Lässt sich mit N1120-0939-c verbinden.
+- Gefunden bei der Prüfung von PR #63 (20.11.2026).
+
+### N1120-1610-c · Frist von 24 Stunden mit einer Uhr, die nicht springt
+- Rolle: Bauen · Prio: 3 · Status: offen · Bezug: Maßnahme M9
+- Ziel: `server-api/story-states.ts` misst die 24 Stunden mit der Wanduhr (`Date.now`). Springt die Uhr (von Hand gestellt, Zeitabgleich), verfällt der Stand zu früh oder zu spät. Eine gleichmäßige Uhr nehmen (zum Beispiel `performance.now()`); der Stand liegt ohnehin nur im Arbeitsspeicher.
+- Fertig, wenn: Test mit springender Wanduhr.
+- Gefunden bei der Prüfung von PR #63 (20.11.2026).
+
+### N1120-1610-d · Ohne Claude: Angst ernst nehmen (Kinder)
+- Rolle: Bauen · Prio: 2 · Status: offen · Bezug: B4, PR #66
+- Ziel: Ohne Claude landen Angst-Sätze bei der festen Drachen-Antwort in `fallbackQuestion` (`server-api/brain.ts`). „Ich habe Angst vor dem Drachen“ oder „Kommt der Drache heute Nacht zu mir“ bekommen: „Er ist böse, brüllt und spuckt Feuer, und alle haben Angst vor ihm.“ Vor dem Drachen-Zweig kommt ein Zweig für Angst („angst“, „fürchte“, „gruselig“) mit Beruhigung: Angst haben ist in Ordnung. Den Drachen gibt es nur in den Geschichten, zu dir kommt er nicht. Sag es einem Erwachsenen, den du lieb hast. „Ich habe Angst im Dunkeln“ bekommt bisher die allgemeine Antwort. Dazu „Jeder von uns fühlt sich ab und zu so“ ändern in „Jeder Mensch …“: Das Gerät spricht nicht wie ein Mensch (Kanon, Abschnitt 2).
+- Fertig, wenn: Tests mit den genannten Sätzen; Ausgabe-Check grün; in den Geschichten bleibt der Drache böse (Erzählregeln vom 14.11.). Eigener PR mit „(ändert, was Kinder hören)“.
+- Gefunden bei der Prüfung von PR #66 (20.11.2026).
+
+### N1120-1610-e · Ersatz mitten in einer Claude-Folge ohne Sprung (Kinder)
+- Rolle: Bauen · Prio: 2 · Status: offen · Bezug: Erzählregel „Ideen springen nicht“
+- Ziel: Fällt Claude mitten in einer Folge mit Plan von Claude aus, erzählt die Ersatzfolge ihre eigene Handlung weiter (`fallbackStory` in `server-api/brain.ts`). Beispiel aus der Prüfung: Bei Claude gab die Hexe eine Feder, die Ersatz-Mitte spricht vom silbernen Glöckchen. Die Ersatz-List zitiert Worte der Hexe, die das Kind nie gehört hat. Das Ersatz-Finale sagt nicht, wie die List ausging. Hat die Folge einen Plan von Claude, kommen nur Brückentexte ohne eigenes Geschenk und ohne Worte der Variante. Das Finale beginnt mit dem Ausgang („Kuniberts List gelang für heute. … Besiegt war er nicht.“). Nicht dasselbe wie N1120-0939-b.
+- Fertig, wenn: Tests für die Übernahme in Teil 3 und in Teil 5; Ausgabe-Check grün. Eigener PR mit „(ändert, was Kinder hören)“.
+- Gefunden bei der Prüfung von PR #66 (20.11.2026).
+
+### N1120-1610-f · Ersatzfolge: Wunsch aufgreifen, Variante wechseln, kurze Sätze (Kinder)
+- Rolle: Bauen · Prio: 3 · Status: offen · Bezug: B4, Maßnahme M9
+- Ziel: (1) Teil 1 der Ersatzfolge nennt den Wunsch des Kindes einmal, danach nie wieder (`fallbackStory` in `server-api/brain.ts`). Der Kanon (Abschnitt 6) will Wünsche aufgelöst sehen: Die Spur führt zur Hexe, das Finale hat einen Satz zum Wunsch. (2) Seit PR #63 beginnt nach jedem Ablauf von 24 Stunden dieselbe Ersatzfolge („runder Stein“), weil die Zählung wieder bei Folge 2 startet. Die Variante nicht nur aus der Folgennummer ableiten. (3) Ein Satz der Ersatz-List mit der grünen Flasche hat 21 Wörter und endet mit einem Lehrsatz im Präsens. Kürzen wie bei den anderen Listen.
+- Fertig, wenn: Tests für (1) bis (3); Ausgabe-Check grün. Eigener PR mit „(ändert, was Kinder hören)“.
+- Gefunden bei der Prüfung von PR #63 und PR #66 (20.11.2026).
+
+### N1120-1610-g · Tests und Doku zum Erzähler nachziehen
+- Rolle: Prüfen · Prio: 3 · Status: offen
+- Ziel: (1) `server-api/brain.test.ts`: Die Suche nach altem Kanon erkennt „Kunibert besiegte den Drachen“, „zähmte“ und „wurde friedlich“ nicht. Die Prüfung „Besiegt war der Drache nicht“ steht in einem `if`. Die Tests hängen an `KUNIBERT_PARTS_PER_EPISODE` (mit 7 scheitert der Finale-Test). Feste Teilezahl im Test, breitere Suche, zählen, ob der List-Teil erreicht wurde. (2) `deploy/ansagen.json` und `server-api/ansagen.test.ts` verweisen auf `server-api/ansage.ts` (KI-Ansage beim ersten Einschalten); `server-api/ansagen.ts` und `docs/Ansagen.md` sagen, diese Ansage komme aus dem Server. Die Datei und eine Route dafür gibt es nicht. Als „offen“ kennzeichnen und auf H3 verweisen. (3) `docs/Erzaehler-Engine.md` (Abschnitt zur Vorbereitung) und `server-api/prefetch.ts` (Kommentar „Datenschutz“) sagen, eine Vorbereitung enthalte keine Äußerung des Kindes. Mitten in der Folge enthält sie den Wunsch (`story_state.wish`). Das ergänzen.
+- Fertig, wenn: gemergt, CI grün; `KUNIBERT_PARTS_PER_EPISODE=7 npm test` grün.
+- Gefunden bei der Prüfung von PR #63 und PR #66 (20.11.2026).
