@@ -22,6 +22,7 @@ const client = path.join(root, 'pi-client', 'kunibert_client.py');
 
 const DEVICE_ID = 'pi-e2e';
 const DEVICE_TOKEN = 'e2e-geraete-token-nur-fuer-diesen-test';
+const ADMIN_TOKEN = 'e2e-admin-token-nur-fuer-diesen-test';
 const HEARD = 'Warum ist der Himmel blau?';
 
 /** Kurze WAV-Datei: mono, 16 Bit, 16 kHz, leiser Ton. */
@@ -115,7 +116,7 @@ before(async () => {
       HOST: '127.0.0.1',
       PORT: String(serverPort),
       PICASTAI_PUBLIC_BASE_URL: base,
-      PICASTAI_ADMIN_TOKEN: 'e2e-admin-token-nur-fuer-diesen-test',
+      PICASTAI_ADMIN_TOKEN: ADMIN_TOKEN,
       PICASTAI_DEVICE_ID: DEVICE_ID,
       PICASTAI_DEVICE_TOKEN: DEVICE_TOKEN,
       PICASTAI_DEVICE_STORE: 'memory',
@@ -166,6 +167,40 @@ test('Pi-Client: falsches Token wird abgelehnt', async () => {
   await assert.rejects(run('python3', [client, '--once', 'story'], { env }));
 });
 
+// Frage mit Aufnahme über die Klasse des Pi-Clients (ohne Mikrofon).
+const ASK_SCRIPT = [
+  'import sys, base64',
+  `sys.path.insert(0, ${JSON.stringify(path.join(root, 'pi-client'))})`,
+  'import kunibert_client as k',
+  'config = k.ClientConfig.from_env(dry_run=True)',
+  'wav = base64.b64decode(sys.argv[1])',
+  'answer = k.PicastApi(config).ask_question(wav)',
+  'print("RIFF" if answer[:4] == b"RIFF" and answer[8:12] == b"WAVE" else "KEIN-WAV", len(answer))',
+].join('\n');
+
+test('Ohne Einwilligung der Eltern: fester Hinweis, die Aufnahme geht nicht an die Spracherkennung', async () => {
+  const before = seen.transcriptions;
+  const { stdout } = await run('python3', ['-c', ASK_SCRIPT, makeWav(1).toString('base64')], { env: clientEnv() });
+  assert.match(stdout, /^RIFF \d+\s*$/);
+  assert.equal(seen.transcriptions, before, 'Aufnahme ging ohne Einwilligung an die Spracherkennung');
+  const story = await run('python3', [client, '--once', 'story'], { env: clientEnv() });
+  assert.match(story.stdout, /Story-Audio empfangen: \d+ Bytes\s*$/, 'ohne Einwilligung kein Ton-Strom, nur der feste Hinweis');
+});
+
+test('deploy/eltern-einwilligung.mjs koppelt das Gerät und willigt ein (Tests mit Erwachsenen)', async () => {
+  const script = path.join(root, 'deploy', 'eltern-einwilligung.mjs');
+  const env = { ...process.env, PICASTAI_API_BASE_URL: base, PICASTAI_ADMIN_TOKEN: ADMIN_TOKEN, PICASTAI_DEVICE_ID: DEVICE_ID };
+  const { stdout, stderr } = await run(process.execPath, [script], { env });
+  assert.match(stdout, /Einwilligung erteilt/);
+  assert.ok(!`${stdout}${stderr}`.includes(ADMIN_TOKEN), 'Betreiber-Token in der Ausgabe');
+  assert.ok(!/\b\d{6}\b/.test(`${stdout}${stderr}`), 'Kopplungscode in der Ausgabe');
+  // Falsches Betreiber-Token: klare Meldung, Fehlercode, kein Token in der Ausgabe.
+  await assert.rejects(run(process.execPath, [script], { env: { ...env, PICASTAI_ADMIN_TOKEN: 'falsch-falsch-falsch-falsch-falsch-00' } }), (err) => {
+    assert.match(err.stderr, /Betreiber-Token passt nicht/);
+    return true;
+  });
+});
+
 test('Pi-Client: --once story holt die erste Geschichte als Ton-Strom (Absatz für Absatz vertont)', async () => {
   const before = seen.speech;
   const { stdout } = await run('python3', [client, '--once', 'story'], { env: clientEnv() });
@@ -185,17 +220,8 @@ test('Pi-Client: ohne Ton-Strom (KUNIBERT_AUDIO_STREAM=0) kommt eine ganze WAV-D
 });
 
 test('Pi-Client: Frage mit Aufnahme läuft durch Erkennung, Sprachmodell und Sprachausgabe', async () => {
-  const script = [
-    'import sys, base64',
-    `sys.path.insert(0, ${JSON.stringify(path.join(root, 'pi-client'))})`,
-    'import kunibert_client as k',
-    'config = k.ClientConfig.from_env(dry_run=True)',
-    'wav = base64.b64decode(sys.argv[1])',
-    'answer = k.PicastApi(config).ask_question(wav)',
-    'print("RIFF" if answer[:4] == b"RIFF" and answer[8:12] == b"WAVE" else "KEIN-WAV", len(answer))',
-  ].join('\n');
   const before = seen.transcriptions;
-  const { stdout } = await run('python3', ['-c', script, makeWav(1).toString('base64')], { env: clientEnv() });
+  const { stdout } = await run('python3', ['-c', ASK_SCRIPT, makeWav(1).toString('base64')], { env: clientEnv() });
   assert.match(stdout, /^RIFF \d+\s*$/);
   assert.equal(seen.transcriptions, before + 1, 'Spracherkennung wurde nicht genau einmal aufgerufen');
   // Der Server gibt Sprache und Hinweiswort an die Erkennung weiter.
