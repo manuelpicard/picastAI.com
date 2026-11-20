@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { AudioStore, DeviceRegistry, DeviceStoreError } from './devices.js';
+import { AudioStore, DeviceRegistry, DeviceStoreError, RateLimiter } from './devices.js';
 import type { DeviceEntry, DeviceStore } from './devices.js';
 
 /** In-Memory-Attrappe für die dauerhafte Ablage (Firestore). */
@@ -261,4 +261,24 @@ test('AudioStore.dropDevice löscht nur das Audio dieses Geräts', () => {
   assert.equal(store.peek('a', a1), null);
   assert.deepEqual(store.peek('b', b1), Buffer.from('3'));
   assert.equal(store.dropDevice('a'), 0);
+});
+
+test('isActive: nur angelegte, nicht gesperrte Geräte', async () => {
+  const registry = new DeviceRegistry(null);
+  await registry.register('aktiv-1');
+  assert.equal(registry.isActive('aktiv-1'), true);
+  assert.equal(registry.isActive('unbekannt'), false);
+  await registry.revokeAndPersist('aktiv-1');
+  assert.equal(registry.isActive('aktiv-1'), false);
+});
+
+test('RateLimiter.purge vergisst nur Schlüssel ohne Ereignis im Zeitfenster', async () => {
+  const limiter = new RateLimiter(2, 0.05);
+  limiter.allow('alt');
+  await new Promise((resolve) => setTimeout(resolve, 80));
+  limiter.allow('neu');
+  limiter.purge();
+  assert.equal(limiter.size, 1);
+  assert.equal(limiter.getStatus('neu').remaining, 1);
+  assert.equal(limiter.getStatus('alt').remaining, 2);
 });

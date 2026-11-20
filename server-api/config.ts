@@ -95,6 +95,8 @@ export interface KunibertConfig {
   diagnosticText: boolean;
   /** Testfeld `transcript` bei POST /v1/device/question (Text statt Spracherkennung), siehe isTestTranscriptEnabled. */
   testTranscript: boolean;
+  /** Ohne Einwilligung der Eltern keine Spracherkennung und kein Sprachmodell, siehe isConsentRequired. */
+  requireConsent: boolean;
 
   // Geräteliste: 'memory' (flüchtig, Standard) oder 'firestore' (dauerhaft)
   deviceStore: 'memory' | 'firestore';
@@ -119,6 +121,19 @@ export function isTestTranscriptEnabled(
 ): boolean {
   if (env.NODE_ENV !== 'production') return true;
   return env.KUNIBERT_TEST_TRANSCRIPT?.trim() === '1';
+}
+
+/**
+ * Einwilligungs-Prüfung (Eltern-App, server-api/eltern.ts): Ohne Einwilligung der Eltern laufen
+ * weder Spracherkennung noch Sprachmodell; das Gerät hört nur einen festen Hinweis. Standardmäßig
+ * an. Nur außerhalb von NODE_ENV=production (Probelauf am Rechner, Web-Simulator) lässt sie sich
+ * mit KUNIBERT_EINWILLIGUNG_PRUEFEN=0 abschalten; im Betrieb ist sie immer an.
+ */
+export function isConsentRequired(
+  env: { NODE_ENV?: string; KUNIBERT_EINWILLIGUNG_PRUEFEN?: string } = process.env
+): boolean {
+  if (env.NODE_ENV === 'production') return true;
+  return env.KUNIBERT_EINWILLIGUNG_PRUEFEN?.trim() !== '0';
 }
 
 /** Hinweise beim Start: Testschalter, die im Betrieb mit Kindern aus sein müssen. */
@@ -343,6 +358,7 @@ export function loadConfig(): KunibertConfig {
 
     diagnosticText: isDiagnosticTextEnabled(),
     testTranscript: isTestTranscriptEnabled(),
+    requireConsent: isConsentRequired(),
     deviceStore: process.env.PICASTAI_DEVICE_STORE?.trim() === 'firestore' ? 'firestore' : 'memory',
   };
 }
@@ -379,6 +395,7 @@ export function getSafeConfigSummary(config: KunibertConfig) {
     rateLimit: `${config.rateLimitMaxTurns} Turns pro ${Math.round(config.rateLimitWindowSeconds / 60)} Minuten`,
     diagnosticText: config.diagnosticText,
     testTranscript: config.testTranscript,
+    requireConsent: config.requireConsent,
     deviceStore: config.deviceStore,
   };
 }
