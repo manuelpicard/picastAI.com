@@ -10,6 +10,8 @@ import path from 'node:path';
 import { after, before, describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { decodeWavHeader, encodeWav } from './audio.js';
+import { CONSENT_MISSING_DE, SLEEPING_DE } from './eltern.js';
+import { pair, pairAndConsent } from './eltern-testhilfe.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const ADMIN_TOKEN = 'test-admin-token-0123456789-abcdefghijklmnop';
@@ -140,6 +142,8 @@ describe('picastAI-API (echter Server)', () => {
     });
     assert.equal(res.status, 200, await res.clone().text());
     const body = (await res.json()) as { token: string };
+    // Im Betrieb antwortet der Server erst nach der Einwilligung der Eltern (server-api/eltern.ts).
+    await pairAndConsent(base, ADMIN_TOKEN, id);
     return { id, token: body.token };
   }
 
@@ -778,6 +782,247 @@ describe('picastAI-API (echter Server)', () => {
       release();
     }
   });
+
+  // ---------------- Eltern-App, Server-Teil (Punkt A1, Teil 2) ----------------
+
+  /** Gerät anlegen, ohne Kopplung und ohne Einwilligung. */
+  async function registerBareDevice(): Promise<{ id: string; token: string }> {
+    const id = `test-device-${++deviceCounter}`;
+    const res = await fetch(`${base}/api/devices`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${ADMIN_TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deviceId: id, name: id }),
+    });
+    assert.equal(res.status, 200, await res.clone().text());
+    return { id, token: ((await res.json()) as { token: string }).token };
+  }
+
+  const elternJson = (cookie: string | null, method: string, route: string, body: unknown = {}) =>
+    fetch(`${base}/v1/eltern/${route}`, {
+      method,
+      headers: { ...(cookie ? { Cookie: cookie } : {}), 'Content-Type': 'application/json' },
+      body: method === 'GET' ? undefined : JSON.stringify(body),
+    });
+
+  /** Uhrzeit "HH:MM" in Berliner Zeit, um `minutes` verschoben (für Ruhezeiten rund um jetzt). */
+  const berlinTime = (minutes: number) =>
+    new Intl.DateTimeFormat('de-DE', { timeZone: 'Europe/Berlin', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+      .format(new Date(Date.now() + minutes * 60_000));
+
+  it('ohne Einwilligung: fester Satz, keine Spracherkennung, kein Erzählmotor, der Stand bleibt', async () => {
+    const device = await registerBareDevice();
+    const before = await adminStatus();
+    const transcriptionsBefore = fake.state.transcriptions;
+    const spokenBefore = fake.state.speechInputs.length;
+
+    const question = await postQuestion(device, questionForm(wav16k(), { transcript: 'erzähl mir was' }));
+    assert.equal(question.status, 200, await question.clone().text());
+    const qBody = (await question.json()) as { type: string; audio_url: string; session_end: boolean };
+    assert.equal(qBody.type, 'answer');
+    assert.equal(qBody.session_end, true);
+    assert.equal((await fetchAudio(device, qBody.audio_url)).status, 200);
+
+    const story = await postStory(device);
+    assert.equal(story.status, 200);
+    const sBody = (await story.json()) as { type: string; session_end: boolean };
+    assert.equal(sBody.type, 'kunibert_story');
+    assert.equal(sBody.session_end, true, 'kein Teil 1, nur der feste Satz');
+
+    const turn = await fetch(`${base}/v1/turn`, {
+      method: 'POST',
+      headers: deviceHeaders(device.id, device.token),
+      body: questionForm(wav16k(), { mode: 'weiter', story_state: JSON.stringify({ ep: 2, part: 3 }) }),
+    });
+    assert.equal(turn.status, 200);
+    const tBody = (await turn.json()) as { kind: string; fixed: string; story_state: Record<string, unknown> };
+    assert.equal(tBody.kind, 'hinweis');
+    assert.equal(tBody.fixed, 'einwilligung');
+    assert.deepEqual(tBody.story_state, { ep: 2, part: 3 }, 'mitgeschickter Stand kommt unverändert zurück');
+
+    assert.equal(fake.state.transcriptions, transcriptionsBefore, 'keine Spracherkennung ohne Einwilligung');
+    const spoken = fake.state.speechInputs.slice(spokenBefore);
+    // Der feste Satz kommt nach dem ersten Mal aus dem Zwischenspeicher; gesprochen wurde nichts anderes.
+    assert.ok(spoken.every((text) => text === CONSENT_MISSING_DE), spoken.join(' | '));
+    const after = await adminStatus();
+    assert.equal(after.storyStates, before.storyStates, 'kein Stand der Geschichte');
+    assert.equal(after.storyPrefetches, before.storyPrefetches, 'keine Vorbereitung');
+  });
+
+  it('Kopplung: Gerät spricht den Code, Eltern lösen ihn einmal ein und bekommen ein sicheres Cookie', async () => {
+    const device = await registerBareDevice();
+    const spokenBefore = fake.state.speechInputs.length;
+    const logBefore = output.length;
+    const res = await fetch(`${base}/v1/device/pairing-code`, { method: 'POST', headers: deviceHeaders(device.id, device.token) });
+    assert.equal(res.status, 200, await res.clone().text());
+    const body = (await res.json()) as { type: string; audio_url: string; expires_in: number; code?: string; text?: string };
+    assert.equal(body.type, 'pairing_code');
+    assert.equal(body.expires_in, 600);
+    assert.equal(body.code, undefined, 'der Code steht nicht in der Antwort');
+    assert.equal(body.text, undefined);
+    assert.equal((await fetchAudio(device, body.audio_url)).status, 200);
+
+    const spoken = fake.state.speechInputs.slice(spokenBefore).find((text) => text.startsWith('Hier ist der Code'));
+    assert.ok(spoken, 'Code wurde nicht gesprochen');
+    const words = ['null', 'eins', 'zwei', 'drei', 'vier', 'fünf', 'sechs', 'sieben', 'acht', 'neun'];
+    const code = spoken.split(':')[1].split('.')[0].split(',').map((w) => String(words.indexOf(w.trim()))).join('');
+    assert.match(code, /^\d{6}$/);
+
+    const pairRes = await elternJson(null, 'POST', 'koppeln', { code });
+    assert.equal(pairRes.status, 200);
+    const setCookie = pairRes.headers.get('set-cookie') || '';
+    assert.match(setCookie, /^kb_eltern=[A-Za-z0-9_-]{40,}; /);
+    for (const flag of ['HttpOnly', 'SameSite=Strict', 'Secure', 'Path=/v1/eltern']) assert.ok(setCookie.includes(flag), `${flag} fehlt: ${setCookie}`);
+    assert.equal(pairRes.headers.get('cache-control'), 'no-store');
+    const pairBody = (await pairRes.json()) as { gekoppelt: boolean; einwilligung: { erteilt: boolean } };
+    assert.equal(pairBody.gekoppelt, true);
+    assert.equal(pairBody.einwilligung.erteilt, false);
+
+    const again = await elternJson(null, 'POST', 'koppeln', { code });
+    assert.equal(again.status, 400, 'ein Code gilt nur einmal');
+
+    const token = setCookie.split(';')[0].split('=')[1];
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const log = output.slice(logBefore);
+    assert.ok(!log.includes(code), 'Code im Protokoll');
+    assert.ok(!log.includes(token), 'Eltern-Token im Protokoll');
+    assert.ok(!log.includes(device.id), 'Geräte-ID im Protokoll');
+    assert.match(log, /Zeitmessung id=\w+ modus=kopplung status=200 /, 'Zeitmessung der Kopplung (nur Zahlen)');
+  });
+
+  it('Eltern-Routen: Einwilligung, Schlafmodus, Ruhezeiten, neue Geschichte, Widerruf, alles löschen', async () => {
+    const device = await registerBareDevice();
+    const cookie = await pair(base, ADMIN_TOKEN, device.id);
+
+    assert.equal((await elternJson(null, 'GET', 'status')).status, 401, 'ohne Cookie');
+    assert.equal((await elternJson('kb_eltern=falsch-falsch-falsch-falsch', 'GET', 'status')).status, 401);
+    const noJson = await fetch(`${base}/v1/eltern/einwilligung`, { method: 'PUT', headers: { Cookie: cookie } });
+    assert.equal(noJson.status, 415, 'ändernde Anfragen nur als JSON');
+
+    // Einwilligung erteilen: jetzt läuft die Spracherkennung.
+    const granted = await elternJson(cookie, 'PUT', 'einwilligung');
+    assert.equal(granted.status, 200);
+    assert.equal(granted.headers.get('cache-control'), 'no-store');
+    assert.equal(((await granted.json()) as { einwilligung: { erteilt: boolean } }).einwilligung.erteilt, true);
+    const before = fake.state.transcriptions;
+    const ask = () => postQuestion(device, questionForm(wav16k()));
+    assert.equal((await ask()).status, 200);
+    assert.equal(fake.state.transcriptions, before + 1);
+
+    // Schlafmodus: fester Satz, keine Spracherkennung, die Erzähltaste beginnt keine Folge.
+    assert.equal((await elternJson(cookie, 'PUT', 'einstellungen', { schlafmodus: 'ja' })).status, 400);
+    assert.equal((await elternJson(cookie, 'PUT', 'einstellungen', { ruhezeiten: { von: '25:00', bis: '07:00' } })).status, 400);
+    assert.equal((await elternJson(cookie, 'PUT', 'einstellungen', [1, 2])).status, 400);
+    const sleep = await elternJson(cookie, 'PUT', 'einstellungen', { schlafmodus: true });
+    assert.equal(sleep.status, 200);
+    assert.equal(((await sleep.json()) as { schlafmodus: boolean }).schlafmodus, true);
+    const spokenBefore = fake.state.speechInputs.length;
+    const statesBefore = (await adminStatus()).storyStates;
+    assert.equal((await ask()).status, 200);
+    assert.equal(fake.state.transcriptions, before + 1, 'im Schlafmodus keine Spracherkennung');
+    const sleepingStory = (await (await postStory(device)).json()) as { session_end: boolean };
+    assert.equal(sleepingStory.session_end, true);
+    assert.ok(fake.state.speechInputs.slice(spokenBefore).every((t) => t === SLEEPING_DE));
+    assert.equal((await adminStatus()).storyStates, statesBefore, 'im Schlafmodus rückt keine Folge vor');
+    assert.equal((await elternJson(cookie, 'PUT', 'einstellungen', { schlafmodus: false })).status, 200);
+
+    // Ruhezeiten rund um jetzt (eine Stunde davor bis eine Stunde danach, Berliner Zeit): gesperrt.
+    const quiet = await elternJson(cookie, 'PUT', 'einstellungen', { ruhezeiten: { von: berlinTime(-60), bis: berlinTime(60) } });
+    assert.equal(quiet.status, 200);
+    assert.deepEqual(((await quiet.json()) as { ruhezeiten: unknown }).ruhezeiten, { von: berlinTime(-60), bis: berlinTime(60) });
+    const t0 = fake.state.transcriptions;
+    assert.equal((await ask()).status, 200);
+    assert.equal(fake.state.transcriptions, t0, 'in den Ruhezeiten keine Spracherkennung');
+    // Ruhezeiten, die gerade nicht gelten (in zwei bis drei Stunden): nicht gesperrt.
+    assert.equal((await elternJson(cookie, 'PUT', 'einstellungen', { ruhezeiten: { von: berlinTime(120), bis: berlinTime(180) } })).status, 200);
+    assert.equal((await ask()).status, 200);
+    assert.equal(fake.state.transcriptions, t0 + 1);
+    assert.equal((await elternJson(cookie, 'PUT', 'einstellungen', { ruhezeiten: null })).status, 200);
+
+    // Neue Geschichte: nach Teil 1 und 2 beginnt die Erzählung wieder bei Teil 1 (5 Teile bis session_end).
+    await postStory(device);
+    await postStory(device);
+    assert.equal((await elternJson(cookie, 'POST', 'geschichte-neu')).status, 200);
+    const ends: boolean[] = [];
+    for (let i = 0; i < 5; i++) ends.push(((await (await postStory(device)).json()) as { session_end: boolean }).session_end);
+    assert.deepEqual(ends, [false, false, false, false, true]);
+
+    // Widerruf: wieder nur der feste Satz, und der Stand der Geschichte ist weg.
+    await postStory(device);
+    const statesWithStory = (await adminStatus()).storyStates;
+    const revoked = await elternJson(cookie, 'DELETE', 'einwilligung');
+    assert.equal(revoked.status, 200);
+    assert.equal(((await revoked.json()) as { einwilligung: { erteilt: boolean } }).einwilligung.erteilt, false);
+    assert.equal((await adminStatus()).storyStates, statesWithStory - 1, 'Stand der Geschichte gelöscht');
+    const t = fake.state.transcriptions;
+    await ask();
+    assert.equal(fake.state.transcriptions, t);
+
+    // Alles löschen: Cookie gelöscht, Token ungültig, Einwilligung und Einstellungen weg.
+    await elternJson(cookie, 'PUT', 'einwilligung');
+    await elternJson(cookie, 'PUT', 'einstellungen', { schlafmodus: true });
+    const deleted = await elternJson(cookie, 'DELETE', 'daten');
+    assert.equal(deleted.status, 200);
+    assert.match(deleted.headers.get('set-cookie') || '', /^kb_eltern=; .*Max-Age=0/);
+    assert.equal((await elternJson(cookie, 'GET', 'status')).status, 401);
+    const cookie2 = await pair(base, ADMIN_TOKEN, device.id);
+    const status = (await (await elternJson(cookie2, 'GET', 'status')).json()) as { einwilligung: { erteilt: boolean }; schlafmodus: boolean };
+    assert.equal(status.einwilligung.erteilt, false);
+    assert.equal(status.schlafmodus, false);
+  });
+
+  it('Einwilligung widerrufen, während die Antwort vertont wird: fester Satz statt Teil 1, kein Stand', async () => {
+    const device = await registerBareDevice();
+    const cookie = await pairAndConsent(base, ADMIN_TOKEN, device.id);
+    const before = await adminStatus();
+    let release!: () => void;
+    fake.state.speechHold = new Promise<void>((resolve) => (release = resolve));
+    try {
+      const pending = postStory(device);
+      const deadline = Date.now() + 5_000;
+      while (fake.state.speechWaiting === 0 && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 25));
+      assert.ok(fake.state.speechWaiting > 0, 'Server wartet auf die Sprachausgabe');
+      assert.equal((await elternJson(cookie, 'DELETE', 'einwilligung')).status, 200);
+      fake.state.speechHold = null;
+      release();
+      const res = await pending;
+      assert.equal(res.status, 200, await res.clone().text());
+      assert.equal(((await res.json()) as { session_end: boolean }).session_end, true, 'nur der feste Satz, kein Teil 1');
+      const after = await adminStatus();
+      assert.equal(after.storyStates, before.storyStates, 'kein Stand');
+      assert.equal(after.storyPrefetches, before.storyPrefetches, 'keine Vorbereitung');
+    } finally {
+      fake.state.speechHold = null;
+      release();
+    }
+  });
+
+  it('Sperren durch den Betreiber beendet auch die Eltern-Steuerung; Kopplungscode nur mit Admin-Token', async () => {
+    const device = await registerBareDevice();
+    const cookie = await pairAndConsent(base, ADMIN_TOKEN, device.id);
+    await revokeDevice(device);
+    assert.equal((await elternJson(cookie, 'GET', 'status')).status, 401);
+    const code = await fetch(`${base}/api/devices/${device.id}/kopplungscode`, { method: 'POST', headers: { Authorization: `Bearer ${ADMIN_TOKEN}` } });
+    assert.equal(code.status, 404);
+    const noAdmin = await fetch(`${base}/api/devices/${ENV_DEVICE_ID}/kopplungscode`, { method: 'POST' });
+    assert.equal(noAdmin.status, 401);
+    const status = (await adminStatus()) as unknown as { eltern: Record<string, number> };
+    assert.deepEqual(Object.keys(status.eltern).sort(), ['codes', 'elternTokens', 'geraete'], 'nur Zahlen');
+    assert.ok(Object.values(status.eltern).every((n) => Number.isInteger(n)));
+  });
+
+  // Muss der letzte Test dieses Servers sein: Danach sind Kopplungen von dieser Adresse 10 Minuten gesperrt.
+  it('Raten von Kopplungscodes: nach 10 Fehlversuchen 429, auch für einen gültigen Code', async () => {
+    const statuses: number[] = [];
+    for (let i = 0; i < 11; i++) statuses.push((await elternJson(null, 'POST', 'koppeln', { code: String(100000 + i) })).status);
+    // Fehlversuche aus den Tests oben zählen mit: also höchstens 10 mal 400, dann 429.
+    const firstBlocked = statuses.indexOf(429);
+    assert.ok(firstBlocked > 0 && firstBlocked <= 10, statuses.join(','));
+    assert.ok(statuses.slice(0, firstBlocked).every((s) => s === 400));
+    assert.ok(statuses.slice(firstBlocked).every((s) => s === 429));
+    const code = await fetch(`${base}/api/devices/${ENV_DEVICE_ID}/kopplungscode`, { method: 'POST', headers: { Authorization: `Bearer ${ADMIN_TOKEN}` } });
+    const valid = await elternJson(null, 'POST', 'koppeln', { code: ((await code.json()) as { code: string }).code });
+    assert.equal(valid.status, 429);
+  });
 });
 
 // Ohne KUNIBERT_TEST_TRANSCRIPT=1 überhört der Server im Betrieb das Testfeld transcript
@@ -797,6 +1042,7 @@ describe('picastAI-API im Betrieb ohne Testschalter', () => {
       NODE_ENV: 'production',
       HOST: '127.0.0.1',
       PORT: String(port),
+      PICASTAI_ADMIN_TOKEN: ADMIN_TOKEN,
       PICASTAI_DEVICE_ID: ENV_DEVICE_ID,
       PICASTAI_DEVICE_TOKEN: ENV_DEVICE_TOKEN,
       PICASTAI_PUBLIC_BASE_URL: PUBLIC_BASE_URL,
@@ -822,6 +1068,8 @@ describe('picastAI-API im Betrieb ohne Testschalter', () => {
       if (Date.now() > deadline) throw new Error(`Server nicht rechtzeitig bereit:\n${output}`);
       await new Promise((resolve) => setTimeout(resolve, 250));
     }
+    // Im Betrieb antwortet der Server erst nach der Einwilligung der Eltern.
+    await pairAndConsent(base, ADMIN_TOKEN, ENV_DEVICE_ID);
   });
 
   after(async () => {
