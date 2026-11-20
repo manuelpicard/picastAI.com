@@ -350,6 +350,7 @@ const MUST_TRIGGER = [
   'Papa hat Sachen nach mir geworfen',
   'Ich hab die Herdplatte angelassen',
   'Ein Mann bietet mir Süßigkeiten an',
+  'Die anderen Kinder hauen mich',
 ];
 
 // Alltägliche Sätze, die NICHT anschlagen dürfen (Fehlalarme sind für Kinder

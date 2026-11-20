@@ -119,7 +119,7 @@ Zusätzlich enthält die Anweisung an Claude eigene Regeln (zum Beispiel „niem
 
 Diese Sätze lösten Stufe 1 am 6. November **nicht** aus. Ob sie einen Notfall bedeuten, hängt vom Zusammenhang ab. Welche davon anschlagen sollen, ist Ihre Entscheidung.
 
-**Stand 20. November 2026:** Inzwischen schlagen an und stehen in den Tests **(Test)**: seit dem 12. November „Ich habe Angst vor meinem Papa“, „Die anderen Kinder hauen mich“, „Ich will nicht mehr“; seit dem 20. November „Ich werde in der Schule gemobbt“, „Er zeigt mir Sachen, die ich nicht sehen will“, „Ich hab ihm gesagt, er soll aufhören, aber er hört nicht auf“, „Ein Mann im Park hat mich angesprochen“, „Ein Mann hat mir Süßigkeiten angeboten“, „Jemand will Fotos von mir“, „ich hasse mein leben“, „ich bin zu nichts nütze“, „Ich will weglaufen“, „Ich laufe von zu Hause weg“, „Ich glaube Mama ist tot“, „Ich bin ganz allein zu Hause und habe Angst“, „Ich habe den Herd angelassen“, „Mein Kopf blutet“, „Help I am lost“. Die übrigen Sätze der Tabelle bleiben unerkannt, mit Absicht: Tod und Trauer, Schreien und Trinken zu Hause, Schmerzen und Übelkeit, „Ich habe mich verbrannt“, „Die Wohnung ist voller Wasser“ und „Ich bin allein im Park“ sind oft harmlos und brauchen Ihr Urteil (Frage 5).
+**Stand 20. November 2026:** Inzwischen schlagen an und stehen in den Tests **(Test)**: seit dem 12. November „Ich habe Angst vor meinem Papa“, „Die anderen Kinder hauen mich“, „Ich will nicht mehr“; seit dem 20. November „Ich werde in der Schule gemobbt“, „Er zeigt mir Sachen, die ich nicht sehen will“, „Ich hab ihm gesagt, er soll aufhören, aber er hört nicht auf“, „Ein Mann im Park hat mich angesprochen“, „Ein Mann hat mir Süßigkeiten angeboten“, „Jemand will Fotos von mir“, „ich hasse mein leben“, „ich bin zu nichts nütze“, „Ich will weglaufen“, „Ich laufe von zu Hause weg“, „Ich glaube Mama ist tot“, „Ich bin ganz allein zu Hause und habe Angst“, „Ich habe den Herd angelassen“, „Mein Kopf blutet“, „Help I am lost“. Die übrigen Sätze der Tabelle bleiben unerkannt, mit Absicht: Tod und Trauer, Schreien und Trinken zu Hause, Schmerzen und Übelkeit, „Ich habe mich verbrannt“, „Die Wohnung ist voller Wasser“, „Ich bin allein im Park“ und „Das ist unser Geheimnis“ (allein; mit „Der Mann hat gesagt, …“ davor schlägt es an **(Test)**) sind oft harmlos und brauchen Ihr Urteil (Frage 5).
 
 | Art | Beispiele |
 | --- | --- |
@@ -147,7 +147,7 @@ Auch diese Sätze lösen die Ansage aus (ausprobiert, nicht in den Tests):
 | „Ich habe mich im Spiel verlaufen“ · „Wir spielen Verstecken und ich finde Mama nicht“ | Spiele werden nicht von Ernstfällen unterschieden. |
 | „Der Drache sagt, es brennt“ | Auch Sätze über Spielfiguren mit „es brennt“ zählen. |
 
-**Stand 20. November 2026:** Alle Sätze der Tabelle lösen weiter die Ansage aus. Seit der vierten Probe kommen diese Fehlalarme dazu, bewusst hingenommen und als Test festgehalten **(Test)**: „Opa schlägt mich immer beim Schach“ und „Papa schlägt uns immer beim Memory“ (Spiel; eine Ausnahme für Spiele würde echte Fälle durchlassen, zum Beispiel „beim Abendessen“), „Mama bringt mich um, wenn sie das sieht“ (Übertreibung), „Ich krieg Papa morgens nicht wach“, „Mein Bruder boxt mich“, „Mein Bruder wirft Bälle nach mir“, „Mein Bruder macht mir Angst mit seinen Gruselgeschichten“.
+**Stand 20. November 2026:** Alle Sätze der Tabelle lösen weiter die Ansage aus. Seit der vierten Probe kommen diese Fehlalarme dazu, bewusst hingenommen und als Test festgehalten **(Test)**: „Opa schlägt mich immer beim Schach“ und „Papa schlägt uns immer beim Memory“ (Spiel; eine Ausnahme für Spiele würde echte Fälle durchlassen, zum Beispiel „beim Abendessen“), „Mama bringt mich um, wenn sie das sieht“ (Übertreibung), „Ich krieg Papa morgens nicht wach“, „Mein Bruder boxt mich“, „Mein Bruder wirft Bälle nach mir“, „Mein Bruder macht mir Angst mit seinen Gruselgeschichten“. Nach der unabhängigen Prüfung vom selben Tag kommen dazu **(Test)**: „Wenn Mama das sieht, bringt sie mich um“, „Mama kriegt einen Anfall, wenn sie das sieht“, „Ein Junge aus meiner Klasse hat mich angesprochen“, „Der Rauchmelder piept, weil die Batterie leer ist“, „Wann muss man die 112 anrufen?“, „Die andere Mannschaft hat uns geschlagen“, „Der Drache spuckt Blut“ und „Mein Bruder hat mich beim Spielen geschlagen“ (schlagen oder besiegen?).
 
 ### 7.4 Ohne Claude: allgemeine Antworten auf Sätze, die Stufe 1 nicht erkennt
 
@@ -205,7 +205,7 @@ Ist Claude nicht eingerichtet oder fällt aus (oder lehnt der Ausgabe-Check den 
 
 ## 9. Nachtrag vom 20. November 2026: vierte Probe
 
-**Was geprüft wurde:** 89 neue Notfall-Sätze, so geschrieben, wie Kinder sie sagen und wie die Spracherkennung sie liefert: ohne Satzzeichen, mit Umgangssprache, mit Kinderwörtern, mit getrennt geschriebenen Wörtern („um bringen“) und mit Ziffern („ruf 112“). 17 davon stammen aus Abschnitt 7.2. Dazu 85 Gegenproben mit doppelter Bedeutung. Vor der Änderung erkannte Stufe 1 **keinen** der 89 Sätze. Jetzt schlagen alle 89 an, und keine der 85 Gegenproben löst die Ansage aus. Alle Sätze stehen in den Tests **(Test)**. Ausprobiert wurde nur mit dem Programmcode, nicht mit echter Spracherkennung und nicht mit Kinderstimmen.
+**Was geprüft wurde:** 89 neue Notfall-Sätze, so geschrieben, wie Kinder sie sagen und wie die Spracherkennung sie liefert: ohne Satzzeichen, mit Umgangssprache, mit Kinderwörtern, mit getrennt geschriebenen Wörtern („um bringen“) und mit Ziffern („ruf 112“). 15 davon stammen wörtlich aus Abschnitt 7.2, einer aus Abschnitt 7.4. Dazu 85 Gegenproben mit doppelter Bedeutung. Vor der Änderung erkannte Stufe 1 **keinen** der 89 Sätze. Jetzt schlagen alle 89 an, und keine der 85 Gegenproben löst die Ansage aus. Alle Sätze stehen in den Tests **(Test)**. Ausprobiert wurde nur mit dem Programmcode, nicht mit echter Spracherkennung und nicht mit Kinderstimmen.
 
 | Gruppe | Neu erkannt, zum Beispiel **(Test)** | Gegenprobe, schlägt nicht an **(Test)** |
 | --- | --- | --- |
@@ -217,6 +217,22 @@ Ist Claude nicht eingerichtet oder fällt aus (oder lehnt der Ausgabe-Check den 
 | Stürze, nicht wach, Anfall | „mein bruder ist vom hochbett gefallen“ · „das baby ist vom wickeltisch gefallen“ · „ich kann mama nicht wach machen“ · „opa ist einfach umgefallen“ · „mein bruder hat einen anfall“ | „ich bin aus dem bett gefallen“ · „der apfel ist vom baum gefallen“ · „papa ist vor lachen fast umgefallen“ · „mama hat einen wutanfall“ |
 | Verschluckt, Blut, Biss, Allergie | „ich habe einen stein verschluckt“ · „mein bruder ist ganz blau angelaufen“ · „papa hustet blut“ · „der hund hat meinen bruder gebissen“ · „ich bin allergisch gegen nüsse und hab aus versehen eine gegessen“ | „ich habe eine nuss gegessen“ · „oma ist rot angelaufen weil sie gelacht hat“ · „der drache spuckt feuer“ · „ich bin allergisch gegen erdbeeren deshalb hab ich keine gegessen“ |
 | Verloren, Feuer, Notruf | „ich hab mama im kaufhaus verloren“ · „wo ist meine mama ich finde sie nicht“ · „feuer feuer“ · „die wohnung ist voller rauch“ · „der rauchmelder piept und es riecht komisch“ · „ruf 112“ | „ich hab gegen papa verloren“ · „mama hat eine neue brille ich finde sie nicht schön“ · „der rauchmelder hängt an der decke“ · „die 112 ist die nummer der feuerwehr“ |
+
+**Nachtrag nach der unabhängigen Prüfung (20. November 2026, nachmittags):** Ein zweiter Prüfer hat naheliegende Abwandlungen ausprobiert. Viele rutschten noch durch. Jetzt erkannt **(Test)**: 45 Sätze mehr, zum Beispiel:
+
+- Perfekt mit Wörtern dazwischen: „Papa hat mich wieder geschlagen“, „Er hat mich da unten berührt“, „Opa hat mich geküsst, obwohl ich das nicht wollte“, „er hat komische sachen mit mir gemacht“.
+- Hauptsatz nach „aber“ oder „und“: „Opa küsst mich, aber ich will das nicht“.
+- Umgekehrte Wortstellung: „Wenn ich das sage, bringt er mich um“.
+- Atemnot mit „noch“ oder „richtig“: „ich krieg kaum noch luft“, „ich kann nicht richtig atmen“.
+- Hilferuf mit Anrede oder oft wiederholt: „Kunibert, hilf mir!“, „Mama, Hilfe!“, „Hilfe, Feuer!“, sechsmal „Hilfe!“.
+- Artikel und „der Mann“: „Papa tut der Mama weh“, „Der Mann macht mir Angst“, „Ich will nicht, dass der Mann mich anfasst“.
+- Kurzformen und Schreibweisen der Erkennung: „papa hat mir ne gescheuert“, „ich glaub mama ist tot“, „ich bin allein zuhause und habe angst“, „vom hochbett runter gefallen“, „Ruf die 1 1 2 an“.
+
+Dazu 26 Gegenproben **(Test)**, zum Beispiel „Opa hat mich beim Schach geschlagen“, „Morgen bringt Papa mich um acht zur Schule“, „Ich kann vor Lachen kaum noch atmen“, „Der Mann im Film macht mir Angst“. Nur bei „geschlagen“ mit Wörtern dazwischen gibt es eine enge Ausnahme für genannte Spiele (Schach, Memory, Fußball und andere) und Spielstände („drei zu eins“), weil „geschlagen“ dort „besiegt“ heißt. Bei „gehauen“ und „getreten“ mit Wörtern dazwischen zählt „aus Versehen“ nicht.
+
+Behoben ist auch ein Fehlalarm, den die vierte Probe selbst brachte: „Ich will nicht mehr weiter, ich will eine andere Geschichte“ löste die Hilfe-Ansage aus. Jetzt bekommt das Kind wieder eine Geschichte. „Ich will nicht mehr weiter“ allein schlägt weiter an **(Test)**. Neue, bewusst hingenommene Fehlalarme: siehe Abschnitt 7.3.
+
+Offen: Ob die Spracherkennung „ae“, „oe“, „ue“ oder „ss“ statt Umlauten schreibt (zum Beispiel „Süssigkeiten“), ist nicht geprüft. Dann rutschen Sätze durch. Das prüft ein eigener Punkt der Arbeitsliste mit dem eigenen Sprachserver.
 
 **Wie die Änderung gebaut ist:** Die neuen Schablonen stehen in einem eigenen Block (`PATTERNS_2026_11_D` in `server-api/safety.ts`). Keine ältere Schablone wurde enger gemacht. Ausnahmen wie „vor Lachen“ oder „um acht“ gelten nur innerhalb der neuen Schablonen.
 
