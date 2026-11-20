@@ -115,7 +115,7 @@ Angelegt am 17.11.2026, 20:15, von Claude (Chat). Gepflegt von den Läufen des W
 - Fertig, wenn: Befunde im PR; Änderungen an den Anweisungen mit Begründung; Tests grün. Die Probe ersetzt keinen Test mit dem echten Modell.
 
 ### B4 · Ersatzfolgen auf die Regeln vom 14.11. bringen (Kinder)
-- Rolle: Bauen · Prio: 2 (vorher 3) · Status: offen
+- Rolle: Bauen · Prio: 2 (vorher 3) · Status: erledigt (PR #66, 20.11.2026)
 - Ziel: Die festen Folgen ohne Claude prüfen und angleichen (ein Tag, böser Drache, Ende ohne Nachfrage); bei Bedarf eine weitere Folge nach `docs/Kunibert-Kanon.md`.
 - Stand 18.11. (Prüfung von PR #59): Die drei Ersatzfolgen (`FALLBACK_VARIANTS` in `server-api/brain.ts`) sind seit PR #56 weitgehend angepasst. Abweichend sind vor allem die festen Antworten ohne Claude (`fallbackQuestion`): zum Drachen „besiegt ihn … immer mit Klugheit“ und zu Kunibert „Am Ende hilft ihm seine Klugheit“ (alter Kanon; die Anweisung in `server-api/prompts.ts` ist schon neu). Dazu in der Ersatzfolge „sanft, aber bestimmt“ und die Zusammenfassung „beruhigte den Drachen“, die Claude später als Stand der Geschichte bekommt.
 - Fertig, wenn: Ausgabe-Check und Tests grün.
