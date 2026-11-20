@@ -7,7 +7,7 @@ Ausführliche Befehle: [`EINRICHTUNG.md`](EINRICHTUNG.md). Nur mit **erwachsenen
 - [ ] Hostname, DNS-A-Eintrag, TCP 80/443 offen, Port 3000 von außen zu (`ss -ltnp` zeigt 127.0.0.1:3000).
 - [ ] `NODE_ENV=production`; im Journal keine Warnung dazu; `/etc/kunibert/kunibert.env` gehört root, Modus 600.
 - [ ] `PICASTAI_PUBLIC_BASE_URL` = Hostname im Caddyfile = `PICASTAI_API_BASE_URL` auf dem Pi.
-- [ ] `systemctl status kunibert-server` aktiv; Journal: „Feste Sprechtexte vorbereitet (5 von 5)“ (Sicherheitshinweis, „nicht verstanden“, Fehlerhinweis, Ersatzantwort, Pausensatz der Geschichte). Ist der Sprachserver beim Start noch nicht bereit, versucht der Dienst es gut sechs Minuten lang wieder („neuer Versuch in … s“).
+- [ ] `systemctl status kunibert-server` aktiv; Journal: „Feste Sprechtexte vorbereitet (7 von 7)“ (Sicherheitshinweis, „nicht verstanden“, Fehlerhinweis, Ersatzantwort, Pausensatz der Geschichte, Hinweis ohne Einwilligung, Satz im Schlafmodus). Ist der Sprachserver beim Start noch nicht bereit, versucht der Dienst es gut sechs Minuten lang wieder („neuer Versuch in … s“).
 - [ ] Von außen: `/health` 200, `/` 404, `/api/status` 404, HTTP leitet auf HTTPS, Zertifikat gültig.
 - [ ] Neustartprobe: Server neu starten, `/health` wieder 200.
 
@@ -19,6 +19,8 @@ Ausführliche Befehle: [`EINRICHTUNG.md`](EINRICHTUNG.md). Nur mit **erwachsenen
 - [ ] Mikrofon-Aus-Schalter trennt das Mikrofon **elektrisch** (separat geprüft, nicht nur GPIO 22).
 
 ## C. Erster Durchlauf (Dienst starten, `journalctl -u kunibert.service -f` und Server-Journal nebeneinander)
+
+Vorher, nach jedem Neustart des Servers: Einwilligung für das Testgerät erteilen (`deploy/EINRICHTUNG.md`, Abschnitt 5, „Einwilligung für Tests mit Erwachsenen“). Ohne sie hört man auf jede Taste nur „… müssen mich deine Eltern einmal einrichten …“.
 
 1. [ ] **Frage:** Sprechtaste halten, „Warum ist der Himmel blau?“, loslassen. LED: Aufnahme (schnell), dann Verarbeitung (langsam), dann Wiedergabe; die Antwort ist verständlich, kindgerecht und unter ca. 80 Wörtern.
 2. [ ] **Dauer:** Zeit von Loslassen bis erstes Wort notieren (Ziel: unter 20 s; über 60 s ist ein Problem). Welche Stufe die Zeit braucht, zeigt auf dem Server `sudo journalctl -u kunibert-server -n 200 --no-pager | grep Zeitmessung` (Erklärung: [`docs/Zeitmessung.md`](../docs/Zeitmessung.md)); die Zeile je Anfrage mit notieren.

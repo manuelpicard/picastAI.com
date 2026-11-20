@@ -134,7 +134,15 @@ sudo systemctl status kunibert-server --no-pager
 curl -fsS http://127.0.0.1:3000/health
 ```
 
-Erwartet: `{"status":"ok", ...}`. Im Journal steht beim Start `Feste Sprechtexte vorbereitet (5 von 5)`; bei `0 von 5` ist der Sprachserver nicht erreichbar oder Modell bzw. Stimme sind nicht heruntergeladen (Abschnitt 4). Eine Warnung zu `http` oder zu einem ausgeschlossenen Anbieter zeigt, dass eine Sprachdienst-Adresse nicht passt. Fehlersuche: `sudo journalctl -u kunibert-server -n 100 --no-pager`. Eine Warnung zu `NODE_ENV` darf **nicht** erscheinen.
+Erwartet: `{"status":"ok", ...}`. Im Journal steht beim Start `Feste Sprechtexte vorbereitet (7 von 7)`; bei `0 von 7` ist der Sprachserver nicht erreichbar oder Modell bzw. Stimme sind nicht heruntergeladen (Abschnitt 4). Eine Warnung zu `http` oder zu einem ausgeschlossenen Anbieter zeigt, dass eine Sprachdienst-Adresse nicht passt. Fehlersuche: `sudo journalctl -u kunibert-server -n 100 --no-pager`. Eine Warnung zu `NODE_ENV` darf **nicht** erscheinen.
+
+**Einwilligung für Tests mit Erwachsenen.** Ohne Einwilligung der Eltern antwortet Kunibert nur mit dem festen Hinweis „… müssen mich deine Eltern einmal einrichten …“ (`docs/picastAI-Pi-API.md`, Abschnitt „Eltern“). Solange das Gerät den Kopplungscode noch nicht selbst spricht, erteilt der Betreiber sie für das Testgerät, auf dem Server und nach jedem Neustart des Dienstes (sie liegt vorläufig nur im Arbeitsspeicher):
+
+```bash
+sudo node --env-file=/etc/kunibert/kunibert.env /opt/kunibert/app/deploy/eltern-einwilligung.mjs
+```
+
+Das Skript nimmt `PICASTAI_ADMIN_TOKEN` und `PICASTAI_DEVICE_ID` aus der Einstellungsdatei und spricht den Server unter `http://127.0.0.1:3000` an. Erwartet: `Einwilligung erteilt.` Es gibt weder Code noch Token aus. Nur Erwachsene testen.
 
 ## 6. Caddy
 

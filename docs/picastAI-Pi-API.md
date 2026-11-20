@@ -64,7 +64,7 @@ Authentifizierung wie oben, JSON-Body:
 
 Jeder Aufruf erzählt den **nächsten Teil der laufenden Folge** (eine Folge hat standardmäßig fünf Teile, `KUNIBERT_PARTS_PER_EPISODE`) und beginnt nur dann eine neue Folge, wenn keine läuft oder die letzte beendet wurde. So passt es zum Satz am Ende jedes Teils: „Wenn du wissen willst, wie es weitergeht, drück noch einmal die Erzähltaste.“ `session_end` ist `true`, sobald der letzte Teil einer Folge gesprochen wurde. `locale` und `age_band` nimmt der Vertrag entgegen; es gilt derzeit de-DE und die serverseitig konfigurierte Altersgruppe (`KUNIBERT_AGE`). Einen Kinderwunsch trägt die Taste nicht; Wünsche äußert das Kind über die Sprechtaste („Erzähl mir eine Geschichte mit einem Einhorn“). Sagt das Kind über die Sprechtaste während einer laufenden Folge, was passieren soll („Kunibert soll den Drachen kitzeln“), erzählt der Server den nächsten Teil derselben Folge mit dieser Idee (Antwort `kind: "weiter"`). Nach Teil 1 weist der Schlusssatz darauf hin. Fällt das Sprachmodell mitten in einer Folge aus, kommt einmal der feste Satz „Kunibert muss kurz überlegen …“, und die Folge rückt nicht weiter.
 
-Die Story-Session wird für die Gerät-ID ausschließlich flüchtig im RAM gehalten. Turntexte und Storyzustände werden von den Geräte- und Turn-Endpunkten nicht in Firestore gespeichert. Nach einem Serverneustart beginnt die Story-Session neu. Sie verfällt außerdem 24 Stunden nach der letzten Nutzung (vorläufig, Maßnahme M9 der Datenschutz-Folgenabschätzung, seit 20.11.2026): Dann beginnt die nächste Erzählung eine neue Folge, und auch das Gedächtnis der letzten Folgen ist weg. Abgelaufenes löscht der Server spätestens fünf Minuten später aus dem Arbeitsspeicher, auch bei Geräten, die sich nicht mehr melden. Sperrt der Betreiber ein Gerät (`POST /api/devices/:id/revoke`), löscht der Server sofort dessen Stand, den vorbereiteten nächsten Teil und wartendes Audio. Anfragen, die beim Sperren noch laufen, legen danach weder Stand noch Audio ab und antworten mit 401. Ein Ton-Strom, den das Gerät schon abspielt, läuft zu Ende. Die Antwort enthält eine kurzlebige Audio-URL:
+Die Story-Session wird für die Gerät-ID ausschließlich flüchtig im RAM gehalten. Turntexte und Storyzustände werden von den Geräte- und Turn-Endpunkten nicht in Firestore gespeichert. Nach einem Serverneustart beginnt die Story-Session neu. Sie verfällt außerdem 24 Stunden nach der letzten Nutzung (vorläufig, Maßnahme M9 der Datenschutz-Folgenabschätzung, seit 20.11.2026): Dann beginnt die nächste Erzählung eine neue Folge, und auch das Gedächtnis der letzten Folgen ist weg. Abgelaufenes löscht der Server spätestens fünf Minuten später aus dem Arbeitsspeicher, auch bei Geräten, die sich nicht mehr melden. Sperrt der Betreiber ein Gerät (`POST /api/devices/:id/revoke`), löscht der Server sofort dessen Stand, den vorbereiteten nächsten Teil, wartendes Audio und die Eltern-Steuerung (Einwilligung, Einstellungen, Kopplungscodes, Eltern-Tokens). Anfragen, die beim Sperren noch laufen, legen danach weder Stand noch Audio ab und antworten mit 401. Ein Ton-Strom, den das Gerät schon abspielt, läuft zu Ende. Die Antwort enthält eine kurzlebige Audio-URL:
 
 ```json
 {
@@ -91,6 +91,44 @@ Ablauf: Claude schreibt den Teil im Streaming. Jeder fertige Absatz geht durch d
 Schlägt der Ausgabe-Check mitten im Teil an (oder bricht Claude ab, nachdem schon ein Absatz gesprochen wurde), wird der betroffene Absatz nie gesprochen. Kunibert sagt „Kunibert muss kurz überlegen …“, und die Folge rückt nicht vor; der nächste Druck erzählt den Teil neu, und beim nächsten Ausfall greift wie bisher die Ersatzfolge. Trifft es schon den ersten Absatz, ist noch nichts gesprochen: Dann schreibt Claude den Teil ohne Strom ein zweites Mal.
 
 Fragen, feste Texte, Ersatzgeschichten und vorbereitete Teile (`prefetch.ts`) kommen auch mit eingeschaltetem Strom als ganze Datei; `audio_stream` fehlt dann. Kommt eine neue Anfrage desselben Geräts, solange ein Strom noch im Hintergrund entsteht, wartet der Server auf dessen Stand.
+
+### Einwilligung, Schlafmodus und Ruhezeiten (gilt für alle Geräte-Routen)
+
+Seit 20.11.2026 (Punkt A1 der Arbeitsliste). Ohne Einwilligung der Eltern antworten `POST /v1/device/question`, `POST /v1/device/kunibert-story` und `POST /v1/turn` mit HTTP 200 und einem festen Hinweis („Bevor wir uns unterhalten, müssen mich deine Eltern einmal einrichten …“). Die Aufnahme geht dann nicht an die Spracherkennung, und nichts geht an das Sprachmodell. Dasselbe gilt im Schlafmodus und in den Ruhezeiten, dann mit dem Satz „Psst! Ritter Kunibert schläft gerade …“. Beide Sätze stehen in `server-api/eltern.ts`.
+
+- Geräte-Routen: `{"type": …, "audio_url": …, "session_end": true}`, immer als ganze WAV-Datei (kein Ton-Strom); der Stand der Geschichte rückt nicht vor.
+- `/v1/turn`: `kind: "hinweis"`, `fixed: "einwilligung"` oder `"schlaf"`; der mitgeschickte `story_state` kommt unverändert zurück.
+- Geräte-Routen: Widerrufen die Eltern die Einwilligung oder beginnt der Schlafmodus, während eine Anfrage läuft, kommt statt der Antwort der feste Satz, und es bleibt kein Stand. Wird das Gerät dabei gesperrt: 401. Bei `/v1/device/question` prüft der Server das auch nach der Spracherkennung, vor dem Aufruf an das Sprachmodell. Ein Ton-Strom, den das Gerät schon abspielt, läuft zu Ende (Punkt N1120-0939-c). Ausnahme: `/v1/turn` prüft nur zu Beginn (Punkt N1120-1610-b der Arbeitsliste).
+- Die Prüfung der Einwilligung ist standardmäßig an, mit `NODE_ENV=production` immer. Nur im Probelauf am Rechner (ohne `NODE_ENV=production`) lässt sie sich mit `KUNIBERT_EINWILLIGUNG_PRUEFEN=0` abschalten, zum Beispiel für den Web-Simulator.
+- Ruhezeiten gelten in Berliner Zeit (vorläufig fest).
+
+### `POST /v1/device/pairing-code`
+
+Gleiche Anmeldung wie oben. Das Gerät ruft die Route auf, wenn beide Tasten 5 Sekunden gehalten werden (Pi-Client und Firmware: noch nicht umgesetzt, Punkt D1). Geht auch ohne Einwilligung und im Schlafmodus. Der Server erzeugt einen sechsstelligen Code (10 Minuten gültig, nur einmal einlösbar; ein neuer Code ersetzt den alten) und liefert ihn als Sprache (jede Ziffer als Wort, der Code zweimal, ohne Sprachmodell):
+
+```json
+{ "type": "pairing_code", "audio_url": "https://…/v1/device/audio/t_…", "expires_in": 600 }
+```
+
+Der Code steht nicht in der Antwort und nicht im Protokoll; das Gerät spielt die `audio_url` ab wie bei einer Antwort. Die Route zählt zum Rate-Limit des Geräts.
+
+## Eltern (Server-Teil der Eltern-App)
+
+Die Eltern koppeln ihr Handy einmal mit dem Gerät. Danach hält ein Cookie `kb_eltern` das Eltern-Token (`HttpOnly`, `SameSite=Strict`, `Path=/v1/eltern`, 180 Tage; `Secure` mit `NODE_ENV=production` oder über HTTPS). Der Server speichert nur den SHA-256-Hash des Tokens, höchstens 5 je Gerät; das älteste fällt heraus. `POST` und `PUT` müssen `Content-Type: application/json` haben (sonst 415); `DELETE` braucht keinen Inhalt. Alle Antworten der angemeldeten Routen haben `Cache-Control: no-store`.
+
+| Route | Wirkung |
+| --- | --- |
+| `POST /v1/eltern/koppeln` `{"code":"123456"}` | Code einlösen, Cookie setzen. Falscher oder abgelaufener Code: 400 `invalid_code`. Nach 10 Fehlversuchen je Absender oder 200 insgesamt in 10 Minuten: 429. |
+| `GET /v1/eltern/status` | Aktueller Stand: `einwilligung {erteilt, zeitpunkt}`, `schlafmodus`, `ruhezeiten {von, bis}` oder `null` |
+| `PUT /v1/eltern/einwilligung` | Einwilligung erteilen |
+| `DELETE /v1/eltern/einwilligung` | Einwilligung widerrufen; Stand der Geschichte, Vorbereitung und wartendes Audio werden gelöscht |
+| `PUT /v1/eltern/einstellungen` `{"schlafmodus":true, "ruhezeiten":{"von":"19:00","bis":"07:00"}}` | Schlafmodus und Ruhezeiten (Felder einzeln möglich; `ruhezeiten: null` löscht sie). Ungültige Werte: 400 `invalid_settings` |
+| `POST /v1/eltern/geschichte-neu` | Die nächste Erzählung beginnt eine neue Folge |
+| `DELETE /v1/eltern/daten` | Alles löschen: Einwilligung, Einstellungen, alle Eltern-Tokens des Geräts, Kopplungscodes, Geschichte, wartendes Audio. Das Cookie wird gelöscht. Die Geräte-Anmeldung bleibt. |
+
+Ohne gültiges Cookie oder für ein gesperrtes Gerät: 401. Es gibt keinen Verlauf, keine Mitschriften und keine Statistik je Kind. Vorläufig liegt alles nur im Arbeitsspeicher (dauerhaft: Punkt E2): Nach einem Neustart des Servers müssen die Eltern neu koppeln und neu einwilligen. Die Weboberfläche unter `/eltern` kommt später (Punkt D2). Hinter Caddy (`deploy/Caddyfile`) sind `/v1/eltern/*` und `/api/*` von außen gesperrt; bis D2 erreicht man sie nur auf dem Server selbst oder im eigenen WLAN.
+
+Für Tests mit Erwachsenen, solange die Geräte den Code noch nicht sprechen: `POST /api/devices/:id/kopplungscode` (Betreiber-Token) gibt den Code als Text zurück: `{"code":"123456","expires_in":600}`. Das Skript `deploy/eltern-einwilligung.mjs` koppelt damit und willigt ein (nach jedem Neustart des Servers; Aufruf in `deploy/EINRICHTUNG.md`, Abschnitt 5, und in `pi-client/README.md`).
 
 ## Fehlerantworten
 
@@ -141,7 +179,7 @@ PICASTAI_VOICE_TIMEOUT_MS=90000
 
 Die Token-Datei beziehungsweise Prozessumgebung darf nur für den Serverdienst lesbar sein. Nicht in Git, Screenshots oder Logs eintragen.
 
-`PICASTAI_ADMIN_TOKEN` schützt `GET/POST /api/devices`, `POST /api/devices/:id/revoke` sowie `GET /api/config` und `GET /api/status` per `Authorization: Bearer <admin-token>`. Fehlt das Token oder ist es kürzer als 32 Zeichen, antworten diese Routen geschlossen mit HTTP 503. Ein falsches oder fehlendes Token ergibt HTTP 401. Das Dashboard hält das eingegebene Token nur im Tab-Speicher; es muss ausschließlich über HTTPS verwendet werden.
+`PICASTAI_ADMIN_TOKEN` schützt `GET/POST /api/devices`, `POST /api/devices/:id/revoke`, `POST /api/devices/:id/kopplungscode` sowie `GET /api/config` und `GET /api/status` per `Authorization: Bearer <admin-token>`. Fehlt das Token oder ist es kürzer als 32 Zeichen, antworten diese Routen geschlossen mit HTTP 503. Ein falsches oder fehlendes Token ergibt HTTP 401. Das Dashboard hält das eingegebene Token nur im Tab-Speicher; es muss ausschließlich über HTTPS verwendet werden.
 
 `PICASTAI_CORS_ORIGINS` enthält eine kommagetrennte Liste exakter Browser-Origin-Werte, zum Beispiel `https://kunibert.example,https://www.kunibert.example`. Leer bedeutet: keine Cross-Origin-Freigabe; Same-Origin-Aufrufe und Pi-/Server-zu-Server-Aufrufe benötigen keine CORS-Freigabe. Keine Wildcards für Produktionszugriffe eintragen.
 
@@ -188,11 +226,12 @@ Die `audio_url` aus der Antwort mit denselben Authentifizierungsheadern abrufen.
 ## Sicherheitsgrenzen des Prototyps
 
 - Rate-Limit pro Gerät: standardmäßig 30 Anfragen pro 10 Minuten.
-- Feste Sprechtexte (Sicherheitshinweis, „nicht verstanden“, Fehlerhinweis, Pausensatz der Geschichte, die festen Ersatzantworten ohne Sprachmodell) werden nach der ersten Synthese im Speicher gehalten. In Produktion bereitet der Server fünf davon beim Start vor (die ersten vier und die allgemeine Ersatzantwort, `server.ts`) und versucht es gut sechs Minuten lang wieder, wenn der Sprachserver noch nicht bereit ist. Gespeichert werden nur diese festen Texte, nie Äußerungen von Kindern.
+- Feste Sprechtexte (Sicherheitshinweis, „nicht verstanden“, Fehlerhinweis, Pausensatz der Geschichte, die festen Ersatzantworten ohne Sprachmodell) werden nach der ersten Synthese im Speicher gehalten. In Produktion bereitet der Server sieben davon beim Start vor (die ersten vier, die allgemeine Ersatzantwort und die beiden Hinweise ohne Einwilligung und im Schlafmodus, `server.ts`) und versucht es gut sechs Minuten lang wieder, wenn der Sprachserver noch nicht bereit ist. Gespeichert werden nur diese festen Texte, nie Äußerungen von Kindern.
 - Fehlermeldungen der Sprachdienste und von Anthropic kommen nur als HTTP-Status mit Fehlercode ins Protokoll (zum Beispiel `HTTP 422 (string_too_long)`), nie mit ihrem Fließtext: Der kann den gesendeten Text enthalten (`server-api/provider-errors.ts`).
 - Audio nur im flüchtigen RAM, TTL standardmäßig 120 Sekunden.
 - Audio-URL benötigt erneut Geräteauthentifizierung.
-- Story-State, Rate-Limit und Audio sind im Prozessspeicher, nicht hochverfügbar. Die Geräteliste ist es nur ohne `PICASTAI_DEVICE_STORE=firestore`. Der Story-State verfällt 24 Stunden nach der letzten Nutzung; `GET /api/status` zeigt nur die Anzahl (`storyStates`, `storyPrefetches`), keine Geräte-IDs und keine Inhalte.
+- Story-State, Rate-Limit und Audio sind im Prozessspeicher, nicht hochverfügbar. Die Geräteliste ist es nur ohne `PICASTAI_DEVICE_STORE=firestore`. Der Story-State verfällt 24 Stunden nach der letzten Nutzung; `GET /api/status` zeigt nur die Anzahl (`storyStates`, `storyPrefetches`, `eltern`), keine Geräte-IDs und keine Inhalte.
+- Einwilligung, Schlafmodus, Ruhezeiten, Kopplungscodes und Eltern-Tokens liegen vorläufig nur im Arbeitsspeicher (dauerhaft: Punkt E2 der Arbeitsliste). Nach einem Neustart hört jedes Gerät nur den festen Hinweis, bis die Eltern neu einwilligen.
 - Geräteverwaltung, Status und sichere Konfigurationsübersicht benötigen ein starkes Admin-Bearer-Token.
 - CORS akzeptiert nur exakt konfigurierte Browser-Ursprünge; ohne Allowlist gibt es keine Cross-Origin-Freigabe.
 - Firestore-Regeln verweigern direkte Clientzugriffe; serverseitige Admin-SDK-Zugriffe sind hiervon nicht erfasst.
