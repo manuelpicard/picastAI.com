@@ -15,7 +15,7 @@
 // Er liegt nur im Arbeitsspeicher und wird beim Abholen gelöscht. Ein Teil mitten in einer Folge
 // gilt 30 Minuten (wer später weiterhört, bekommt einen frischen Teil mit kurzer Erinnerung), ein
 // vorbereiteter Folgenanfang 24 Stunden (die nächste Folge kommt oft erst am nächsten Tag).
-// Abgelaufenes räumt der Server stündlich auf (`purge`).
+// Abgelaufenes räumt der Server alle fünf Minuten auf (`purge`, aufgerufen von `purgeExpired` in `story-states.ts`).
 import type { StoryState, TurnResult } from './brain.js';
 
 export interface PrefetchEntry {

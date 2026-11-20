@@ -7,6 +7,9 @@ import type { StoryState } from './brain.js';
  */
 export const STORY_STATE_TTL_MS = 24 * 60 * 60 * 1000;
 
+/** So oft räumt der Server Abgelaufenes aus dem Arbeitsspeicher (`purgeExpired`). */
+export const PURGE_INTERVAL_MS = 5 * 60 * 1000;
+
 interface Entry {
   state: StoryState;
   lastUsedMs: number;
@@ -85,4 +88,24 @@ export class StoryStateStore {
     this.purge();
     return this.items.size;
   }
+}
+
+/** Was der Server regelmäßig aufräumt (nur die Teile, die `purgeExpired` braucht). */
+export interface ExpiringParts {
+  states: Pick<StoryStateStore, 'purge'>;
+  prefetcher: { cancel(deviceId: string): void; purge(): number };
+  audio: { purge(): void };
+  streams: { purge(): void };
+}
+
+/**
+ * Löscht alles Abgelaufene, auch bei Geräten, die sich nie wieder melden: den Stand der Geschichte
+ * samt Vorbereitung des nächsten Teils, abgelaufene Vorbereitungen, wartendes Audio und Ton-Ströme.
+ * Der Server ruft das alle `PURGE_INTERVAL_MS` auf.
+ */
+export function purgeExpired(parts: ExpiringParts): void {
+  for (const deviceId of parts.states.purge()) parts.prefetcher.cancel(deviceId);
+  parts.prefetcher.purge();
+  parts.audio.purge();
+  parts.streams.purge();
 }

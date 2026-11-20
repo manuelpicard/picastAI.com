@@ -219,7 +219,8 @@ export class AudioStore {
 
   constructor(private ttlSeconds: number = 120, private maxPerDevice: number = 5) {}
 
-  private purge(): void {
+  /** Löscht abgelaufenes Audio (bei jedem Zugriff und regelmäßig über `purgeExpired`). */
+  public purge(): void {
     const now = Date.now() / 1000;
     for (const [key, item] of this.items.entries()) {
       if (item.expires < now) {

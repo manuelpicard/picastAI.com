@@ -176,7 +176,8 @@ export class StreamRegistry {
     return removed;
   }
 
-  private purge(): void {
+  /** Löscht abgelaufene Ströme (bei jedem Zugriff und regelmäßig über `purgeExpired`). */
+  purge(): void {
     const now = this.now();
     for (const [key, item] of this.items) if (item.expires < now) this.items.delete(key);
   }

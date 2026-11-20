@@ -8,7 +8,7 @@ import { DeviceRegistry, DeviceStoreError, RateLimiter, AudioStore } from './ser
 import { Brain, FALLBACK_ANSWER_DE, StoryState, type StorySink } from './server-api/brain.js';
 import { STORY_PAUSE_TEXT } from './server-api/prompts.js';
 import { StoryPrefetcher } from './server-api/prefetch.js';
-import { StoryStateStore } from './server-api/story-states.js';
+import { PURGE_INTERVAL_MS, STORY_STATE_TTL_MS, StoryStateStore, purgeExpired } from './server-api/story-states.js';
 import { PcmStream, StreamingSpeaker, StreamRegistry, streamingWavHeader } from './server-api/audio-stream.js';
 import { AudioError, decodeWavHeader, isPcmFormat, isSilentPcm16 } from './server-api/audio.js';
 import { config, getSafeConfigSummary, llmConfigWarnings, testSwitchWarnings, ttsProviderWarnings, voiceConfigWarnings } from './server-api/config.js';
@@ -70,14 +70,14 @@ const prefetcher = new StoryPrefetcher(
       if (line) console.log(line);
     }
   },
-  { ttlMs: 30 * 60 * 1000, nextEpisodeTtlMs: 24 * 60 * 60 * 1000, enabled: config.storyPrefetch }
+  { ttlMs: 30 * 60 * 1000, nextEpisodeTtlMs: STORY_STATE_TTL_MS, enabled: config.storyPrefetch }
 );
-// Stündlich aufräumen, auch bei Geräten, die sich nie wieder melden: abgelaufene Stände der
-// Geschichte samt ihrer Vorbereitung und abgelaufene Vorbereitungen.
-setInterval(() => {
-  for (const deviceId of deviceStoryStates.purge()) prefetcher.cancel(deviceId);
-  prefetcher.purge();
-}, 60 * 60 * 1000).unref();
+// Alle fünf Minuten aufräumen, auch bei Geräten, die sich nie wieder melden: abgelaufene Stände der
+// Geschichte samt ihrer Vorbereitung, abgelaufene Vorbereitungen, Audio und Ton-Ströme.
+setInterval(
+  () => purgeExpired({ states: deviceStoryStates, prefetcher, audio: store, streams }),
+  PURGE_INTERVAL_MS
+).unref();
 // Ein frisch erzeugter Teil braucht Claude und die Sprachausgabe. So viel Zeit bleibt mindestens
 // übrig, wenn der Server auf eine laufende Vorbereitung wartet und sie nicht rechtzeitig fertig wird.
 const PREFETCH_FRESH_RESERVE_MS = 70_000;
@@ -124,10 +124,24 @@ function authenticate(req: Request): string {
 // 2-MB-Dateien in den Arbeitsspeicher laden können.
 function requireDevice(req: Request, res: Response, next: NextFunction): void {
   try {
-    res.locals.deviceId = authenticate(req);
+    const deviceId = authenticate(req);
+    res.locals.deviceId = deviceId;
+    // Gleich beim Anmelden, nicht erst nach dem Hochladen: Sperrt der Betreiber das Gerät, während
+    // die Aufnahme hochlädt, speichert die Anfrage danach keinen Stand der Geschichte (M9).
+    res.locals.storyGeneration = deviceStoryStates.generation(deviceId);
     next();
   } catch {
     res.status(401).json({ error: 'unauthorized' });
+  }
+}
+
+/** Ist das Gerät noch freigegeben? Der Betreiber kann es sperren, während eine Anfrage läuft. */
+function stillAuthorized(req: Request): boolean {
+  try {
+    authenticate(req);
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -204,6 +218,8 @@ async function respondTurn(
     const result = await synthesizeTimed(await run(), timer);
     timer.noteAudio(result.wav);
     advanceStory(deviceId, result.story_state, generation);
+    // Gesperrt, während die Antwort entstand: kein Audio ablegen.
+    if (!stillAuthorized(req)) return res.status(401).json({ error: 'unauthorized' });
     return res.json(deviceResponse(req, deviceId, result, type).body);
   }
 
@@ -226,9 +242,15 @@ async function respondTurn(
     const result = await synthesizeTimed(await resultPromise, timer);
     timer.noteAudio(result.wav);
     advanceStory(deviceId, result.story_state, generation);
+    if (!stillAuthorized(req)) return res.status(401).json({ error: 'unauthorized' });
     return res.json(deviceResponse(req, deviceId, result, type).body);
   }
 
+  if (!stillAuthorized(req)) {
+    // Gesperrt, bevor der erste Ton da war: Strom nicht anbieten, Sprachausgabe abbrechen.
+    speaker.abort();
+    return res.status(401).json({ error: 'unauthorized' });
+  }
   const turnId = streams.put(deviceId, speaker.stream);
   const finishing = (async () => {
     let ok = false;
@@ -333,8 +355,13 @@ app.post(
     const deviceId = res.locals.deviceId as string;
     const timer = res.locals.timer as TurnTimer;
     timer.mode = 'frage';
-    // Wird der Stand des Geräts während dieser Anfrage gelöscht, speichert sie ihn nicht neu.
-    const generation = deviceStoryStates.generation(deviceId);
+    // Vom Anmelden (requireDevice): Wird der Stand des Geräts während dieser Anfrage gelöscht,
+    // speichert sie ihn nicht neu.
+    const generation = res.locals.storyGeneration as number;
+    // Gesperrt, während die Aufnahme hochlud? Dann nichts mehr verarbeiten.
+    if (!stillAuthorized(req)) {
+      return res.status(401).json({ error: 'unauthorized' });
+    }
 
     if (!limiter.allow(deviceId)) {
       return res.status(429).json({ error: 'rate_limited' });
@@ -417,6 +444,7 @@ app.post(
       const result = prepared;
       timer.noteAudio(result.wav);
       advanceStory(deviceId, result.story_state, generation);
+      if (!stillAuthorized(req)) return res.status(401).json({ error: 'unauthorized' });
       return res.json(deviceResponse(req, deviceId, result, 'kunibert_story').body);
     } catch (err) {
       console.error('Error in /v1/device/kunibert-story:', err);
