@@ -4,10 +4,10 @@ Angelegt am 17.11.2026, 20:15, von Claude (Chat). Gepflegt von den Läufen des W
 
 ## Regeln für diese Liste
 
-- Jeder Punkt hat eine feste ID. IDs werden nie neu vergeben. Neue Punkte bekommen die ID `N<MMTT>-<HHMM>` (Datum und Uhrzeit des Laufs, Europe/Berlin; bei mehreren Punkten `-a`, `-b` …) und kommen ans Ende der Datei.
+- Jeder Punkt hat eine feste ID. IDs werden nie neu vergeben. Neue Punkte bekommen die ID `N<MMTT>-<HHMM>` (Datum und Uhrzeit des Laufs, Europe/Berlin; bei mehreren Punkten `-a`, `-b` …) und kommen ans Ende der Datei. Gibt es die ID schon (zum Beispiel nach dem Mergen von `main`), nimm den nächsten freien Buchstaben.
 - Reihenfolge der Arbeit: erst Prio (1 vor 2 vor 3 vor 4), dann die Reihenfolge in dieser Datei.
-- Status ist genau eins von: `offen`, `erledigt (PR #n, TT.MM.JJJJ)`, `blockiert (Grund)`, `verworfen (Grund)`.
-- Belegt ist ein Punkt, solange ein offener PR mit `[Autopilot <ID>]` im Titel existiert.
+- Status ist genau eins von: `offen`, `offen (Teil k von n erledigt, PR #x)`, `erledigt (PR #n, TT.MM.JJJJ)`, `blockiert (Grund)`, `verworfen (Grund)`. Wiederkehrende Punkte (wie A2) bleiben `offen (wiederkehrend …)`; ihr PR ergänzt nur „zuletzt TT.MM.JJJJ, PR #n“.
+- Belegt ist ein Punkt, solange ein offener PR mit `[Autopilot <ID>]` im Titel existiert. Es zählen nur eigene PRs aus diesem Repo (siehe [`README.md`](README.md), „Wie die Läufe sich abstimmen“).
 - „Nach X“ heißt: erst anfangen, wenn X erledigt ist.
 - „(Kinder)“ heißt: ändert, was Kinder hören. Eigener PR mit „(ändert, was Kinder hören)“ im Titel.
 - Keine personenbezogenen Daten: Das Repo ist öffentlich.
@@ -19,21 +19,22 @@ Angelegt am 17.11.2026, 20:15, von Claude (Chat). Gepflegt von den Läufen des W
 - Rolle: Bauen · Prio: 1 · Status: offen · Bezug: Nr. 68E (Eltern-App, Server-Teil), Maßnahme M9
 - Ziel: Der Inhalt von PR #49 (Branch `restlimit/2026-KW46`, Stand 13.11.) kommt auf den heutigen `main`: Story-State verfällt nach 24 Stunden ohne Nutzung (M9); Eltern-Server-Teil (Kopplung per sechsstelligem Code, Einwilligung erteilen und widerrufen, Schlafmodus, Ruhezeiten, Geschichte neu beginnen, alles löschen); Doku.
 - Vorgehen: neuer Branch von `main`. Die Änderungen neu anwenden, nicht blind mergen: `server.ts` und der Erzähler haben sich mit #50 bis #58 stark geändert. Ist es zu groß, zwei PRs: erst M9, dann der Eltern-Teil. Danach PR #49 mit Verweis schließen und den Branch `restlimit/2026-KW46` löschen (letzten Commit-Hash im Bericht nennen).
-- Fertig, wenn: gemergt, CI grün. Außerhalb von `NODE_ENV=production` läuft der Probelauf am Rechner ohne Kopplung weiter (mit Test belegt). `docs/picastAI-Pi-API.md` passt.
+- Fertig, wenn: gemergt, CI grün. Die Einwilligungs-Prüfung ist standardmäßig an. Nur `KUNIBERT_EINWILLIGUNG_PRUEFEN=0` schaltet sie ab, und das nur außerhalb von `NODE_ENV=production` (so in PR #49, `server-api/config.ts`; vorläufig festgelegt bei der Prüfung am 18.11.2026). Mit diesem Schalter läuft der Probelauf am Rechner ohne Kopplung weiter (beides mit Test belegt). `docs/picastAI-Pi-API.md` passt.
 - Offen (Recht, keine Rechtsberatung): Die Einwilligung liegt nur im Arbeitsspeicher. Siehe E2.
+- Hinweise (Prüfung 18.11.2026): Teil 1 (M9) ist PR #63. Teil 2 (Eltern-Teil) ändert, was Kinder hören (fester Satz bei fehlender Einwilligung, Schlafmodus, Ansage des Codes): eigener PR mit „(ändert, was Kinder hören)“. Die Aufgaben „Kunibert Restlimit (Mi, Do, Fr)“ haben denselben Inhalt in ihrem Auftrag vom 13.11.; was sie davon bauen, gleicht A2 mit A1 ab.
 
 ### A2 · Restlimit-PR der Woche übernehmen (wiederkehrend)
 - Rolle: Prüfen · Prio: 1 · Status: offen (wiederkehrend, bleibt „offen“)
-- Nur von Freitag 08:00 bis Sonntag 23:59 und nur, wenn ein offener PR „Restlimit-Runde <Jahr>-KW<nn>“ einer vergangenen Woche existiert. Sonst überspringen.
-- Ziel: Die älteren Aufgaben „Kunibert Restlimit (Mi, Do, Fr)“ arbeiten mit eigenem Auftrag auf dem Branch `restlimit/<Jahr>-KW<nn>` in einem Entwurfs-PR und mergen nicht. Diesen PR sichten. Was gut ist und noch nicht in `main` steckt, als eigene Autopilot-PRs „[Autopilot A2] …“ übernehmen (mit Tests und unabhängiger Prüfung). Doppelt Gebautes verwerfen. Danach den Entwurfs-PR mit Verweis schließen und den Branch löschen (letzten Commit-Hash im Bericht nennen). PR #49 (KW46) gehört zu A1, nicht hierher.
+- Nur von Freitag 08:00 bis Sonntag 23:59 und nur, wenn ein offener Entwurfs-PR vom Branch `restlimit/<Jahr>-KW<nn>` existiert, dessen Runde vorbei ist. Der Branch muss in diesem Repo liegen (kein Fork), und der PR muss vom Konto des Repo-Eigentümers stammen. Sonst ist er fremd: nicht übernehmen, nur im Bericht nennen. Die letzte Restlimit-Runde einer Woche startet Freitag 07:03. Gemeint ist also auch der PR der laufenden Kalenderwoche: Freitag bis Sonntag gehören noch zu ihr. Der Titel des PRs ist nicht festgelegt, es zählt der Branch. PR #49 (KW46) gehört zu A1, nicht hierher. Sonst überspringen.
+- Ziel: Die älteren Aufgaben „Kunibert Restlimit (Mi, Do, Fr)“ arbeiten mit eigenem Auftrag auf dem Branch `restlimit/<Jahr>-KW<nn>` in einem Entwurfs-PR. Ihr Auftrag sieht kein Mergen vor. Diesen PR sichten. Was gut ist und noch nicht in `main` steckt, als eigene Autopilot-PRs „[Autopilot A2] …“ übernehmen (mit Tests und unabhängiger Prüfung). Doppelt Gebautes verwerfen; Story-Stand und Eltern-Server-Teil nur mit A1 abgleichen. Danach den Entwurfs-PR mit Verweis schließen und den Branch löschen (letzten Commit-Hash im Bericht nennen).
 - Fertig, wenn: Der Restlimit-PR der Woche ist geschlossen, übernommene Teile sind gemergt, der Bericht steht im letzten A2-PR.
 
-### B1 · Sprechtaste schneller (Einordnung)
+### B1 · Sprechtaste schneller (Einordnung) (Kinder)
 - Rolle: Bauen · Prio: 1 · Status: offen · Bezug: Nr. 76
-- Ziel: Nach der Sprechtaste ordnet Claude erst ein (Frage, Idee, Geschichte …) und schreibt dann. Die Einordnung kostet rund 4 s. Erst messen (Attrappe mit realistischen Zeiten, `deploy/dryrun/`), dann beschleunigen: zum Beispiel Einordnung und Antwort in einem Aufruf, ein kleineres Modell (Claude Haiku) nur für die Einordnung oder eine sichere Vorab-Regel für eindeutige Fälle.
+- Ziel: Bei einer Frage liefert heute schon ein einziger Aufruf an Claude die Art und die Antwort (`QUESTION_SCHEMA` in `server-api/brain.ts`). Erkennt Claude dabei einen Geschichtenwunsch, „weiter“ oder eine Idee, folgt ein zweiter Aufruf für die Geschichte (`sprachmodell_aufrufe=2`, siehe `docs/Zeitmessung.md`). Diese Einordnung vor dem Geschichtenaufruf kostet rund 4 s. Erst messen (Attrappe mit realistischen Zeiten, `deploy/dryrun/`), dann beschleunigen: zum Beispiel eine sichere Vorab-Regel für eindeutige Fälle, die Einordnung im selben Aufruf wie die Geschichte oder ein kleineres Modell (Claude Haiku) für den ersten Aufruf. Achtung: Der erste Aufruf schreibt bei einer Frage auch die Antwort. Ein kleineres Modell dort ändert also auch die Antworten.
 - Fertig, wenn: Messung vorher und nachher im PR. Neue Wege nur hinter einem Schalter, Standard unverändert, solange die Güte nicht belegt ist. Sicherheitsweiche und Ausgabe-Check unverändert wirksam (Tests).
 
-### B2 · Stopp per Taste dem Server melden
+### B2 · Stopp per Taste dem Server melden (Kinder)
 - Rolle: Bauen · Prio: 1 · Status: offen · Bezug: Befund aus dem Probelauf vom 14.11.
 - Ziel: Stoppt das Kind einen Teil per Taste, weiß der Server das bisher nicht. Eine Idee setzt dann am Ende des ganzen Teils an, obwohl das Kind nur einen Teil gehört hat. Der Pi-Client meldet den Stopp mit der gehörten Zeit; der Server merkt sich, wo die Geschichte für das Kind stand, und die nächste Idee setzt dort an.
 - Fertig, wenn: Server, Pi-Client, Schnittstellen-Doku und Tests (auch e2e) passen. Für die Firmware ein eigener Folgepunkt. Ohne Meldung verhält sich alles wie heute.
@@ -63,9 +64,9 @@ Angelegt am 17.11.2026, 20:15, von Claude (Chat). Gepflegt von den Läufen des W
 - Ziel: Eine vorläufige Frist festlegen (Einschätzung, keine Rechtsberatung; zum Beispiel 14 Tage) und technisch umsetzen (journald oder logrotate über `deploy/`), Doku in `deploy/EINRICHTUNG.md`.
 - Fertig, wenn: Einrichtungsskript und Test (`deploy/setup-server.test.sh`) decken die Frist ab; Entscheidung als „vorläufig“ im Bericht.
 
-### E2 · Einwilligung nachweisbar, ohne Personendaten
+### E2 · Einwilligung nachweisbar, mit möglichst wenig Daten
 - Rolle: Bauen · Prio: 2 · Status: offen · Nach A1
-- Ziel: Erteilte und widerrufene Einwilligungen bleiben über einen Neustart erhalten: nur gehashte Geräte-Kennung, Zeitpunkt, Version des Elterntexts. Keine Namen, keine E-Mail, keine Aufnahmen.
+- Ziel: Erteilte und widerrufene Einwilligungen bleiben über einen Neustart erhalten: nur eine pseudonymisierte Geräte-Kennung, Zeitpunkt, Version des Elterntexts. Keine Namen, keine E-Mail, keine Aufnahmen. Pseudonym heißt hier: HMAC mit einem Geheimnis des Servers. Ein einfacher Hash lässt sich bei frei gewählten Kennungen wie `prototype-001` leicht zurückrechnen. Das Geheimnis kommt nur aus einer Umgebungsvariable (nie ein Standardwert im öffentlichen Code, nie ein neuer Zufallswert je Start, sonst gingen die Einwilligungen verloren). Fehlt es im Betrieb (`NODE_ENV=production`), startet der Server nicht oder warnt laut; das ist zu entscheiden und zu testen. Einschätzung (keine Rechtsberatung): Auch eine pseudonymisierte Kennung bleibt ein Personenbezug.
 - Fertig, wenn: gespeichert und beim Löschen mitgelöscht, mit Tests; Datenschutz-Abschnitt der Doku nennt genau das. Keine Rechtsberatung.
 
 ### E4 · Sicherheits-Prüfung des Servers
@@ -89,7 +90,7 @@ Angelegt am 17.11.2026, 20:15, von Claude (Chat). Gepflegt von den Läufen des W
 - Fertig, wenn: Seite und Routen getestet; kein Verlauf, keine Mitschriften, keine Statistik je Kind.
 
 ### H1 · Lieferbarkeit und Preise der Hardware
-- Rolle: Recherche · Prio: 2 · Status: offen · Bezug: Nr. 33, 42
+- Rolle: Recherche · Prio: 2 · Status: offen (wiederkehrend: erst anlegen, dann alle 3 Tage neu prüfen) · Bezug: Nr. 33, 42
 - Ziel: Raspberry Pi 5 (4 GB, 8 GB) und ESP32-S3-BOX-3 bei BerryBase und zwei weiteren deutschen Händlern; dazu zwei Alternativen zum BOX-3 mit Mikrofon und Lautsprecher. Mit Preis, Lieferbarkeit, Link und Abrufdatum.
 - Fertig, wenn: `docs/recherche/lieferbarkeit.md` angelegt. Danach wiederkehrend: neu prüfen, wenn der letzte Stand älter als 3 Tage ist. Nichts bestellen.
 
@@ -98,7 +99,7 @@ Angelegt am 17.11.2026, 20:15, von Claude (Chat). Gepflegt von den Läufen des W
 - Ziel: Überblick mit Fristen: EU-Spielzeugverordnung, KI-Verordnung (Art. 50; ob Kunibert als Hochrisiko gilt), Funkanlagen-Richtlinie mit Cybersicherheit (EN 18031), DSGVO (Kinder, Art. 8), CE-Kennzeichnung, Elektro- und Batteriegesetz. Je Vorgabe: was gilt ab wann, was folgt für Kunibert.
 - Fertig, wenn: `docs/recherche/vorgaben-serienprodukt.md` mit Quellen und Abrufdatum; Folgerungen als neue Punkte. Keine Rechtsberatung.
 
-### D1 · Eltern-Kopplung am Gerät
+### D1 · Eltern-Kopplung am Gerät (Kinder)
 - Rolle: Bauen · Prio: 3 · Status: offen · Nach A1 · Bezug: Nr. 68E (PR B)
 - Ziel: Pi-Client: beide Tasten 5 s halten, Kunibert sagt den Kopplungs-Code an; Schlafmodus und Ruhezeiten werden beachtet. Firmware-Entwurf nachziehen.
 - Fertig, wenn: Pi-Client-Tests (auch gegen die echte Audio-Bibliothek in der CI), e2e, Doku.
@@ -114,8 +115,9 @@ Angelegt am 17.11.2026, 20:15, von Claude (Chat). Gepflegt von den Läufen des W
 - Fertig, wenn: Befunde im PR; Änderungen an den Anweisungen mit Begründung; Tests grün. Die Probe ersetzt keinen Test mit dem echten Modell.
 
 ### B4 · Ersatzfolgen auf die Regeln vom 14.11. bringen (Kinder)
-- Rolle: Bauen · Prio: 3 · Status: offen
+- Rolle: Bauen · Prio: 2 (vorher 3) · Status: offen
 - Ziel: Die festen Folgen ohne Claude prüfen und angleichen (ein Tag, böser Drache, Ende ohne Nachfrage); bei Bedarf eine weitere Folge nach `docs/Kunibert-Kanon.md`.
+- Stand 18.11. (Prüfung von PR #59): Die drei Ersatzfolgen (`FALLBACK_VARIANTS` in `server-api/brain.ts`) sind seit PR #56 weitgehend angepasst. Abweichend sind vor allem die festen Antworten ohne Claude (`fallbackQuestion`): zum Drachen „besiegt ihn … immer mit Klugheit“ und zu Kunibert „Am Ende hilft ihm seine Klugheit“ (alter Kanon; die Anweisung in `server-api/prompts.ts` ist schon neu). Dazu in der Ersatzfolge „sanft, aber bestimmt“ und die Zusammenfassung „beruhigte den Drachen“, die Claude später als Stand der Geschichte bekommt.
 - Fertig, wenn: Ausgabe-Check und Tests grün.
 
 ### C2 · Firmware Stufe M6 weiter
@@ -145,10 +147,10 @@ Angelegt am 17.11.2026, 20:15, von Claude (Chat). Gepflegt von den Läufen des W
 
 ### H6 · Kosten je Folge und Stückliste
 - Rolle: Recherche · Prio: 3 · Status: offen
-- Ziel: Kosten je Folge und je Frage aus den Preisen von Claude Sonnet 5.5 und Haiku 5.5 (Preisseite von Anthropic) und den Token-Zahlen aus `server-api/costs.ts`; Richtpreise für ein Seriengerät mit ESP32-S3 (Board, Mikrofon, Verstärker, Lautsprecher, Akku, Gehäuse).
+- Ziel: Kosten je Folge und je Frage aus den Preisen von Claude Sonnet 5.5 und Haiku 5.5 (Preisseite von Anthropic) und echten Token-Zahlen. Die stehen in den Feldern `tokens_ein`, `tokens_aus`, `cache_lesen`, `cache_schreiben` der Zeitmessungs-Zeilen im Server-Protokoll eines Probelaufs mit echtem Claude (`docs/Zeitmessung.md`). Die Zeile `Folge fertig` nennt nur `teile` und `kosten_usd`. `server-api/costs.ts` enthält nur die Preise und die Rechnung. Der Trockenlauf in `deploy/dryrun/` nutzt eine Attrappe für Claude und liefert keine echten Token-Zahlen. Ohne echten Probelauf sind Token-Zahlen eine Einschätzung und so zu kennzeichnen. Dazu Richtpreise für ein Seriengerät mit ESP32-S3 (Board, Mikrofon, Verstärker, Lautsprecher, Akku, Gehäuse).
 - Fertig, wenn: `docs/recherche/kosten.md` mit Quellen. Stückzahl und Zielpreis entscheidet der Betreiber.
 
-### B5 · Offline-Geschichte am Pi
+### B5 · Offline-Geschichte am Pi (Kinder)
 - Rolle: Bauen · Prio: 4 · Status: offen · Bezug: Nr. 75
 - Ziel: Ist der Server nicht erreichbar, spielt der Pi eine feste Geschichte statt nur eines Fehlers. Der Ton wird beim Einrichten erzeugt, nicht im Repo gespeichert.
 - Fertig, wenn: Pi-Client-Tests, Installationsskript, Doku.
@@ -181,10 +183,12 @@ Angelegt am 17.11.2026, 20:15, von Claude (Chat). Gepflegt von den Läufen des W
 - Rolle: Bauen · Prio: 1 · Status: offen · Bezug: Nr. 34, 37, 53, 65
 - Ziel: `deploy/CHECKLISTE.md` geht von einem gemieteten Linux-Server aus: Teil A mit DNS, Caddy und HTTPS; Teil C mit `journalctl`, `sudo docker stop speaches` und `systemctl status`. Der erste Durchlauf mit dem Pi läuft aber mit dem Server auf dem eigenen Rechner im selben WLAN (in der Aufgabenliste „Weg B“; Anleitung in `pi-client/README.md`, Abschnitt „Später: der Pi im selben WLAN“). Die Checkliste bekommt dafür einen eigenen Teil A: Windows und PowerShell, Token, feste IPv4-Adresse, Firewall nur für „Private Netzwerke“, `NODE_ENV=production`, `HOST=0.0.0.0`, `PICASTAI_AUDIO_STREAM=1` im Server-Fenster. Teil C nennt die Befehle für beide Wege: wo das Server-Protokoll und die Zeilen `Zeitmessung` stehen, wie man den Sprachserver anhält, wie man den Speicher prüft. In der Checkliste beschreibend schreiben („Server auf dem eigenen Rechner“, „gemieteter Server“), nicht „Weg B“.
 - Dabei beheben (gefunden am 17.11.): (1) Schritt 12 in Teil C verlangt Tests „mit einer Kinderstimme“. Das widerspricht der Regel „nur Erwachsene“ (Zeile 3 derselben Datei). Die Kinderstimme fällt weg, mit Hinweis: Tests mit Kinderstimmen erst nach der „Freigabe-Checkliste vor dem ersten Kind“. Die Verweise auf Schritt 12 in `deploy/EINRICHTUNG.md` (Abschnitt zur Erkennung) und `docs/LLM-Anbieter.md` passen sich an. (2) Teil B ruft `--once health` ohne die Einstellungen aus `/etc/kunibert/kunibert.env` auf. Dann prüft der Client die Standardadresse statt des eigenen Servers. (3) Startzeile: Der Server bereitet 5 feste Sprechtexte vor (`server.ts`); die Checkliste sagt „4 von 4“, `deploy/EINRICHTUNG.md` sagt „3 von 3“.
+- Stand 18.11. (Prüfung von PR #61): (1) und (3) sind mit PR #65 erledigt, ebenso der falsche Verweis auf „Schritt 11“ in `deploy/kunibert.env.example` und „vier“ feste Sprechtexte in `docs/picastAI-Pi-API.md`. Noch offen ist (2). Dazu: `pi-client/README.md`, Abschnitt „Später: der Pi im selben WLAN“, setzt in Schritt 3 `PICASTAI_AUDIO_STREAM=1` nicht und ruft in Schritt 5 `--once health` ohne die Einstellungen auf (wie Teil B). Die Liste für den neuen Teil A nennt auch Sprachserver und Stimme (Pocket). Teil B (Rechte, Health-Aufruf) erst nach N1117-2214-b ändern: Der Punkt entscheidet, wer `kunibert.env` lesen darf.
 - Fertig, wenn: gemergt. Jeder Befehl ist gegen den Code, `pi-client/README.md` und `deploy/EINRICHTUNG.md` geprüft. Die Checkliste verlangt nirgends Kinderstimmen. `pi-client/README.md` verweist im Abschnitt „Später: der Pi im selben WLAN“ auf den neuen Teil A. Der Bericht sagt, dass nichts davon am Pi oder unter Windows gelaufen ist. Den Rest der Einrichtung für den gemieteten Server prüft danach I2.
 
 ### N1117-2214-b · Pi-Installer im Container testen, Token und Rechte
 - Rolle: Prüfen · Prio: 1 · Status: offen · Bezug: Nr. 37
 - Ziel: `pi-client/install_raspberry_pi.sh` ist das erste Einrichtungsskript am neuen Pi. Die CI prüft davon bisher nur die Schreibweise (`shellcheck`), nicht das Verhalten. `pi-client/README.md` nennt einen Test „in einem Debian-Container“; ein Skript dafür gibt es im Repo nicht. Ein Test führt den Installer in einer frischen Debian-Umgebung aus: zum Beispiel ein Container in der CI, möglichst Debian 13 wie Raspberry Pi OS „Trixie“, `systemctl` als Attrappe, die erzeugte Dienstdatei zusätzlich mit `systemd-analyze verify`. Er prüft: Dienstkonto, Verzeichnisse, `kunibert.env` (Werte, Rechte, Besitzer), Dienstdatei (`User=`, `EnvironmentFile=`), `KUNIBERT_PIPELINE_TIMEOUT=140`, und das Token steht nie in der Ausgabe.
 - Zwei Fragen vorläufig entscheiden und testen: (1) Zweiter Lauf: Der Installer schreibt `kunibert.env` jedes Mal neu. Fehlt dabei das Token (zum Beispiel eine leere Variable beim Aufruf mit `--non-interactive` aus `pi-client/README.md`), steht danach ein leeres Token in der Datei, nur mit einer Warnung. Auch Änderungen mit `sudoedit` gehen verloren. Ein zweiter Lauf mit denselben Angaben ändert nichts; was ein Lauf ohne Token mit einem vorhandenen Token macht, wird entschieden. (2) Rechte von Datei und Ordner: Der Installer setzt `/etc/kunibert` auf `0750` und `kunibert.env` auf `0640`, beide mit Gruppe `audio`. `deploy/CHECKLISTE.md` und `pi-client/README.md` sagen `600`; die Anleitung von Hand legt den Ordner ohne Gruppe an. `systemd` liest die Datei als root (Einschätzung). Der Abschnitt „Manuell starten“ in `pi-client/README.md` liest sie aber als normaler Nutzer.
+- Dazu (Prüfung von PR #61, 18.11.): (3) Token auf der Befehlszeile: Die Anleitung übergibt das Token mit `--api-token` (`pi-client/README.md`, dazu die Hilfe in `pi-client/install_raspberry_pi.sh` und die Anzeige in `src/components/ArchitectureViewer.tsx`; Teil B von `deploy/CHECKLISTE.md` verweist auf diese Anleitung). Dann steht es in der Prozessliste, im Shell-Verlauf und je nach sudo-Einstellung im Journal (Einschätzung, am Pi nicht geprüft). Ziel: Das Token kommt nur über die verdeckte Abfrage oder aus einer Datei. (4) Wer das Token lesen darf: Mit `0640` und Gruppe `audio` kann jedes Mitglied von `audio` es lesen. Ziel: nur root und das Dienstkonto. (5) „Ändert nichts“ beim zweiten Lauf heißt: `kunibert.env`, Dienstdatei, Rechte und Besitzer bleiben gleich. `pip install --upgrade` und die Sicherung von `/etc/asound.conf` laufen bei jedem Lauf.
 - Fertig, wenn: Der Test läuft grün in der CI. Code und Doku sagen dasselbe zu Token und Rechten. `pi-client/README.md` verweist auf den Test. Was nur am echten Pi prüfbar ist (Audio, Tasten, LED, Gruppen des Standardnutzers), steht im Bericht.

@@ -43,4 +43,6 @@ Bei akuter Gefahr, Missbrauch, Selbstverletzung oder einem medizinischen Notfall
 
 **Ein Tisch-Prototyp, noch kein fertiges Kinderprodukt:** mit Taste, Mikrofon und Lautsprecher; zunächst in Gegenwart eines Erwachsenen getestet. Er muss drei Dinge können: auf eine freie Frage sinnvoll antworten, eine neue Kunibert-Geschichte erzählen und bei einer beunruhigenden Äußerung ruhig an echte Hilfe verweisen. Danach folgen gemeinsame Tests mit Bezugspersonen, Datenschutz- und Sicherheitsprüfung, erst dann ein tragbares Gehäuse und Kinder-Tests.
 
+> **Stand 18.11.2026:** Bis zur Rechtsprüfung testen nur Erwachsene. Tests mit Kindern, auch zusammen mit Bezugspersonen, erst nach der „Freigabe-Checkliste vor dem ersten Kind“ (Doc „Datenschutz-Folgenabschätzung“ des Betreibers; siehe auch `deploy/CHECKLISTE.md`, „Go / No-Go“).
+
 **Offene Gestaltungsfrage:** Für welches Alter soll der erste Prototyp wirklich sein? Ein Gerät für Vierjährige braucht andere Antwortlängen, Sprache und Schutzmechanismen als eines für Zehnjährige.

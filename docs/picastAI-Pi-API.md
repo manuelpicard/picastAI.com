@@ -188,7 +188,7 @@ Die `audio_url` aus der Antwort mit denselben Authentifizierungsheadern abrufen.
 ## Sicherheitsgrenzen des Prototyps
 
 - Rate-Limit pro Gerät: standardmäßig 30 Anfragen pro 10 Minuten.
-- Feste Sprechtexte (Sicherheitshinweis, „nicht verstanden“, Fehlerhinweis, die festen Ersatzantworten ohne Sprachmodell) werden nach der ersten Synthese im Speicher gehalten. In Produktion bereitet der Server vier davon beim Start vor und versucht es gut sechs Minuten lang wieder, wenn der Sprachserver noch nicht bereit ist. Gespeichert werden nur diese festen Texte, nie Äußerungen von Kindern.
+- Feste Sprechtexte (Sicherheitshinweis, „nicht verstanden“, Fehlerhinweis, Pausensatz der Geschichte, die festen Ersatzantworten ohne Sprachmodell) werden nach der ersten Synthese im Speicher gehalten. In Produktion bereitet der Server fünf davon beim Start vor (die ersten vier und die allgemeine Ersatzantwort, `server.ts`) und versucht es gut sechs Minuten lang wieder, wenn der Sprachserver noch nicht bereit ist. Gespeichert werden nur diese festen Texte, nie Äußerungen von Kindern.
 - Fehlermeldungen der Sprachdienste und von Anthropic kommen nur als HTTP-Status mit Fehlercode ins Protokoll (zum Beispiel `HTTP 422 (string_too_long)`), nie mit ihrem Fließtext: Der kann den gesendeten Text enthalten (`server-api/provider-errors.ts`).
 - Audio nur im flüchtigen RAM, TTL standardmäßig 120 Sekunden.
 - Audio-URL benötigt erneut Geräteauthentifizierung.
