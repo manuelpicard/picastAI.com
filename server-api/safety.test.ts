@@ -373,6 +373,9 @@ const MUST_TRIGGER = [
   'Hilfe, Polizei!',
   'Kunibert, hilf uns!',
   'Mein Bruder war im Wasser und hat sich einen Stein ins Ohr gesteckt und er geht nicht mehr raus',
+  'Der Trainer hat mich beim Fußball geschlagen',
+  'Ein Typ im Spiel macht mir Angst, er schreibt mir jeden Tag',
+  'Er hat Schneebälle mit Steinen nach uns geworfen',
 ];
 
 // Alltägliche Sätze, die NICHT anschlagen dürfen (Fehlalarme sind für Kinder
@@ -683,6 +686,10 @@ const MUST_NOT_TRIGGER = [
   'Die Mannschaft hat uns knapp geschlagen',
   'Der Mann aus dem Fernsehen macht mir Angst',
   'Gestern hat Opa mich beim Schach geschlagen',
+  'Beim Memory hat Papa mich geschlagen',
+  'Im Schach hat Opa mich wieder geschlagen',
+  'Beim Wettrennen hat mich mein Bruder geschlagen',
+  'Bei Uno hat Mama uns alle geschlagen',
 ];
 
 // Bekannte Grenze: Die Weiche ist eine Reihe von Mustern und bleibt unvollständig.

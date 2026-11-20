@@ -218,7 +218,7 @@ Ist Claude nicht eingerichtet oder fällt aus (oder lehnt der Ausgabe-Check den 
 | Verschluckt, Blut, Biss, Allergie | „ich habe einen stein verschluckt“ · „mein bruder ist ganz blau angelaufen“ · „papa hustet blut“ · „der hund hat meinen bruder gebissen“ · „ich bin allergisch gegen nüsse und hab aus versehen eine gegessen“ | „ich habe eine nuss gegessen“ · „oma ist rot angelaufen weil sie gelacht hat“ · „der drache spuckt feuer“ · „ich bin allergisch gegen erdbeeren deshalb hab ich keine gegessen“ |
 | Verloren, Feuer, Notruf | „ich hab mama im kaufhaus verloren“ · „wo ist meine mama ich finde sie nicht“ · „feuer feuer“ · „die wohnung ist voller rauch“ · „der rauchmelder piept und es riecht komisch“ · „ruf 112“ | „ich hab gegen papa verloren“ · „mama hat eine neue brille ich finde sie nicht schön“ · „der rauchmelder hängt an der decke“ · „die 112 ist die nummer der feuerwehr“ |
 
-**Nachtrag nach der unabhängigen Prüfung (20. November 2026, nachmittags):** Ein zweiter Prüfer hat naheliegende Abwandlungen ausprobiert, in zwei Runden. Viele rutschten noch durch, auch auf dem alten Stand. Jetzt erkannt **(Test)**: 66 Sätze mehr, die vorher keine Ansage auslösten, zum Beispiel:
+**Nachtrag nach der unabhängigen Prüfung (20. November 2026, nachmittags):** Ein zweiter Prüfer hat naheliegende Abwandlungen ausprobiert, in zwei Runden. Viele rutschten noch durch, auch auf dem alten Stand. Jetzt erkannt **(Test)**: 69 Sätze mehr, die vorher keine Ansage auslösten, zum Beispiel:
 
 - „Ich will nicht mehr weiterleben“ und „Ich will nicht mehr weiter leben“.
 - Perfekt mit Wörtern dazwischen: „Papa hat mich wieder geschlagen“, „Er hat mich da unten berührt“, „Opa hat mich geküsst, obwohl ich das nicht wollte“, „er hat komische sachen mit mir gemacht“.
@@ -230,9 +230,9 @@ Ist Claude nicht eingerichtet oder fällt aus (oder lehnt der Ausgabe-Check den 
 - Artikel und „der Mann“: „Papa tut der Mama weh“, „Der Mann macht mir Angst“, „Ich will nicht, dass der Mann mich anfasst“.
 - Kurzformen und Schreibweisen der Erkennung: „papa hat mir ne gescheuert“, „ich glaub mama ist tot“, „ich bin allein zuhause und habe angst“, „vom hochbett runter gefallen“, „Ruf die 1 1 2 an“.
 
-Dazu 31 Gegenproben **(Test)**, zum Beispiel „Opa hat mich beim Schach geschlagen“, „Morgen bringt Papa mich um acht zur Schule“, „Ich kann vor Lachen kaum noch atmen“, „Der Mann im Film macht mir Angst“, „Ich hab Wasser im Ohr und es geht nicht raus“, „Die Kinder haben Schneebälle nach uns geworfen“.
+Dazu 35 Gegenproben **(Test)**, zum Beispiel „Opa hat mich beim Schach geschlagen“, „Morgen bringt Papa mich um acht zur Schule“, „Ich kann vor Lachen kaum noch atmen“, „Der Mann im Film macht mir Angst“, „Ich hab Wasser im Ohr und es geht nicht raus“, „Die Kinder haben Schneebälle nach uns geworfen“.
 
-Die neuen Ausnahmen gelten nur an ihrer Stelle im Satz, nicht für den ganzen Satz. Beispiel: Ein genanntes Spiel (Schach, Memory, Fußball und andere) oder ein Spielstand („drei zu eins“) zählt nur zwischen „mich“ und „geschlagen“, weil „geschlagen“ dort „besiegt“ heißt. „Papa hat mich gestern geschlagen, weil ich beim Fußball verloren habe“ schlägt an **(Test)**. Ebenso „aus Versehen“ bei „gehauen“ und „getreten“, „im Film“ direkt hinter „der Mann“ Spielsachen wie Schneebälle beim Werfen und „Wasser“ direkt vor „im Ohr“ oder „in die Nase“.
+Die neuen Ausnahmen gelten nur an ihrer Stelle im Satz, nicht für den ganzen Satz. Beispiel: Ein genanntes Spiel (Schach, Memory, Fußball und andere) oder ein Spielstand („drei zu eins“) zählt nur zwischen „mich“ und „geschlagen“, weil „geschlagen“ dort „besiegt“ heißt. „Papa hat mich gestern geschlagen, weil ich beim Fußball verloren habe“ schlägt an **(Test)**. Ebenso „aus Versehen“ bei „gehauen“ und „getreten“, „im Film“ direkt hinter „der Mann“, Spielsachen wie Schneebälle beim Werfen (nicht mit Steinen) und „Wasser“ direkt vor „im Ohr“ oder „in die Nase“. Steht das Spiel vorn („Beim Memory hat Papa mich geschlagen“), gilt die Ausnahme auch. Mit Trainer, Lehrer, Betreuer oder einem fremden Mann gilt sie nicht: „Der Trainer hat mich beim Fußball geschlagen“ schlägt an **(Test)**.
 
 Behoben ist auch ein Fehlalarm, den die vierte Probe selbst brachte: „Ich will nicht mehr weiter, ich will eine andere Geschichte“ löste die Hilfe-Ansage aus. Jetzt bekommt das Kind wieder eine Geschichte. Ausgenommen ist nur der Wunsch nach einer anderen, neuen oder nächsten Geschichte oder Folge. „Ich will nicht mehr weiter“ allein und „Ich kann nicht mehr weiter, ich muss dir was erzählen“ schlagen weiter an **(Test)**. Neue, bewusst hingenommene Fehlalarme: siehe Abschnitt 7.3.
 
@@ -247,6 +247,7 @@ Offen: Ob die Spracherkennung „ae“, „oe“, „ue“ oder „ss“ statt U
 17. Soll ein Sturz von hoch oben (Dach, Baum, Hochbett, Wickeltisch) schon ohne weitere Angabe die Ansage auslösen, wie seit dem 20. November? Oder erst mit „blutet“, „kann nicht aufstehen“ oder Ähnlichem?
 18. Passt die Hilfe-Ansage zu Mobbing, Weglaufen und Wertlosigkeit, oder braucht es dafür einen eigenen, ruhigeren Text (zum Beispiel nur mit der Nummer gegen Kummer)?
 19. Übertreibungen wie „Mama bringt mich um, wenn sie das sieht“ lösen die Ansage aus. Ist das vertretbar?
+20. „Opa hat mich beim Schach geschlagen“ löst seit dem Nachtrag keine Ansage aus (vorläufige Entscheidung von Claude, 20.11.2026, 17:05: „geschlagen“ heißt dort „besiegt“). „Opa schlägt mich immer beim Schach“ löst sie aus. Soll auch das Perfekt mit Spiel anschlagen? Dann gibt es mehr Fehlalarme, aber keine Lücke, falls ein Kind so von Gewalt erzählt.
 
 ## Anhang: Wo steht was im Code?
 

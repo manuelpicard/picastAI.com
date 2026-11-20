@@ -443,7 +443,10 @@ const PATTERNS_2026_11_D: RegExp[] = [
   // „im Spiel besiegt“; deshalb nur dort eine enge Ausnahme für genannte Spiele und Spielstände.
   // Die Ausnahmen gelten nur für die Wörter zwischen „mich“ und dem Partizip: „Papa hat mich gestern geschlagen,
   // weil ich beim Fußball verloren habe“ schlägt an.
-  new RegExp(`${L}(hat|haben|hatte|hatten) (${SUBJ} )?(mich|uns) ((?!((beim|im|bei|in) ${GAME}|knapp|haushoch|zu ${NUM})${R})${WORD} ){0,3}geschlagen${R}`),
+  // Steht das Spiel direkt vor „hat“ („Beim Memory hat Papa mich geschlagen“), gilt die Ausnahme auch.
+  new RegExp(`${L}(?<!${L}(beim|im|bei|in) ${GAME} )(hat|haben|hatte|hatten) (${SUBJ} )?(mich|uns) ((?!((beim|im|bei|in) ${GAME}|knapp|haushoch|zu ${NUM})${R})${WORD} ){0,3}geschlagen${R}`),
+  // Mit Trainer, Lehrer, Betreuer oder einem fremden Mann gilt keine Spiel-Ausnahme.
+  new RegExp(`^(?=.*${L}(trainer|trainerin|lehrer|lehrerin|erzieher|erzieherin|betreuer|betreuerin|mann|fremde|fremder|typ)${R}).*${L}(hat|haben|hatte|hatten) (${SUBJ} )?(mich|uns) (${WORD} ){0,3}geschlagen${R}`),
   new RegExp(`${L}(hat|haben|hatte|hatten) (${SUBJ} )?(mich|uns) ((?!(aus versehen|ausversehen)${R})${WORD} ){0,3}(gehauen|getreten|gewürgt|verhauen|verprügelt|geohrfeigt|eingesperrt)${R}`),
   // Übergriffe im Perfekt und im Hauptsatz nach „aber“ und „und“
   new RegExp(`${L}(hat|haben|hatte) (${SUBJ} )?mich (${WORD} ){0,2}(da unten|untenrum|am po|am popo|zwischen den beinen|an der brust|an meinem ${KID_BODY}|am ${KID_BODY}|an der ${KID_BODY}|unter der (decke|bettdecke|hose|unterhose)) (${WORD} )?(berührt|gestreichelt|angefasst|angegrapscht|angegrabscht|begrapscht|begrabscht|geküsst)${R}`),
@@ -456,9 +459,11 @@ const PATTERNS_2026_11_D: RegExp[] = [
   // Hilferuf als ganze Äußerung mit Anrede („Kunibert, hilf mir!“, „Mama, Hilfe!“, „Hilfe, Feuer!“)
   new RegExp(`^(?=.*${L}(hilfe|hilf mir|helft mir|hilf uns|helft uns)${R})((hilfe|hilf mir|helft mir|hilf uns|helft uns|bitte|feuer|schnell|polizei|feuerwehr|krankenwagen|notarzt|ritter|kunibert|mama|mami|papa|papi|oma|omi|opa|opi|jemand|irgendjemand|irgendwer) ){1,12}$`),
   // „Der Mann macht mir Angst“. Nicht: „der Mann im Film“ (nur direkt hinter „Mann“ ausgenommen).
-  new RegExp(`${L}(der|dieser|ein|so ein) (fremde |fremder |komische |komischer |große |großer )?(mann|typ|junge) (?!(im|in dem|in der|aus dem|aus der|in einem|in einer) (film|fernsehen|fernseher|video|buch|geschichte|traum|albtraum|spiel|märchen|serie|comic)${R})(${WORD} ){0,3}macht mir (${WORD} ){0,2}angst${R}`),
+  new RegExp(`${L}(der|dieser|ein|so ein) (fremde |fremder |komische |komischer |große |großer )?(mann|typ|junge) (?!(im|in dem|in der|aus dem|aus der|in einem|in einer) (film|fernsehen|fernseher|buch|geschichte|traum|albtraum|märchen|serie|comic)${R})(${WORD} ){0,3}macht mir (${WORD} ){0,2}angst${R}`),
   // Werfen im Perfekt, Locken im Präsens
   new RegExp(`${L}(hat|haben|hatte) ((?!(schneeball|schneebälle|schneebällen|ball|bälle|bällen|kissen|wasserbombe|wasserbomben|konfetti|laub|blätter)${R})${WORD} ){0,3}nach (mir|uns) (geworfen|geschmissen)${R}`),
+  // Spielsachen mit Steinen oder Glas zählen wieder („Schneebälle mit Steinen“)
+  new RegExp(`^(?=.*${L}(stein|steine|steinen|steinchen|glas|gläser|gläsern|flaschen|messer|messern)${R}).*${L}(hat|haben|hatte) (${WORD} ){0,4}nach (mir|uns) (geworfen|geschmissen)${R}`),
   new RegExp(`${L}(hat|haben|hatte) (${SUBJ} )?mit (tellern|gläsern|flaschen|messern|stühlen|sachen|gegenständen) (${WORD} )?(geworfen|geschmissen)${R}`),
   // Gewalt zwischen Erwachsenen mit Artikel („Papa schlägt die Mama“)
   new RegExp(`${L}${POSS}${PARENTS} (schlägt|haut|tritt|würgt|verprügelt|verhaut) (der|die|den|dem) ${PERSON_WIDE}${R}`),
