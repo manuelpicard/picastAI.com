@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   getSafeConfigSummary,
+  isConsentRequired,
   isDiagnosticTextEnabled,
   isTestTranscriptEnabled,
   isValidWorkspaceId,
@@ -210,4 +211,14 @@ test('KUNIBERT_EINORDNUNG_PARALLEL: nur mit 1 an, Standard aus (Punkt B1)', () =
     if (before === undefined) delete process.env.KUNIBERT_EINORDNUNG_PARALLEL;
     else process.env.KUNIBERT_EINORDNUNG_PARALLEL = before;
   }
+});
+
+test('Einwilligungs-Prüfung: standardmäßig an, nur außerhalb des Betriebs mit =0 aus', () => {
+  assert.equal(isConsentRequired({}), true, 'Standard ist an, auch im Probelauf');
+  assert.equal(isConsentRequired({ KUNIBERT_EINWILLIGUNG_PRUEFEN: '1' }), true);
+  assert.equal(isConsentRequired({ KUNIBERT_EINWILLIGUNG_PRUEFEN: '0' }), false, 'Probelauf am Rechner');
+  assert.equal(isConsentRequired({ NODE_ENV: 'development', KUNIBERT_EINWILLIGUNG_PRUEFEN: ' 0 ' }), false);
+  assert.equal(isConsentRequired({ KUNIBERT_EINWILLIGUNG_PRUEFEN: 'nein' }), true, 'nur genau 0 schaltet ab');
+  assert.equal(isConsentRequired({ KUNIBERT_EINWILLIGUNG_PRUEFEN: 'false' }), true);
+  assert.equal(isConsentRequired({ NODE_ENV: 'production', KUNIBERT_EINWILLIGUNG_PRUEFEN: '0' }), true, 'im Betrieb nicht abschaltbar');
 });

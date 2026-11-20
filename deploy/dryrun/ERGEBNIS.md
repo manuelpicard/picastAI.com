@@ -71,7 +71,10 @@ curl -X POST http://127.0.0.1:8000/v1/models/Systran/faster-whisper-small
 curl -X POST http://127.0.0.1:8000/v1/models/speaches-ai/piper-de_DE-thorsten-medium
 node deploy/dryrun/mock-anthropic.mjs &       # Attrappe, Port 8099
 # Server mit Umgebungsvariablen starten (NODE_ENV=production, zufällige Tokens, ANTHROPIC_API_KEY=beliebig,
-# ANTHROPIC_BASE_URL=http://127.0.0.1:8099, PICASTAI_STT_*/PICASTAI_TTS_* wie oben), dann:
+# ANTHROPIC_BASE_URL=http://127.0.0.1:8099, PICASTAI_STT_*/PICASTAI_TTS_* wie oben, PICASTAI_ADMIN_TOKEN),
+# dann einwilligen (seit 20.11.2026 nötig, sonst kommt nur der feste Hinweis):
+PICASTAI_ADMIN_TOKEN=… PICASTAI_DEVICE_ID=… node deploy/eltern-einwilligung.mjs
+# und:
 BASE_URL=http://127.0.0.1:3000 DEVICE_ID=… DEVICE_TOKEN=… SPEACHES_URL=http://127.0.0.1:8000 \
   TTS_MODEL=speaches-ai/piper-de_DE-thorsten-medium TTS_VOICE=thorsten node deploy/dryrun/dryrun.mjs
 ```

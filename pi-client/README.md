@@ -339,10 +339,11 @@ $env:PICASTAI_TTS_URL = "http://127.0.0.1:8000/v1"
 $env:PICASTAI_TTS_MODEL = "speaches-ai/piper-de_DE-thorsten-medium"
 $env:PICASTAI_TTS_VOICE = "thorsten"
 $env:ANTHROPIC_API_KEY = "<dein Schlüssel, nur hier eintippen>"
+$env:KUNIBERT_EINWILLIGUNG_PRUEFEN = "0"
 npm run dev
 ```
 
-Ohne `NODE_ENV=production` gibt es den eingebauten Entwicklungs-Zugang (`prototype-1`, Token `test-token-kunibert-2026`). Er steht öffentlich im Repo; deshalb lauscht der Server hier nur auf `127.0.0.1`, also nur für deinen Rechner. Die Zeilen `Zeitmessung ...` in diesem Fenster zeigen, welche Stufe wie lange braucht (`docs/Zeitmessung.md`).
+`KUNIBERT_EINWILLIGUNG_PRUEFEN=0` schaltet für diesen Probelauf die Prüfung der Einwilligung der Eltern ab (seit 20.11.2026; ohne die Zeile antwortet Kunibert nur „… müssen mich deine Eltern einmal einrichten …“). Das geht nur ohne `NODE_ENV=production`. Ohne `NODE_ENV=production` gibt es den eingebauten Entwicklungs-Zugang (`prototype-1`, Token `test-token-kunibert-2026`). Er steht öffentlich im Repo; deshalb lauscht der Server hier nur auf `127.0.0.1`, also nur für deinen Rechner. Die Zeilen `Zeitmessung ...` in diesem Fenster zeigen, welche Stufe wie lange braucht (`docs/Zeitmessung.md`).
 
 **3. Client (PowerShell-Fenster 2, im Ordner des Repos):**
 
@@ -362,7 +363,7 @@ Danach: Fenster 1 schließen (der Schlüssel steht in seinem Verlauf) und `docke
 python3 pi-client/kunibert_client.py --dry-run --debug
 ```
 
-Gegen einen lokalen Server (zum Beispiel `PORT=3187 HOST=127.0.0.1 npm start` im Repository, ohne `NODE_ENV=production`) prüfen `--once health` und `--once story` den echten HTTP-Weg ohne GPIO und Audio. Der eingebaute Entwicklungs-Zugang hat die Geräte-ID `prototype-1`, nicht die Client-Standard-ID `prototype-001`, die der Server mit HTTP 401 ablehnt:
+Gegen einen lokalen Server (zum Beispiel `PORT=3187 HOST=127.0.0.1 KUNIBERT_EINWILLIGUNG_PRUEFEN=0 npm start` im Repository, ohne `NODE_ENV=production`) prüfen `--once health` und `--once story` den echten HTTP-Weg ohne GPIO und Audio. Der eingebaute Entwicklungs-Zugang hat die Geräte-ID `prototype-1`, nicht die Client-Standard-ID `prototype-001`, die der Server mit HTTP 401 ablehnt:
 
 ```bash
 PICASTAI_API_BASE_URL=http://127.0.0.1:3187 \
@@ -396,9 +397,20 @@ $env:NODE_ENV = "production"
 $env:HOST = "0.0.0.0"
 $env:PICASTAI_DEVICE_ID = "prototype-001"
 $env:PICASTAI_DEVICE_TOKEN = "<Token aus Schritt 1>"
+$env:PICASTAI_ADMIN_TOKEN = "<ein zweites Token, wie in Schritt 1 erzeugt>"
 # dazu dieselben Zeilen für Sprachserver und Stimme wie oben (PICASTAI_STT_…, PICASTAI_TTS_…) und ANTHROPIC_API_KEY
 npm start
 ```
+
+**3b. Einwilligung (PowerShell-Fenster 2, im Ordner des Repos, nach jedem Start des Servers):** Mit `NODE_ENV=production` antwortet Kunibert erst, wenn die Eltern eingewilligt haben. Solange der Pi den Kopplungscode noch nicht selbst spricht, erteilst du sie für den Test mit Erwachsenen so:
+
+```powershell
+$env:PICASTAI_ADMIN_TOKEN = "<das zweite Token aus Schritt 3>"
+$env:PICASTAI_DEVICE_ID = "prototype-001"
+node deploy\eltern-einwilligung.mjs
+```
+
+Erwartet: `Einwilligung erteilt.` Sie liegt nur im Arbeitsspeicher des Servers und ist nach einem Neustart weg. Danach dieses Fenster schließen (das Token steht in seinem Verlauf).
 
 Ohne `PICASTAI_PUBLIC_BASE_URL` baut der Server die `audio_url` aus der Adresse, die der Pi aufruft; das passt im Heimnetz. Der Sprachserver bleibt auf `127.0.0.1:8000`, er ist nur für deinen Rechner da.
 
@@ -511,5 +523,7 @@ bash pi-client/test_alsa_audio.sh \
 - Audio-URLs müssen denselben Origin (Schema, Host und Port) wie die API verwenden; der Host wird ohne Beachtung der Groß-/Kleinschreibung verglichen, ein fehlender Port gilt als Standardport (80/443), Zugangsdaten in der URL werden abgelehnt, HTTP-Downgrades ebenfalls. HTTP-Redirects werden nicht verfolgt.
 - HTTP 400, 401, 413, 415 und 429 werden nicht automatisch wiederholt.
 - Temporäre Netzwerk- und Serverfehler werden begrenzt wiederholt.
+- Ohne Einwilligung der Eltern, im Schlafmodus und in den Ruhezeiten antwortet der Server nur mit einem festen Satz (siehe [`docs/picastAI-Pi-API.md`](../docs/picastAI-Pi-API.md)). Mit `NODE_ENV=production` vorher einwilligen (`deploy/eltern-einwilligung.mjs`), nach jedem Neustart des Servers erneut. Im Probelauf am Rechner geht es auch ohne: `KUNIBERT_EINWILLIGUNG_PRUEFEN=0` am Server.
+- Die Kopplung per Tastendruck (beide Tasten 5 s halten, Kunibert spricht den Code) ist im Client noch nicht umgesetzt (Punkt D1).
 - Bei Server-/Audiofehlern bleibt der Client nicht in einer Endlosschleife, sondern wechselt kurz nach `ERROR` zurück nach `READY`.
 - Ohne echte STT-Integration liefert `/v1/device/question` bei einer Aufnahme derzeit die sichere Fallback-Antwort des Backends.

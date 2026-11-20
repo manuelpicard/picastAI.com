@@ -14,7 +14,7 @@ Vernetztes Sprach-Spielzeug für Kinder von 6 bis 10 Jahren: Sprechtaste (Frage)
 
 | Ordner | Inhalt |
 | --- | --- |
-| `server.ts`, `server-api/` | Node-Server (Express, TypeScript über tsx): Routen, Sicherheitsweiche (`safety.ts`), Erzähler (`brain.ts`, `prompts.ts`), Claude-Anbindung (`llm.ts`), Sprachdienste (`voice.ts`), Geräteliste (`devices.ts`), Zeitbudget (`timing.ts`) |
+| `server.ts`, `server-api/` | Node-Server (Express, TypeScript über tsx): Routen, Sicherheitsweiche (`safety.ts`), Erzähler (`brain.ts`, `prompts.ts`), Claude-Anbindung (`llm.ts`), Sprachdienste (`voice.ts`), Geräteliste (`devices.ts`), Eltern-Steuerung (`eltern.ts`), Zeitbudget (`timing.ts`) |
 | `pi-client/` | Python-Client für den Pi 5 und Installationsskript |
 | `firmware/esp32-s3/` | ESP-IDF-Firmware (Entwurf, auf keinem Gerät gelaufen) |
 | `deploy/` | Einrichtung des Servers (Caddy, systemd, Skripte), Checkliste, Trockenlauf und Ende-zu-Ende-Test |

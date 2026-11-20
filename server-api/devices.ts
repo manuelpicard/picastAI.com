@@ -163,6 +163,12 @@ export class DeviceRegistry {
     }));
   }
 
+  /** Ist das Gerät angelegt und nicht gesperrt? (Ohne Token, zum Beispiel für die Eltern-Routen.) */
+  public isActive(deviceId: string): boolean {
+    const entry = this.devices.get(deviceId);
+    return Boolean(entry && !entry.revoked);
+  }
+
   public verify(deviceId: string, token: string): boolean {
     if (!deviceId || !token) return false;
     const entry = this.devices.get(deviceId);
@@ -195,6 +201,19 @@ export class RateLimiter {
     list.push(now);
     this.events.set(deviceId, list);
     return true;
+  }
+
+  /** Vergisst Schlüssel ohne Ereignis im Zeitfenster (der Server ruft das regelmäßig auf). */
+  public purge(): void {
+    const now = Date.now() / 1000;
+    for (const [key, list] of this.events) {
+      if (!list.some((t) => now - t <= this.windowSeconds)) this.events.delete(key);
+    }
+  }
+
+  /** Anzahl der Schlüssel mit Ereignissen (für Tests). */
+  public get size(): number {
+    return this.events.size;
   }
 
   public getStatus(deviceId: string): { remaining: number; max: number; windowSeconds: number } {
