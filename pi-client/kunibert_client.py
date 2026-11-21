@@ -20,6 +20,7 @@ import io
 import json
 import logging
 import os
+import re
 import secrets
 import signal
 import sys
@@ -98,6 +99,10 @@ class ClientConfig:
     # Ton-Strom (Punkt 71): den Server bitten, Geschichten Absatz für Absatz zu schicken. Der
     # Server macht das nur mit PICASTAI_AUDIO_STREAM=1; sonst kommt wie bisher eine ganze Datei.
     audio_stream: bool = True
+    # Stopp per Taste (Punkt B2): dem Server melden, wie lange das Kind zugehört hat. Dann geht
+    # die Geschichte an dieser Stelle weiter. Die Meldung wartet höchstens so viele Sekunden.
+    stop_report: bool = True
+    stop_report_timeout_seconds: float = 3.0
 
     @classmethod
     def from_env(cls, dry_run: bool = False) -> "ClientConfig":
@@ -146,6 +151,8 @@ class ClientConfig:
             long_wait_seconds=number("KUNIBERT_LONG_WAIT_SECONDS", 15.0),
             answer_pause_seconds=number("KUNIBERT_ANSWER_PAUSE_SECONDS", 0.3),
             audio_stream=os.getenv("KUNIBERT_AUDIO_STREAM", "1").strip().lower() not in {"0", "false", "no", "nein", "aus"},
+            stop_report=os.getenv("KUNIBERT_STOP_REPORT", "1").strip().lower() not in {"0", "false", "no", "nein", "aus"},
+            stop_report_timeout_seconds=number("KUNIBERT_STOP_REPORT_TIMEOUT", 3.0),
         )
 
 
@@ -207,7 +214,8 @@ class AudioInput(Protocol):
 
 
 class AudioOutput(Protocol):
-    def play_wav(self, wav_bytes: bytes, should_stop: Optional[Callable[[], bool]] = None) -> None: ...
+    # Gibt die gespielten Sekunden zurück (für den Stopp per Taste, Punkt B2) oder None, wenn unbekannt.
+    def play_wav(self, wav_bytes: bytes, should_stop: Optional[Callable[[], bool]] = None) -> Optional[float]: ...
 
 
 class StreamedWav:
@@ -450,8 +458,8 @@ class SoundDeviceAudio:
     # Rohformat je Sample-Breite (WAV mit 8 Bit ist vorzeichenlos).
     _RAW_DTYPES = {1: "uint8", 2: "int16", 3: "int24", 4: "int32"}
 
-    def play_wav(self, wav_bytes: bytes, should_stop: Optional[Callable[[], bool]] = None) -> None:
-        """Spielt eine WAV-Antwort ab, ohne NumPy.
+    def play_wav(self, wav_bytes: bytes, should_stop: Optional[Callable[[], bool]] = None) -> Optional[float]:
+        """Spielt eine WAV-Antwort ab, ohne NumPy. Gibt die geschriebenen Sekunden zurück.
 
         Früher lief das über ``sd.play()``. Das braucht NumPy (ist auf dem Pi nicht
         installiert) und nimmt keine Bytes an: Mit sounddevice 0.5.6 scheiterte jede
@@ -471,6 +479,7 @@ class SoundDeviceAudio:
             if dtype is None:
                 raise HardwareError(f"WAV mit {width * 8} Bit wird nicht unterstützt")
             chunk_bytes = max(1, rate // 10) * channels * width
+            written = 0
             with self.sd.RawOutputStream(
                 samplerate=rate,
                 channels=channels,
@@ -481,21 +490,24 @@ class SoundDeviceAudio:
                     if should_stop is not None and should_stop():
                         # Sofort abbrechen statt die gepufferten Blöcke noch auszuspielen.
                         stream.abort()
-                        return
-                    stream.write(frames[start:start + chunk_bytes])
+                        return written / (rate * channels * width)
+                    piece = frames[start:start + chunk_bytes]
+                    stream.write(piece)
+                    written += len(piece)
+            return written / (rate * channels * width)
         except HardwareError:
             raise
         except Exception as exc:
             raise HardwareError(f"Audioausgabe fehlgeschlagen: {exc}") from exc
 
-    def play_stream(self, stream: "StreamedWav", should_stop: Optional[Callable[[], bool]] = None) -> None:
+    def play_stream(self, stream: "StreamedWav", should_stop: Optional[Callable[[], bool]] = None) -> Optional[float]:
         """Ton-Strom (Punkt 71): spielt, während der Rest noch vom Server kommt."""
-        _play_stream_with(self.sd, self.config, stream, should_stop, self._RAW_DTYPES)
+        return _play_stream_with(self.sd, self.config, stream, should_stop, self._RAW_DTYPES)
 
 
 def _play_stream_with(sd: Any, config: ClientConfig, stream: "StreamedWav",
-                      should_stop: Optional[Callable[[], bool]], dtypes: dict[int, str]) -> None:
-    """Spielt einen Ton-Strom in Stücken von etwa 0,1 s, während er noch lädt."""
+                      should_stop: Optional[Callable[[], bool]], dtypes: dict[int, str]) -> float:
+    """Spielt einen Ton-Strom in Stücken von etwa 0,1 s, während er noch lädt. Gibt die geschriebenen Sekunden zurück."""
     dtype = dtypes.get(stream.sample_width)
     if dtype is None:
         stream.close()
@@ -503,6 +515,7 @@ def _play_stream_with(sd: Any, config: ClientConfig, stream: "StreamedWav",
     frame_bytes = stream.sample_width * stream.channels
     chunk_bytes = max(1, stream.sample_rate // 10) * frame_bytes
     rest = b""
+    written = 0
     try:
         with sd.RawOutputStream(
             samplerate=stream.sample_rate,
@@ -513,7 +526,7 @@ def _play_stream_with(sd: Any, config: ClientConfig, stream: "StreamedWav",
             while True:
                 if should_stop is not None and should_stop():
                     output.abort()
-                    return
+                    return written / (stream.sample_rate * frame_bytes)
                 piece = stream.read(chunk_bytes)
                 if not piece:
                     break
@@ -522,6 +535,8 @@ def _play_stream_with(sd: Any, config: ClientConfig, stream: "StreamedWav",
                 rest = data[usable:]
                 if usable:
                     output.write(data[:usable])
+                    written += usable
+        return written / (stream.sample_rate * frame_bytes)
     except HardwareError:
         raise
     except Exception as exc:
@@ -546,11 +561,13 @@ class DryRunAudio:
         pcm = b"\x00\x00" * int(self.config.sample_rate * 0.5)
         return encode_wav(pcm, self.config.sample_rate, self.config.channels, self.config.sample_width)
 
-    def play_wav(self, wav_bytes: bytes, should_stop: Optional[Callable[[], bool]] = None) -> None:
+    def play_wav(self, wav_bytes: bytes, should_stop: Optional[Callable[[], bool]] = None) -> Optional[float]:
         LOG.info("Dry-run: würde WAV mit %d Bytes abspielen", len(wav_bytes))
+        return None
 
-    def play_stream(self, stream: StreamedWav, should_stop: Optional[Callable[[], bool]] = None) -> None:
+    def play_stream(self, stream: StreamedWav, should_stop: Optional[Callable[[], bool]] = None) -> Optional[float]:
         LOG.info("Dry-run: würde Ton-Strom mit %d Bytes abspielen", len(stream.read_all()))
+        return None
 
 
 class DryRunLed:
@@ -716,6 +733,10 @@ def validate_wav(wav_bytes: bytes, config: ClientConfig) -> None:
         raise ApiError("Ungültige WAV-Antwort") from exc
 
 
+# Kennung einer Antwort im letzten Pfadteil der audio_url (wie TURN_ID_PATTERN in server-api/stopp.ts).
+TURN_ID = re.compile(r"t_[A-Za-z0-9_-]{16}")
+
+
 class PicastApi:
     def __init__(self, config: ClientConfig):
         if not config.device_token and not config.dry_run:
@@ -724,6 +745,8 @@ class PicastApi:
         self.session_id = secrets.token_urlsafe(12)
         # Uhr für die Wiederholungsregel (Tests setzen eine eigene).
         self.clock: Callable[[], float] = time.monotonic
+        # Kennung der zuletzt geholten Antwort (aus der audio_url), für die Stopp-Meldung (Punkt B2).
+        self.last_turn_id: Optional[str] = None
 
     @property
     def _headers(self) -> dict[str, str]:
@@ -773,7 +796,28 @@ class PicastApi:
         }, timeout=self.config.pipeline_timeout_seconds)
         return self._download_audio(response)
 
+    def report_stop(self, turn_id: str, heard_seconds: float) -> bool:
+        """Meldet dem Server einen Stopp per Taste (Punkt B2): welche Antwort, wie viele Sekunden gespielt.
+
+        Ein Versuch mit kurzer Zeitgrenze, keine Wiederholung: Die Meldung soll das Kind nie warten
+        lassen. Fehler kommen nur als Status oder Art des Fehlers ins Protokoll, nie die Kennung.
+        """
+        payload = json.dumps({"turn_id": turn_id, "heard_seconds": round(max(0.0, heard_seconds), 2)}).encode("utf-8")
+        try:
+            status, _headers, _body = self._request("POST", "/v1/device/playback-stopped", payload, {
+                **self._headers,
+                "Content-Type": "application/json",
+            }, timeout=self.config.stop_report_timeout_seconds)
+        except (TimeoutError, OSError) as exc:
+            LOG.warning("Stopp-Meldung nicht gesendet (%s)", type(exc).__name__)
+            return False
+        if status != 204:
+            LOG.warning("Stopp-Meldung nicht angenommen (HTTP %d)", status)
+            return False
+        return True
+
     def _download_audio(self, response: dict[str, Any]) -> bytes | StreamedWav:
+        self.last_turn_id = None
         audio_url = response.get("audio_url")
         if not isinstance(audio_url, str) or not audio_url:
             raise ApiError("API-Antwort enthält keine audio_url")
@@ -783,8 +827,12 @@ class PicastApi:
             raise ApiError("audio_url ist keine gültige Adresse") from exc
         if not same_origin(absolute_url, self.config.api_base_url):
             raise ApiError("audio_url verweist nicht auf denselben Origin wie die API")
+        last_segment = urlparse(absolute_url).path.rstrip("/").rsplit("/", 1)[-1]
+        turn_id = last_segment if TURN_ID.fullmatch(last_segment) else None
         if response.get("audio_stream") is True and self.config.audio_stream:
-            return self._open_stream(absolute_url)
+            stream = self._open_stream(absolute_url)
+            self.last_turn_id = turn_id
+            return stream
         status, headers, data = self._request_absolute(
             "GET", absolute_url, None, self._headers, timeout=self.config.audio_timeout_seconds
         )
@@ -794,6 +842,7 @@ class PicastApi:
         if content_type.split(";")[0].lower() != "audio/wav":
             raise ApiError("Server lieferte kein WAV-Audio")
         validate_wav(data, self.config)
+        self.last_turn_id = turn_id
         return data
 
     def _open_stream(self, url: str) -> StreamedWav:
@@ -1068,7 +1117,7 @@ class KunibertClient:
             response_wav = self._request(lambda: self.api.ask_question(wav_bytes), acknowledge=True)
             self.transition(ClientState.PLAYING)
             self._log_wait("frage", recording_ended)
-            self._play(response_wav)
+            self._play(response_wav, getattr(self.api, "last_turn_id", None))
         except Exception as exc:
             self.handle_error(exc)
 
@@ -1079,17 +1128,20 @@ class KunibertClient:
             response_wav = self._request(self.api.request_story, acknowledge=False)
             self.transition(ClientState.PLAYING)
             self._log_wait("erzaehltaste", button_pressed)
-            self._play(response_wav)
+            self._play(response_wav, getattr(self.api, "last_turn_id", None))
         except Exception as exc:
             self.handle_error(exc)
 
-    def _play(self, response_wav: bytes | StreamedWav) -> None:
+    def _play(self, response_wav: bytes | StreamedWav, turn_id: Optional[str] = None) -> None:
         """Spielt die Antwort ab.
 
         Ein Beenden des Dienstes bricht die Wiedergabe ab. Ein neuer Druck auf eine der beiden
         Tasten auch (Punkt 56, seit 12.11.2026): Kunibert hört sofort auf. Der Druck zählt nur
         als Stopp, nicht zusätzlich als Frage oder Geschichte; erst wenn alle Tasten wieder
-        losgelassen sind, ist Kunibert wieder bereit.
+        losgelassen sind, ist Kunibert wieder bereit. Seit Punkt B2 meldet der Client den Stopp
+        dem Server (Kennung der Antwort, gespielte Sekunden), damit die Geschichte an der Stelle
+        weitergeht. Die Meldung läuft, während der Client auf das Loslassen wartet, und ist vor
+        der nächsten Anfrage fertig.
         """
         # Drücke während des Wartens zählen nicht (nur die Tastatur im Probelauf merkt sie sich).
         self._discard_pending_presses()
@@ -1108,20 +1160,42 @@ class KunibertClient:
         if isinstance(response_wav, StreamedWav):
             play_stream = getattr(self.audio_out, "play_stream", None)
             if callable(play_stream):
-                play_stream(response_wav, should_stop=should_stop)
+                played = play_stream(response_wav, should_stop=should_stop)
             else:
-                self.audio_out.play_wav(response_wav.read_all(), should_stop=should_stop)
+                played = self.audio_out.play_wav(response_wav.read_all(), should_stop=should_stop)
         else:
-            self.audio_out.play_wav(response_wav, should_stop=should_stop)
+            played = self.audio_out.play_wav(response_wav, should_stop=should_stop)
         if self.stop_requested:
             self.transition(ClientState.SHUTDOWN)
             return
         if stopped_by_press:
             LOG.info("Wiedergabe durch Tastendruck beendet")
+            report = self._start_stop_report(turn_id, played)
             self._discard_pending_presses()
             self._wait_for_release()
+            if report is not None:
+                # Vor der nächsten Anfrage fertig: Sonst gälte die Meldung für diese nicht mehr.
+                report.join(self.config.stop_report_timeout_seconds + 1.0)
         self._discard_pending_presses()
         self.transition(ClientState.MIC_OFF if self.buttons.mic_off else ClientState.READY)
+
+    def _start_stop_report(self, turn_id: Optional[str], played: Optional[float]) -> Optional[threading.Thread]:
+        """Startet die Stopp-Meldung im Hintergrund (Punkt B2). Ohne Kennung oder ohne gezählte Sekunden nicht."""
+        report_stop = getattr(self.api, "report_stop", None)
+        if not self.config.stop_report or not turn_id or played is None or not callable(report_stop):
+            return None
+
+        def send() -> None:
+            try:
+                if report_stop(turn_id, played):
+                    # Nur eine Zahl, nie die Kennung (siehe docs/picastAI-Pi-API.md).
+                    LOG.info("Stopp gemeldet nach %.1f s", played)
+            except Exception as exc:  # noqa: BLE001 - die Meldung darf den Client nie stören
+                LOG.warning("Stopp-Meldung fehlgeschlagen (%s)", type(exc).__name__)
+
+        thread = threading.Thread(target=send, name="kunibert-stopp", daemon=True)
+        thread.start()
+        return thread
 
     def _wait_for_release(self) -> None:
         """Wartet, bis keine Taste mehr gedrückt ist (höchstens RELEASE_WAIT_SECONDS)."""

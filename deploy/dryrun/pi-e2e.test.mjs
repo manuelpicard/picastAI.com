@@ -228,6 +228,76 @@ test('Pi-Client: Frage mit Aufnahme läuft durch Erkennung, Sprachmodell und Spr
   assert.match(seen.sttFields, /name="language"\r\n\r\nde/);
 });
 
+// Stopp per Taste (Punkt B2) mit dem echten Client: Er spielt eine Geschichte, das Kind drückt mittendrin
+// die Erzähltaste, der Client meldet den Stopp. Danach erzählt der Server denselben Teil ab der Stelle.
+const STOP_SCRIPT = [
+  'import logging, sys',
+  'logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")',
+  `sys.path.insert(0, ${JSON.stringify(path.join(root, 'pi-client'))})`,
+  'import kunibert_client as k',
+  'config = k.ClientConfig.from_env(dry_run=True)',
+  'class Buttons:',
+  '    speech_pressed = False',
+  '    story_pressed = False',
+  '    mic_off = False',
+  'buttons = Buttons()',
+  'class Out:',
+  '    mode = None',
+  '    def _loop(self, chunk, stop_after, should_stop):',
+  '        played = 0.0',
+  '        buttons.story_pressed = False  # die Taste, die die Geschichte geholt hat, ist los',
+  '        while True:',
+  '            if should_stop is not None and should_stop():',
+  '                buttons.story_pressed = False',
+  '                return played',
+  '            seconds = chunk()',
+  '            if seconds <= 0:',
+  '                return played',
+  '            played += seconds',
+  '            if played >= stop_after:',
+  '                buttons.story_pressed = True  # neuer Druck: Stopp',
+  '    def play_wav(self, wav, should_stop=None):',
+  '        self.mode = "datei"',
+  '        pcm = wav[44:]',
+  '        pos = [0]',
+  '        def chunk():',
+  '            n = min(320, len(pcm) - pos[0])',
+  '            pos[0] += n',
+  '            return n / 32000',
+  // Ganze Datei: Die Attrappe spricht jeden Text in 0,5 s; der erste Satz endet nach gut einem Drittel.
+  '        return self._loop(chunk, len(pcm) / 32000 * 0.4, should_stop)',
+  '    def play_stream(self, stream, should_stop=None):',
+  '        self.mode = "strom"',
+  '        def chunk():',
+  '            return len(stream.read(320)) / 32000',
+  '        try:',
+  // Ton-Strom: der erste Absatz (0,5 s) ganz, dann ein Stück der Pause.
+  '            return self._loop(chunk, 0.6, should_stop)',
+  '        finally:',
+  '            stream.close()',
+  'out = Out()',
+  'client = k.KunibertClient(config, k.PicastApi(config), k.DryRunAudio(config), out, buttons, k.DryRunLed())',
+  'client.transition(k.ClientState.WIFI_CONNECTING)',
+  'client.transition(k.ClientState.READY)',
+  'buttons.story_pressed = True',
+  'client.step()',
+  'print("MODUS", out.mode, "ZUSTAND", client.state.name)',
+  'answer = client.api.request_story()',
+  'print("WEITER", len(answer.read_all() if isinstance(answer, k.StreamedWav) else answer))',
+].join('\n');
+
+test('Pi-Client meldet einen Stopp per Taste; danach erzählt der Server denselben Teil ab der Stelle (B2)', async () => {
+  const logBefore = serverLog.length;
+  const { stdout, stderr } = await run('python3', ['-c', STOP_SCRIPT], { env: clientEnv() });
+  assert.match(stdout, /^MODUS (strom|datei) ZUSTAND READY$/m, `${stdout}\n${stderr}`);
+  assert.match(stdout, /^WEITER \d+$/m);
+  assert.match(stderr, /Stopp gemeldet nach \d+\.\d s/, 'der Client meldet den Stopp');
+  assert.ok(!/\bt_[A-Za-z0-9_-]{16}\b/.test(stderr), 'keine Kennung der Antwort im Protokoll des Clients');
+  const log = serverLog.slice(logBefore);
+  assert.match(log, /Stopp per Taste: gemerkt teil=\d\/5 saetze=1\/3/, log.slice(-1500));
+  assert.match(log, /Geschichte Teil \d\/5 ab Stopp: /, 'derselbe Teil ab der gehörten Stelle');
+});
+
 test('Server-Protokoll enthält weder Token noch erkannten Text', () => {
   assert.ok(!serverLog.includes(DEVICE_TOKEN), 'Geräte-Token im Protokoll');
   assert.ok(!serverLog.includes(HEARD), 'erkannter Text im Protokoll');
