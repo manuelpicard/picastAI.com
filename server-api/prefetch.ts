@@ -7,7 +7,8 @@
 //
 // Wie: Nach jedem ausgelieferten Teil einer laufenden Folge startet der Server im Hintergrund den
 // nächsten (Sprachmodell und Sprachausgabe). Drückt das Kind die Erzähltaste, nimmt der Server das
-// vorbereitete Ergebnis, wenn es zum aktuellen Stand der Folge passt (Folge, Teil, Ausfallzähler).
+// vorbereitete Ergebnis, wenn es zum aktuellen Stand der Folge passt (Folge, Teil, Ausfallzähler,
+// Zeitpunkt des letzten Teils).
 // Läuft die Vorbereitung noch, wartet er darauf statt neu anzufangen. Hat sich der Stand geändert
 // (zum Beispiel durch eine Idee des Kindes über die Sprechtaste), wird das Vorbereitete verworfen.
 //

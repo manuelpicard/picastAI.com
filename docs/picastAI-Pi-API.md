@@ -62,9 +62,9 @@ Authentifizierung wie oben, JSON-Body:
 }
 ```
 
-Jeder Aufruf erzählt den **nächsten Teil der laufenden Folge** (eine Folge hat standardmäßig fünf Teile, `KUNIBERT_PARTS_PER_EPISODE`) und beginnt nur dann eine neue Folge, wenn keine läuft oder die letzte beendet wurde. So passt es zum Satz am Ende jedes Teils: „Wenn du wissen willst, wie es weitergeht, drück noch einmal die Erzähltaste.“ `session_end` ist `true`, sobald der letzte Teil einer Folge gesprochen wurde. `locale` und `age_band` nimmt der Vertrag entgegen; es gilt derzeit de-DE und die serverseitig konfigurierte Altersgruppe (`KUNIBERT_AGE`). Einen Kinderwunsch trägt die Taste nicht; Wünsche äußert das Kind über die Sprechtaste („Erzähl mir eine Geschichte mit einem Einhorn“). Sagt das Kind über die Sprechtaste während einer laufenden Folge, was passieren soll („Kunibert soll den Drachen kitzeln“), erzählt der Server den nächsten Teil derselben Folge mit dieser Idee (Antwort `kind: "weiter"`). Nach Teil 1 weist der Schlusssatz darauf hin. Fällt das Sprachmodell mitten in einer Folge aus, kommt einmal der feste Satz „Kunibert muss kurz überlegen …“, und die Folge rückt nicht weiter.
+Jeder Aufruf erzählt den **nächsten Teil der laufenden Folge** (eine Folge hat standardmäßig fünf Teile, `KUNIBERT_PARTS_PER_EPISODE`) und beginnt nur dann eine neue Folge, wenn keine läuft oder die letzte beendet wurde. So passt es zum Satz am Ende jedes Teils: „Wenn du wissen willst, wie es weitergeht, drück noch einmal die Erzähltaste.“ `session_end` ist `true`, sobald der letzte Teil einer Folge gesprochen wurde. `locale` und `age_band` nimmt der Vertrag entgegen; es gilt derzeit de-DE und die serverseitig konfigurierte Altersgruppe (`KUNIBERT_AGE`). Einen Kinderwunsch trägt die Taste nicht; Wünsche äußert das Kind über die Sprechtaste („Erzähl mir eine Geschichte mit einem Einhorn“). Sagt das Kind über die Sprechtaste während einer laufenden Folge, was passieren soll („Kunibert soll den Drachen kitzeln“), erzählt der Server den nächsten Teil derselben Folge mit dieser Idee (Antwort `kind: "weiter"`). Hat das Kind den letzten Teil per Taste angehalten und das Gerät es gemeldet (`POST /v1/device/playback-stopped`, unten), erzählt der Server stattdessen denselben Teil ab der gehörten Stelle weiter. Nach Teil 1 weist der Schlusssatz darauf hin. Fällt das Sprachmodell mitten in einer Folge aus, kommt einmal der feste Satz „Kunibert muss kurz überlegen …“, und die Folge rückt nicht weiter.
 
-Die Story-Session wird für die Gerät-ID ausschließlich flüchtig im RAM gehalten. Turntexte und Storyzustände werden von den Geräte- und Turn-Endpunkten nicht in Firestore gespeichert. Nach einem Serverneustart beginnt die Story-Session neu. Sie verfällt außerdem 24 Stunden nach der letzten Nutzung (vorläufig, Maßnahme M9 der Datenschutz-Folgenabschätzung, seit 20.11.2026): Dann beginnt die nächste Erzählung eine neue Folge, und auch das Gedächtnis der letzten Folgen ist weg. Abgelaufenes löscht der Server spätestens fünf Minuten später aus dem Arbeitsspeicher, auch bei Geräten, die sich nicht mehr melden. Sperrt der Betreiber ein Gerät (`POST /api/devices/:id/revoke`), löscht der Server sofort dessen Stand, den vorbereiteten nächsten Teil, wartendes Audio und die Eltern-Steuerung (Einwilligung, Einstellungen, Kopplungscodes, Eltern-Tokens). Anfragen, die beim Sperren noch laufen, legen danach weder Stand noch Audio ab und antworten mit 401. Ein Ton-Strom, den das Gerät schon abspielt, läuft zu Ende. Die Antwort enthält eine kurzlebige Audio-URL:
+Die Story-Session wird für die Gerät-ID ausschließlich flüchtig im RAM gehalten. Turntexte und Storyzustände werden von den Geräte- und Turn-Endpunkten nicht in Firestore gespeichert. Nach einem Serverneustart beginnt die Story-Session neu. Sie verfällt außerdem 24 Stunden nach der letzten Nutzung (vorläufig, Maßnahme M9 der Datenschutz-Folgenabschätzung, seit 20.11.2026): Dann beginnt die nächste Erzählung eine neue Folge, und auch das Gedächtnis der letzten Folgen ist weg. Abgelaufenes löscht der Server spätestens fünf Minuten später aus dem Arbeitsspeicher, auch bei Geräten, die sich nicht mehr melden. Sperrt der Betreiber ein Gerät (`POST /api/devices/:id/revoke`), löscht der Server sofort dessen Stand, den vorbereiteten nächsten Teil, die gemerkte Stelle nach einem Stopp per Taste, wartendes Audio und die Eltern-Steuerung (Einwilligung, Einstellungen, Kopplungscodes, Eltern-Tokens). Anfragen, die beim Sperren noch laufen, legen danach weder Stand noch Audio ab und antworten mit 401. Ein Ton-Strom, den das Gerät schon abspielt, läuft zu Ende. Die Antwort enthält eine kurzlebige Audio-URL:
 
 ```json
 {
@@ -91,6 +91,29 @@ Ablauf: Claude schreibt den Teil im Streaming. Jeder fertige Absatz geht durch d
 Schlägt der Ausgabe-Check mitten im Teil an (oder bricht Claude ab, nachdem schon ein Absatz gesprochen wurde), wird der betroffene Absatz nie gesprochen. Kunibert sagt „Kunibert muss kurz überlegen …“, und die Folge rückt nicht vor; der nächste Druck erzählt den Teil neu, und beim nächsten Ausfall greift wie bisher die Ersatzfolge. Trifft es schon den ersten Absatz, ist noch nichts gesprochen: Dann schreibt Claude den Teil ohne Strom ein zweites Mal.
 
 Fragen, feste Texte, Ersatzgeschichten und vorbereitete Teile (`prefetch.ts`) kommen auch mit eingeschaltetem Strom als ganze Datei; `audio_stream` fehlt dann. Kommt eine neue Anfrage desselben Geräts, solange ein Strom noch im Hintergrund entsteht, wartet der Server auf dessen Stand.
+
+### `POST /v1/device/playback-stopped`
+
+Seit 21.11.2026 (Punkt B2 der Arbeitsliste). Hält das Kind Kunibert per Taste an, meldet das Gerät, welche Antwort es war und wie lange es sie gespielt hat. Gleiche Anmeldung wie oben, JSON-Body:
+
+```json
+{ "turn_id": "t_abcdefghijklmnop", "heard_seconds": 12.4 }
+```
+
+- `turn_id`: der letzte Pfadteil der `audio_url` dieser Antwort (`t_` und 16 Zeichen).
+- `heard_seconds`: gespielte Sekunden, von 0 bis 3600.
+
+Antwort: `204` ohne Inhalt, auch wenn der Server mit der Meldung nichts anfangen kann (zum Beispiel eine angehaltene Antwort auf eine Frage). Falsche Felder: `400 {"error":"bad_request"}`. Falsche Anmeldung oder gesperrtes Gerät: `401`. Die Route ruft weder Sprachmodell noch Sprachausgabe auf und zählt nicht zum Rate-Limit. Ohne Einwilligung, im Schlafmodus und in den Ruhezeiten merkt sich der Server nichts.
+
+Was der Server damit macht:
+
+- War es ein Geschichtenteil, schätzt der Server, bis zu welchem Satz das Kind ihn ganz gehört hat (`server-api/stopp.ts`). Mit Ton-Strom kennt er die Sekunden je Absatz genau; sonst verteilt er die Tonlänge nach der Länge des Texts. Kommt die Meldung, solange der Ton-Strom noch entsteht, gilt sie, sobald der Teil fertig ist.
+- Sagt das Kind danach über die Sprechtaste eine Idee, erzählt Claude **denselben Teil** ab der gehörten Stelle weiter und baut die Idee ein. Die Folge rückt dabei nicht vor. Vorher war es der nächste Teil, angesetzt am Ende des ganzen Teils, den das Kind nicht ganz gehört hatte.
+- Eine Frage dazwischen ändert nichts an der Stelle. Die Erzähltaste erzählt nach einem Stopp wie bisher den nächsten Teil; die Stelle gilt dann nicht mehr.
+- Stopp erst im Abschluss („Wenn du wissen willst …“) oder danach: Das Kind hat alles gehört, es bleibt alles wie bisher. Ein Stopp im letzten Teil einer Folge ändert ebenfalls nichts; eine Idee danach ist wie bisher der Wunsch für die nächste Folge.
+- Ohne Meldung bleibt alles wie bisher. Der Pi-Client meldet den Stopp ab Teil 2 dieses Punkts; die Firmware noch nicht (eigener Punkt). `/v1/turn` (Web-Simulator) kennt die Meldung nicht.
+
+Gemerkt werden nur der Text des letzten Geschichtenteils (vom Server erzeugt), seine Tonlänge und die gemeldeten Sekunden, keine Äußerung des Kindes. Alles liegt nur im Arbeitsspeicher und wird mit dem Stand der Geschichte gelöscht (24 Stunden, Sperren, Widerruf, `POST /v1/eltern/geschichte-neu`, `DELETE /v1/eltern/daten`). Das Protokoll bekommt je Meldung eine Zeile mit Zahlen, ohne Texte und Kennungen, zum Beispiel `Stopp per Taste: gemerkt teil=2/5 saetze=7/15`.
 
 ### Einwilligung, Schlafmodus und Ruhezeiten (gilt für alle Geräte-Routen)
 
@@ -232,7 +255,7 @@ Die `audio_url` aus der Antwort mit denselben Authentifizierungsheadern abrufen.
 - Fehlermeldungen der Sprachdienste und von Anthropic kommen nur als HTTP-Status mit Fehlercode ins Protokoll (zum Beispiel `HTTP 422 (string_too_long)`), nie mit ihrem Fließtext: Der kann den gesendeten Text enthalten (`server-api/provider-errors.ts`).
 - Audio nur im flüchtigen RAM, TTL standardmäßig 120 Sekunden.
 - Audio-URL benötigt erneut Geräteauthentifizierung.
-- Story-State, Rate-Limit und Audio sind im Prozessspeicher, nicht hochverfügbar. Die Geräteliste ist es nur ohne `PICASTAI_DEVICE_STORE=firestore`. Der Story-State verfällt 24 Stunden nach der letzten Nutzung; `GET /api/status` zeigt nur die Anzahl (`storyStates`, `storyPrefetches`, `eltern`), keine Geräte-IDs und keine Inhalte.
+- Story-State, Rate-Limit und Audio sind im Prozessspeicher, nicht hochverfügbar. Die Geräteliste ist es nur ohne `PICASTAI_DEVICE_STORE=firestore`. Der Story-State verfällt 24 Stunden nach der letzten Nutzung, ebenso der zuletzt erzählte Teil für den Stopp per Taste; `GET /api/status` zeigt nur die Anzahl (`storyStates`, `storyPrefetches`, `storyStops`, `eltern`), keine Geräte-IDs und keine Inhalte.
 - Einwilligung, Schlafmodus, Ruhezeiten, Kopplungscodes und Eltern-Tokens liegen vorläufig nur im Arbeitsspeicher (dauerhaft: Punkt E2 der Arbeitsliste). Nach einem Neustart hört jedes Gerät nur den festen Hinweis, bis die Eltern neu einwilligen.
 - Geräteverwaltung, Status und sichere Konfigurationsübersicht benötigen ein starkes Admin-Bearer-Token.
 - CORS akzeptiert nur exakt konfigurierte Browser-Ursprünge; ohne Allowlist gibt es keine Cross-Origin-Freigabe.
