@@ -47,10 +47,11 @@ Angelegt am 17.11.2026, 20:15, von Claude (Chat). Gepflegt von den Läufen des W
 - Fertig, wenn: neue Sätze in beiden Listen („muss anschlagen“, „darf nicht anschlagen“), alle grün, `docs/Sicherheitsweiche-Pruefung.md` ergänzt.
 
 ### F1 · Aufräumen: Reste und alte Branches
-- Rolle: Bauen · Prio: 1 · Status: offen · Bezug: Nr. 58, 58a
+- Rolle: Bauen · Prio: 1 · Status: erledigt (PR #77, 21.11.2026) · Bezug: Nr. 58, 58a
 - Ziel: Reste von Google AI Studio löschen (`.aistudio/`, `metadata.json`, `firebase-blueprint.json`; vorher prüfen, dass nichts darauf verweist). Branches sichten: Branches, deren PR gemergt oder geschlossen ist und deren Inhalt in `main` steckt oder überholt ist, löschen. Je gelöschtem Branch den letzten Commit-Hash im Bericht nennen, damit er wiederherstellbar bleibt. `restlimit/2026-KW46` erst mit A1.
 - Stand 20.11.2026, 22:55 (Planung): A1 ist erledigt (PR #69), PR #49 ist geschlossen. Der Branch `restlimit/2026-KW46` (letzter Commit `b3ec035dff8d3610c9549f1b9f54b81708a9371a`) steht noch: Das Löschen über die REST-Schnittstelle (`DELETE …/git/refs/heads/…`) war in dieser Sitzung gesperrt (HTTP 403). Gelingt es wieder nicht, keinen Umweg suchen: die Branches mit Hash im Bericht nennen, der Betreiber löscht sie auf GitHub (Seite „Branches“). Dann gilt F1 trotzdem als erledigt, wenn der Rest gemergt ist.
 - Fertig, wenn: gemergt, CI grün, Liste der gelöschten Branches mit Hash im Bericht.
+- Stand 21.11.2026 (PR #77): `.aistudio/`, `metadata.json` und `firebase-blueprint.json` sind gelöscht. `firebase-applet-config.json`, `firebase.json` und `firestore.rules` bleiben (Server, Firestore-Test, CI). Das Löschen von Branches war wieder gesperrt (HTTP 403). Zum Löschen durch den Betreiber (PR geschlossen, Inhalt in `main` oder überholt, über die PR-Seite wiederherstellbar): `restlimit/2026-KW46` (`b3ec035`, #49), `prototyp/pi-taster` (`233b1ce`, #1), `claude/azure-sprachausgabe` (`66a772f`, #11), `claude/google-erzaehlstimme` (`ec15e05`, #15), `claude/pocket-sprachausgabe` (`7e7b92b`, #16). Bleibt: `claude/ki-hinweis` (siehe H3). Ohne PR, Einschätzung „überholt“, Entscheidung beim Betreiber: `claude/stand-firestore-test`, `docs/index`, `safety/hardening`, `test/safety-screen-regression`, `feature/erzaehlerschmiede-browser` (nutzt OpenAI). Volle Hashes und Gründe im Bericht von PR #77.
 
 ### H5 · Lizenz der Stimme stuart_bell
 - Rolle: Recherche · Prio: 1 · Status: offen · Bezug: Nr. 9 (Stimme)
@@ -150,6 +151,7 @@ Angelegt am 17.11.2026, 20:15, von Claude (Chat). Gepflegt von den Läufen des W
 - Rolle: Recherche · Prio: 3 · Status: offen · Bezug: Nr. 4, 6, 27
 - Ziel: Was gilt (KI-Verordnung Art. 50, Nutzungsrichtlinie von Anthropic)? Textentwurf für die Ansage am Gerät und für die Elterninformation.
 - Fertig, wenn: `docs/recherche/ki-hinweis.md` mit Quellen. Entwurf, nichts abschicken. Keine Rechtsberatung.
+- Hinweis (21.11.2026, F1): Ein früher Entwurf der Ansage beim ersten Einschalten liegt auf dem Branch `claude/ki-hinweis` (PR #17, am 13.11. als geparktes Thema geschlossen, nicht gemergt): Commit `493c226` mit `server-api/ansage.ts` und der Ansage im Pi-Client (`pi-client/kunibert_client.py`). Der Branch bleibt dafür stehen. Siehe auch N1120-1610-g (2).
 
 ### H6 · Kosten je Folge und Stückliste
 - Rolle: Recherche · Prio: 3 · Status: offen
@@ -313,3 +315,15 @@ Angelegt am 17.11.2026, 20:15, von Claude (Chat). Gepflegt von den Läufen des W
 - Rolle: Bauen · Prio: 3 · Status: offen · Bezug: B2, PR #75; Ton-Strom (`respondTurn` in `server.ts`)
 - Ziel: Bricht ein Teil im Ton-Strom ab, nachdem schon Absätze gesprochen wurden (Ausgabe-Check, Claude oder Sprachausgabe), erzählt der nächste Druck heute den ganzen Teil neu. Das Kind hört den Anfang dann ein zweites Mal, in anderer Fassung. Mit dem Werkzeug aus B2 (`server-api/stopp.ts`) könnte der Server sich die gesprochenen Absätze als gehörte Stelle merken und dort weitererzählen. Für einen nach einem Stopp neu erzählten Teil macht PR #75 das schon.
 - Fertig, wenn: Tests am echten Server für Abbruch durch Ausgabe-Check und durch die Sprachausgabe; der Ausgabe-Check läuft weiter über jeden Absatz. Eigener PR mit „(ändert, was Kinder hören)“.
+
+### N1121-1307-a · Vite-Entwicklungsserver: Rest aus AI Studio, Host-Prüfung wieder an
+- Rolle: Bauen · Prio: 3 · Status: offen · Bezug: F1, Prüfung von PR #77
+- Ziel: `vite.config.ts` hat noch den `server`-Block aus dem Import aus AI Studio: `host: '0.0.0.0'`, `port: 3000`, `allowedHosts: true`. Ohne `NODE_ENV=production` nutzt `server.ts` Vite im Middleware-Modus; Host und Port aus dem Block wirken dort nicht. `allowedHosts: true` schaltet die Host-Prüfung von Vite ab (Schutz gegen DNS-Rebinding; laut Prüfung von PR #77 auch im Middleware-Modus). Den Block entfernen oder auf das Nötige kürzen. Vorher prüfen, ob Simulator und Dashboard im eigenen WLAN (Aufruf über die IPv4-Adresse) weiter laden. Betrifft nur die Entwicklung, nicht den Betrieb.
+- Fertig, wenn: gemergt, CI grün; ein Test belegt, dass die Host-Prüfung an ist; `npm run dev` unter `http://localhost:3000` geprüft (sonst „offen“ im Bericht).
+- Gefunden bei der Prüfung von PR #77 (21.11.2026).
+
+### N1121-1307-b · Doku-Rest aus dem Restlimit-Entwurf der KW46 nachziehen
+- Rolle: Bauen · Prio: 3 · Status: offen · Bezug: A1, F1
+- Ziel: Der Doku-Commit `b3ec035` aus PR #49 (Branch `restlimit/2026-KW46`) kam mit A1 nicht nach `main`. Dort fehlen Angaben, deren Code in `main` steht: in `CLAUDE.md` zum Beispiel der Firmware-Test `test/test_base_url.c` (läuft in `.github/workflows/firmware.yml`), dazu laut Prüfung von PR #77 `KUNIBERT_REQUIRE_REAL_AUDIO` und `npm run test:firestore`; in `pi-client/README.md` zum Beispiel `StartLimitIntervalSec=0` und `KUNIBERT_INSTALL_START` (beide in `pi-client/install_raspberry_pi.sh`), laut Prüfung auch GPIO-Variablen und Wiederholregeln. Den Commit über `refs/pull/49/head` lesen und nur übernehmen, was zum heutigen Code passt.
+- Fertig, wenn: gemergt; jede übernommene Zeile ist gegen den Code geprüft; die Prüfbefehle in `CLAUDE.md` laufen so durch.
+- Gefunden bei der Prüfung von PR #77 (21.11.2026).

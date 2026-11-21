@@ -1,8 +1,0 @@
-{
-  "name": "Ritter Kunibert",
-  "description": "Ein bildschirmloses Zuhör- und Erzählgerät für Kinder – Web-Simulator, API-Server und Eltern-Dashboard für Ritter Kunibert Geschichten und kindgerechte Fragen.",
-  "requestFramePermissions": [
-    "microphone"
-  ],
-  "capabilities": []
-}
