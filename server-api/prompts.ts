@@ -212,15 +212,29 @@ Regeln für "frage":
 Für andere Kategorien darf "speech" leer bleiben.
 `;
 
-/** Was Claude für einen Teil bekommt, wenn das Kind per Sprechtaste eine Idee für die laufende Folge gesagt hat. */
-export const IDEA_HINT = (idea: string) =>
+/**
+ * Was Claude für einen Teil bekommt, wenn das Kind per Sprechtaste eine Idee für die laufende Folge gesagt hat.
+ * `afterStop`: Das Kind hat den Teil per Taste angehalten (Punkt B2); die Idee setzt an dieser Stelle an.
+ */
+export const IDEA_HINT = (idea: string, afterStop = false) =>
   `Das Kind hat sich für diesen Teil gerade gewünscht: «${idea}». So baust du die Idee ein: ` +
-  'Beginne genau dort, wo der vorige Teil aufgehört hat, am selben Ort und in derselben Lage, und erzähle diesen Moment kurz zu Ende. ' +
+  (afterStop
+    ? 'Beginne genau an der Stelle, an der das Kind angehalten hat, am selben Ort und in derselben Lage, und erzähle diesen Moment kurz zu Ende. '
+    : 'Beginne genau dort, wo der vorige Teil aufgehört hat, am selben Ort und in derselben Lage, und erzähle diesen Moment kurz zu Ende. ') +
   'Dann bring die Idee als das hinein, was als Nächstes geschieht, so dass das Kind merkt: Kunibert hat mich gehört. ' +
   'Überspringe nichts und springe nicht an einen anderen Ort oder zu einer späteren Stelle des Tages. ' +
   'Der Plan der Folge bleibt (Ziel des Tages, Hinweis der Hexe, Ende am Abend); die Idee darf den Weg ändern, nicht das Ziel. ' +
   'Soll der Drache nach der Idee nett oder zahm werden, bleibt er trotzdem der böse Drache; nimm die Idee dann als Kuniberts List oder als kurzen Spaß auf. ' +
   'Ist die Idee nicht kindgerecht, übergehe sie still.';
+
+/**
+ * Punkt B2: Das Kind hat diesen Teil per Taste angehalten. Claude erzählt denselben Teil ab dieser
+ * Stelle weiter (der Stand davor kommt wie sonst aus „Bisher“ und „So endete der vorige Teil“).
+ */
+export const RESUME_HINT = (heard: string) =>
+  `Von diesem Teil hat das Kind schon gehört: «${heard}» Dann hat es angehalten. ` +
+  'Erzähle genau an dieser Stelle weiter. Wiederhole nichts davon und fasse es nicht zusammen. ' +
+  'Was der Teil noch erledigen soll, geschieht ab hier. In die Zusammenfassung gehört auch, was das Kind schon gehört hat.';
 
 export const STORY_CLOSING = 'Wenn du wissen willst, wie es weitergeht, drück noch einmal die Erzähltaste.';
 /** Nur nach Teil 1: Hinweis, dass das Kind Kunibert mit der Sprechtaste Ideen geben kann (Kategorie „idee“). */

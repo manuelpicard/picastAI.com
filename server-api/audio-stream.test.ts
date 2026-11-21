@@ -55,6 +55,15 @@ test('StreamingSpeaker: Absätze der Reihe nach, Pause dazwischen, erster Ton na
   assert.equal((await collect(speaker.stream)).length, 200 + pause + 100);
 });
 
+test('StreamingSpeaker: merkt sich die Sekunden je gesprochenem Text, ohne die Pausen (Stopp per Taste, B2)', async () => {
+  const lengths: Record<string, number> = { eins: RATE, zwei: RATE / 2, Abschluss: RATE / 4 };
+  const speaker = new StreamingSpeaker(async (text) => tone(lengths[text]), RATE);
+  for (const text of ['eins', 'zwei', 'Abschluss']) speaker.say(text);
+  await speaker.finish();
+  assert.deepEqual(speaker.segments, [1, 0.5, 0.25]);
+  assert.equal(speaker.stream.seconds, 1 + 0.5 + 0.25 + (2 * PARAGRAPH_PAUSE_MS) / 1000, 'der Strom hat dazu die Pausen');
+});
+
 test('StreamingSpeaker: Ausfall der Sprachausgabe bricht den Strom ab', async () => {
   const speaker = new StreamingSpeaker(async () => { throw new Error('Pocket weg'); }, RATE);
   speaker.say('eins');

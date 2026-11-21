@@ -36,9 +36,10 @@ Angelegt am 17.11.2026, 20:15, von Claude (Chat). Gepflegt von den Läufen des W
 - Fertig, wenn: Messung vorher und nachher im PR. Neue Wege nur hinter einem Schalter, Standard unverändert, solange die Güte nicht belegt ist. Sicherheitsweiche und Ausgabe-Check unverändert wirksam (Tests).
 
 ### B2 · Stopp per Taste dem Server melden (Kinder)
-- Rolle: Bauen · Prio: 1 · Status: offen · Bezug: Befund aus dem Probelauf vom 14.11.
+- Rolle: Bauen · Prio: 1 · Status: offen (Teil 1 von 2 erledigt, PR #75) · Bezug: Befund aus dem Probelauf vom 14.11.
 - Ziel: Stoppt das Kind einen Teil per Taste, weiß der Server das bisher nicht. Eine Idee setzt dann am Ende des ganzen Teils an, obwohl das Kind nur einen Teil gehört hat. Der Pi-Client meldet den Stopp mit der gehörten Zeit; der Server merkt sich, wo die Geschichte für das Kind stand, und die nächste Idee setzt dort an.
 - Fertig, wenn: Server, Pi-Client, Schnittstellen-Doku und Tests (auch e2e) passen. Für die Firmware ein eigener Folgepunkt. Ohne Meldung verhält sich alles wie heute.
+- Stand 21.11.2026 (PR #75, Teil 1): Der Server kann es. `POST /v1/device/playback-stopped` (`docs/picastAI-Pi-API.md`), `server-api/stopp.ts`. Vorläufig entschieden (21.11.2026, 06:55): Nach einem Stopp gehen auch „weiter“ und die Erzähltaste an der gehörten Stelle weiter, nicht nur eine Idee. Teil 2: Der Pi-Client meldet den Stopp (Kennung aus der `audio_url`, gespielte Sekunden), sofort und vor der nächsten Anfrage, ohne das Kind warten zu lassen; Tests auch gegen die echte Audio-Bibliothek; e2e in `deploy/dryrun/pi-e2e.test.mjs`; `pi-client/README.md`. Firmware: N1121-0607-a.
 
 ### E3 · Sicherheitsweiche: mehr Testsätze, Lücken schließen
 - Rolle: Prüfen · Prio: 1 · Status: erledigt (PR #71, 20.11.2026) · Bezug: Nr. 22
@@ -297,3 +298,18 @@ Angelegt am 17.11.2026, 20:15, von Claude (Chat). Gepflegt von den Läufen des W
 - Rolle: Prüfen · Prio: 3 · Status: offen · Bezug: B1, PR #73
 - Ziel: `likelyStoryTurn` (`server-api/brain.ts`) mit echten Äußerungen prüfen: Wie oft liegt sie daneben (Zeilen `modus=vorab_verworfen` im Protokoll), welche Wünsche und Ideen übersieht sie („Noch eine“, „weiterlesen“, „Was passiert dann“)? Nur mit Sätzen von Erwachsenen; keine Äußerungen ins Repo, nur gebaute Beispielsätze.
 - Fertig, wenn: Tabelle in `server-api/brain.test.ts` ergänzt; Anteil der verworfenen Aufrufe aus dem Probelauf im PR (nur Zahlen).
+
+### N1121-0607-a · Stopp per Taste in der Firmware melden
+- Rolle: Bauen · Prio: 2 · Status: offen · Nach B2 · Bezug: B2, PR #75
+- Ziel: Die Firmware (`firmware/esp32-s3/`) meldet wie der Pi-Client einen Stopp per Taste mit `POST /v1/device/playback-stopped` (`turn_id` aus der `audio_url`, gespielte Sekunden aus den geschriebenen Samples). Die Meldung geht sofort nach dem Stopp hinaus, vor der nächsten Anfrage, und darf das Kind nicht warten lassen (kurze Zeitgrenze, kein zweiter Versuch).
+- Fertig, wenn: Rechner-Tests (`test/test_logic.c`) für das Zählen der Sekunden und das Bauen der Meldung, CI-Build grün, `firmware/esp32-s3/README.md` und `docs/picastAI-Pi-API.md` angepasst. Auf keinem Gerät gelaufen: so im Bericht nennen.
+
+### N1121-0607-b · Nach einem Stopp den Rest des Teils schon vorbereiten (Kinder)
+- Rolle: Bauen · Prio: 3 · Status: offen · Nach B2 · Bezug: B2, PR #75; Vorbereitung (`server-api/prefetch.ts`)
+- Ziel: Seit PR #75 erzählt die Erzähltaste nach einem gemeldeten Stopp denselben Teil ab der gehörten Stelle weiter. Der vorbereitete nächste Teil passt dann nicht, und das Kind wartet so lange wie ohne Vorbereitung (Claude und Sprachausgabe). Gleich nach der Meldung im Hintergrund den Rest des Teils vorbereiten (ohne Idee); die Erzähltaste nimmt ihn, eine Idee verwirft ihn. Die alte Vorbereitung des nächsten Teils verwerfen (Kosten). Dazu prüfen (Einschätzung aus der Prüfung von PR #75, nicht gemessen): Läuft die alte Vorbereitung noch, kann sie die Sprachausgabe des neu erzählten Teils aufhalten, weil Pocket nur eine Anfrage zur Zeit rechnet; ein Abbrechen braucht N1120-2300-b.
+- Fertig, wenn: Test am echten Server mit Attrappen: Nach Stopp und Erzähltaste kein neuer Aufruf an Claude, wenn die Vorbereitung fertig ist; nach einer Idee wird sie verworfen. Messung der Wartezeit vorher und nachher mit Attrappen.
+
+### N1121-0607-c · Abgebrochener Ton-Strom: nach den gesprochenen Absätzen weitererzählen (Kinder)
+- Rolle: Bauen · Prio: 3 · Status: offen · Bezug: B2, PR #75; Ton-Strom (`respondTurn` in `server.ts`)
+- Ziel: Bricht ein Teil im Ton-Strom ab, nachdem schon Absätze gesprochen wurden (Ausgabe-Check, Claude oder Sprachausgabe), erzählt der nächste Druck heute den ganzen Teil neu. Das Kind hört den Anfang dann ein zweites Mal, in anderer Fassung. Mit dem Werkzeug aus B2 (`server-api/stopp.ts`) könnte der Server sich die gesprochenen Absätze als gehörte Stelle merken und dort weitererzählen. Für einen nach einem Stopp neu erzählten Teil macht PR #75 das schon.
+- Fertig, wenn: Tests am echten Server für Abbruch durch Ausgabe-Check und durch die Sprachausgabe; der Ausgabe-Check läuft weiter über jeden Absatz. Eigener PR mit „(ändert, was Kinder hören)“.

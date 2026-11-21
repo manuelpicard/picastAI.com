@@ -7,7 +7,8 @@
 //
 // Wie: Nach jedem ausgelieferten Teil einer laufenden Folge startet der Server im Hintergrund den
 // nächsten (Sprachmodell und Sprachausgabe). Drückt das Kind die Erzähltaste, nimmt der Server das
-// vorbereitete Ergebnis, wenn es zum aktuellen Stand der Folge passt (Folge, Teil, Ausfallzähler).
+// vorbereitete Ergebnis, wenn es zum aktuellen Stand der Folge passt (Folge, Teil, Ausfallzähler,
+// Zeitpunkt des letzten Teils).
 // Läuft die Vorbereitung noch, wartet er darauf statt neu anzufangen. Hat sich der Stand geändert
 // (zum Beispiel durch eine Idee des Kindes über die Sprechtaste), wird das Vorbereitete verworfen.
 //
@@ -26,9 +27,13 @@ export interface PrefetchEntry {
   promise: Promise<TurnResult | null>;
 }
 
-/** Schlüssel für den Stand, auf dem eine Vorbereitung aufbaut. */
+/**
+ * Schlüssel für den Stand, auf dem eine Vorbereitung aufbaut. Mit dem Zeitpunkt des letzten Teils
+ * (`at`): Wird ein Teil nach einem Stopp per Taste neu erzählt (Punkt B2), bleiben Folge und Teil
+ * gleich, aber die alte Vorbereitung passt nicht mehr zu ihm.
+ */
 export function prefetchKey(state: StoryState): string {
-  return `${state.ep}:${state.part}:${state.target}:${state.miss}:${state.done ? 'ende' : 'läuft'}`;
+  return `${state.ep}:${state.part}:${state.target}:${state.miss}:${state.done ? 'ende' : 'läuft'}:${state.at || 0}`;
 }
 
 export class StoryPrefetcher {

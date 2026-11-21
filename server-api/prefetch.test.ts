@@ -12,10 +12,23 @@ const result = (over: Partial<TurnResult> = {}): TurnResult => ({
   ...over,
 });
 
-test('prefetchKey: Folge, Teil, Teilezahl und Ausfallzähler', () => {
-  assert.equal(prefetchKey(state()), '2:2:5:0:läuft');
+test('prefetchKey: Folge, Teil, Teilezahl, Ausfallzähler und Zeitpunkt des letzten Teils', () => {
+  assert.equal(prefetchKey(state()), '2:2:5:0:läuft:0');
   assert.notEqual(prefetchKey(state({ done: true })), prefetchKey(state()));
   assert.notEqual(prefetchKey(state({ miss: 1 })), prefetchKey(state()));
+  // Punkt B2: Derselbe Teil, nach einem Stopp per Taste neu erzählt, hat einen anderen Zeitpunkt.
+  assert.notEqual(prefetchKey(state({ at: 1_000 })), prefetchKey(state({ at: 2_000 })));
+});
+
+test('Teil nach einem Stopp neu erzählt (gleicher Teil, neuer Zeitpunkt): die alte Vorbereitung gilt nicht mehr (B2)', async () => {
+  const made: number[] = [];
+  const prefetcher = new StoryPrefetcher(async (s) => { made.push(s.at); return result({ speech: `nach ${s.at}` }); }, { ttlMs: 60_000 });
+  prefetcher.start('d', state({ at: 1_000 }));
+  prefetcher.start('d', state({ at: 2_000 }));
+  assert.deepEqual(made, [1_000, 2_000], 'der neu erzählte Teil bekommt eine eigene Vorbereitung');
+  assert.equal(await prefetcher.take('d', state({ at: 1_000 }), 1000), null, 'die Vorbereitung zum alten Teil passt nicht');
+  prefetcher.start('d', state({ at: 2_000 }));
+  assert.equal((await prefetcher.take('d', state({ at: 2_000 }), 1000))?.speech, 'nach 2000');
 });
 
 test('vorbereiteter Teil wird zum passenden Stand genau einmal abgeholt', async () => {

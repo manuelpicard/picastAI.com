@@ -102,3 +102,23 @@ test('purgeExpired: abgelaufener Stand verwirft auch seine Vorbereitung; Vorbere
 test('Aufräumen alle fünf Minuten: Abgelaufenes bleibt höchstens so lange im Arbeitsspeicher', () => {
   assert.equal(PURGE_INTERVAL_MS, 5 * 60 * 1000);
 });
+
+test('purgeExpired: abgelaufener Stand löscht auch die gemerkte Stelle nach einem Stopp per Taste (B2)', () => {
+  let now = 0;
+  const states = new StoryStateStore(STORY_STATE_TTL_MS, () => now);
+  states.set('alt', state());
+  now = 20 * HOUR;
+  states.set('neu', state());
+  now = 24 * HOUR;
+  const deleted: string[] = [];
+  let purged = 0;
+  purgeExpired({
+    states,
+    prefetcher: { cancel: () => undefined, purge: () => 0 },
+    audio: { purge: () => undefined },
+    streams: { purge: () => undefined },
+    stops: { delete: (deviceId) => deleted.push(deviceId), purge: () => { purged++; } },
+  });
+  assert.deepEqual(deleted, ['alt'], 'nur das Gerät mit abgelaufenem Stand');
+  assert.equal(purged, 1, 'dazu alles andere Abgelaufene');
+});

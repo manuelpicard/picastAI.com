@@ -96,16 +96,22 @@ export interface ExpiringParts {
   prefetcher: { cancel(deviceId: string): void; purge(): number };
   audio: { purge(): void };
   streams: { purge(): void };
+  /** Gemerkte Stellen nach einem Stopp per Taste (Punkt B2, stopp.ts). */
+  stops?: { delete(deviceId: string): void; purge(): void };
 }
 
 /**
  * Löscht alles Abgelaufene, auch bei Geräten, die sich nie wieder melden: den Stand der Geschichte
- * samt Vorbereitung des nächsten Teils, abgelaufene Vorbereitungen, wartendes Audio und Ton-Ströme.
- * Der Server ruft das alle `PURGE_INTERVAL_MS` auf.
+ * samt Vorbereitung des nächsten Teils und gemerkter Stelle, abgelaufene Vorbereitungen, wartendes
+ * Audio und Ton-Ströme. Der Server ruft das alle `PURGE_INTERVAL_MS` auf.
  */
 export function purgeExpired(parts: ExpiringParts): void {
-  for (const deviceId of parts.states.purge()) parts.prefetcher.cancel(deviceId);
+  for (const deviceId of parts.states.purge()) {
+    parts.prefetcher.cancel(deviceId);
+    parts.stops?.delete(deviceId);
+  }
   parts.prefetcher.purge();
   parts.audio.purge();
   parts.streams.purge();
+  parts.stops?.purge();
 }

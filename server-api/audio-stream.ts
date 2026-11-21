@@ -83,6 +83,8 @@ export type Synthesize = (text: string) => Promise<Buffer>;
  */
 export class StreamingSpeaker {
   readonly stream: PcmStream;
+  /** Sekunden Ton je gesprochenem Text, in der Reihenfolge von `say` (für den Stopp per Taste, Punkt B2). */
+  readonly segments: number[] = [];
   private queue: Promise<void> = Promise.resolve();
   private said = 0;
   private resolveFirst!: () => void;
@@ -113,7 +115,9 @@ export class StreamingSpeaker {
           throw new Error('Sprachausgabe lieferte ein anderes Format als der Strom');
         }
         if (index > 0) this.stream.push(Buffer.alloc(Math.round((this.stream.sampleRate * PARAGRAPH_PAUSE_MS) / 1000) * 2));
-        this.stream.push(wav.subarray(info.dataOffset, info.dataOffset + info.dataSize - (info.dataSize % 2)));
+        const pcm = wav.subarray(info.dataOffset, info.dataOffset + info.dataSize - (info.dataSize % 2));
+        this.stream.push(pcm);
+        this.segments[index] = pcm.length / (this.stream.sampleRate * 2);
         if (index === 0) this.resolveFirst();
       } catch (error) {
         this.error = error;
