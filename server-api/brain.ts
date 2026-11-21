@@ -11,6 +11,7 @@ import {
   IDEA_HINT,
   NEXT_PHASE_PREVIEW,
   PHASE_HINTS,
+  RESUME_HINT,
   STORY_CLOSING,
   STORY_CLOSING_FIRST,
   STORYTELLER_SYSTEM,
@@ -27,6 +28,7 @@ import {
 import { generateMelodyWav, generateToneWav } from './audio.js';
 import { config, type KunibertConfig } from './config.js';
 import { costUsd, formatUsd, pricesFor, type LlmPrices, type LlmUsage } from './costs.js';
+import { MAX_HEARD_CHARS, type PartBasis, type StopResume } from './stopp.js';
 import { budgetTimeoutMs, MIN_LLM_MS, NO_TIMER, TTS_RESERVE_MS, TurnTimer, type StageTimer, type TimedStage } from './timing.js';
 
 /** Fester Ersatztext, wenn das Sprachmodell fehlt, ausfällt oder seine Antwort abgelehnt wurde. */
@@ -80,7 +82,18 @@ export interface TurnResult {
   wav?: Buffer;
   /** Der Text wurde schon Absatz für Absatz an einen StorySink gegeben (Ton-Strom, Punkt 71). */
   streamed?: boolean;
+  /**
+   * Nur bei einem erzählten Teil: der Stand davor und der Anfang, den das Kind schon gehört hatte
+   * (Teil nach einem Stopp per Taste neu erzählt, sonst ''). Für den Stopp per Taste (Punkt B2).
+   */
+  basis?: PartBasis;
 }
+
+/**
+ * Nach einem Stopp per Taste (Punkt B2): Das Kind hat den letzten Teil nur bis `heard` gehört. Eine
+ * Idee erzählt diesen Teil dann ab dort weiter, auf dem Stand `before` (vor dem Teil).
+ */
+export type StoryResume = StopResume;
 
 /**
  * Empfänger für den Ton-Strom (Punkt 71): Jeder Absatz kommt hierher, sobald Claude ihn fertig
@@ -207,6 +220,18 @@ export function cleanState(raw: any): StoryState {
 
 export function storyActive(state: StoryState): boolean {
   return state.part > 0 && !state.done;
+}
+
+/**
+ * Prüft die gemerkte Stelle nach einem Stopp per Taste (Punkt B2) gegen den Stand des Geräts. Sie gilt
+ * nur, wenn die Folge läuft und `before` genau der Stand vor dem aktuellen Teil ist (gleiche Folge,
+ * ein Teil davor). Sonst undefined: Dann erzählt eine Idee wie bisher den nächsten Teil.
+ */
+export function cleanResume(raw: { before: unknown; heard: string } | undefined, state: StoryState): StoryResume | undefined {
+  if (!raw || !storyActive(state)) return undefined;
+  const before = cleanState(raw.before);
+  if ((raw.before as { v?: unknown } | null)?.v !== 1 || before.ep !== state.ep || before.part !== state.part - 1 || before.done) return undefined;
+  return { before, heard: cleanText(raw.heard, MAX_HEARD_CHARS) };
 }
 
 export function trimWords(text: string, maxWords: number): string {
@@ -412,7 +437,7 @@ export function usesHint(text: string, hint: string): boolean {
 export function buildStoryPrompt(
   state: StoryState,
   part: number,
-  settings: { storyMinWords: number; storyMaxWords: number; bedtime?: boolean; nowMs?: number; idea?: string },
+  settings: { storyMinWords: number; storyMaxWords: number; bedtime?: boolean; nowMs?: number; idea?: string; heard?: string },
   retryNote = ''
 ): string {
   const target = state.target;
@@ -441,9 +466,12 @@ export function buildStoryPrompt(
     }
     if (state.hook) lines.push(`Anknüpfen an: ${state.hook}`);
   }
+  // Stopp per Taste (Punkt B2): Das Kind hat diesen Teil schon bis hierhin gehört.
+  const heard = cleanText(settings.heard, MAX_HEARD_CHARS);
+  if (heard) lines.push(RESUME_HINT(heard));
   if (state.wish) lines.push(`Wunsch des Kindes für diese Folge: «${state.wish}»`);
   if (settings.bedtime) lines.push(BEDTIME_HINT);
-  if (settings.idea) lines.push(IDEA_HINT(cleanText(settings.idea, STATE_LIMITS.wish)));
+  if (settings.idea) lines.push(IDEA_HINT(cleanText(settings.idea, STATE_LIMITS.wish), Boolean(heard)));
   const preview = phase === 'finale' ? '' : NEXT_PHASE_PREVIEW[storyPhase(part + 1, target)];
   if (preview) lines.push(preview);
   if (retryNote) lines.push(retryNote);
@@ -692,13 +720,13 @@ export class Brain {
    * Startet einen Geschichtenaufruf schon während der Einordnung (Punkt B1). Es sind genau die Aufrufe,
    * die handleQuestion nach der Einordnung machen würde. Absätze gehen erst nach `use()` hinaus.
    */
-  private startEarlyStory(call: StoryCall, state: StoryState, transcript: string, timer: StageTimer, sink?: StorySink): EarlyStory {
+  private startEarlyStory(call: StoryCall, state: StoryState, transcript: string, timer: StageTimer, sink?: StorySink, resume?: StoryResume): EarlyStory {
     const held = sink ? new HeldSink(sink) : null;
     const early = new EarlyStoryTimer(timer);
     const promise =
       call === 'neu' ? this.handleStory(true, state, transcript, early, '', held?.sink)
         : call === 'weiter' ? this.handleStory(!storyActive(state), state, '', early, '', held?.sink)
-          : this.handleStory(false, state, '', early, transcript, held?.sink);
+          : this.handleStory(false, state, '', early, transcript, held?.sink, resume);
     promise.catch(() => undefined);
     let settled = false;
     return {
@@ -752,16 +780,22 @@ export class Brain {
     return this.llm ? `${this.llm.name}:${this.llm.model}` : 'none';
   }
 
-  /** Der optionale Zeitmesser misst nur die Dauer von Weiche, Sprachmodell und Ausgabe-Check; am Ablauf ändert er nichts. */
+  /**
+   * Der optionale Zeitmesser misst nur die Dauer von Weiche, Sprachmodell und Ausgabe-Check; am Ablauf ändert er nichts.
+   * `resume` (nur bei einer Frage): Das Kind hat den letzten Teil per Taste angehalten (Punkt B2). Ist die
+   * Äußerung eine Idee, erzählt Claude diesen Teil ab der gehörten Stelle weiter.
+   */
   public async handle(
     mode: 'frage' | 'geschichte' | 'weiter',
     rawTranscript: string,
     rawState: any,
     timer: StageTimer = NO_TIMER,
-    sink?: StorySink
+    sink?: StorySink,
+    rawResume?: { before: unknown; heard: string }
   ): Promise<TurnResult> {
     const state = cleanState(rawState);
     const transcript = cleanText(rawTranscript, MAX_UTTERANCE_CHARS);
+    const resume = mode === 'frage' ? cleanResume(rawResume, state) : undefined;
 
     // 1. Deterministische Sicherheitsweiche
     if (transcript && timer.timeSync('weiche', () => screen(transcript))) {
@@ -776,7 +810,7 @@ export class Brain {
 
     try {
       if (mode === 'frage') {
-        return await this.handleQuestion(transcript, state, timer, sink);
+        return await this.handleQuestion(transcript, state, timer, sink, resume);
       }
       if (mode === 'geschichte') {
         return await this.handleStory(true, state, transcript, timer, '', sink);
@@ -798,7 +832,7 @@ export class Brain {
     throw new Error('Unbekannter Modus');
   }
 
-  private async handleQuestion(transcript: string, state: StoryState, timer: StageTimer, sink?: StorySink): Promise<TurnResult> {
+  private async handleQuestion(transcript: string, state: StoryState, timer: StageTimer, sink?: StorySink, resume?: StoryResume): Promise<TurnResult> {
     // Die Sicherheitsweiche lief schon (handle). Ein Abspann oder nur der Erkennungshinweis
     // ist keine Äußerung des Kindes: wie eine leere Erkennung behandeln.
     if (!transcript || isLikelySttArtifact(transcript, this.sttPrompt)) {
@@ -817,7 +851,7 @@ export class Brain {
       // Punkt B1 (Schalter, Standard aus): Klingt die Äußerung nach einer Geschichte, beginnt sie schon
       // jetzt, gleichzeitig mit der Einordnung. Gesprochen wird erst, wenn die Einordnung passt.
       const guessed = this.parallelClassification ? storyCallFor(likelyStoryTurn(transcript, storyActive(state)), storyActive(state)) : null;
-      const early = guessed ? this.startEarlyStory(guessed, state, transcript, timer, sink) : null;
+      const early = guessed ? this.startEarlyStory(guessed, state, transcript, timer, sink, resume) : null;
       try {
         const systemPrompt = ANSWER_SYSTEM(this.age, this.answerMaxWords);
         const active = storyActive(state);
@@ -857,9 +891,10 @@ export class Brain {
         }
         if (parsed.category === 'idee') {
           // Idee für die laufende Folge: weitererzählen und die Idee einbauen. Läuft keine Folge,
-          // ist die Idee der Wunsch für eine neue.
+          // ist die Idee der Wunsch für eine neue. Hat das Kind den letzten Teil per Taste angehalten
+          // (resume, Punkt B2), setzt die Idee an der gehörten Stelle an.
           return storyActive(state)
-            ? await this.handleStory(false, state, '', timer, transcript, sink)
+            ? await this.handleStory(false, state, '', timer, transcript, sink, resume)
             : await this.handleStory(true, state, transcript, timer, '', sink);
         }
         if (parsed.category === 'unklar') {
@@ -980,16 +1015,26 @@ export class Brain {
     wish: string,
     timer: StageTimer,
     idea = '',
-    sink?: StorySink
+    sink?: StorySink,
+    resume?: StoryResume
   ): Promise<TurnResult> {
-    const current = newEpisode ? this.startEpisode(state, wish) : { ...state };
+    // Nach einem Stopp per Taste (Punkt B2, nur mit einer Idee): denselben Teil noch einmal erzählen,
+    // auf dem Stand davor und ab der gehörten Stelle. Geht das schief, gilt wie sonst `state`.
+    const retell = resume && !newEpisode && idea ? resume : undefined;
+    const current = newEpisode ? this.startEpisode(state, wish) : { ...(retell ? retell.before : state) };
+    // Stand, der bei einem Ausfall gilt (Pause oder Ton-Strom angehalten): nie ein Schritt zurück.
+    const kept = retell ? state : current;
     const part = current.part + 1;
     const phase = storyPhase(part, current.target);
+    const basis: PartBasis = { before: { ...current }, heard: retell?.heard ?? '' };
 
     const llm = this.llm;
     if (llm) {
       const now = this.now();
-      const settings = { storyMinWords: this.storyMinWords, storyMaxWords: this.storyMaxWords, bedtime: isBedtime(now), nowMs: now.getTime(), idea };
+      const settings = {
+        storyMinWords: this.storyMinWords, storyMaxWords: this.storyMaxWords, bedtime: isBedtime(now), nowMs: now.getTime(), idea,
+        heard: retell?.heard ?? '',
+      };
       let retryNote = '';
       let spent = 0;
       // Ton-Strom: schon gesprochene Absätze. Sobald einer gesprochen ist, gibt es keinen zweiten
@@ -1057,7 +1102,7 @@ export class Brain {
                 throw new Error('Geschichte des Sprachmodells durch Ausgabe-Check abgelehnt');
               }
               warnTurn(timer, `LLM-Geschichte (${this.llmName}) mitten im Strom angehalten (${spoken.length} Absätze gesprochen)`);
-              return this.streamAbort(state, current, newEpisode, spoken, sink!);
+              return this.streamAbort(newEpisode ? state : kept, spoken, sink!);
             }
           }
           const text = spoken.length
@@ -1076,7 +1121,7 @@ export class Brain {
           // Nur Zahlen ins Protokoll, nie der Text (CLAUDE.md).
           const hint = phase === 'trick' ? hintFromPlan(current.plan) : '';
           const hintNote = hint ? `, Hinweis der Hexe ${usesHint(text, hint) ? 'aufgegriffen' : 'nicht erkennbar'}` : '';
-          logTurn(timer, `Geschichte Teil ${part}/${current.target}: ${formatMetrics(metrics)}${hintNote}`);
+          logTurn(timer, `Geschichte Teil ${part}/${current.target}${retell ? ' ab Stopp' : ''}: ${formatMetrics(metrics)}${hintNote}`);
           // Viel zu kurz (abgeschnitten oder Zusammenfassung statt Szene): einmal neu, wenn Zeit bleibt.
           // Nur mit echtem Zeitbudget (jede Geräteanfrage hat eins); ohne Budget gilt der Text, wie er ist.
           const left = timer.remainingMs();
@@ -1086,7 +1131,7 @@ export class Brain {
           }
           if (timer.timeSync('ausgabecheck', () => screenOutput(text, 'story'))) {
             // Treffer erst im ganzen Text (über Absätze hinweg): schon gesprochen, also anhalten.
-            if (spoken.length) return this.streamAbort(state, current, newEpisode, spoken, sink!);
+            if (spoken.length) return this.streamAbort(newEpisode ? state : kept, spoken, sink!);
             if (attempt === 1 && timer.remainingMs() >= STORY_RETRY_MIN_MS) {
               warnTurn(timer, `LLM-Geschichte (${this.llmName}) durch Ausgabe-Check abgelehnt, zweiter Versuch`);
               retryNote =
@@ -1117,11 +1162,11 @@ export class Brain {
           };
           // Kosten der ganzen Folge, wenn sie endet (Punkt 72b). Nur Zahlen.
           if (done) logTurn(timer, `Folge fertig: teile=${part} kosten_usd=${formatUsd(updatedState.usd)}`);
-          return this.storyResult(text, part, updatedState, spoken.length ? sink : undefined);
+          return this.storyResult(text, part, updatedState, spoken.length ? sink : undefined, basis);
         } catch (err) {
           if (spoken.length) {
             warnTurn(timer, `LLM-Geschichte (${this.llmName}) mitten im Strom abgebrochen (${spoken.length} Absätze gesprochen):`, (err as Error)?.message || err);
-            return this.streamAbort(state, current, newEpisode, spoken, sink!);
+            return this.streamAbort(newEpisode ? state : kept, spoken, sink!);
           }
           warnTurn(timer, `LLM-Geschichte (${this.llmName}) fehlgeschlagen, verwende Fallback:`, err);
           break;
@@ -1132,11 +1177,12 @@ export class Brain {
     // Fällt Claude mitten in einer laufenden Claude-Folge aus (sie hat einen Plan), rückt die Folge
     // einmal nicht weiter: eine kurze Pause, und der nächste Druck versucht denselben Teil. Erst beim
     // zweiten Ausfall in Folge übernimmt die Ersatzgeschichte.
-    if (llm && !newEpisode && current.plan && !current.done && current.part >= 1 && current.miss < 1) {
+    // Nach einem Stopp (retell) gilt dabei der Stand des Geräts (`kept`), nie der Stand vor dem Teil.
+    if (llm && !newEpisode && kept.plan && !kept.done && kept.part >= 1 && kept.miss < 1) {
       return {
         kind: 'weiter',
         speech: STORY_PAUSE_TEXT,
-        story_state: { ...current, miss: current.miss + 1 },
+        story_state: { ...kept, miss: kept.miss + 1 },
         fixed: 'pause',
         wav: this.synthesizeWav(STORY_PAUSE_TEXT, 'hinweis'),
       };
@@ -1149,11 +1195,11 @@ export class Brain {
    * Ton-Strom angehalten, nachdem schon Absätze gesprochen wurden (Ausgabe-Check schlägt an, Claude
    * bricht ab). Gesagtes lässt sich nicht zurücknehmen: Kunibert macht die kurze Pause, und die Folge
    * rückt nicht vor. Der nächste Druck erzählt den Teil neu; fällt Claude dann wieder aus, greift
-   * wie sonst die Ersatzfolge (STORY_PAUSE_TEXT, miss). Bei einer neuen Folge bleibt der alte Stand.
+   * wie sonst die Ersatzfolge (STORY_PAUSE_TEXT, miss). `base` ist der Stand, der bleibt: bei einer
+   * neuen Folge der alte Stand, sonst der Stand vor diesem Aufruf.
    */
-  private streamAbort(state: StoryState, current: StoryState, newEpisode: boolean, spoken: string[], sink: StorySink): TurnResult {
+  private streamAbort(base: StoryState, spoken: string[], sink: StorySink): TurnResult {
     sink.say(STORY_PAUSE_TEXT);
-    const base = newEpisode ? state : current;
     return {
       kind: 'weiter',
       speech: [...spoken, STORY_PAUSE_TEXT].join('\n\n'),
@@ -1164,7 +1210,7 @@ export class Brain {
     };
   }
 
-  private storyResult(text: string, part: number, state: StoryState, sink?: StorySink): TurnResult {
+  private storyResult(text: string, part: number, state: StoryState, sink: StorySink | undefined, basis: PartBasis): TurnResult {
     // Den Hinweis auf die Sprechtaste hören Kinder in den ersten beiden Folgen; danach kennen sie ihn.
     const closing = state.done ? EPISODE_CLOSING : part === 1 && state.ep <= 2 ? STORY_CLOSING_FIRST : STORY_CLOSING;
     // Leerzeile vor dem Abschluss: Die Stimme setzt dort eine längere Pause.
@@ -1175,6 +1221,7 @@ export class Brain {
       speech: fullSpeech,
       story_state: state,
       ...(sink ? { streamed: true } : {}),
+      basis,
       wav: this.synthesizeWav(fullSpeech, 'geschichte'),
     };
   }
@@ -1265,7 +1312,7 @@ export class Brain {
       miss: 0,
       at: this.now().getTime(),
     };
-    return this.storyResult(text, part, updatedState);
+    return this.storyResult(text, part, updatedState, undefined, { before: { ...current }, heard: '' });
   }
 
   private synthesizeWav(text: string, kind: string): Buffer {

@@ -26,9 +26,13 @@ export interface PrefetchEntry {
   promise: Promise<TurnResult | null>;
 }
 
-/** Schlüssel für den Stand, auf dem eine Vorbereitung aufbaut. */
+/**
+ * Schlüssel für den Stand, auf dem eine Vorbereitung aufbaut. Mit dem Zeitpunkt des letzten Teils
+ * (`at`): Wird ein Teil nach einem Stopp per Taste neu erzählt (Punkt B2), bleiben Folge und Teil
+ * gleich, aber die alte Vorbereitung passt nicht mehr zu ihm.
+ */
 export function prefetchKey(state: StoryState): string {
-  return `${state.ep}:${state.part}:${state.target}:${state.miss}:${state.done ? 'ende' : 'läuft'}`;
+  return `${state.ep}:${state.part}:${state.target}:${state.miss}:${state.done ? 'ende' : 'läuft'}:${state.at || 0}`;
 }
 
 export class StoryPrefetcher {

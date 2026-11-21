@@ -9,7 +9,8 @@ import { Brain, FALLBACK_ANSWER_DE, StoryState, type StorySink, type TurnResult 
 import { STORY_PAUSE_TEXT } from './server-api/prompts.js';
 import { StoryPrefetcher } from './server-api/prefetch.js';
 import { PURGE_INTERVAL_MS, STORY_STATE_TTL_MS, StoryStateStore, purgeExpired } from './server-api/story-states.js';
-import { PcmStream, StreamingSpeaker, StreamRegistry, streamingWavHeader } from './server-api/audio-stream.js';
+import { PARAGRAPH_PAUSE_MS, PcmStream, StreamingSpeaker, StreamRegistry, streamingWavHeader } from './server-api/audio-stream.js';
+import { MAX_HEARD_SECONDS, StopPoints, TURN_ID_PATTERN, speechParagraphs, type SpokenPart, type StopOutcome } from './server-api/stopp.js';
 import { AudioError, decodeWavHeader, generateMelodyWav, isPcmFormat, isSilentPcm16 } from './server-api/audio.js';
 import { CONSENT_MISSING_DE, ParentControls, SLEEPING_DE, isValidTime, pairingCodeSpeech, type BlockReason } from './server-api/eltern.js';
 import { config, getSafeConfigSummary, llmConfigWarnings, testSwitchWarnings, ttsProviderWarnings, voiceConfigWarnings } from './server-api/config.js';
@@ -53,6 +54,9 @@ const deviceStoryStates = new StoryStateStore();
 // Hintergrund fertig werden. Eine neue Anfrage desselben Geräts wartet auf deren Stand.
 const streams = new StreamRegistry(config.audioTtlSeconds * 1000);
 const pendingTurns = new Map<string, Promise<void>>();
+// Stopp per Taste (Punkt B2, server-api/stopp.ts): letzter Geschichtenteil je Gerät und, nach einer
+// Meldung des Geräts, bis wohin das Kind ihn gehört hat. Nur im Arbeitsspeicher, wie der Stand.
+const stops = new StopPoints();
 // Nächster Geschichtenteil im Hintergrund (Sprachmodell und Sprachausgabe), siehe server-api/prefetch.ts.
 const prefetcher = new StoryPrefetcher(
   async (state) => {
@@ -82,7 +86,7 @@ const pairingFailuresTotal = new RateLimiter(200, 600);
 // Alle fünf Minuten aufräumen, auch bei Geräten, die sich nie wieder melden: abgelaufene Stände der
 // Geschichte samt ihrer Vorbereitung, abgelaufene Vorbereitungen, Audio und Ton-Ströme.
 setInterval(() => {
-  purgeExpired({ states: deviceStoryStates, prefetcher, audio: store, streams });
+  purgeExpired({ states: deviceStoryStates, prefetcher, audio: store, streams, stops });
   // Abgelaufene Kopplungscodes und alte Fehlversuche beim Koppeln (nur Zähler je Absender).
   parents.purge();
   pairingFailures.purge();
@@ -230,8 +234,7 @@ async function respondTurn(
     // Gesperrt oder von den Eltern angehalten, während die Antwort entstand: kein Audio, kein Stand.
     const refusal = refusalFor(req, deviceId);
     if (refusal) return refuse(req, res, deviceId, type, timer, refusal);
-    advanceStory(deviceId, result.story_state, generation);
-    return res.json(deviceResponse(req, deviceId, result, type).body);
+    return sendWholeTurn(req, res, deviceId, result, type, generation);
   }
 
   let done = false;
@@ -254,8 +257,7 @@ async function respondTurn(
     timer.noteAudio(result.wav);
     const refusal = refusalFor(req, deviceId);
     if (refusal) return refuse(req, res, deviceId, type, timer, refusal);
-    advanceStory(deviceId, result.story_state, generation);
-    return res.json(deviceResponse(req, deviceId, result, type).body);
+    return sendWholeTurn(req, res, deviceId, result, type, generation);
   }
 
   const refusal = refusalFor(req, deviceId);
@@ -271,7 +273,16 @@ async function respondTurn(
       const result = await resultPromise;
       await speaker.finish();
       // Erst wenn alles vertont ist, rückt die Folge vor (wie ohne Strom: kein Stand ohne Ton).
-      advanceStory(deviceId, result.story_state, generation);
+      if (advanceStory(deviceId, result.story_state, generation)) {
+        // Für den Stopp per Taste (B2): Die Sekunden je Absatz sind hier genau bekannt.
+        const paragraphs = speechParagraphs(result.speech);
+        noteDelivery(deviceId, turnId, result, {
+          paragraphs,
+          seconds: speaker.segments.length === paragraphs.length ? [...speaker.segments] : null,
+          totalSeconds: speaker.stream.seconds,
+          pauseSeconds: PARAGRAPH_PAUSE_MS / 1000,
+        });
+      }
       ok = true;
     } catch (error) {
       speaker.abort();
@@ -295,11 +306,61 @@ async function respondTurn(
  * des Geräts gelöscht, während die Antwort entstand (zum Beispiel weil der Betreiber das Gerät
  * gesperrt hat), bleibt er gelöscht: `generation` stammt vom Beginn der Anfrage.
  */
-function advanceStory(deviceId: string, state: StoryState, generation: number): void {
-  if (!deviceStoryStates.set(deviceId, state, generation)) return;
+function advanceStory(deviceId: string, state: StoryState, generation: number): boolean {
+  if (!deviceStoryStates.set(deviceId, state, generation)) return false;
   // Hat die Anfrage eine Folge begonnen oder fortgesetzt, den nächsten Teil vorbereiten. Bei einer
   // reinen Frage bleibt der Stand gleich, und eine laufende Vorbereitung bleibt gültig.
   prefetcher.start(deviceId, state);
+  return true;
+}
+
+/** Ganze WAV-Datei: Stand speichern, Audio ablegen, für den Stopp per Taste merken, antworten. */
+function sendWholeTurn(
+  req: Request,
+  res: Response,
+  deviceId: string,
+  result: TurnResult,
+  type: 'answer' | 'kunibert_story',
+  generation: number
+): Response {
+  const saved = advanceStory(deviceId, result.story_state, generation);
+  const { body, turnId } = deviceResponse(req, deviceId, result, type);
+  if (saved) {
+    let totalSeconds = 0;
+    try {
+      totalSeconds = decodeWavHeader(result.wav || Buffer.alloc(0)).duration;
+    } catch {
+      totalSeconds = 0;
+    }
+    noteDelivery(deviceId, turnId, result, { paragraphs: speechParagraphs(result.speech), seconds: null, totalSeconds, pauseSeconds: 0 });
+  }
+  return res.json(body);
+}
+
+/**
+ * Stopp per Taste (Punkt B2): Merkt sich einen ausgelieferten Geschichtenteil, damit eine spätere
+ * Meldung des Geräts zeigt, wie weit das Kind ihn gehört hat. Antworten auf Fragen und feste Sätze
+ * ändern nichts. Nur ein Ton-Strom, der nach gesprochenen Absätzen mit der Pause endete, löscht die
+ * gemerkte Stelle: Das Kind hat danach schon etwas Neues gehört.
+ */
+function noteDelivery(deviceId: string, turnId: string, result: TurnResult, spoken: SpokenPart): void {
+  if (result.basis && !result.fixed) {
+    const applied = stops.delivered(deviceId, turnId, result.story_state, result.basis, spoken);
+    if (applied) logStop(applied);
+  } else if (result.streamed) {
+    stops.delete(deviceId);
+  }
+}
+
+/** Eine Zeile je Stopp-Meldung, nur Schlüsselwörter und Zahlen (keine Texte, keine Kennungen). */
+function logStop(result: StopOutcome): void {
+  if (result.outcome === 'gemerkt') {
+    console.log(`Stopp per Taste: gemerkt teil=${result.part}/${result.target} saetze=${result.sentences}/${result.total}`);
+  } else if (result.outcome === 'ganz_gehoert') {
+    console.log(`Stopp per Taste: ganz_gehoert teil=${result.part}/${result.target}`);
+  } else {
+    console.log('Stopp per Taste: wartet');
+  }
 }
 
 /** Vergisst alles, was der Server zur Geschichte eines Geräts hält: Stand, Vorbereitung, wartendes Audio. */
@@ -308,6 +369,7 @@ function forgetDeviceStory(deviceId: string): void {
   prefetcher.cancel(deviceId);
   store.dropDevice(deviceId);
   streams.dropDevice(deviceId);
+  stops.delete(deviceId);
 }
 
 // ------------------------------------------------------------
@@ -458,8 +520,10 @@ app.post(
       // Während der Erkennung gesperrt oder von den Eltern angehalten? Dann nicht an das Sprachmodell.
       const refusal = refusalFor(req, deviceId);
       if (refusal) return await refuse(req, res, deviceId, 'answer', timer, refusal);
-      const state = deviceStoryStates.get(deviceId) || {};
-      return await respondTurn(req, res, deviceId, timer, 'answer', generation, (sink) => brain.handle('frage', transcript, state, timer, sink));
+      const state = deviceStoryStates.get(deviceId);
+      // Hat das Kind den letzten Teil per Taste angehalten (B2), setzt eine Idee an der gehörten Stelle an.
+      const resume = stops.resumeFor(deviceId, state);
+      return await respondTurn(req, res, deviceId, timer, 'answer', generation, (sink) => brain.handle('frage', transcript, state || {}, timer, sink, resume));
     } catch (err) {
       console.error('Error in /v1/device/question:', err);
       if (err instanceof VoiceProviderError) {
@@ -524,8 +588,7 @@ app.post(
       timer.noteAudio(result.wav);
       const refusal = refusalFor(req, deviceId);
       if (refusal) return await refuse(req, res, deviceId, 'kunibert_story', timer, refusal);
-      advanceStory(deviceId, result.story_state, generation);
-      return res.json(deviceResponse(req, deviceId, result, 'kunibert_story').body);
+      return sendWholeTurn(req, res, deviceId, result, 'kunibert_story', generation);
     } catch (err) {
       console.error('Error in /v1/device/kunibert-story:', err);
       if (err instanceof VoiceProviderError) {
@@ -535,6 +598,25 @@ app.post(
     }
   }
 );
+
+// POST /v1/device/playback-stopped {turn_id, heard_seconds}: Das Kind hat Kunibert per Taste angehalten
+// (Punkt B2). War es ein Geschichtenteil, merkt sich der Server, bis zu welchem Satz das Kind ihn
+// gehört hat; die nächste Idee setzt dort an. Ohne Sprachmodell und ohne Sprachausgabe, deshalb nicht
+// im Rate-Limit der Anfragen. Antwort 204, auch wenn der Server mit der Meldung nichts anfangen kann.
+app.post('/v1/device/playback-stopped', requireDevice, (req: Request, res: Response): any => {
+  const deviceId = res.locals.deviceId as string;
+  const turnId = req.body?.turn_id;
+  const seconds = req.body?.heard_seconds;
+  if (
+    typeof turnId !== 'string' || !TURN_ID_PATTERN.test(turnId) ||
+    typeof seconds !== 'number' || !Number.isFinite(seconds) || seconds < 0 || seconds > MAX_HEARD_SECONDS
+  ) {
+    return res.status(400).json({ error: 'bad_request' });
+  }
+  // Ohne Einwilligung, im Schlafmodus und in den Ruhezeiten gibt es keine Geschichte: nichts merken.
+  if (!blockReasonFor(deviceId)) logStop(stops.stopped(deviceId, turnId, seconds));
+  return res.status(204).end();
+});
 
 app.get('/v1/device/audio/:turn_id', (req: Request, res: Response): any => {
   let deviceId: string;
@@ -873,8 +955,9 @@ app.put('/v1/eltern/einstellungen', requireJson, requireParent, (req: Request, r
 app.post('/v1/eltern/geschichte-neu', requireJson, requireParent, (_req: Request, res: Response) => {
   const deviceId = res.locals.parentDeviceId as string;
   deviceStoryStates.delete(deviceId);
-  // Der vorbereitete nächste Teil gehört zur alten Folge.
+  // Der vorbereitete nächste Teil und eine gemerkte Stelle (Stopp per Taste) gehören zur alten Folge.
   prefetcher.cancel(deviceId);
+  stops.delete(deviceId);
   res.json({ geschichte_neu: true });
 });
 
@@ -947,6 +1030,7 @@ app.get('/api/status', requireAdminAuth, (req: Request, res: Response) => {
     // Nur Zahlen, keine Geräte-IDs und keine Inhalte.
     storyStates: deviceStoryStates.count,
     storyPrefetches: prefetcher.size,
+    storyStops: stops.count,
     eltern: parents.counts,
     llm: brain.llmName,
     config: getSafeConfigSummary(config),
