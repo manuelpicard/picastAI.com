@@ -293,11 +293,11 @@ In PowerShell auf deinem Rechner, im Ordner des Repos (Python 3.10 oder neuer):
 py -m pip install sounddevice
 $env:PICASTAI_API_BASE_URL = "https://<Hostname des Servers>"
 $env:PICASTAI_DEVICE_ID = "<Geräte-ID aus /etc/kunibert/kunibert.env>"
-$env:PICASTAI_DEVICE_TOKEN = "<Geräte-Token, nur hier eintippen>"
+$env:PICASTAI_DEVICE_TOKEN = [Net.NetworkCredential]::new('', (Read-Host -AsSecureString 'Geräte-Token')).Password
 py pi-client\kunibert_client.py --keyboard
 ```
 
-Das Token steht danach im Verlauf dieses PowerShell-Fensters: Fenster am Ende schließen. Mikrofon oder Lautsprecher wählen: `KUNIBERT_INPUT_DEVICE`, `KUNIBERT_OUTPUT_DEVICE` (Liste: `py -m sounddevice`). Die Wartezeit je Anfrage steht in der Zeile `Zeitmessung ... wartezeit_s=`. Meldet der Client „Die Aufnahme ist praktisch stumm“, kommt kein Ton vom Mikrofon an: anderes Gerät wählen oder unter Windows in den Einstellungen (Datenschutz, Mikrofon) den Zugriff für Desktop-Apps erlauben.
+Die Zeile mit `Read-Host -AsSecureString` fragt das Token verdeckt ab. So steht es nicht in der Befehlszeile: PowerShell speichert Befehlszeilen in einer Verlaufsdatei, auch nach dem Schließen des Fensters. Tokens und Schlüssel deshalb nie direkt hinter `=` eintippen. Hast du das früher getan, zeigt `(Get-PSReadLineOption).HistorySavePath` die Datei; die Zeilen dort löschen. Mikrofon oder Lautsprecher wählen: `KUNIBERT_INPUT_DEVICE`, `KUNIBERT_OUTPUT_DEVICE` (Liste: `py -m sounddevice`). Die Wartezeit je Anfrage steht in der Zeile `Zeitmessung ... wartezeit_s=`. Meldet der Client „Die Aufnahme ist praktisch stumm“, kommt kein Ton vom Mikrofon an: anderes Gerät wählen oder unter Windows in den Einstellungen (Datenschutz, Mikrofon) den Zugriff für Desktop-Apps erlauben.
 
 #### Ganz ohne gemieteten Server: alles auf deinem Rechner
 
@@ -343,7 +343,7 @@ $env:PICASTAI_STT_PROMPT = "Ritter Kunibert"
 $env:PICASTAI_TTS_URL = "http://127.0.0.1:8000/v1"
 $env:PICASTAI_TTS_MODEL = "speaches-ai/piper-de_DE-thorsten-medium"
 $env:PICASTAI_TTS_VOICE = "thorsten"
-$env:ANTHROPIC_API_KEY = "<dein Schlüssel, nur hier eintippen>"
+$env:ANTHROPIC_API_KEY = [Net.NetworkCredential]::new('', (Read-Host -AsSecureString 'Anthropic-Schlüssel')).Password
 $env:KUNIBERT_EINWILLIGUNG_PRUEFEN = "0"
 npm run dev
 ```
@@ -360,7 +360,7 @@ $env:PICASTAI_DEVICE_TOKEN = "test-token-kunibert-2026"
 py pi-client\kunibert_client.py --keyboard
 ```
 
-Danach: Fenster 1 schließen (der Schlüssel steht in seinem Verlauf) und `docker stop speaches`. Kommt später der Pi, kann der Server im selben WLAN auf diesem Rechner bleiben (Abschnitt „Später: der Pi im selben WLAN“ weiter unten).
+Danach: Fenster 1 schließen (der Schlüssel steht bis dahin in seinen Einstellungen) und `docker stop speaches`. Kommt später der Pi, kann der Server im selben WLAN auf diesem Rechner bleiben (Abschnitt „Später: der Pi im selben WLAN“ weiter unten).
 
 `--dry-run` startet den Zustandsautomaten mit Attrappen für Taster, Mikrofon, Lautsprecher und LED. Es sendet **keine** Anfrage an den Server (auch keinen Health-Check), und die Attrappen drücken nie eine Taste. Der Lauf zeigt nur, dass der Client startet und `READY` erreicht; Server-Adresse und Token spielen dabei keine Rolle:
 
@@ -381,11 +381,11 @@ Ohne konfigurierten Sprachserver liefert der Server dabei kurze Töne statt Spra
 
 #### Später: der Pi im selben WLAN, der Server bleibt auf deinem Rechner
 
-Für den ersten Durchlauf mit dem Pi (`deploy/CHECKLISTE.md`) ohne gemieteten Server. Stand: **nicht getestet** (kein Pi da); geschrieben nach dem Code (`server.ts`, `server-api/devices.ts`, `server-api/http-utils.ts`). Nur Erwachsene als Tester.
+Für den ersten Durchlauf mit dem Pi ohne gemieteten Server. Zum Abhaken: [`deploy/CHECKLISTE.md`](../deploy/CHECKLISTE.md), Teil A1 („Server auf dem eigenen Rechner“), danach Teil B bis D. Stand: **nicht getestet** (kein Pi da, nicht unter Windows); geschrieben nach dem Code (`server.ts`, `server-api/config.ts`, `server-api/devices.ts`, `server-api/http-utils.ts`). Nur Erwachsene als Tester.
 
 Was anders ist als im Probelauf oben: Der Server läuft mit `NODE_ENV=production` (dann gibt es den öffentlich bekannten Entwicklungs-Zugang nicht), er lauscht im Heimnetz statt nur auf deinem Rechner, und der Pi bekommt ein eigenes Token.
 
-**1. Token erzeugen (PowerShell, einmal).** Das Token gibst du nur hier, im Server-Fenster und am Pi ein; nicht in Chats, Dateien oder Git:
+**1. Zwei Tokens erzeugen (PowerShell, einmal):** die Zeile zweimal ausführen, einmal für den Pi (Geräte-Token) und einmal für dich (Betreiber-Token, für die Einwilligung in Schritt 3b). Die Tokens gibst du nur in die verdeckten Abfragen der Schritte 3 und 3b und am Pi ein; nicht in Chats, Dateien, Git oder direkt in eine Befehlszeile:
 
 ```powershell
 $b = New-Object byte[] 32; [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b); -join ($b | ForEach-Object { $_.ToString('x2') })
@@ -400,22 +400,26 @@ npm ci
 npm run build
 $env:NODE_ENV = "production"
 $env:HOST = "0.0.0.0"
+$env:PICASTAI_AUDIO_STREAM = "1"
 $env:PICASTAI_DEVICE_ID = "prototype-001"
-$env:PICASTAI_DEVICE_TOKEN = "<Token aus Schritt 1>"
-$env:PICASTAI_ADMIN_TOKEN = "<ein zweites Token, wie in Schritt 1 erzeugt>"
-# dazu dieselben Zeilen für Sprachserver und Stimme wie oben (PICASTAI_STT_…, PICASTAI_TTS_…) und ANTHROPIC_API_KEY
+$env:PICASTAI_DEVICE_TOKEN = [Net.NetworkCredential]::new('', (Read-Host -AsSecureString 'Geräte-Token')).Password
+$env:PICASTAI_ADMIN_TOKEN = [Net.NetworkCredential]::new('', (Read-Host -AsSecureString 'Betreiber-Token')).Password
+$env:ANTHROPIC_API_KEY = [Net.NetworkCredential]::new('', (Read-Host -AsSecureString 'Anthropic-Schlüssel')).Password
+# dazu dieselben Zeilen für Sprachserver und Stimme wie oben (PICASTAI_STT_…, PICASTAI_TTS_…, mit Pocket auch PICASTAI_POCKET_TTS_URL)
 npm start
 ```
+
+`PICASTAI_AUDIO_STREAM=1` schaltet den Ton-Strom ein: Der Server liefert Absatz für Absatz, der Pi spielt den ersten Absatz, während der Rest noch entsteht (`docs/picastAI-Pi-API.md`, „Ton-Strom“). Ohne die Zeile kommt jede Antwort als ganze Datei, der erste Ton also später. Erwartet im Fenster: `läuft auf http://0.0.0.0:3000`, kein „Hinweis: NODE_ENV ist nicht "production"“, keine Zeile mit ⚠️ und nach einigen Sekunden `Feste Sprechtexte vorbereitet (7 von 7)`.
 
 **3b. Einwilligung (PowerShell-Fenster 2, im Ordner des Repos, nach jedem Start des Servers):** Mit `NODE_ENV=production` antwortet Kunibert erst, wenn die Eltern eingewilligt haben. Solange der Pi den Kopplungscode noch nicht selbst spricht, erteilst du sie für den Test mit Erwachsenen so:
 
 ```powershell
-$env:PICASTAI_ADMIN_TOKEN = "<das zweite Token aus Schritt 3>"
+$env:PICASTAI_ADMIN_TOKEN = [Net.NetworkCredential]::new('', (Read-Host -AsSecureString 'Betreiber-Token')).Password
 $env:PICASTAI_DEVICE_ID = "prototype-001"
 node deploy\eltern-einwilligung.mjs
 ```
 
-Erwartet: `Einwilligung erteilt.` Sie liegt nur im Arbeitsspeicher des Servers und ist nach einem Neustart weg. Danach dieses Fenster schließen (das Token steht in seinem Verlauf).
+Erwartet: `Einwilligung erteilt.` Sie liegt nur im Arbeitsspeicher des Servers und ist nach einem Neustart weg. Danach dieses Fenster schließen.
 
 Ohne `PICASTAI_PUBLIC_BASE_URL` baut der Server die `audio_url` aus der Adresse, die der Pi aufruft; das passt im Heimnetz. Der Sprachserver bleibt auf `127.0.0.1:8000`, er ist nur für deinen Rechner da.
 
@@ -425,9 +429,9 @@ Ohne `PICASTAI_PUBLIC_BASE_URL` baut der Server die `audio_url` aus der Adresse,
 New-NetFirewallRule -DisplayName "Kunibert-Server (Heimnetz)" -Direction Inbound -Protocol TCP -LocalPort 3000 -Profile Private -RemoteAddress LocalSubnet -Action Allow
 ```
 
-**5. Am Pi:** Installation wie oben („Automatische Installation“) mit `--api-url http://192.168.178.20:3000 --device-id prototype-001` (deine Adresse); das Token fragt der Installer verdeckt ab. Danach `--once health` (muss `OK` melden), dann `deploy/CHECKLISTE.md`, Teil C.
+**5. Am Pi:** Installation wie oben („Automatische Installation“) mit `--api-url http://192.168.178.20:3000 --device-id prototype-001` (deine Adresse); das Token fragt der Installer verdeckt ab. Ob der Rechner vom Pi aus erreichbar ist, zeigt `curl -fsS http://192.168.178.20:3000/health` am Pi (deine Adresse; Antwort mit `"status":"ok"`). Danach `--once health` (muss `OK` melden), dann `deploy/CHECKLISTE.md`, Teil B bis D.
 
-**Grenzen:** Zwischen Pi und Rechner läuft http, also unverschlüsselt im eigenen WLAN (das WLAN selbst ist verschlüsselt). Für Tests mit Erwachsenen im eigenen Netz in Ordnung (Einschätzung); für Geräte außerhalb deines WLANs braucht es HTTPS (Tailscale Funnel oder ein Server, siehe Projektliste, Punkt 65). Der Rechner muss laufen, solange der Pi arbeiten soll. Aufräumen: Fenster 1 schließen, `docker stop speaches`; die Firewall-Regel entfernst du mit `Remove-NetFirewallRule -DisplayName "Kunibert-Server (Heimnetz)"` (als Administrator).
+**Grenzen:** Zwischen Pi und Rechner läuft http, also unverschlüsselt im eigenen WLAN (das WLAN selbst ist verschlüsselt). Für Tests mit Erwachsenen im eigenen Netz in Ordnung (Einschätzung); für Geräte außerhalb deines WLANs braucht es HTTPS (Tailscale Funnel oder ein Server, siehe Projektliste, Punkt 65). Ohne Caddy sind im WLAN auch die Eltern-Routen (`/v1/eltern/…`, nur mit Kopplungscode) und die Betreiber-Routen (`/api/…`, nur mit Betreiber-Token) erreichbar. Der Rechner muss laufen, solange der Pi arbeiten soll. Aufräumen: Fenster 1 und das Fenster der Stimme schließen, `docker stop speaches`; die Firewall-Regel entfernst du mit `Remove-NetFirewallRule -DisplayName "Kunibert-Server (Heimnetz)"` (als Administrator).
 
 ## systemd
 
