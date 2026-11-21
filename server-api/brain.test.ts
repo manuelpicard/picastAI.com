@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { screenOutput } from './safety.js';
 import test from 'node:test';
-import { Brain, likelyStoryTurn, storyCallFor, buildStoryPrompt, FALLBACK_VARIANTS, formatMetrics, hintFromPlan, usesHint, isBedtime, germanNumber, spellOutForSpeech, storyMetrics, cleanState, cleanText, extractWishKeyword, FALLBACK_ANSWER_DE, isLikelySttArtifact, lastSentences, MAX_UTTERANCE_CHARS, prepareStoryText, rememberMotif, storyPhase, trimWords } from './brain.js';
+import { Brain, remainingWords, likelyStoryTurn, storyCallFor, buildStoryPrompt, FALLBACK_VARIANTS, formatMetrics, hintFromPlan, usesHint, isBedtime, germanNumber, spellOutForSpeech, storyMetrics, cleanState, cleanText, extractWishKeyword, FALLBACK_ANSWER_DE, isLikelySttArtifact, lastSentences, MAX_UTTERANCE_CHARS, prepareStoryText, rememberMotif, storyPhase, trimWords } from './brain.js';
 import type { LlmJsonRequest, LlmProvider } from './llm.js';
 import { BEDTIME_HINT, EPISODE_CLOSING, IDEA_HINT, PHASE_HINTS, RESUME_HINT, STORYTELLER_SYSTEM, EPISODE_SEEDS_BY_SEASON, seasonOf, STORY_CLOSING, STORY_CLOSING_FIRST, STORY_PAUSE_TEXT } from './prompts.js';
 import { SAFETY_RESPONSE_DE, UNCLEAR_RESPONSE_DE } from './safety.js';
@@ -1435,22 +1435,86 @@ test('B2: Stopp in Teil 1: Teil 1 wird ab der Stelle neu erzählt, mit neuem Pla
   assert.ok(llm.calls[1].user.includes(RESUME_HINT('Kunibert erwachte.')));
 });
 
-test('B2: nach einem Stopp ändern „weiter“, eine Frage und die Erzähltaste nichts am bisherigen Ablauf', async () => {
+test('B2: nach einem Stopp gehen auch „weiter“ und die Erzähltaste an der gehörten Stelle weiter', async () => {
   const resume = { before: B2_BEFORE, heard: B2_HEARD };
-  const weiter = new FakeLlm([{ category: 'weiter', speech: '' }, story('Teil vier.')]);
+  const weiter = new FakeLlm([{ category: 'weiter', speech: '' }, story('Oben am Berg war es still.')]);
   const viaSpeech = await new Brain(weiter).handle('frage', 'erzähl weiter', B2_AFTER, NO_TIMER_FOR_TEST, undefined, resume);
-  assert.equal(viaSpeech.story_state.part, 4, '„weiter“ über die Sprechtaste: der nächste Teil wie bisher');
-  assert.ok(!weiter.calls[1].user.includes('Von diesem Teil hat das Kind schon gehört'));
+  assert.equal(viaSpeech.story_state.part, 3, '„weiter“ über die Sprechtaste: derselbe Teil ab der Stelle');
+  assert.ok(weiter.calls[1].user.includes(RESUME_HINT(B2_HEARD)));
+  assert.ok(!weiter.calls[1].user.includes('gerade gewünscht'), 'ohne Idee');
 
+  const button = new FakeLlm([story('Oben am Berg war es still.')]);
+  const pressed = await new Brain(button).handle('weiter', '', B2_AFTER, NO_TIMER_FOR_TEST, undefined, resume);
+  assert.equal(pressed.story_state.part, 3, 'Erzähltaste: derselbe Teil ab der Stelle');
+  assert.ok(button.calls[0].user.includes(RESUME_HINT(B2_HEARD)));
+  assert.match(button.calls[0].user, /Bisher: Bis Teil 2/);
+  assert.deepEqual(pressed.basis, { before: B2_BEFORE, heard: B2_HEARD });
+});
+
+test('B2: nach einem Stopp ändern eine Frage und ein neuer Geschichtenwunsch nichts am bisherigen Ablauf', async () => {
+  const resume = { before: B2_BEFORE, heard: B2_HEARD };
   const question = new FakeLlm([answer('Der Drache wohnt in einer Höhle.')]);
   const asked = await new Brain(question).handle('frage', 'wo wohnt der drache', B2_AFTER, NO_TIMER_FOR_TEST, undefined, resume);
   assert.equal(asked.kind, 'frage');
   assert.deepEqual(asked.story_state, B2_AFTER, 'eine Frage ändert den Stand nicht');
 
-  const button = new FakeLlm([story('Teil vier.')]);
-  const pressed = await new Brain(button).handle('weiter', '', B2_AFTER, NO_TIMER_FOR_TEST, undefined, resume);
-  assert.equal(pressed.story_state.part, 4, 'Erzähltaste: der nächste Teil wie bisher');
-  assert.ok(!button.calls[0].user.includes('Von diesem Teil hat das Kind schon gehört'));
+  const wish = new FakeLlm([{ category: 'geschichte', speech: '' }, story('Eine neue Folge.', { episode_plan: 'Neu' })]);
+  const fresh = await new Brain(wish).handle('frage', 'erzähl mir eine geschichte von einem einhorn', B2_AFTER, NO_TIMER_FOR_TEST, undefined, resume);
+  assert.equal(fresh.story_state.ep, 3, 'neue Folge');
+  assert.equal(fresh.story_state.part, 1);
+  assert.ok(!wish.calls[1].user.includes(B2_HEARD));
+
+  const viaMode = new FakeLlm([story('Eine neue Folge.', { episode_plan: 'Neu' })]);
+  const started = await new Brain(viaMode).handle('geschichte', 'einhorn', B2_AFTER, NO_TIMER_FOR_TEST, undefined, resume);
+  assert.equal(started.story_state.part, 1);
+  assert.ok(!viaMode.calls[0].user.includes(B2_HEARD));
+});
+
+test('B2: Der Rest nach einem Stopp ist kürzer bestellt, der ganze Teil bleibt etwa so lang wie sonst', async () => {
+  const heard = Array.from({ length: 6 }, (_, i) => `Satz ${'wort '.repeat(9)}${i}.`).join(' ');
+  const heardWords = heard.split(/\s+/).length;
+  assert.deepEqual(remainingWords(170, 230, ''), { min: 170, max: 230 });
+  assert.deepEqual(remainingWords(170, 230, heard), { min: 170 - heardWords, max: 230 - heardWords });
+  assert.deepEqual(remainingWords(170, 230, 'wort '.repeat(500)), { min: 85, max: 115 }, 'mindestens die halbe Länge');
+  const llm = new FakeLlm([story('Weiter.')]);
+  await new Brain(llm, { storyMinWords: 170, storyMaxWords: 230 }).handle('weiter', '', B2_AFTER, NO_TIMER_FOR_TEST, undefined, { before: B2_BEFORE, heard });
+  assert.match(llm.calls[0].user, new RegExp(`Länge: ${170 - heardWords} bis ${230 - heardWords} Wörter`));
+});
+
+test('B2: Erinnerung nach langer Pause richtet sich nach dem Stopp, nicht nach dem Teil davor', async () => {
+  const now = new Date('2026-11-21T10:00:00Z');
+  const longAgo = now.getTime() - 10 * 60 * 60 * 1000;
+  const before = { ...B2_BEFORE, at: longAgo };
+  const recap = /Das Kind hat lange nicht zugehört/;
+  const soon = new FakeLlm([story('Weiter.')]);
+  await new Brain(soon, { now: () => now }).handle('weiter', '', B2_AFTER, NO_TIMER_FOR_TEST, undefined, { before, heard: B2_HEARD, at: now.getTime() - 60_000 });
+  assert.doesNotMatch(soon.calls[0].user, recap, 'eine Minute nach dem Stopp keine zweite Erinnerung');
+  const later = new FakeLlm([story('Weiter.')]);
+  await new Brain(later, { now: () => now }).handle('weiter', '', B2_AFTER, NO_TIMER_FOR_TEST, undefined, { before, heard: B2_HEARD, at: longAgo });
+  assert.match(later.calls[0].user, recap, 'lange nach dem Stopp schon');
+});
+
+test('B2: Die Kosten des ersetzten Teils bleiben in der Folge', async () => {
+  const llm = new FakeLlm([story('Weiter.')]);
+  const result = await new Brain(llm).handle('weiter', '', { ...B2_AFTER, usd: 0.05 }, NO_TIMER_FOR_TEST, undefined, { before: { ...B2_BEFORE, usd: 0.01 }, heard: B2_HEARD });
+  assert.ok(result.story_state.usd >= 0.05, String(result.story_state.usd));
+});
+
+test('B2: Der Ton-Strom erfährt, dass der Teil ab der Stelle neu erzählt wird; das Protokoll sagt es mit Zahlen', async () => {
+  const { events, sink } = recordingSink();
+  const begins: Array<{ done: boolean; resumed?: boolean }> = [];
+  const llm = new StreamingFakeLlm([{ result: story(`${LONG_PARA}\n\nDraußen wartete der Kutscher.`) }]);
+  const { lines } = await capturingLog(() => new Brain(llm, { storyMinWords: 5 }).handle('weiter', '', B2_AFTER, NO_TIMER_FOR_TEST, {
+    begin: (info) => { begins.push(info); sink.begin(info); },
+    say: (text) => sink.say(text),
+  }, { before: B2_BEFORE, heard: B2_HEARD }));
+  assert.deepEqual(begins, [{ done: false, resumed: true }]);
+  assert.ok(events.includes(LONG_PARA));
+  const line = lines.find((l) => l.startsWith('Geschichte Teil 3/5 ab Stopp: '));
+  assert.ok(line, lines.join(' | '));
+  assert.ok(!line.includes('Kunibert') && !line.includes('Berg'), 'nur Zahlen, kein Text');
+  const { lines: plain } = await capturingLog(() => new Brain(new FakeLlm([story('Teil.')]), { storyMinWords: 1 }).handle('weiter', '', B2_AFTER));
+  assert.ok(plain.some((l) => /^Geschichte Teil 4\/5: /.test(l)), 'ohne Stopp wie bisher');
 });
 
 test('B2: Stelle passt nicht zum Stand (anderer Teil, andere Folge, Folge zu Ende): Idee wie bisher', async () => {

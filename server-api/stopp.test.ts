@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { cleanState, type StoryState } from './brain.js';
 import { STORY_CLOSING } from './prompts.js';
-import { heardUpTo, joinHeard, MAX_HEARD_CHARS, PENDING_STOP_TTL_MS, speechParagraphs, StopPoints, TURN_ID_PATTERN, type SpokenPart } from './stopp.js';
+import { heardUpTo, joinHeard, MAX_HEARD_CHARS, PART_HOLD_MS, PENDING_STOP_TTL_MS, speechParagraphs, StopPoints, TURN_ID_PATTERN, type SpokenPart } from './stopp.js';
 
 // Ein Teil mit drei Absätzen und dem festen Abschluss. Alle Sätze sind gleich lang (20 Zeichen).
 const P1 = 'Kunibert stand auf. Er aß einen Brei.';
@@ -80,7 +80,9 @@ test('StopPoints: Stopp mitten im Teil wird zur Stelle für die nächste Idee', 
   const outcome = stops.stopped('d', TURN, 17);
   assert.deepEqual(outcome, { outcome: 'gemerkt', part: 2, target: 5, sentences: 3, total: 6 });
   const resume = stops.resumeFor('d', state());
-  assert.deepEqual(resume, { before, heard: `${P1} Die Kutsche fuhr los.` });
+  assert.equal(resume?.before, before);
+  assert.equal(resume?.heard, `${P1} Die Kutsche fuhr los.`);
+  assert.ok(resume && resume.at > 0, 'mit dem Zeitpunkt des Stopps');
 });
 
 test('StopPoints: Stopp im Abschluss ändert nichts', () => {
@@ -144,13 +146,13 @@ test('StopPoints: zweiter Stopp im neu erzählten Teil hängt an das schon Gehö
   const stops = new StopPoints();
   stops.delivered('d', TURN, state(), { before, heard: 'Schon gehört.' }, streamed);
   stops.stopped('d', TURN, 6);
-  assert.deepEqual(stops.resumeFor('d', state()), { before, heard: 'Schon gehört. Kunibert stand auf.' });
+  assert.equal(stops.resumeFor('d', state())?.heard, 'Schon gehört. Kunibert stand auf.');
   stops.stopped('d', TURN, 1);
   assert.equal(stops.resumeFor('d', state())?.heard, 'Schon gehört.', 'sofort wieder angehalten: nur das Frühere');
 });
 
-test('StopPoints: Löschen und Verfallen nach 24 Stunden', () => {
-  let now = 0;
+test('StopPoints: Löschen und Verfallen 24 Stunden nach dem Stopp', () => {
+  let now = 1;
   const stops = new StopPoints(24 * 60 * 60 * 1000, () => now);
   stops.delivered('d', TURN, state(), { before, heard: '' }, streamed);
   stops.stopped('d', TURN, 6);
@@ -160,9 +162,63 @@ test('StopPoints: Löschen und Verfallen nach 24 Stunden', () => {
   assert.equal(stops.resumeFor('d', state()), undefined);
 
   stops.delivered('d', TURN, state(), { before, heard: '' }, streamed);
+  now += 60_000;
   stops.stopped('d', TURN, 6);
-  now += 24 * 60 * 60 * 1000;
+  now += 24 * 60 * 60 * 1000 - 1;
+  assert.ok(stops.resumeFor('d', state()), 'kurz vor Ablauf noch da');
+  now += 1;
   assert.equal(stops.resumeFor('d', state()), undefined, 'verfallen');
   stops.purge();
   assert.equal(stops.count, 0);
+});
+
+test('StopPoints: Ohne Meldung ist der Teil nach 15 Minuten weg; nach einer Meldung bleibt nur die Stelle', () => {
+  let now = 1;
+  const stops = new StopPoints(24 * 60 * 60 * 1000, () => now);
+  stops.delivered('d', TURN, state(), { before, heard: '' }, streamed);
+  now += PART_HOLD_MS;
+  assert.equal(stops.count, 1, 'bis zum Ende der Frist noch da');
+  now += 1;
+  assert.equal(stops.count, 0, 'ohne Meldung danach ganz weg');
+  assert.deepEqual(stops.stopped('d', TURN, 6), { outcome: 'wartet' }, 'eine späte Meldung findet nichts mehr');
+
+  stops.delivered('d', OTHER, state(), { before, heard: '' }, streamed);
+  stops.stopped('d', OTHER, 6);
+  now += PART_HOLD_MS + 1;
+  assert.equal(stops.resumeFor('d', state())?.heard, 'Kunibert stand auf.', 'die Stelle bleibt');
+  assert.deepEqual(stops.stopped('d', OTHER, 17), { outcome: 'wartet' }, 'der Text des Teils ist weg: keine neue Schätzung');
+  assert.equal(stops.resumeFor('d', state())?.heard, 'Kunibert stand auf.');
+});
+
+test('StopPoints: Nach dem letzten Teil einer Folge merkt sich der Server nichts', () => {
+  const stops = new StopPoints();
+  stops.delivered('d', TURN, state(), { before, heard: '' }, streamed);
+  stops.stopped('d', TURN, 6);
+  assert.equal(stops.delivered('d', OTHER, state({ part: 5, done: true }), { before: state({ part: 4 }), heard: '' }, streamed), null);
+  assert.equal(stops.count, 0, 'auch die alte Stelle ist weg');
+  assert.deepEqual(stops.stopped('d', OTHER, 6), { outcome: 'wartet' });
+});
+
+test('StopPoints.appendHeard: Gesprochenes aus einem abgebrochenen neu erzählten Teil kommt zur Stelle dazu', () => {
+  const stops = new StopPoints();
+  stops.appendHeard('d', 'Nichts gemerkt.');
+  assert.equal(stops.count, 0);
+  stops.delivered('d', TURN, state(), { before, heard: '' }, streamed);
+  stops.appendHeard('d', 'Ohne Stopp.');
+  assert.equal(stops.resumeFor('d', state()), undefined, 'ohne Stopp gibt es keine Stelle zum Fortschreiben');
+  stops.stopped('d', TURN, 6);
+  stops.appendHeard('d', 'Dann kam die Hexe.');
+  assert.equal(stops.resumeFor('d', state())?.heard, 'Kunibert stand auf. Dann kam die Hexe.');
+});
+
+test('heardUpTo: Satzgrenzen wie bei der Pocket-Stimme (wörtliche Rede, Kleinbuchstabe danach)', () => {
+  const quoted: SpokenPart = {
+    paragraphs: ['„Hallo!“ rief er. Dann ging er los.', STORY_CLOSING],
+    seconds: [10, 4],
+    totalSeconds: 15,
+    pauseSeconds: 1,
+  };
+  assert.equal(heardUpTo(quoted, 3).heard, '', 'mitten im ersten Satz');
+  assert.equal(heardUpTo(quoted, 6).heard, '„Hallo!“ rief er.', 'der ganze erste Satz, nicht nur „Hallo!“');
+  assert.equal(heardUpTo(quoted, 6).total, 2);
 });

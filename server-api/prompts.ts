@@ -236,7 +236,7 @@ export const RESUME_HINT = (heard: string) =>
   'Erzähle genau an dieser Stelle weiter. Wiederhole nichts davon und fasse es nicht zusammen. ' +
   'Was der Teil noch erledigen soll, geschieht ab hier. In die Zusammenfassung gehört auch, was das Kind schon gehört hat.';
 
-export const STORY_CLOSING ='Wenn du wissen willst, wie es weitergeht, drück noch einmal die Erzähltaste.';
+export const STORY_CLOSING = 'Wenn du wissen willst, wie es weitergeht, drück noch einmal die Erzähltaste.';
 /** Nur nach Teil 1: Hinweis, dass das Kind Kunibert mit der Sprechtaste Ideen geben kann (Kategorie „idee“). */
 export const STORY_CLOSING_FIRST = `${STORY_CLOSING} Du kannst Kunibert auch mit der Sprechtaste sagen, was er tun soll.`;
 /**

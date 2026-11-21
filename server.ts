@@ -6,7 +6,7 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { DeviceRegistry, DeviceStoreError, RateLimiter, AudioStore } from './server-api/devices.js';
 import { Brain, FALLBACK_ANSWER_DE, StoryState, type StorySink, type TurnResult } from './server-api/brain.js';
-import { STORY_PAUSE_TEXT } from './server-api/prompts.js';
+import { EPISODE_CLOSING, STORY_CLOSING, STORY_CLOSING_FIRST, STORY_PAUSE_TEXT } from './server-api/prompts.js';
 import { StoryPrefetcher } from './server-api/prefetch.js';
 import { PURGE_INTERVAL_MS, STORY_STATE_TTL_MS, StoryStateStore, purgeExpired } from './server-api/story-states.js';
 import { PARAGRAPH_PAUSE_MS, PcmStream, StreamingSpeaker, StreamRegistry, streamingWavHeader } from './server-api/audio-stream.js';
@@ -57,6 +57,11 @@ const pendingTurns = new Map<string, Promise<void>>();
 // Stopp per Taste (Punkt B2, server-api/stopp.ts): letzter Geschichtenteil je Gerät und, nach einer
 // Meldung des Geräts, bis wohin das Kind ihn gehört hat. Nur im Arbeitsspeicher, wie der Stand.
 const stops = new StopPoints();
+// Meldungen eines Geräts zum Stopp: höchstens 60 in 10 Minuten (ein Gerät in einer Schleife füllt
+// sonst das Protokoll). Eigene Zählung: Die Meldungen kosten nichts und zählen nicht zu den Anfragen.
+const stopReports = new RateLimiter(60, 600);
+/** Feste Sätze in einem Teil, die nicht zur Geschichte gehören (Abschluss, Pause). */
+const FIXED_STORY_TEXTS = new Set([STORY_CLOSING, STORY_CLOSING_FIRST, EPISODE_CLOSING, STORY_PAUSE_TEXT]);
 // Nächster Geschichtenteil im Hintergrund (Sprachmodell und Sprachausgabe), siehe server-api/prefetch.ts.
 const prefetcher = new StoryPrefetcher(
   async (state) => {
@@ -91,6 +96,7 @@ setInterval(() => {
   parents.purge();
   pairingFailures.purge();
   pairingFailuresTotal.purge();
+  stopReports.purge();
 }, PURGE_INTERVAL_MS).unref();
 // Ein frisch erzeugter Teil braucht Claude und die Sprachausgabe. So viel Zeit bleibt mindestens
 // übrig, wenn der Server auf eine laufende Vorbereitung wartet und sie nicht rechtzeitig fertig wird.
@@ -238,8 +244,15 @@ async function respondTurn(
   }
 
   let done = false;
+  // Punkt B2: Wird ein Teil nach einem Stopp ab der gehörten Stelle neu erzählt (resumed), und bricht
+  // der Strom ab, kommt das schon Gesprochene zur gemerkten Stelle dazu.
+  let resumed = false;
+  const said: string[] = [];
   const speaker = new StreamingSpeaker((text) => timer.time('sprachausgabe', () => voice.synthesize(text)), config.audioSampleRate);
-  const sink: StorySink = { begin: (info) => { done = info.done; }, say: (text) => speaker.say(text) };
+  const sink: StorySink = {
+    begin: (info) => { done = info.done; resumed = Boolean(info.resumed); },
+    say: (text) => { said.push(text); speaker.say(text); },
+  };
   const resultPromise = run(sink);
   resultPromise.catch(() => undefined);
   let first: 'ton' | 'fertig';
@@ -281,11 +294,17 @@ async function respondTurn(
           seconds: speaker.segments.length === paragraphs.length ? [...speaker.segments] : null,
           totalSeconds: speaker.stream.seconds,
           pauseSeconds: PARAGRAPH_PAUSE_MS / 1000,
-        });
+        }, resumed);
       }
       ok = true;
     } catch (error) {
       speaker.abort();
+      // Ton war schon beim Kind (B2): Bei einem neu erzählten Teil kommt das Gesprochene zur gemerkten
+      // Stelle dazu; sonst gilt die alte Stelle nicht mehr (das Kind hat schon etwas Neues gehört).
+      if (speaker.stream.bytes > 0) {
+        if (resumed) stops.appendHeard(deviceId, storyTexts(said.slice(0, speaker.segments.length)));
+        else stops.delete(deviceId);
+      }
       // Nur die Art des Fehlers, nie Text (CLAUDE.md).
       console.warn('Ton-Strom abgebrochen:', (error as Error)?.name || 'Fehler');
     } finally {
@@ -340,16 +359,23 @@ function sendWholeTurn(
 /**
  * Stopp per Taste (Punkt B2): Merkt sich einen ausgelieferten Geschichtenteil, damit eine spätere
  * Meldung des Geräts zeigt, wie weit das Kind ihn gehört hat. Antworten auf Fragen und feste Sätze
- * ändern nichts. Nur ein Ton-Strom, der nach gesprochenen Absätzen mit der Pause endete, löscht die
- * gemerkte Stelle: Das Kind hat danach schon etwas Neues gehört.
+ * ändern nichts. Endete ein Ton-Strom nach gesprochenen Absätzen mit der Pause („Kunibert muss kurz
+ * überlegen …“), hat das Kind schon etwas Neues gehört: War es ein nach einem Stopp neu erzählter Teil
+ * (`resumed`), kommt das Gesprochene zur gemerkten Stelle dazu; sonst gilt die alte Stelle nicht mehr.
  */
-function noteDelivery(deviceId: string, turnId: string, result: TurnResult, spoken: SpokenPart): void {
+function noteDelivery(deviceId: string, turnId: string, result: TurnResult, spoken: SpokenPart, resumed = false): void {
   if (result.basis && !result.fixed) {
     const applied = stops.delivered(deviceId, turnId, result.story_state, result.basis, spoken);
     if (applied) logStop(applied);
   } else if (result.streamed) {
-    stops.delete(deviceId);
+    if (resumed) stops.appendHeard(deviceId, storyTexts(spoken.paragraphs));
+    else stops.delete(deviceId);
   }
+}
+
+/** Gesprochene Absätze ohne die festen Sätze (Abschluss, Pause), als ein Text. */
+function storyTexts(paragraphs: string[]): string {
+  return paragraphs.filter((paragraph) => !FIXED_STORY_TEXTS.has(paragraph.trim())).join(' ');
 }
 
 /** Eine Zeile je Stopp-Meldung, nur Schlüsselwörter und Zahlen (keine Texte, keine Kennungen). */
@@ -576,6 +602,12 @@ app.post(
       // Erzähltaste") und beginnt nur dann eine neue, wenn keine läuft. Mit Modus
       // "geschichte" begänne jeder Druck wieder bei Teil 1. Einen Kinderwunsch gibt
       // es hier nicht: die Taste trägt keinen Text.
+      // Hat das Kind den letzten Teil per Taste angehalten (B2), geht es an der gehörten Stelle weiter;
+      // die Vorbereitung des nächsten Teils passt dann nicht.
+      const resume = stops.resumeFor(deviceId, state);
+      if (resume) {
+        return await respondTurn(req, res, deviceId, timer, 'kunibert_story', generation, (sink) => brain.handle('weiter', '', state || {}, timer, sink, resume));
+      }
       // Liegt der nächste Teil schon bereit (oder wird gerade vorbereitet), wird er genommen.
       const prepared = state && prefetcher.has(deviceId)
         ? await timer.time('vorbereitet', () =>
@@ -601,8 +633,9 @@ app.post(
 
 // POST /v1/device/playback-stopped {turn_id, heard_seconds}: Das Kind hat Kunibert per Taste angehalten
 // (Punkt B2). War es ein Geschichtenteil, merkt sich der Server, bis zu welchem Satz das Kind ihn
-// gehört hat; die nächste Idee setzt dort an. Ohne Sprachmodell und ohne Sprachausgabe, deshalb nicht
-// im Rate-Limit der Anfragen. Antwort 204, auch wenn der Server mit der Meldung nichts anfangen kann.
+// gehört hat; danach geht die Geschichte dort weiter. Ohne Sprachmodell und ohne Sprachausgabe, deshalb
+// nicht im Rate-Limit der Anfragen, aber mit eigener Grenze. Antwort 204, auch wenn der Server mit der
+// Meldung nichts anfangen kann.
 app.post('/v1/device/playback-stopped', requireDevice, (req: Request, res: Response): any => {
   const deviceId = res.locals.deviceId as string;
   const turnId = req.body?.turn_id;
@@ -613,8 +646,12 @@ app.post('/v1/device/playback-stopped', requireDevice, (req: Request, res: Respo
   ) {
     return res.status(400).json({ error: 'bad_request' });
   }
-  // Ohne Einwilligung, im Schlafmodus und in den Ruhezeiten gibt es keine Geschichte: nichts merken.
-  if (!blockReasonFor(deviceId)) logStop(stops.stopped(deviceId, turnId, seconds));
+  if (!stopReports.allow(deviceId)) {
+    return res.status(429).json({ error: 'rate_limited' });
+  }
+  // Ohne Einwilligung der Eltern merkt sich der Server nichts. Im Schlafmodus und in den Ruhezeiten
+  // schon: Ein vorher begonnener Teil kann noch laufen, und danach geht die Geschichte dort weiter.
+  if (blockReasonFor(deviceId) !== 'einwilligung') logStop(stops.stopped(deviceId, turnId, seconds));
   return res.status(204).end();
 });
 

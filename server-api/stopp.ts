@@ -6,14 +6,18 @@
 //
 // Wie: Das Gerät meldet nach dem Stopp die Kennung der Antwort (aus der audio_url) und die Sekunden,
 // die es davon gespielt hat (`POST /v1/device/playback-stopped`). Der Server schätzt daraus, bis zu
-// welchem Satz das Kind den Teil ganz gehört hat. Die nächste Idee erzählt denselben Teil ab dieser
-// Stelle weiter, auf dem Stand vor dem Teil (`StoryResume` in brain.ts). Ohne Meldung bleibt alles
-// wie bisher. Die Erzähltaste erzählt nach einem Stopp wie bisher den nächsten Teil.
+// welchem Satz das Kind den Teil ganz gehört hat. Danach setzt die Geschichte dort an: Eine Idee,
+// „weiter“ über die Sprechtaste und die Erzähltaste erzählen denselben Teil ab dieser Stelle weiter,
+// auf dem Stand vor dem Teil (`StoryResume` in brain.ts). Ohne Meldung bleibt alles wie bisher.
 //
-// Datenschutz: Gemerkt wird nur der Text des Geschichtenteils, den der Server selbst erzeugt hat,
-// seine Tonlänge und eine Zahl vom Gerät (Sekunden). Keine Äußerung des Kindes, keine Aufnahme.
-// Alles liegt nur im Arbeitsspeicher und verfällt wie der Stand der Geschichte nach 24 Stunden.
-// Sperren, Widerruf und die Eltern-Routen löschen es mit dem Stand (`forgetDeviceStory` in server.ts).
+// Datenschutz: Gemerkt werden der Text des letzten Geschichtenteils (vom Server erzeugt), seine
+// Tonlänge und der Stand der Geschichte vor diesem Teil. Der Stand enthält wie immer den Wunsch des
+// Kindes zur Folge (`wish`, höchstens 200 Zeichen). Neu hinzu kommt nur eine Zahl vom Gerät (Sekunden).
+// Den Text des Teils hält der Server höchstens 15 Minuten (`PART_HOLD_MS`), so lange kann eine Meldung
+// kommen. Kam keine, ist danach alles weg. Kam eine, bleiben nur die gehörten Sätze und der Stand davor,
+// bis die Geschichte weitergeht, längstens 24 Stunden. Nach dem letzten Teil einer Folge merkt sich
+// der Server nichts. Alles liegt nur im Arbeitsspeicher; Sperren, Widerruf und die Eltern-Routen
+// löschen es mit dem Stand (`forgetDeviceStory` in server.ts).
 import type { StoryState } from './brain.js';
 import { STORY_STATE_TTL_MS } from './story-states.js';
 
@@ -25,6 +29,9 @@ export const MAX_HEARD_SECONDS = 3600;
 
 /** So lange wartet eine Meldung auf ihren Teil, wenn er noch entsteht (Ton-Strom). */
 export const PENDING_STOP_TTL_MS = 10 * 60 * 1000;
+
+/** So lange nach dem Ausliefern hält der Server den Text eines Teils für eine Meldung bereit. */
+export const PART_HOLD_MS = 15 * 60 * 1000;
 
 /** Kennung einer Antwort: "t_" und 16 Zeichen base64url (AudioStore und StreamRegistry). */
 export const TURN_ID_PATTERN = /^t_[A-Za-z0-9_-]{16}$/;
@@ -52,7 +59,8 @@ export interface HeardResult {
 }
 
 const PARAGRAPHS = /\n\s*\n+/;
-const SENTENCE_SPLIT = /(?<=[.!?…][“”"]?)\s+/;
+/** Satzgrenzen wie bei der Pocket-Stimme (`splitSentences` in pocket-speech.ts): nur vor einem neuen Satzanfang. */
+const SENTENCE_SPLIT = /(?<=[.!?…][“”"»«)]?)\s+(?=[„“"»«(]?[A-ZÄÖÜ0-9])/;
 
 /** Teilt den Sprechtext eines Teils in die Absätze, die die Sprachausgabe nacheinander spricht. */
 export function speechParagraphs(speech: string): string[] {
@@ -118,10 +126,10 @@ export interface PartBasis {
   heard: string;
 }
 
-/** Was eine Idee nach einem Stopp braucht (StoryResume in brain.ts). */
-export interface StopResume {
-  before: StoryState;
-  heard: string;
+/** Was ein Teil nach einem Stopp braucht (StoryResume in brain.ts). */
+export interface StopResume extends PartBasis {
+  /** Zeitpunkt der Meldung (ms seit 1970): Danach richtet sich die Erinnerung nach langer Pause. */
+  at: number;
 }
 
 /** Ergebnis einer Meldung, nur fürs Protokoll (keine Texte, keine Kennungen). */
@@ -136,10 +144,13 @@ interface DeliveredPart {
   part: number;
   target: number;
   basis: PartBasis;
-  spoken: SpokenPart;
+  /** Text und Tonlänge des Teils; null nach PART_HOLD_MS (danach kann keine Meldung mehr gelten). */
+  spoken: SpokenPart | null;
   /** Gehörter Text nach einer Meldung; null, solange keine kam oder das Kind alles gehört hat. */
   heard: string | null;
   deliveredMs: number;
+  /** Zeitpunkt der letzten Meldung (oder Fortschreibung) für diesen Teil. */
+  stoppedMs: number;
 }
 
 /**
@@ -161,6 +172,11 @@ export class StopPoints {
    * Teil (Ton-Strom: das Kind hielt an, bevor der Server fertig war), gilt sie jetzt.
    */
   delivered(deviceId: string, turnId: string, state: StoryState, basis: PartBasis, spoken: SpokenPart): StopOutcome | null {
+    // Nach dem letzten Teil einer Folge gibt es an dieser Stelle nichts weiterzuerzählen: nichts merken.
+    if (state.done || state.part < 1) {
+      this.delete(deviceId);
+      return null;
+    }
     this.parts.set(deviceId, {
       turnId,
       ep: state.ep,
@@ -170,6 +186,7 @@ export class StopPoints {
       spoken,
       heard: null,
       deliveredMs: this.now(),
+      stoppedMs: 0,
     });
     const waiting = this.pending.get(deviceId);
     this.pending.delete(deviceId);
@@ -183,8 +200,8 @@ export class StopPoints {
    * Ton-Strom entsteht der Teil vielleicht noch. Meldungen zu Antworten auf Fragen verfallen so.
    */
   stopped(deviceId: string, turnId: string, seconds: number): StopOutcome {
-    const part = this.parts.get(deviceId);
-    if (!part || part.turnId !== turnId || this.expired(part)) {
+    const part = this.current(deviceId);
+    if (!part || part.turnId !== turnId || !part.spoken) {
       this.pending.set(deviceId, { turnId, seconds, atMs: this.now() });
       return { outcome: 'wartet' };
     }
@@ -194,7 +211,19 @@ export class StopPoints {
       return { outcome: 'ganz_gehoert', part: part.part, target: part.target };
     }
     part.heard = joinHeard(part.basis.heard, result.heard);
+    part.stoppedMs = this.now();
     return { outcome: 'gemerkt', part: part.part, target: part.target, sentences: result.sentences, total: result.total };
+  }
+
+  /**
+   * Ein Teil, der nach einem Stopp neu erzählt wurde, brach mitten im Ton-Strom ab (Ausgabe-Check,
+   * Claude oder Sprachausgabe). Das Kind hat dann auch `text` gehört: Er kommt zur gemerkten Stelle dazu.
+   */
+  appendHeard(deviceId: string, text: string): void {
+    const part = this.current(deviceId);
+    if (!part || part.heard === null) return;
+    part.heard = joinHeard(part.heard, text);
+    part.stoppedMs = this.now();
   }
 
   /**
@@ -202,10 +231,10 @@ export class StopPoints {
    * angehaltenen Teil steht und die Folge läuft (nicht nach dem letzten Teil einer Folge).
    */
   resumeFor(deviceId: string, state: StoryState | undefined): StopResume | undefined {
-    const part = this.parts.get(deviceId);
-    if (!part || part.heard === null || !state || this.expired(part)) return undefined;
+    const part = this.current(deviceId);
+    if (!part || part.heard === null || !state) return undefined;
     if (state.ep !== part.ep || state.part !== part.part || state.part < 1 || state.done) return undefined;
-    return { before: part.basis.before, heard: part.heard };
+    return { before: part.basis.before, heard: part.heard, at: part.stoppedMs };
   }
 
   /** Vergisst alles zum Gerät (Sperren, Widerruf, Eltern, neue Geschichte). */
@@ -217,17 +246,30 @@ export class StopPoints {
   /** Löscht Abgelaufenes, auch bei Geräten, die sich nicht mehr melden. */
   purge(): void {
     const nowMs = this.now();
-    for (const [deviceId, part] of this.parts) if (this.expired(part)) this.parts.delete(deviceId);
+    for (const deviceId of [...this.parts.keys()]) this.current(deviceId);
     for (const [deviceId, waiting] of this.pending) if (nowMs - waiting.atMs > PENDING_STOP_TTL_MS) this.pending.delete(deviceId);
   }
 
-  /** Anzahl der gemerkten Teile (nur eine Zahl, für /api/status). */
+  /**
+   * Der Eintrag des Geräts nach dem Aufräumen: Der Text des Teils fällt nach PART_HOLD_MS weg; ohne
+   * Meldung ist dann der ganze Eintrag weg. Eine gemerkte Stelle hält höchstens `ttlMs` nach der Meldung.
+   */
+  private current(deviceId: string): DeliveredPart | undefined {
+    const part = this.parts.get(deviceId);
+    if (!part) return undefined;
+    const nowMs = this.now();
+    if (part.spoken && nowMs - part.deliveredMs > PART_HOLD_MS) part.spoken = null;
+    const gone = part.heard === null ? !part.spoken : nowMs - part.stoppedMs >= this.ttlMs;
+    if (gone) {
+      this.parts.delete(deviceId);
+      return undefined;
+    }
+    return part;
+  }
+
+  /** Anzahl der gemerkten Teile und Stellen (nur eine Zahl, für /api/status). */
   get count(): number {
     this.purge();
     return this.parts.size;
-  }
-
-  private expired(part: DeliveredPart): boolean {
-    return this.now() - part.deliveredMs >= this.ttlMs;
   }
 }

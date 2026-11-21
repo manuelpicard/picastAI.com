@@ -91,7 +91,8 @@ export interface TurnResult {
 
 /**
  * Nach einem Stopp per Taste (Punkt B2): Das Kind hat den letzten Teil nur bis `heard` gehört. Eine
- * Idee erzählt diesen Teil dann ab dort weiter, auf dem Stand `before` (vor dem Teil).
+ * Idee, „weiter“ und die Erzähltaste erzählen diesen Teil dann ab dort weiter, auf dem Stand `before`
+ * (vor dem Teil). `at` ist der Zeitpunkt des Stopps.
  */
 export type StoryResume = StopResume;
 
@@ -100,7 +101,8 @@ export type StoryResume = StopResume;
  * geschrieben und der Ausgabe-Check ihn freigegeben hat. `begin` kommt einmal vor dem ersten Absatz.
  */
 export interface StorySink {
-  begin(info: { done: boolean }): void;
+  /** `resumed`: Der Teil wird nach einem Stopp per Taste ab der gehörten Stelle neu erzählt (Punkt B2). */
+  begin(info: { done: boolean; resumed?: boolean }): void;
   say(text: string): void;
 }
 
@@ -227,11 +229,23 @@ export function storyActive(state: StoryState): boolean {
  * nur, wenn die Folge läuft und `before` genau der Stand vor dem aktuellen Teil ist (gleiche Folge,
  * ein Teil davor). Sonst undefined: Dann erzählt eine Idee wie bisher den nächsten Teil.
  */
-export function cleanResume(raw: { before: unknown; heard: string } | undefined, state: StoryState): StoryResume | undefined {
+export function cleanResume(raw: { before: unknown; heard: string; at?: number } | undefined, state: StoryState): StoryResume | undefined {
   if (!raw || !storyActive(state)) return undefined;
   const before = cleanState(raw.before);
   if ((raw.before as { v?: unknown } | null)?.v !== 1 || before.ep !== state.ep || before.part !== state.part - 1 || before.done) return undefined;
-  return { before, heard: cleanText(raw.heard, MAX_HEARD_CHARS) };
+  return { before, heard: cleanText(raw.heard, MAX_HEARD_CHARS), at: Math.max(0, Math.floor(Number(raw.at) || 0)) };
+}
+
+/**
+ * Länge des Rests nach einem Stopp (Punkt B2): Der ganze Teil soll etwa so lang bleiben wie sonst. Was
+ * das Kind schon gehört hat, zählt mit; der Rest hat aber mindestens die halbe übliche Länge (Platz für
+ * eine Idee und für das, was der Teil noch erledigen soll).
+ */
+export function remainingWords(minWords: number, maxWords: number, heard: string): { min: number; max: number } {
+  const heardWords = heard.trim() ? heard.trim().split(/\s+/).length : 0;
+  if (!heardWords) return { min: minWords, max: maxWords };
+  const min = Math.max(Math.round(minWords / 2), minWords - heardWords);
+  return { min, max: Math.max(min + 30, maxWords - heardWords) };
 }
 
 export function trimWords(text: string, maxWords: number): string {
@@ -725,7 +739,7 @@ export class Brain {
     const early = new EarlyStoryTimer(timer);
     const promise =
       call === 'neu' ? this.handleStory(true, state, transcript, early, '', held?.sink)
-        : call === 'weiter' ? this.handleStory(!storyActive(state), state, '', early, '', held?.sink)
+        : call === 'weiter' ? this.handleStory(!storyActive(state), state, '', early, '', held?.sink, resume)
           : this.handleStory(false, state, '', early, transcript, held?.sink, resume);
     promise.catch(() => undefined);
     let settled = false;
@@ -782,8 +796,9 @@ export class Brain {
 
   /**
    * Der optionale Zeitmesser misst nur die Dauer von Weiche, Sprachmodell und Ausgabe-Check; am Ablauf ändert er nichts.
-   * `resume` (nur bei einer Frage): Das Kind hat den letzten Teil per Taste angehalten (Punkt B2). Ist die
-   * Äußerung eine Idee, erzählt Claude diesen Teil ab der gehörten Stelle weiter.
+   * `resume` (Sprechtaste und Erzähltaste): Das Kind hat den letzten Teil per Taste angehalten (Punkt B2).
+   * Ist die Äußerung eine Idee oder „weiter“, oder drückt das Kind die Erzähltaste, erzählt Claude diesen
+   * Teil ab der gehörten Stelle weiter. Ein Geschichtenwunsch beginnt wie bisher eine neue Folge.
    */
   public async handle(
     mode: 'frage' | 'geschichte' | 'weiter',
@@ -791,11 +806,11 @@ export class Brain {
     rawState: any,
     timer: StageTimer = NO_TIMER,
     sink?: StorySink,
-    rawResume?: { before: unknown; heard: string }
+    rawResume?: { before: unknown; heard: string; at?: number }
   ): Promise<TurnResult> {
     const state = cleanState(rawState);
     const transcript = cleanText(rawTranscript, MAX_UTTERANCE_CHARS);
-    const resume = mode === 'frage' ? cleanResume(rawResume, state) : undefined;
+    const resume = mode === 'geschichte' ? undefined : cleanResume(rawResume, state);
 
     // 1. Deterministische Sicherheitsweiche
     if (transcript && timer.timeSync('weiche', () => screen(transcript))) {
@@ -816,7 +831,7 @@ export class Brain {
         return await this.handleStory(true, state, transcript, timer, '', sink);
       }
       if (mode === 'weiter') {
-        return await this.handleStory(!storyActive(state), state, '', timer, '', sink);
+        return await this.handleStory(!storyActive(state), state, '', timer, '', sink, resume);
       }
     } catch (err) {
       console.error('Brain execution error:', err);
@@ -887,7 +902,7 @@ export class Brain {
           return await this.handleStory(true, state, transcript, timer, '', sink);
         }
         if (parsed.category === 'weiter') {
-          return await this.handleStory(!storyActive(state), state, '', timer, '', sink);
+          return await this.handleStory(!storyActive(state), state, '', timer, '', sink, resume);
         }
         if (parsed.category === 'idee') {
           // Idee für die laufende Folge: weitererzählen und die Idee einbauen. Läuft keine Folge,
@@ -1018,21 +1033,25 @@ export class Brain {
     sink?: StorySink,
     resume?: StoryResume
   ): Promise<TurnResult> {
-    // Nach einem Stopp per Taste (Punkt B2, nur mit einer Idee): denselben Teil noch einmal erzählen,
-    // auf dem Stand davor und ab der gehörten Stelle. Geht das schief, gilt wie sonst `state`.
-    const retell = resume && !newEpisode && idea ? resume : undefined;
+    // Nach einem Stopp per Taste (Punkt B2): denselben Teil noch einmal erzählen, auf dem Stand davor und
+    // ab der gehörten Stelle, mit oder ohne Idee. Geht das schief, gilt wie sonst `state`.
+    const retell = resume && !newEpisode ? resume : undefined;
     const current = newEpisode ? this.startEpisode(state, wish) : { ...(retell ? retell.before : state) };
     // Stand, der bei einem Ausfall gilt (Pause oder Ton-Strom angehalten): nie ein Schritt zurück.
     const kept = retell ? state : current;
     const part = current.part + 1;
     const phase = storyPhase(part, current.target);
     const basis: PartBasis = { before: { ...current }, heard: retell?.heard ?? '' };
+    // Nach einem Stopp zählt für die Erinnerung nach langer Pause der Zeitpunkt des Stopps, nicht der
+    // Zeitpunkt des Teils davor: Sonst käme die Erinnerung mitten im Teil ein zweites Mal.
+    const promptState = retell ? { ...current, at: retell.at || current.at } : current;
+    const wordRange = remainingWords(this.storyMinWords, this.storyMaxWords, retell?.heard ?? '');
 
     const llm = this.llm;
     if (llm) {
       const now = this.now();
       const settings = {
-        storyMinWords: this.storyMinWords, storyMaxWords: this.storyMaxWords, bedtime: isBedtime(now), nowMs: now.getTime(), idea,
+        storyMinWords: wordRange.min, storyMaxWords: wordRange.max, bedtime: isBedtime(now), nowMs: now.getTime(), idea,
         heard: retell?.heard ?? '',
       };
       let retryNote = '';
@@ -1052,7 +1071,7 @@ export class Brain {
           blocked = true;
           return false;
         }
-        if (!spoken.length) sink!.begin({ done: phase === 'finale' });
+        if (!spoken.length) sink!.begin({ done: phase === 'finale', resumed: Boolean(retell) });
         spoken.push(paragraph);
         spokenWords += words;
         sink!.say(paragraph);
@@ -1064,7 +1083,7 @@ export class Brain {
         try {
           const parsed = await timer.time('sprachmodell', () => llm.generateJson({
             system: STORYTELLER_SYSTEM(this.age),
-            user: buildStoryPrompt(current, part, settings, retryNote),
+            user: buildStoryPrompt(promptState, part, settings, retryNote),
             schemaName: 'kunibert_geschichte',
             schema: STORY_SCHEMA,
             maxOutputTokens: 2000,
@@ -1125,8 +1144,8 @@ export class Brain {
           // Viel zu kurz (abgeschnitten oder Zusammenfassung statt Szene): einmal neu, wenn Zeit bleibt.
           // Nur mit echtem Zeitbudget (jede Geräteanfrage hat eins); ohne Budget gilt der Text, wie er ist.
           const left = timer.remainingMs();
-          if (!spoken.length && metrics.words < this.storyMinWords * 0.5 && attempt === 1 && Number.isFinite(left) && left >= STORY_RETRY_MIN_MS) {
-            retryNote = `Wichtig: Ein erster Entwurf war viel zu kurz. Erzähle diesen Teil als lebendige Szene mit ${this.storyMinWords} bis ${this.storyMaxWords} Wörtern.`;
+          if (!spoken.length && metrics.words < wordRange.min * 0.5 && attempt === 1 && Number.isFinite(left) && left >= STORY_RETRY_MIN_MS) {
+            retryNote = `Wichtig: Ein erster Entwurf war viel zu kurz. Erzähle diesen Teil als lebendige Szene mit ${wordRange.min} bis ${wordRange.max} Wörtern.`;
             continue;
           }
           if (timer.timeSync('ausgabecheck', () => screenOutput(text, 'story'))) {
@@ -1158,7 +1177,8 @@ export class Brain {
             recent: done ? rememberMotif(current.recent, String(parsed.episode_motif || plan || '')) : current.recent,
             miss: 0,
             at: now.getTime(),
-            usd: current.usd + spent,
+            // Nach einem Stopp zählt auch, was der ersetzte Teil gekostet hat (`kept` ist der Stand des Geräts).
+            usd: kept.usd + spent,
           };
           // Kosten der ganzen Folge, wenn sie endet (Punkt 72b). Nur Zahlen.
           if (done) logTurn(timer, `Folge fertig: teile=${part} kosten_usd=${formatUsd(updatedState.usd)}`);
