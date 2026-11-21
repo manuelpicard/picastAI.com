@@ -47,10 +47,11 @@ Angelegt am 17.11.2026, 20:15, von Claude (Chat). Gepflegt von den Läufen des W
 - Fertig, wenn: neue Sätze in beiden Listen („muss anschlagen“, „darf nicht anschlagen“), alle grün, `docs/Sicherheitsweiche-Pruefung.md` ergänzt.
 
 ### F1 · Aufräumen: Reste und alte Branches
-- Rolle: Bauen · Prio: 1 · Status: offen · Bezug: Nr. 58, 58a
+- Rolle: Bauen · Prio: 1 · Status: erledigt (PR #77, 21.11.2026) · Bezug: Nr. 58, 58a
 - Ziel: Reste von Google AI Studio löschen (`.aistudio/`, `metadata.json`, `firebase-blueprint.json`; vorher prüfen, dass nichts darauf verweist). Branches sichten: Branches, deren PR gemergt oder geschlossen ist und deren Inhalt in `main` steckt oder überholt ist, löschen. Je gelöschtem Branch den letzten Commit-Hash im Bericht nennen, damit er wiederherstellbar bleibt. `restlimit/2026-KW46` erst mit A1.
 - Stand 20.11.2026, 22:55 (Planung): A1 ist erledigt (PR #69), PR #49 ist geschlossen. Der Branch `restlimit/2026-KW46` (letzter Commit `b3ec035dff8d3610c9549f1b9f54b81708a9371a`) steht noch: Das Löschen über die REST-Schnittstelle (`DELETE …/git/refs/heads/…`) war in dieser Sitzung gesperrt (HTTP 403). Gelingt es wieder nicht, keinen Umweg suchen: die Branches mit Hash im Bericht nennen, der Betreiber löscht sie auf GitHub (Seite „Branches“). Dann gilt F1 trotzdem als erledigt, wenn der Rest gemergt ist.
 - Fertig, wenn: gemergt, CI grün, Liste der gelöschten Branches mit Hash im Bericht.
+- Stand 21.11.2026 (PR #77): `.aistudio/`, `metadata.json` und `firebase-blueprint.json` sind gelöscht. `firebase-applet-config.json`, `firebase.json` und `firestore.rules` bleiben (Server, Firestore-Test, CI). Das Löschen von Branches war wieder gesperrt (HTTP 403). Die Liste für den Betreiber mit Hash steht im Bericht von PR #77: fünf Branches mit geschlossenem PR zum Löschen, `claude/ki-hinweis` bleibt (siehe H3), fünf Branches ohne PR mit Einschätzung.
 
 ### H5 · Lizenz der Stimme stuart_bell
 - Rolle: Recherche · Prio: 1 · Status: offen · Bezug: Nr. 9 (Stimme)
@@ -150,6 +151,7 @@ Angelegt am 17.11.2026, 20:15, von Claude (Chat). Gepflegt von den Läufen des W
 - Rolle: Recherche · Prio: 3 · Status: offen · Bezug: Nr. 4, 6, 27
 - Ziel: Was gilt (KI-Verordnung Art. 50, Nutzungsrichtlinie von Anthropic)? Textentwurf für die Ansage am Gerät und für die Elterninformation.
 - Fertig, wenn: `docs/recherche/ki-hinweis.md` mit Quellen. Entwurf, nichts abschicken. Keine Rechtsberatung.
+- Hinweis (21.11.2026, F1): Ein früher Entwurf für die Ansage beim ersten Einschalten liegt auf dem Branch `claude/ki-hinweis` (PR #17, am 13.11. als geparktes Thema geschlossen, nicht gemergt; `server-api/ansage.ts`, letzter Commit `9a80beb`). Der Branch bleibt dafür stehen. Siehe auch N1120-1610-g (2).
 
 ### H6 · Kosten je Folge und Stückliste
 - Rolle: Recherche · Prio: 3 · Status: offen

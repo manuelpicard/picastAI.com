@@ -38,6 +38,7 @@ Im Endspurt arbeiten die Läufe des Autopiloten so lange weiter, bis das Limit g
 - Braucht ein Punkt mehrere PRs, steht „Teil k von n“ im PR-Text. Ein Teil vor dem letzten setzt den Status auf „offen (Teil k von n erledigt, PR #x)“. Erst der letzte Teil setzt „erledigt“. Punkte mit „Nach …“ warten bis dahin.
 - Jeder PR wird vor dem Merge von einem unabhängigen Unteragenten geprüft. Gemergt wird nur, wenn alle Checks des letzten Commits fertig und grün sind und mindestens `test`, `pi-audio` und `firestore-emulator` gelaufen sind. Fehlt ein Check, wird nicht gemergt.
 - Ist `main` rot, hat die Reparatur Vorrang vor allem anderen.
+- Branches löschen geht aus den Läufen bisher nicht: Die Schnittstelle der Cloud-Umgebung sperrt es (HTTP 403, am 20. und 21.11.2026). Dann keinen Umweg suchen. Der Bericht nennt Branch und letzten Commit-Hash, der Betreiber löscht ihn auf GitHub (Seite „Branches“). Den Branch eines gemergten PRs löscht GitHub selbst.
 
 ## Wo die Ergebnisse stehen
 
