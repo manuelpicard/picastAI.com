@@ -1,6 +1,8 @@
 import io
+import json
 import os
 import sys
+import threading
 import unittest
 import wave
 from types import ModuleType
@@ -373,6 +375,7 @@ class ScriptedPlayback:
 
     ``script`` enthält je Stück eine Funktion (oder None), die vor der Frage läuft, zum
     Beispiel ein Tastendruck. ``chunks_played`` zählt, wie viele Stücke ausgespielt wurden.
+    Wie SoundDeviceAudio gibt sie die gespielten Sekunden zurück (je Stück 0,1 s).
     """
 
     def __init__(self, script):
@@ -386,8 +389,34 @@ class ScriptedPlayback:
                 step()
             if should_stop is not None and should_stop():
                 self.stopped = True
-                return
+                return self.chunks_played * 0.1
             self.chunks_played += 1
+        return self.chunks_played * 0.1
+
+
+class ReportingApi(FakeApi):
+    """Wie FakeApi, mit Kennung der Antwort und Stopp-Meldung (Punkt B2)."""
+
+    def __init__(self, turn_id="t_AAAAAAAAAAAAAAAA", report_result=True):
+        super().__init__()
+        self.last_turn_id = None
+        self.turn_id = turn_id
+        self.report_result = report_result
+        self.reports = []
+
+    def ask_question(self, wav):
+        self.last_turn_id = self.turn_id
+        return super().ask_question(wav)
+
+    def request_story(self):
+        self.last_turn_id = self.turn_id
+        return super().request_story()
+
+    def report_stop(self, turn_id, heard_seconds):
+        self.reports.append((turn_id, heard_seconds))
+        if isinstance(self.report_result, Exception):
+            raise self.report_result
+        return self.report_result
 
 
 class PressWatcherTests(unittest.TestCase):
@@ -495,11 +524,160 @@ class StopPlaybackByPressTests(unittest.TestCase):
     def test_shutdown_still_wins(self):
         buttons = PressedButtons(story=True)
         out = ScriptedPlayback([None, None])
-        client, _clock = self.client(buttons, out)
+        api = ReportingApi()
+        client, _clock = self.client(buttons, out, api)
         out.script[1] = lambda: setattr(client, "stop_requested", True)
         client.step()
         self.assertTrue(out.stopped)
         self.assertEqual(client.state, ClientState.SHUTDOWN)
+        self.assertEqual(api.reports, [], "Beenden des Dienstes ist kein Stopp des Kindes")
+
+
+class StopReportTests(unittest.TestCase):
+    """Punkt B2: Nach einem Stopp per Taste meldet der Client Kennung und gespielte Sekunden."""
+
+    def run_story(self, api, script, wait_report=True, **config_values):
+        buttons = PressedButtons(story=True)
+        steps = []
+        for step in script:
+            if step == "loslassen":
+                steps.append(lambda: setattr(buttons, "story_pressed", False))
+            elif step == "drücken":
+                steps.append(lambda: setattr(buttons, "story_pressed", True))
+            else:
+                steps.append(None)
+        out = ScriptedPlayback(steps)
+        config = ClientConfig(dry_run=True, min_record_seconds=0.1, poll_interval_seconds=0.01, **config_values)
+        clock = FakeClock()
+        client = KunibertClient(config, api, DryRunAudio(config), out, buttons, DryRunLed(), clock=clock, sleep=clock.advance)
+        original_sleep = client.sleep
+
+        def sleep_and_release(seconds):
+            original_sleep(seconds)
+            buttons.story_pressed = False
+
+        client.sleep = sleep_and_release
+        client.transition(ClientState.WIFI_CONNECTING)
+        client.transition(ClientState.READY)
+        client.step()
+        if wait_report:
+            client._finish_stop_report()
+        return client, out
+
+    def test_stop_by_press_reports_turn_id_and_played_seconds(self):
+        api = ReportingApi()
+        client, out = self.run_story(api, [None, "loslassen", None, None, "drücken", None])
+        self.assertTrue(out.stopped)
+        self.assertEqual(len(api.reports), 1)
+        turn_id, seconds = api.reports[0]
+        self.assertEqual(turn_id, "t_AAAAAAAAAAAAAAAA")
+        self.assertAlmostEqual(seconds, 0.4, msg="vier Stücke zu 0,1 s gespielt")
+        self.assertEqual(client.state, ClientState.READY)
+
+    def test_question_answer_stopped_is_reported_too(self):
+        # Der Server entscheidet: Eine angehaltene Antwort auf eine Frage ändert dort nichts.
+        api = ReportingApi()
+        buttons = PressedButtons(speech=True)
+
+        class ReleaseAfterRecording(DryRunAudio):
+            def record_while_pressed(self, is_pressed, max_seconds):
+                buttons.speech_pressed = False
+                return super().record_while_pressed(is_pressed, max_seconds)
+
+        out = ScriptedPlayback([None, lambda: setattr(buttons, "speech_pressed", True), None])
+        config = ClientConfig(dry_run=True, min_record_seconds=0.1, poll_interval_seconds=0.01)
+        clock = FakeClock()
+        client = KunibertClient(config, api, ReleaseAfterRecording(config), out, buttons, DryRunLed(), clock=clock, sleep=clock.advance)
+        client.transition(ClientState.WIFI_CONNECTING)
+        client.transition(ClientState.READY)
+        client.step()
+        client._finish_stop_report()
+        self.assertEqual(api.reports, [("t_AAAAAAAAAAAAAAAA", 0.1)])
+
+    def test_no_report_without_a_stop_by_press(self):
+        api = ReportingApi()
+        self.run_story(api, [None] * 5)
+        self.assertEqual(api.reports, [], "zu Ende gehört")
+
+    def test_no_report_without_turn_id_without_seconds_or_when_switched_off(self):
+        stop = [None, "loslassen", None, "drücken", None]
+        no_id = ReportingApi(turn_id=None)
+        self.run_story(no_id, stop)
+        self.assertEqual(no_id.reports, [])
+        off = ReportingApi()
+        self.run_story(off, stop, stop_report=False)
+        self.assertEqual(off.reports, [], "KUNIBERT_STOP_REPORT=0")
+
+        class UnknownSeconds(ScriptedPlayback):
+            def play_wav(self, wav_bytes, should_stop=None):
+                super().play_wav(wav_bytes, should_stop)
+                return None
+
+        api = ReportingApi()
+        buttons = PressedButtons(story=True)
+        out = UnknownSeconds([None, lambda: setattr(buttons, "story_pressed", False), lambda: setattr(buttons, "story_pressed", True)])
+        config = ClientConfig(dry_run=True, poll_interval_seconds=0.01)
+        clock = FakeClock()
+        client = KunibertClient(config, api, DryRunAudio(config), out, buttons, DryRunLed(), clock=clock, sleep=clock.advance)
+        client.transition(ClientState.WIFI_CONNECTING)
+        client.transition(ClientState.READY)
+        client.step()
+        client._finish_stop_report()
+        self.assertTrue(out.stopped)
+        self.assertEqual(api.reports, [], "Wiedergabe ohne gezählte Sekunden: keine Meldung")
+
+    def test_failed_report_never_disturbs_the_child(self):
+        for result in (False, RuntimeError("kaputt t_AAAAAAAAAAAAAAAA")):
+            with self.subTest(result=result):
+                api = ReportingApi(report_result=result)
+                with self.assertLogs("kunibert", level="INFO") as logs:
+                    client, out = self.run_story(api, [None, "loslassen", "drücken", None])
+                self.assertTrue(out.stopped)
+                self.assertEqual(len(api.reports), 1)
+                self.assertEqual(client.state, ClientState.READY)
+                self.assertFalse(any("Stopp gemeldet" in line for line in logs.output))
+                if isinstance(result, Exception):
+                    failed = [line for line in logs.output if "Stopp-Meldung fehlgeschlagen" in line]
+                    self.assertEqual(len(failed), 1)
+                    self.assertTrue(failed[0].endswith("Stopp-Meldung fehlgeschlagen (RuntimeError)"), failed[0])
+                self.assertTrue(all("t_AAAA" not in line for line in logs.output), "keine Kennung, kein Fehlertext")
+
+    def test_report_is_finished_before_the_next_request(self):
+        events = []
+        release = threading.Event()
+
+        class SlowReportApi(ReportingApi):
+            def report_stop(self, turn_id, heard_seconds):
+                release.wait(2.0)
+                events.append("gemeldet")
+                return True
+
+            def request_story(self):
+                events.append("nächste Anfrage")
+                return super().request_story()
+
+        api = SlowReportApi()
+        timer = threading.Timer(0.2, release.set)
+        timer.start()
+        client, _out = self.run_story(api, [None, "loslassen", "drücken", None], wait_report=False)
+        # Kunibert ist gleich wieder bereit, die Meldung läuft noch (sie wartet auf `release`).
+        self.assertEqual(client.state, ClientState.READY)
+        self.assertEqual(list(events), ["nächste Anfrage"])
+        # Die nächste Anfrage wartet auf die Meldung.
+        client.buttons.story_pressed = True
+        client.step()
+        client._finish_stop_report()
+        timer.join()
+        self.assertEqual(events[:3], ["nächste Anfrage", "gemeldet", "nächste Anfrage"])
+
+    def test_report_log_line_has_only_a_number(self):
+        api = ReportingApi()
+        with self.assertLogs("kunibert", level="INFO") as logs:
+            self.run_story(api, [None, "loslassen", "drücken", None])
+        lines = [line for line in logs.output if "Stopp gemeldet" in line]
+        self.assertEqual(len(lines), 1)
+        self.assertRegex(lines[0], r"Stopp gemeldet nach \d+\.\d s$")
+        self.assertNotIn("t_AAAA", lines[0])
 
 
 class KunibertClientTests(unittest.TestCase):
@@ -844,6 +1022,55 @@ class KunibertClientTests(unittest.TestCase):
         self.assertEqual(request.call_args.args[1], "https://picastAI.com/v1/device/audio/test-id")
         self.assertEqual(request.call_args.args[3]["Authorization"], "Bearer device-test-token")
 
+    def test_download_audio_remembers_the_turn_id_for_the_stop_report(self):
+        config = ClientConfig(api_base_url="https://picastAI.com", device_token="device-test-token")
+        api = PicastApi(config)
+        audio = encode_wav(b"\x00\x00" * 200, config.sample_rate, config.channels, config.sample_width)
+        with patch.object(api, "_request_absolute", return_value=(200, {"Content-Type": "audio/wav"}, audio)):
+            api._download_audio({"audio_url": "https://picastAI.com/v1/device/audio/t_AbCdEfGhIjKlMn-_"})
+            self.assertEqual(api.last_turn_id, "t_AbCdEfGhIjKlMn-_")
+            api._download_audio({"audio_url": "/v1/device/audio/test-id"})
+            self.assertIsNone(api.last_turn_id, "keine Kennung im Format des Servers")
+        with patch.object(api, "_request_absolute", return_value=(500, {}, b"")):
+            with self.assertRaises(ApiError):
+                api._download_audio({"audio_url": "/v1/device/audio/t_AAAAAAAAAAAAAAAA"})
+        self.assertIsNone(api.last_turn_id, "fehlgeschlagener Abruf: keine Kennung")
+
+    def test_report_stop_posts_turn_id_and_seconds_once_with_a_short_timeout(self):
+        config = ClientConfig(api_base_url="https://picastAI.com", device_token="device-test-token", stop_report_timeout_seconds=2.5)
+        api = PicastApi(config)
+        with patch.object(api, "_request_absolute", return_value=(204, {}, b"")) as request:
+            self.assertTrue(api.report_stop("t_AAAAAAAAAAAAAAAA", 12.3456))
+        request.assert_called_once()
+        method, url, body, headers = request.call_args.args
+        self.assertEqual((method, url), ("POST", "https://picastAI.com/v1/device/playback-stopped"))
+        self.assertEqual(json.loads(body), {"turn_id": "t_AAAAAAAAAAAAAAAA", "heard_seconds": 12.35})
+        self.assertEqual(headers["Authorization"], "Bearer device-test-token")
+        self.assertEqual(headers["Content-Type"], "application/json")
+        self.assertEqual(request.call_args.kwargs["timeout"], 2.5)
+
+    def test_report_stop_failures_are_quiet_and_not_repeated(self):
+        api = PicastApi(ClientConfig(api_base_url="https://picastAI.com", device_token="device-test-token"))
+        for outcome in [(404, {}, b'{"error":"not_found"}'), (500, {}, b"")]:
+            with self.subTest(status=outcome[0]):
+                with patch.object(api, "_request_absolute", return_value=outcome) as request, \
+                        self.assertLogs("kunibert", level="WARNING") as logs:
+                    self.assertFalse(api.report_stop("t_AAAAAAAAAAAAAAAA", 3.0))
+                request.assert_called_once()
+                self.assertTrue(all("t_AAAA" not in line for line in logs.output), "keine Kennung im Protokoll")
+        with patch.object(api, "_request_absolute", side_effect=OSError("Netz weg")) as request, \
+                self.assertLogs("kunibert", level="WARNING") as logs:
+            self.assertFalse(api.report_stop("t_AAAAAAAAAAAAAAAA", 3.0))
+        request.assert_called_once()
+        self.assertIn("OSError", logs.output[0])
+
+    def test_stop_report_can_be_switched_off(self):
+        self.assertTrue(ClientConfig().stop_report)
+        with patch.dict(os.environ, {"KUNIBERT_STOP_REPORT": "0"}):
+            self.assertFalse(ClientConfig.from_env().stop_report)
+        with patch.dict(os.environ, {"KUNIBERT_STOP_REPORT_TIMEOUT": "1.5"}):
+            self.assertEqual(ClientConfig.from_env().stop_report_timeout_seconds, 1.5)
+
     def test_download_audio_rejects_foreign_host_and_https_downgrade(self):
         config = ClientConfig(api_base_url="https://picastAI.com", device_token="device-test-token")
         api = PicastApi(config)
@@ -1112,10 +1339,15 @@ class SoundDeviceSelectionTests(unittest.TestCase):
     def test_playback_stops_when_asked(self):
         audio, sd = self._audio()
         checks = iter([False, True])
-        audio.play_wav(encode_wav(b"\x00\x00" * 8000, 16000, 1, 2), should_stop=lambda: next(checks))
+        played = audio.play_wav(encode_wav(b"\x00\x00" * 8000, 16000, 1, 2), should_stop=lambda: next(checks))
         stream = sd.RawOutputStream.return_value.__enter__.return_value
         self.assertEqual(stream.write.call_count, 1)
         stream.abort.assert_called_once()
+        self.assertAlmostEqual(played, 0.1, msg="ein Stück zu 0,1 s geschrieben (für die Stopp-Meldung, B2)")
+
+    def test_playback_returns_the_whole_length_when_not_stopped(self):
+        audio, _sd = self._audio()
+        self.assertAlmostEqual(audio.play_wav(encode_wav(b"\x00\x00" * 4000, 16000, 1, 2)), 0.25)
 
     def test_playback_errors_become_hardware_errors(self):
         audio, sd = self._audio()
@@ -1240,6 +1472,16 @@ class StreamedWavTests(unittest.TestCase):
         self.assertEqual(b"".join(written), pcm)
         self.assertTrue(response.closed)
 
+    def test_play_stream_returns_the_written_seconds(self):
+        audio, _sd = SoundDeviceSelectionTests()._audio()
+        played = audio.play_stream(StreamedWav(_FakeHttpResponse(_stream_header() + b"\x00\x00" * 8000, piece=777), ClientConfig()))
+        self.assertAlmostEqual(played, 0.5)
+        audio2, _sd2 = SoundDeviceSelectionTests()._audio()
+        checks = iter([False, False, True])
+        stopped = audio2.play_stream(StreamedWav(_FakeHttpResponse(_stream_header() + b"\x00\x00" * 16000, piece=3200), ClientConfig()),
+                                     should_stop=lambda: next(checks))
+        self.assertAlmostEqual(stopped, 0.2, msg="zwei Stücke zu 0,1 s, dann angehalten")
+
     def test_play_stream_stops_on_press_and_ends_quietly_on_network_loss(self):
         audio, sd = SoundDeviceSelectionTests()._audio()
         checks = iter([False, True])
@@ -1269,18 +1511,27 @@ class RealSoundDeviceTests(unittest.TestCase):
 
     def test_play_and_record_with_the_real_library(self):
         audio = SoundDeviceAudio(ClientConfig())
-        audio.play_wav(encode_wav(b"\x00\x00" * 3200, 16000, 1, 2))  # 0,2 s Stille
+        played = audio.play_wav(encode_wav(b"\x00\x00" * 3200, 16000, 1, 2))  # 0,2 s Stille
+        self.assertAlmostEqual(played, 0.2, places=3, msg="gespielte Sekunden für die Stopp-Meldung (B2)")
         presses = iter([True, True, False])
         wav_bytes = audio.record_while_pressed(lambda: next(presses), 1.0)
         validate_wav(wav_bytes, ClientConfig())
 
     def test_play_stream_with_the_real_library(self):
         audio = SoundDeviceAudio(ClientConfig())
-        audio.play_stream(StreamedWav(_FakeHttpResponse(_stream_header() + b"\x00\x00" * 3200, piece=777), ClientConfig()))
+        played = audio.play_stream(StreamedWav(_FakeHttpResponse(_stream_header() + b"\x00\x00" * 3200, piece=777), ClientConfig()))
+        self.assertAlmostEqual(played, 0.2, places=3)
 
     def test_stop_request_ends_playback_early(self):
         audio = SoundDeviceAudio(ClientConfig())
-        audio.play_wav(encode_wav(b"\x00\x00" * 16000 * 30, 16000, 1, 2), should_stop=lambda: True)
+        played = audio.play_wav(encode_wav(b"\x00\x00" * 16000 * 30, 16000, 1, 2), should_stop=lambda: True)
+        self.assertEqual(played, 0.0, "vor dem ersten Stück angehalten: nichts gespielt")
+
+    def test_stop_after_some_chunks_reports_the_written_seconds(self):
+        audio = SoundDeviceAudio(ClientConfig())
+        checks = iter([False, False, False, True])
+        played = audio.play_wav(encode_wav(b"\x00\x00" * 16000 * 30, 16000, 1, 2), should_stop=lambda: next(checks))
+        self.assertAlmostEqual(played, 0.3, places=3, msg="drei Stücke zu 0,1 s")
 
 
 class RealSoundDeviceRequiredTest(unittest.TestCase):

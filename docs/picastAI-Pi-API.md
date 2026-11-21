@@ -94,7 +94,7 @@ Fragen, feste Texte, Ersatzgeschichten und vorbereitete Teile (`prefetch.ts`) ko
 
 ### `POST /v1/device/playback-stopped`
 
-Seit 21.11.2026 (Punkt B2 der Arbeitsliste, am Server). Hält das Kind Kunibert per Taste an, meldet das Gerät, welche Antwort es war und wie lange es sie gespielt hat. Gleiche Anmeldung wie oben, JSON-Body:
+Seit 21.11.2026 (Punkt B2 der Arbeitsliste). Hält das Kind Kunibert per Taste an, meldet das Gerät, welche Antwort es war und wie lange es sie gespielt hat. Gleiche Anmeldung wie oben, JSON-Body:
 
 ```json
 { "turn_id": "t_abcdefghijklmnop", "heard_seconds": 12.4 }
@@ -114,7 +114,7 @@ Was der Server damit macht:
 - Eine Frage dazwischen ändert nichts an der Stelle. Ein neuer Geschichtenwunsch beginnt wie bisher eine neue Folge.
 - Stopp erst im Abschluss („Wenn du wissen willst …“) oder danach: Das Kind hat alles gehört, es bleibt alles wie bisher. Im letzten Teil einer Folge merkt sich der Server nichts; eine Idee danach ist wie bisher der Wunsch für die nächste Folge.
 - Fällt Claude beim neu erzählten Teil aus, kommt wie sonst der Satz „Kunibert muss kurz überlegen …“. Die Stelle bleibt, und der nächste Druck versucht es noch einmal ab dort. Bricht ein neu erzählter Teil im Ton-Strom ab, nachdem schon Absätze gesprochen wurden, kommen diese Absätze zur Stelle dazu. Bricht ein anderer Teil im Ton-Strom ab, nachdem schon Ton beim Kind war, gilt die alte Stelle nicht mehr.
-- Ohne Meldung bleibt alles wie bisher. Der Pi-Client meldet den Stopp ab Teil 2 dieses Punkts; die Firmware noch nicht (eigener Punkt). `/v1/turn` (Web-Simulator) kennt die Meldung nicht.
+- Ohne Meldung bleibt alles wie bisher. Der Pi-Client meldet den Stopp seit 21.11.2026 (abschaltbar mit `KUNIBERT_STOP_REPORT=0`, siehe `pi-client/README.md`); die gespielten Sekunden zählt er an den Samples, die er an die Soundkarte geschrieben hat. Die Firmware meldet ihn noch nicht (Punkt N1121-0607-a). `/v1/turn` (Web-Simulator) kennt die Meldung nicht.
 
 Was der Server dafür im Arbeitsspeicher hält: den Text des zuletzt ausgelieferten Geschichtenteils (vom Server erzeugt), seine Tonlänge und den Stand der Geschichte vor diesem Teil. Dieser Stand enthält wie der gespeicherte Stand selbst den Wunsch des Kindes zur Folge (`wish`, höchstens 200 Zeichen). Den Text des Teils hält der Server 15 Minuten nach dem Ausliefern bereit; kam bis dahin keine Meldung, ist alles weg. Kam eine, bleiben nur die gehörten Sätze und der Stand davor, bis die Geschichte weitergeht, längstens 24 Stunden nach der Meldung. Abgelaufenes löscht der Server spätestens fünf Minuten nach der Frist aus dem Arbeitsspeicher. Gelöscht wird es außerdem mit dem Stand der Geschichte (Sperren, Widerruf, `POST /v1/eltern/geschichte-neu`, `DELETE /v1/eltern/daten`). An Claude geht zusätzlich nur der gehörte Text, den der Server selbst erzeugt hat. Das Protokoll bekommt je Meldung eine Zeile mit Zahlen, ohne Texte und Kennungen, zum Beispiel `Stopp per Taste: gemerkt teil=2/5 saetze=7/15`, `Stopp per Taste: ganz_gehoert teil=2/5` oder `Stopp per Taste: wartet` (Teil entsteht noch oder gehört nicht zur Geschichte).
 
