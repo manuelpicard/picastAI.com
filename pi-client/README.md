@@ -125,6 +125,8 @@ SIGTERM/Ctrl+C ──> SHUTDOWN
 
 Während Kunibert spricht, stoppt ein **neuer** Druck auf die Sprech- oder die Erzähltaste die Wiedergabe sofort (seit 12.11.2026). Eine Taste, die beim Beginn der Wiedergabe noch gedrückt war, zählt erst nach dem Loslassen. Der Stopp-Druck startet keine neue Frage und keine Geschichte: Erst wenn beide Tasten losgelassen sind (höchstens 10 s Warten), ist Kunibert wieder bereit. Die Firmware macht es genauso.
 
+Seit 21.11.2026 (Punkt B2) meldet der Client den Stopp dem Server: die Kennung der Antwort (letzter Teil der `audio_url`) und die gespielten Sekunden, gezählt an den Samples, die er an die Soundkarte geschrieben hat (`POST /v1/device/playback-stopped`, siehe [`docs/picastAI-Pi-API.md`](../docs/picastAI-Pi-API.md)). Danach geht die Geschichte an dieser Stelle weiter: mit einer Idee über die Sprechtaste, mit „weiter“ oder mit der Erzähltaste. Die Meldung läuft im Hintergrund, während der Client auf das Loslassen wartet, und ist fertig, bevor Kunibert wieder bereit ist (höchstens `KUNIBERT_STOP_REPORT_TIMEOUT` Sekunden, Standard 3, ein Versuch). Ist der Server nicht erreichbar, steht nur eine Warnung im Protokoll (ohne Kennung). Im Protokoll steht `Stopp gemeldet nach 12.4 s`. `KUNIBERT_STOP_REPORT=0` schaltet die Meldung ab; dann erzählt der Server wie vorher den nächsten Teil. Die Firmware meldet den Stopp noch nicht (Punkt N1121-0607-a der Arbeitsliste).
+
 Die API-Keys und Modellaufrufe bleiben auf `picastAI.com`. Der Pi nimmt nur auf, authentifiziert sich, lädt WAV-Audio herunter und spielt es ab.
 
 ## Hardware-/GPIO-Belegung
@@ -246,6 +248,8 @@ KUNIBERT_PIPELINE_TIMEOUT=140
 KUNIBERT_AUDIO_TIMEOUT=45
 # Ton-Strom anfragen (nur wirksam mit PICASTAI_AUDIO_STREAM=1 am Server); 0 = immer ganze Datei
 KUNIBERT_AUDIO_STREAM=1
+# Stopp per Taste dem Server melden (Punkt B2); 0 = nicht melden
+KUNIBERT_STOP_REPORT=1
 KUNIBERT_RETRY_COUNT=1
 # Leer = Standardgerät; bei zwei USB-Geräten getrennt setzen (siehe "Erster Aufbau")
 KUNIBERT_INPUT_DEVICE=

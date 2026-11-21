@@ -36,7 +36,7 @@ Angelegt am 17.11.2026, 20:15, von Claude (Chat). Gepflegt von den Läufen des W
 - Fertig, wenn: Messung vorher und nachher im PR. Neue Wege nur hinter einem Schalter, Standard unverändert, solange die Güte nicht belegt ist. Sicherheitsweiche und Ausgabe-Check unverändert wirksam (Tests).
 
 ### B2 · Stopp per Taste dem Server melden (Kinder)
-- Rolle: Bauen · Prio: 1 · Status: offen (Teil 1 von 2 erledigt, PR #75) · Bezug: Befund aus dem Probelauf vom 14.11.
+- Rolle: Bauen · Prio: 1 · Status: erledigt (PR #76, 21.11.2026; Teil 1: PR #75) · Bezug: Befund aus dem Probelauf vom 14.11.
 - Ziel: Stoppt das Kind einen Teil per Taste, weiß der Server das bisher nicht. Eine Idee setzt dann am Ende des ganzen Teils an, obwohl das Kind nur einen Teil gehört hat. Der Pi-Client meldet den Stopp mit der gehörten Zeit; der Server merkt sich, wo die Geschichte für das Kind stand, und die nächste Idee setzt dort an.
 - Fertig, wenn: Server, Pi-Client, Schnittstellen-Doku und Tests (auch e2e) passen. Für die Firmware ein eigener Folgepunkt. Ohne Meldung verhält sich alles wie heute.
 - Stand 21.11.2026 (PR #75, Teil 1): Der Server kann es. `POST /v1/device/playback-stopped` (`docs/picastAI-Pi-API.md`), `server-api/stopp.ts`. Vorläufig entschieden (21.11.2026, 06:55): Nach einem Stopp gehen auch „weiter“ und die Erzähltaste an der gehörten Stelle weiter, nicht nur eine Idee. Teil 2: Der Pi-Client meldet den Stopp (Kennung aus der `audio_url`, gespielte Sekunden), sofort und vor der nächsten Anfrage, ohne das Kind warten zu lassen; Tests auch gegen die echte Audio-Bibliothek; e2e in `deploy/dryrun/pi-e2e.test.mjs`; `pi-client/README.md`. Firmware: N1121-0607-a.
