@@ -199,16 +199,43 @@ test('StopPoints: Nach dem letzten Teil einer Folge merkt sich der Server nichts
   assert.deepEqual(stops.stopped('d', OTHER, 6), { outcome: 'wartet' });
 });
 
+/** Was ein abgebrochener Strom gesprochen hat: Absätze mit je 10 s, am Ende ein leerer Abschluss (wie spokenStory in server.ts). */
+const brokenOff = (...paragraphs: string[]): SpokenPart => ({
+  paragraphs: [...paragraphs, ''],
+  seconds: [...paragraphs.map(() => 10), 0],
+  totalSeconds: paragraphs.length * 11,
+  pauseSeconds: 1,
+});
+
 test('StopPoints.appendHeard: Gesprochenes aus einem abgebrochenen neu erzählten Teil kommt zur Stelle dazu', () => {
   const stops = new StopPoints();
-  stops.appendHeard('d', 'Nichts gemerkt.');
+  stops.appendHeard('d', OTHER, brokenOff('Nichts gemerkt.'));
   assert.equal(stops.count, 0);
   stops.delivered('d', TURN, state(), { before, heard: '' }, streamed);
-  stops.appendHeard('d', 'Ohne Stopp.');
+  stops.appendHeard('d', OTHER, brokenOff('Ohne Stopp.'));
   assert.equal(stops.resumeFor('d', state()), undefined, 'ohne Stopp gibt es keine Stelle zum Fortschreiben');
   stops.stopped('d', TURN, 6);
-  stops.appendHeard('d', 'Dann kam die Hexe.');
+  stops.appendHeard('d', OTHER, brokenOff('Dann kam die Hexe. Sie lachte.', ''));
+  assert.equal(stops.resumeFor('d', state())?.heard, 'Kunibert stand auf. Dann kam die Hexe. Sie lachte.');
+});
+
+test('StopPoints.appendHeard: hat das Kind auch den neu erzählten Strom angehalten, zählt nur bis dahin', () => {
+  const stops = new StopPoints();
+  stops.delivered('d', TURN, state(), { before, heard: '' }, streamed);
+  stops.stopped('d', TURN, 6);
+  // Meldung zum neu erzählten Strom OTHER nach 6 s: Er ist noch nicht fertig, die Meldung wartet.
+  assert.deepEqual(stops.stopped('d', OTHER, 6), { outcome: 'wartet' });
+  stops.appendHeard('d', OTHER, brokenOff('Dann kam die Hexe. Sie lachte laut und lange.', 'Das hörte das Kind nicht mehr.'));
   assert.equal(stops.resumeFor('d', state())?.heard, 'Kunibert stand auf. Dann kam die Hexe.');
+});
+
+test('StopPoints.appendHeard: danach zählt keine späte Meldung zum ursprünglichen Teil mehr', () => {
+  const stops = new StopPoints();
+  stops.delivered('d', TURN, state(), { before, heard: '' }, streamed);
+  stops.stopped('d', TURN, 6);
+  stops.appendHeard('d', OTHER, brokenOff('Dann kam die Hexe.'));
+  assert.deepEqual(stops.stopped('d', TURN, 17), { outcome: 'wartet' });
+  assert.equal(stops.resumeFor('d', state())?.heard, 'Kunibert stand auf. Dann kam die Hexe.', 'nichts Angehängtes geht verloren');
 });
 
 test('heardUpTo: Satzgrenzen wie bei der Pocket-Stimme (wörtliche Rede, Kleinbuchstabe danach)', () => {

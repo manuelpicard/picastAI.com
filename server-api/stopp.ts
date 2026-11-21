@@ -13,10 +13,11 @@
 // Datenschutz: Gemerkt werden der Text des letzten Geschichtenteils (vom Server erzeugt), seine
 // Tonlänge und der Stand der Geschichte vor diesem Teil. Der Stand enthält wie immer den Wunsch des
 // Kindes zur Folge (`wish`, höchstens 200 Zeichen). Neu hinzu kommt nur eine Zahl vom Gerät (Sekunden).
-// Den Text des Teils hält der Server höchstens 15 Minuten (`PART_HOLD_MS`), so lange kann eine Meldung
+// Den Text des Teils hält der Server 15 Minuten bereit (`PART_HOLD_MS`), so lange kann eine Meldung
 // kommen. Kam keine, ist danach alles weg. Kam eine, bleiben nur die gehörten Sätze und der Stand davor,
-// bis die Geschichte weitergeht, längstens 24 Stunden. Nach dem letzten Teil einer Folge merkt sich
-// der Server nichts. Alles liegt nur im Arbeitsspeicher; Sperren, Widerruf und die Eltern-Routen
+// bis die Geschichte weitergeht, längstens 24 Stunden. Abgelaufenes löscht das Aufräumen alle fünf
+// Minuten (`purgeExpired`), also spätestens fünf Minuten nach der Frist. Nach dem letzten Teil einer
+// Folge merkt sich der Server nichts. Alles liegt nur im Arbeitsspeicher; Sperren, Widerruf und die Eltern-Routen
 // löschen es mit dem Stand (`forgetDeviceStory` in server.ts).
 import type { StoryState } from './brain.js';
 import { STORY_STATE_TTL_MS } from './story-states.js';
@@ -216,14 +217,21 @@ export class StopPoints {
   }
 
   /**
-   * Ein Teil, der nach einem Stopp neu erzählt wurde, brach mitten im Ton-Strom ab (Ausgabe-Check,
-   * Claude oder Sprachausgabe). Das Kind hat dann auch `text` gehört: Er kommt zur gemerkten Stelle dazu.
+   * Ein Teil, der nach einem Stopp neu erzählt wurde, brach mitten im Ton-Strom `turnId` ab (Ausgabe-Check,
+   * Claude oder Sprachausgabe). Das Kind hat dann auch dessen gesprochene Absätze gehört (`spoken`, ohne
+   * feste Sätze; der letzte Absatz zählt wie sonst als Abschluss und nicht mit): Sie kommen zur gemerkten
+   * Stelle dazu. Hat das Kind auch diesen Strom angehalten und es gemeldet, nur bis dahin. Danach zählt
+   * keine Meldung mehr zum ursprünglichen Teil (sein Text ist weg).
    */
-  appendHeard(deviceId: string, text: string): void {
+  appendHeard(deviceId: string, turnId: string, spoken: SpokenPart): void {
     const part = this.current(deviceId);
+    const waiting = this.pending.get(deviceId);
+    const stoppedThere = waiting && waiting.turnId === turnId && this.now() - waiting.atMs <= PENDING_STOP_TTL_MS;
+    if (stoppedThere) this.pending.delete(deviceId);
     if (!part || part.heard === null) return;
-    part.heard = joinHeard(part.heard, text);
+    part.heard = joinHeard(part.heard, heardUpTo(spoken, stoppedThere ? waiting.seconds : Number.POSITIVE_INFINITY).heard);
     part.stoppedMs = this.now();
+    part.spoken = null;
   }
 
   /**

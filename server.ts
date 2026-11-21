@@ -286,7 +286,7 @@ async function respondTurn(
       const result = await resultPromise;
       await speaker.finish();
       // Erst wenn alles vertont ist, rückt die Folge vor (wie ohne Strom: kein Stand ohne Ton).
-      if (advanceStory(deviceId, result.story_state, generation)) {
+      if (advanceStory(deviceId, result.story_state, generation, preparesNext(deviceId, result))) {
         // Für den Stopp per Taste (B2): Die Sekunden je Absatz sind hier genau bekannt.
         const paragraphs = speechParagraphs(result.speech);
         noteDelivery(deviceId, turnId, result, {
@@ -302,7 +302,7 @@ async function respondTurn(
       // Ton war schon beim Kind (B2): Bei einem neu erzählten Teil kommt das Gesprochene zur gemerkten
       // Stelle dazu; sonst gilt die alte Stelle nicht mehr (das Kind hat schon etwas Neues gehört).
       if (speaker.stream.bytes > 0) {
-        if (resumed) stops.appendHeard(deviceId, storyTexts(said.slice(0, speaker.segments.length)));
+        if (resumed) stops.appendHeard(deviceId, turnId, spokenStory(said.slice(0, speaker.segments.length), speaker.segments, PARAGRAPH_PAUSE_MS / 1000));
         else stops.delete(deviceId);
       }
       // Nur die Art des Fehlers, nie Text (CLAUDE.md).
@@ -325,12 +325,21 @@ async function respondTurn(
  * des Geräts gelöscht, während die Antwort entstand (zum Beispiel weil der Betreiber das Gerät
  * gesperrt hat), bleibt er gelöscht: `generation` stammt vom Beginn der Anfrage.
  */
-function advanceStory(deviceId: string, state: StoryState, generation: number): boolean {
+function advanceStory(deviceId: string, state: StoryState, generation: number, prepareNext = true): boolean {
   if (!deviceStoryStates.set(deviceId, state, generation)) return false;
   // Hat die Anfrage eine Folge begonnen oder fortgesetzt, den nächsten Teil vorbereiten. Bei einer
   // reinen Frage bleibt der Stand gleich, und eine laufende Vorbereitung bleibt gültig.
-  prefetcher.start(deviceId, state);
+  if (prepareNext) prefetcher.start(deviceId, state);
   return true;
+}
+
+/**
+ * Lohnt die Vorbereitung des nächsten Teils? Nicht nach der Pause („Kunibert muss kurz überlegen …“),
+ * wenn eine gemerkte Stelle nach einem Stopp weiter gilt (B2): Der nächste Druck erzählt dann denselben
+ * Teil ab der Stelle, und ein vorbereiteter nächster Teil würde nie genommen.
+ */
+function preparesNext(deviceId: string, result: TurnResult): boolean {
+  return !(result.fixed === 'pause' && stops.resumeFor(deviceId, result.story_state));
 }
 
 /** Ganze WAV-Datei: Stand speichern, Audio ablegen, für den Stopp per Taste merken, antworten. */
@@ -342,7 +351,7 @@ function sendWholeTurn(
   type: 'answer' | 'kunibert_story',
   generation: number
 ): Response {
-  const saved = advanceStory(deviceId, result.story_state, generation);
+  const saved = advanceStory(deviceId, result.story_state, generation, preparesNext(deviceId, result));
   const { body, turnId } = deviceResponse(req, deviceId, result, type);
   if (saved) {
     let totalSeconds = 0;
@@ -368,14 +377,25 @@ function noteDelivery(deviceId: string, turnId: string, result: TurnResult, spok
     const applied = stops.delivered(deviceId, turnId, result.story_state, result.basis, spoken);
     if (applied) logStop(applied);
   } else if (result.streamed) {
-    if (resumed) stops.appendHeard(deviceId, storyTexts(spoken.paragraphs));
+    if (resumed) stops.appendHeard(deviceId, turnId, spokenStory(spoken.paragraphs, spoken.seconds ?? [], spoken.pauseSeconds));
     else stops.delete(deviceId);
   }
 }
 
-/** Gesprochene Absätze ohne die festen Sätze (Abschluss, Pause), als ein Text. */
-function storyTexts(paragraphs: string[]): string {
-  return paragraphs.filter((paragraph) => !FIXED_STORY_TEXTS.has(paragraph.trim())).join(' ');
+/**
+ * Die gesprochenen Absätze eines abgebrochenen Stroms ohne feste Sätze (Abschluss, Pause), mit ihren
+ * Sekunden, für `StopPoints.appendHeard`. Feste Sätze zählen bei der Zeit mit (das Kind hörte sie),
+ * kommen aber nie in die gehörte Stelle. Am Ende steht ein leerer Abschluss: Er zählt nicht als Geschichte.
+ */
+function spokenStory(texts: string[], seconds: number[], pauseSeconds: number): SpokenPart {
+  const paragraphs = texts.map((text) => (FIXED_STORY_TEXTS.has(text.trim()) ? '' : text));
+  const known = seconds.length >= texts.length;
+  return {
+    paragraphs: [...paragraphs, ''],
+    seconds: known ? [...seconds.slice(0, texts.length), 0] : null,
+    totalSeconds: known ? seconds.slice(0, texts.length).reduce((sum, value) => sum + value, 0) + pauseSeconds * texts.length : 0,
+    pauseSeconds: known ? pauseSeconds : 0,
+  };
 }
 
 /** Eine Zeile je Stopp-Meldung, nur Schlüsselwörter und Zahlen (keine Texte, keine Kennungen). */

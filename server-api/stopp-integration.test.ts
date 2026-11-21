@@ -65,7 +65,7 @@ function listen(server: http.Server): Promise<number> {
 function startFakeClaude() {
   const calls: ClaudeCall[] = [];
   /** true: Der zweite Absatz jedes Teils fällt durch den Ausgabe-Check („Blut“ in einer Geschichte). */
-  const state = { blockSecondParagraph: false };
+  const state = { blockSecondParagraph: false, failStories: false };
   const server = http.createServer((req, res) => {
     const chunks: Buffer[] = [];
     req.on('data', (chunk: Buffer) => chunks.push(chunk));
@@ -78,6 +78,11 @@ function startFakeClaude() {
       const schema = body.tools?.[0]?.name ?? '';
       const user = String(body.messages[0]?.content ?? '');
       calls.push({ schema, user });
+      if (state.failStories && schema === 'kunibert_geschichte') {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end('{"type":"error","error":{"type":"api_error"}}');
+        return;
+      }
       let input: Record<string, unknown>;
       if (schema === 'kunibert_antwort') {
         const said = user.match(/«([^»]*)»/)?.[1] ?? '';
@@ -506,6 +511,29 @@ describe('Stopp per Taste mit Vorbereitung des nächsten Teils (echter Server, P
     const part3Calls = () => k.storyCallsSince(0).filter((call) => /Erzähle jetzt Teil 3 von 5/.test(call.user));
     await waitFor(() => part3Calls().length === 1, 'Vorbereitung von Teil 3');
     assert.match(part3Calls()[0].user, new RegExp(`Bisher: Zusammenfassung bis Teil 2 ${RETOLD}\\.`), 'Teil 2 baut auf dem neu erzählten Teil 1 auf');
+  });
+
+  it('Pause nach einem Ausfall beim neu erzählten Teil: keine neue Vorbereitung, der nächste Druck erzählt ab der Stelle', async () => {
+    await k.freshStory();
+    const part2Calls = () => k.storyCallsSince(0).filter((call) => /Erzähle jetzt Teil 2 von 5/.test(call.user)).length;
+    const initial = part2Calls();
+    const { turnId } = await k.storyButton();
+    await waitFor(() => part2Calls() === initial + 1, 'Vorbereitung von Teil 2 läuft');
+    const before = part2Calls();
+    await k.reportStop({ turn_id: turnId, heard_seconds: afterFirstSentence(1) });
+    k.claude.state.failStories = true;
+    try {
+      await k.storyButton();
+    } finally {
+      k.claude.state.failStories = false;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    assert.equal(part2Calls(), before, 'nach der Pause wird Teil 2 nicht noch einmal vorbereitet');
+    const mark = k.claude.calls.length;
+    await k.storyButton();
+    const [again] = k.storyCallsSince(mark);
+    assert.match(again.user, /Erzähle jetzt Teil 1 von 5/, 'der nächste Druck versucht es noch einmal ab der Stelle');
+    assert.ok(again.user.includes(`«${sentence(1, 0)}»`));
   });
 });
 

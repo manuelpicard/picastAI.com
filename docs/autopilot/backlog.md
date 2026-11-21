@@ -306,7 +306,7 @@ Angelegt am 17.11.2026, 20:15, von Claude (Chat). Gepflegt von den Läufen des W
 
 ### N1121-0607-b · Nach einem Stopp den Rest des Teils schon vorbereiten (Kinder)
 - Rolle: Bauen · Prio: 3 · Status: offen · Nach B2 · Bezug: B2, PR #75; Vorbereitung (`server-api/prefetch.ts`)
-- Ziel: Seit PR #75 erzählt die Erzähltaste nach einem gemeldeten Stopp denselben Teil ab der gehörten Stelle weiter. Der vorbereitete nächste Teil passt dann nicht, und das Kind wartet so lange wie ohne Vorbereitung (Claude und Sprachausgabe). Gleich nach der Meldung im Hintergrund den Rest des Teils vorbereiten (ohne Idee); die Erzähltaste nimmt ihn, eine Idee verwirft ihn. Die alte Vorbereitung des nächsten Teils verwerfen (Kosten).
+- Ziel: Seit PR #75 erzählt die Erzähltaste nach einem gemeldeten Stopp denselben Teil ab der gehörten Stelle weiter. Der vorbereitete nächste Teil passt dann nicht, und das Kind wartet so lange wie ohne Vorbereitung (Claude und Sprachausgabe). Gleich nach der Meldung im Hintergrund den Rest des Teils vorbereiten (ohne Idee); die Erzähltaste nimmt ihn, eine Idee verwirft ihn. Die alte Vorbereitung des nächsten Teils verwerfen (Kosten). Dazu prüfen (Einschätzung aus der Prüfung von PR #75, nicht gemessen): Läuft die alte Vorbereitung noch, kann sie die Sprachausgabe des neu erzählten Teils aufhalten, weil Pocket nur eine Anfrage zur Zeit rechnet; ein Abbrechen braucht N1120-2300-b.
 - Fertig, wenn: Test am echten Server mit Attrappen: Nach Stopp und Erzähltaste kein neuer Aufruf an Claude, wenn die Vorbereitung fertig ist; nach einer Idee wird sie verworfen. Messung der Wartezeit vorher und nachher mit Attrappen.
 
 ### N1121-0607-c · Abgebrochener Ton-Strom: nach den gesprochenen Absätzen weitererzählen (Kinder)
