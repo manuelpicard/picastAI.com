@@ -53,7 +53,7 @@ Pi --HTTPS :443--> Caddy --HTTP lokal--> 127.0.0.1:3000 Kunibert-Server
 
 - Debian 12 oder Ubuntu 24.04 mit systemd (das Hetzner-Image „Docker CE“ ist ein Ubuntu mit installiertem Docker, aber **ohne** Node.js), `sudo`-Zugang, Node.js 22 (wie in der CI; Installation nach [nodejs.org](https://nodejs.org/en/download)), `git`, `openssl`. Docker wird nur für den Sprachserver gebraucht; für den Node-Server gibt es in diesem Repo kein Dockerfile und keine Compose-Datei, er läuft als systemd-Dienst.
 - Ein Hostname, dessen DNS du kontrollierst, mit A-Eintrag auf die öffentliche IP (AAAA nur, wenn IPv6 wirklich geht). `kunibert.example` unten durch deinen Namen ersetzen, **überall gleich**.
-- Eingehend TCP 80 und 443 offen (bei Hetzner zusätzlich in der Cloud Firewall der Console). Port 3000 und 8000 nie nach außen freigeben: `HOST=127.0.0.1` in der env-Datei und `--publish 127.0.0.1:8000:8000` beim Sprachserver sorgen dafür. Ohne `HOST` lauscht der Server auf allen Adressen (`server-api/config.ts:219`). Vorsicht bei Docker: Ein Port, der ohne `127.0.0.1` veröffentlicht wird, umgeht eine `ufw`-Firewall.
+- Eingehend TCP 80 und 443 offen (bei Hetzner zusätzlich in der Cloud Firewall der Console). Port 3000 und 8000 nie nach außen freigeben: `HOST=127.0.0.1` in der env-Datei und `--publish 127.0.0.1:8000:8000` beim Sprachserver sorgen dafür. Ohne `HOST` lauscht der Server auf allen Adressen (`server-api/config.ts`, Feld `host`). Vorsicht bei Docker: Ein Port, der ohne `127.0.0.1` veröffentlicht wird, umgeht eine `ufw`-Firewall.
 - Schlüssel: `ANTHROPIC_API_KEY` (Sprachmodell). Spracherkennung und Sprachausgabe laufen auf einem eigenen Sprachserver (Abschnitt 4) und brauchen keinen Schlüssel.
 - Die Kinderstimme bleibt auf deinem Server und dem Sprachserver; nur der erkannte Text geht an Anthropic (Sprachmodell, Verarbeitung in den USA). OpenAI und Gemini sind für den Kinderbetrieb ausgeschlossen. Bis zur Datenschutzprüfung nur Erwachsene als Tester.
 
@@ -178,7 +178,7 @@ Die 120 s gelten **für die ganze Anfrage zusammen** (Entscheidung vom 11.11.202
 
 Offen: ob 120 s die richtige Größe sind, und die echten Zeiten auf der CCX13 (Schritt 10 oben).
 
-Wer die Server-Grenzen ändert, passt die beiden anderen an. Quellen: `server-api/timing.ts:15-21` (Budget, Reserve, Mindestzeiten), `server-api/brain.ts:169`, `:243-248` und `:381-387` (Frist je Sprachmodell-Aufruf), `server.ts:146` und `:181-186` (Erkennung und Sprachausgabe), `server-api/config.ts:225` und `:241` (Grenzen je Aufruf, 3 bis 120 s), `deploy/Caddyfile:26`, `pi-client/kunibert_client.py:70` und `:115`.
+Wer die Server-Grenzen ändert, passt die beiden anderen an. Quellen (ohne Zeilennummern, die veralten): `server-api/timing.ts` (`TURN_BUDGET_MS`, `TTS_RESERVE_MS`, `MIN_LLM_MS`, `MIN_TTS_MS`), `server-api/brain.ts` (Frist je Sprachmodell-Aufruf), `server.ts` (Erkennung und Sprachausgabe), `server-api/config.ts` (`llmTimeoutMs` und `voiceTimeoutMs`, Grenzen je Aufruf, 3 bis 120 s), `deploy/Caddyfile` (`response_header_timeout 130s`), `pi-client/kunibert_client.py` (`KUNIBERT_PIPELINE_TIMEOUT`, Standard 140 s).
 
 ## 7. Abnahme von außen
 
