@@ -347,6 +347,6 @@ Angelegt am 17.11.2026, 20:15, von Claude (Chat). Gepflegt von den Läufen des W
 - Fertig, wenn: gemergt; der Test zum Hinweis ohne Schlüssel (falls vorhanden) passt.
 
 ### N1121-1937-c · Kleine Doku-Befunde aus der Prüfung von #64, #65 und #68
-- Rolle: Prüfen · Prio: 3 · Status: offen · Bezug: Kommentare „Autopilot-Prüfung“ an #64, #65 und #68 (21.11.2026)
+- Rolle: Prüfen · Prio: 3 · Status: erledigt (PR #80, 21.11.2026) · Bezug: Kommentare „Autopilot-Prüfung“ an #64, #65 und #68 (21.11.2026)
 - Ziel: (1) `CLAUDE.md`: Bei den eigenen PRs fehlt „vom Konto des Eigentümers angelegt“ (wie `docs/autopilot/README.md`). (2) `deploy/EINRICHTUNG.md`, Abschnitt 4: Der Verweis `server-api/config.ts:231` für `PICASTAI_STT_MODEL` stimmt nicht mehr; Verweis ohne Zeilennummer. (3) `docs/autopilot/README.md`: Form und Zeitzone der Uhrzeit in der Status-Zeile („TT.MM. HH:MM“, Europe/Berlin) und was gilt, wenn sie fehlt (der letzte Commit).
 - Fertig, wenn: gemergt.
