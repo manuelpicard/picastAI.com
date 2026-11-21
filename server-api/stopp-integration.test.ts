@@ -64,6 +64,8 @@ function listen(server: http.Server): Promise<number> {
 /** Attrappe für die Messages-API: ordnet Ideen („soll“) ein und erzählt Teil N, den der Auftrag nennt. */
 function startFakeClaude() {
   const calls: ClaudeCall[] = [];
+  /** true: Der zweite Absatz jedes Teils fällt durch den Ausgabe-Check („Blut“ in einer Geschichte). */
+  const state = { blockSecondParagraph: false };
   const server = http.createServer((req, res) => {
     const chunks: Buffer[] = [];
     req.on('data', (chunk: Buffer) => chunks.push(chunk));
@@ -71,6 +73,7 @@ function startFakeClaude() {
       const body = JSON.parse(Buffer.concat(chunks).toString('utf8')) as {
         tools?: Array<{ name: string }>;
         messages: Array<{ content: string }>;
+        stream?: boolean;
       };
       const schema = body.tools?.[0]?.name ?? '';
       const user = String(body.messages[0]?.content ?? '');
@@ -78,12 +81,14 @@ function startFakeClaude() {
       let input: Record<string, unknown>;
       if (schema === 'kunibert_antwort') {
         const said = user.match(/«([^»]*)»/)?.[1] ?? '';
-        input = /\bsoll\b/.test(said) ? { category: 'idee', speech: '' } : { category: 'frage', speech: 'Das weiß ich.' };
+        input = /\bsoll\b/.test(said) ? { category: 'idee', speech: '' }
+          : /geschichte/.test(said) ? { category: 'geschichte', speech: '' }
+            : { category: 'frage', speech: 'Das weiß ich.' };
       } else {
         const part = Number(user.match(/Teil (\d+) von/)?.[1] ?? 1);
         input = {
           episode_plan: part === 1 ? 'Plan: Kunibert findet heute den Weg zur Hexe. Die Hexe sagt: „Leise Schritte wecken keinen Drachen.“' : '',
-          text: storyText(part),
+          text: state.blockSecondParagraph ? `${storyText(part).split('\n\n')[0]}\n\nDa floss Blut.` : storyText(part),
           // Das Kennzeichen wandert über „Bisher“ in alle späteren Teile: So zeigt der Auftrag für Teil 3,
           // ob Teil 2 auf dem neu erzählten Teil 1 aufbaut oder auf einer veralteten Vorbereitung.
           summary: `Zusammenfassung bis Teil ${part}${user.includes('Von diesem Teil hat das Kind schon gehört') || user.includes(RETOLD) ? ` ${RETOLD}` : ''}.`,
@@ -92,22 +97,51 @@ function startFakeClaude() {
           episode_finished: false,
         };
       }
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ content: [{ type: 'tool_use', name: schema, input }], usage: { input_tokens: 10, output_tokens: 10 } }));
+      const usage = { input_tokens: 10, output_tokens: 10 };
+      if (!body.stream) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ content: [{ type: 'tool_use', name: schema, input }], usage }));
+        return;
+      }
+      // Ton-Strom: Claude schreibt im Streaming (Server-Sent Events), Stück für Stück.
+      res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+      const send = (event: Record<string, unknown>) => res.write(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
+      send({ type: 'message_start', message: { usage } });
+      send({ type: 'content_block_start', index: 0, content_block: { type: 'tool_use', name: schema, input: {} } });
+      const json = JSON.stringify(input);
+      for (let i = 0; i < json.length; i += 20) send({ type: 'content_block_delta', index: 0, delta: { type: 'input_json_delta', partial_json: json.slice(i, i + 20) } });
+      send({ type: 'content_block_stop', index: 0 });
+      send({ type: 'message_delta', delta: { stop_reason: 'tool_use' }, usage });
+      send({ type: 'message_stop' });
+      res.end();
     });
   });
-  return { server, calls, listening: listen(server) };
+  return { server, calls, state, listening: listen(server) };
 }
 
-/** Attrappe für Erkennung und Sprachausgabe: Der Ton ist 20 ms je Zeichen lang (16 kHz, stumm). */
+/**
+ * Attrappe für Erkennung und Sprachausgabe: Der Ton ist 20 ms je Zeichen lang (16 kHz, stumm).
+ * `failIf`: Texte mit diesem Stück lässt die Sprachausgabe ausfallen (HTTP 500). `hold`: Die
+ * Sprachausgabe wartet, bis das Versprechen erfüllt ist (`waiting` zählt die wartenden Anfragen).
+ */
 function startFakeSpeech() {
-  const state = { transcript: IDEA };
+  const state = { transcript: IDEA, failIf: '', hold: null as Promise<void> | null, holdIf: '', waiting: 0 };
   const server = http.createServer((req, res) => {
     const chunks: Buffer[] = [];
     req.on('data', (chunk: Buffer) => chunks.push(chunk));
-    req.on('end', () => {
+    req.on('end', async () => {
       if (req.url === '/audio/speech') {
         const { input } = JSON.parse(Buffer.concat(chunks).toString('utf8')) as { input: string };
+        if (state.hold && (!state.holdIf || input.includes(state.holdIf))) {
+          state.waiting++;
+          await state.hold;
+          state.waiting--;
+        }
+        if (state.failIf && input.includes(state.failIf)) {
+          res.writeHead(500);
+          res.end();
+          return;
+        }
         const samples = Math.round(input.length * SECONDS_PER_CHAR * 16_000);
         res.writeHead(200, { 'Content-Type': 'audio/wav' });
         res.end(encodeWav(Buffer.alloc(samples * 2), 16_000, 1, 16));
@@ -328,16 +362,64 @@ describe('Stopp per Taste (echter Server, Attrappen, Punkt B2)', () => {
     assert.match(idea.user, /Erzähle jetzt Teil 2 von 5/);
   });
 
-  it('Stopp, dann die Erzähltaste: wie bisher der nächste Teil; eine spätere Idee erzählt nicht zurück', async () => {
+  it('Stopp, dann die Erzähltaste: Teil 1 geht an der Stelle weiter, danach Teil 2 und eine Idee in Teil 3', async () => {
     await k.freshStory();
     const { turnId } = await k.storyButton();
     await k.reportStop({ turn_id: turnId, heard_seconds: afterFirstSentence(1) });
     const mark = k.claude.calls.length;
     await k.storyButton();
-    assert.match(k.storyCallsSince(mark)[0].user, /Erzähle jetzt Teil 2 von 5/);
+    const [resumed] = k.storyCallsSince(mark);
+    assert.match(resumed.user, /Erzähle jetzt Teil 1 von 5/, 'derselbe Teil ab der Stelle, nichts übersprungen');
+    assert.ok(resumed.user.includes(`«${sentence(1, 0)}»`));
+    assert.ok(!resumed.user.includes(IDEA), 'ohne Idee');
     const mark2 = k.claude.calls.length;
+    await k.storyButton();
+    assert.match(k.storyCallsSince(mark2)[0].user, /Erzähle jetzt Teil 2 von 5/);
+    const mark3 = k.claude.calls.length;
     await k.speak();
-    assert.match(k.storyCallsSince(mark2)[0].user, /Erzähle jetzt Teil 3 von 5/);
+    assert.match(k.storyCallsSince(mark3)[0].user, /Erzähle jetzt Teil 3 von 5/, 'die Stelle gilt nach dem neu erzählten Teil nicht mehr');
+  });
+
+  it('ohne Einwilligung merkt sich der Server keine Stelle', async () => {
+    await k.freshStory();
+    const { turnId } = await k.storyButton();
+    const consent = (method: 'PUT' | 'DELETE') =>
+      fetch(`${k.base}/v1/eltern/einwilligung`, { method, headers: { Cookie: k.parentCookie, 'Content-Type': 'application/json' }, body: method === 'PUT' ? '{}' : undefined });
+    assert.equal((await consent('DELETE')).status, 200);
+    try {
+      const linesBefore = k.output.split('\n').filter((line) => line.startsWith('Stopp per Taste:')).length;
+      assert.equal((await k.reportStop({ turn_id: turnId, heard_seconds: afterFirstSentence(1) })).status, 204);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      const linesAfter = k.output.split('\n').filter((line) => line.startsWith('Stopp per Taste:')).length;
+      assert.equal(linesAfter, linesBefore, 'nichts verarbeitet, keine Zeile');
+    } finally {
+      assert.equal((await consent('PUT')).status, 200);
+    }
+  });
+
+  it('eine Antwort, deren Stand nicht gespeichert wird (Geschichte neu, während sie entsteht), wird auch nicht gemerkt', async () => {
+    await k.freshStory();
+    const status = async () => {
+      const res = await fetch(`${k.base}/api/status`, { headers: { Authorization: `Bearer ${ADMIN_TOKEN}` } });
+      return ((await res.json()) as { storyStops: number }).storyStops;
+    };
+    assert.equal(await status(), 0);
+    let release!: () => void;
+    k.speech.state.hold = new Promise<void>((resolve) => (release = resolve));
+    try {
+      const pending = k.storyButton();
+      await waitFor(() => k.speech.state.waiting > 0, 'Sprachausgabe wartet');
+      await k.freshStory();
+      k.speech.state.hold = null;
+      release();
+      const { turnId } = await pending;
+      assert.equal(await status(), 0, 'nichts gemerkt');
+      assert.equal((await k.reportStop({ turn_id: turnId, heard_seconds: afterFirstSentence(1) })).status, 204);
+      assert.equal(await status(), 0);
+    } finally {
+      k.speech.state.hold = null;
+      release?.();
+    }
   });
 
   it('Stopp, dann eine Frage, dann eine Idee: Die Idee setzt trotzdem an der gehörten Stelle an', async () => {
@@ -363,17 +445,18 @@ describe('Stopp per Taste (echter Server, Attrappen, Punkt B2)', () => {
     await k.freshStory();
     const { turnId } = await k.storyButton();
     await k.reportStop({ turn_id: turnId, heard_seconds: afterFirstSentence(1) });
-    await k.freshStory();
-    await k.storyButton();
-    const mark = k.claude.calls.length;
-    await k.speak();
-    assert.match(k.storyCallsSince(mark)[0].user, /Erzähle jetzt Teil 2 von 5/, 'nach der neuen Geschichte gilt die alte Stelle nicht');
-
     const status = async () => {
       const res = await fetch(`${k.base}/api/status`, { headers: { Authorization: `Bearer ${ADMIN_TOKEN}` } });
       return (await res.json()) as { storyStops: number };
     };
-    assert.equal((await status()).storyStops, 1, 'der letzte Teil ist gemerkt');
+    assert.equal((await status()).storyStops, 1, 'die Stelle ist gemerkt');
+    await k.freshStory();
+    assert.equal((await status()).storyStops, 0, 'neue Geschichte (Eltern) löscht sie');
+    await k.storyButton();
+    const mark = k.claude.calls.length;
+    await k.speak();
+    assert.match(k.storyCallsSince(mark)[0].user, /Erzähle jetzt Teil 2 von 5/, 'nach der neuen Geschichte gilt die alte Stelle nicht');
+    assert.equal((await status()).storyStops, 1, 'der letzte Teil ist für eine Meldung bereit');
     const revoked = await fetch(`${k.base}/api/devices/${DEVICE_ID}/revoke`, { method: 'POST', headers: { Authorization: `Bearer ${ADMIN_TOKEN}` } });
     assert.equal(revoked.status, 200);
     assert.equal((await status()).storyStops, 0, 'Sperren löscht ihn');
@@ -383,6 +466,7 @@ describe('Stopp per Taste (echter Server, Attrappen, Punkt B2)', () => {
   it('Protokoll: Stopp-Zeilen enthalten nur Zahlen, keine Texte, Geräte-ID oder Token', () => {
     const lines = k.output.split('\n').filter((line) => line.startsWith('Stopp per Taste:'));
     assert.ok(lines.some((line) => /^Stopp per Taste: gemerkt teil=1\/5 saetze=1\/4$/.test(line)), lines.join(' | '));
+    assert.ok(!lines.some((line) => /teil=5\/5/.test(line)), 'nach dem Finale wird nichts gemerkt');
     assert.ok(lines.some((line) => /^Stopp per Taste: ganz_gehoert teil=1\/5$/.test(line)), lines.join(' | '));
     assert.ok(lines.some((line) => line === 'Stopp per Taste: wartet'), lines.join(' | '));
     for (const line of lines) assert.match(line, /^Stopp per Taste: (gemerkt teil=\d+\/\d+ saetze=\d+\/\d+|ganz_gehoert teil=\d+\/\d+|wartet)$/);
@@ -422,5 +506,136 @@ describe('Stopp per Taste mit Vorbereitung des nächsten Teils (echter Server, P
     const part3Calls = () => k.storyCallsSince(0).filter((call) => /Erzähle jetzt Teil 3 von 5/.test(call.user));
     await waitFor(() => part3Calls().length === 1, 'Vorbereitung von Teil 3');
     assert.match(part3Calls()[0].user, new RegExp(`Bisher: Zusammenfassung bis Teil 2 ${RETOLD}\\.`), 'Teil 2 baut auf dem neu erzählten Teil 1 auf');
+  });
+});
+
+describe('Stopp per Taste mit Ton-Strom (echter Server, Punkt B2)', () => {
+  let k: Awaited<ReturnType<typeof startKunibert>>;
+  before(async () => {
+    k = await startKunibert({ PICASTAI_STORY_PREFETCH: '0', PICASTAI_AUDIO_STREAM: '1' });
+    k.auth['X-Kunibert-Audio-Stream'] = '1';
+  });
+  after(async () => { await k?.stop(); });
+
+  /** Mit Ton-Strom kennt der Server die Sekunden je Absatz: Mitte zwischen dem Ende von Satz 1 und Satz 2. */
+  const afterFirstSentenceStreamed = (part: number) => (SECONDS_PER_CHAR * (sentence(part, 0).length + storyText(part).split('\n\n')[0].length)) / 2;
+
+  it('Meldung, solange der Strom noch entsteht: Sie gilt, sobald der Teil fertig ist', async () => {
+    await k.freshStory();
+    let release!: () => void;
+    k.speech.state.holdIf = sentence(1, 2);
+    k.speech.state.hold = new Promise<void>((resolve) => (release = resolve));
+    try {
+      const { turnId } = await k.storyButton();
+      await waitFor(() => k.speech.state.waiting > 0, 'zweiter Absatz wartet auf die Sprachausgabe');
+      assert.equal((await k.reportStop({ turn_id: turnId, heard_seconds: afterFirstSentenceStreamed(1) })).status, 204);
+    } finally {
+      k.speech.state.hold = null;
+      k.speech.state.holdIf = '';
+      release?.();
+    }
+    const mark = k.claude.calls.length;
+    await k.speak();
+    const [retold] = k.storyCallsSince(mark);
+    assert.match(retold.user, /Erzähle jetzt Teil 1 von 5/);
+    assert.ok(retold.user.includes(`«${sentence(1, 0)}»`), retold.user);
+    const lines = k.output.split('\n').filter((line) => line.startsWith('Stopp per Taste:'));
+    assert.deepEqual(lines.slice(-2), ['Stopp per Taste: wartet', 'Stopp per Taste: gemerkt teil=1/5 saetze=1/4']);
+  });
+
+  it('neu erzählter Teil bricht im Strom ab: Das schon Gesprochene kommt zur Stelle dazu', async () => {
+    await k.freshStory();
+    const { turnId } = await k.storyButton();
+    await waitFor(() => k.output.includes('Zeitmessung'), 'erster Teil fertig');
+    await k.reportStop({ turn_id: turnId, heard_seconds: afterFirstSentenceStreamed(1) });
+    // Die Idee erzählt Teil 1 ab der Stelle neu; die Sprachausgabe fällt beim zweiten Absatz aus.
+    k.speech.state.failIf = sentence(1, 2);
+    try {
+      const outputBefore = k.output.length;
+      await k.speak();
+      await waitFor(() => k.output.slice(outputBefore).includes('modus=frage_strom status=abgebrochen'), 'Strom bricht ab');
+      const mark = k.claude.calls.length;
+      k.speech.state.failIf = '';
+      await k.storyButton();
+      const [again] = k.storyCallsSince(mark);
+      assert.match(again.user, /Erzähle jetzt Teil 1 von 5/, 'derselbe Teil, nichts übersprungen');
+      assert.ok(again.user.includes(`«${sentence(1, 0)} ${sentence(1, 0)} ${sentence(1, 1)}»`), again.user);
+    } finally {
+      k.speech.state.failIf = '';
+    }
+  });
+
+  it('anderer Teil bricht im Strom ab, nachdem das Kind schon etwas gehört hat: Die alte Stelle gilt nicht mehr', async () => {
+    await k.freshStory();
+    const { turnId } = await k.storyButton();
+    await k.reportStop({ turn_id: turnId, heard_seconds: afterFirstSentenceStreamed(1) });
+    k.speech.state.transcript = 'erzähl mir eine neue geschichte';
+    k.speech.state.failIf = sentence(1, 2);
+    try {
+      const outputBefore = k.output.length;
+      await k.speak();
+      await waitFor(() => k.output.slice(outputBefore).includes('modus=frage_strom status=abgebrochen'), 'Strom der neuen Folge bricht ab');
+    } finally {
+      k.speech.state.transcript = IDEA;
+      k.speech.state.failIf = '';
+    }
+    const mark = k.claude.calls.length;
+    await k.speak();
+    const [idea] = k.storyCallsSince(mark);
+    assert.match(idea.user, /Erzähle jetzt Teil 2 von 5/, 'kein Sprung zurück in den angehaltenen Teil');
+    assert.ok(!idea.user.includes('Von diesem Teil hat das Kind schon gehört'));
+    assert.ok(!idea.user.includes('Wunsch des Kindes'), 'die abgebrochene neue Folge wurde nicht gespeichert');
+  });
+
+  it('Ton-Strom: Es zählen die Sekunden je Absatz und die Pausen dazwischen', async () => {
+    await k.freshStory();
+    const { turnId } = await k.storyButton();
+    // Kurz vor dem Ende von Satz 3: Absatz 1, die Pause von 0,9 s, dann Satz 3 bis kurz vor Schluss.
+    const paragraph1 = storyText(1).split('\n\n')[0];
+    const seconds = SECONDS_PER_CHAR * paragraph1.length + 0.9 + SECONDS_PER_CHAR * sentence(1, 2).length - 0.1;
+    const outputBefore = k.output.length;
+    await k.reportStop({ turn_id: turnId, heard_seconds: seconds });
+    await waitFor(() => k.output.slice(outputBefore).includes('Stopp per Taste: gemerkt'), 'Stelle gemerkt');
+    assert.ok(k.output.slice(outputBefore).includes('Stopp per Taste: gemerkt teil=1/5 saetze=2/4'), 'Satz 3 war noch nicht zu Ende');
+  });
+
+  it('Ausgabe-Check hält einen neu erzählten Teil im Strom an: Das Gesprochene kommt zur Stelle dazu', async () => {
+    await k.freshStory();
+    const { turnId } = await k.storyButton();
+    await k.reportStop({ turn_id: turnId, heard_seconds: afterFirstSentenceStreamed(1) });
+    k.claude.state.blockSecondParagraph = true;
+    try {
+      const outputBefore = k.output.length;
+      await k.storyButton();
+      await waitFor(() => /modus=weiter_strom status=200/.test(k.output.slice(outputBefore)), 'Strom mit Pause fertig');
+    } finally {
+      k.claude.state.blockSecondParagraph = false;
+    }
+    const mark = k.claude.calls.length;
+    await k.storyButton();
+    const [again] = k.storyCallsSince(mark);
+    assert.match(again.user, /Erzähle jetzt Teil 1 von 5/);
+    assert.ok(again.user.includes(`«${sentence(1, 0)} ${sentence(1, 0)} ${sentence(1, 1)}»`), again.user);
+  });
+
+  it('Ausgabe-Check hält einen anderen Teil im Strom an: Die alte Stelle gilt nicht mehr', async () => {
+    await k.freshStory();
+    const { turnId } = await k.storyButton();
+    await k.reportStop({ turn_id: turnId, heard_seconds: afterFirstSentenceStreamed(1) });
+    k.speech.state.transcript = 'erzähl mir eine neue geschichte';
+    k.claude.state.blockSecondParagraph = true;
+    try {
+      const outputBefore = k.output.length;
+      await k.speak();
+      await waitFor(() => /modus=frage_strom status=200/.test(k.output.slice(outputBefore)), 'Strom mit Pause fertig');
+    } finally {
+      k.speech.state.transcript = IDEA;
+      k.claude.state.blockSecondParagraph = false;
+    }
+    const mark = k.claude.calls.length;
+    await k.speak();
+    const [idea] = k.storyCallsSince(mark);
+    assert.match(idea.user, /Erzähle jetzt Teil 2 von 5/);
+    assert.ok(!idea.user.includes('Von diesem Teil hat das Kind schon gehört'));
   });
 });
