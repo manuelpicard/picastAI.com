@@ -16,13 +16,25 @@ Der Wochen-Autopilot sind geplante Aufgaben in der Cloud (Claude Code). Sie arbe
 
 | Aufgabe | Zeiten (Europe/Berlin) | Rolle |
 |---|---|---|
-| Kunibert Autopilot · Bauen | täglich 00:07, 06:07, 13:07, 19:07 | Punkte mit Rolle „Bauen“ umsetzen, testen, prüfen lassen, mergen |
-| Kunibert Autopilot · Prüfen | täglich 03:07, 16:07 | gemergte PRs unabhängig prüfen, Sicherheit, Datenschutz, Tests |
-| Kunibert Autopilot · Recherche | täglich 10:37 | Recherche mit Quellen, Doku gegen Code |
-| Kunibert Autopilot · Planen & Bericht | täglich 09:13 und 22:13 | Arbeitsliste pflegen; abends Tagesbericht, freitags Wochenbericht |
+| Kunibert Autopilot · Bauen | täglich 00:37, 06:37, 13:37, 19:37 | Punkte mit Rolle „Bauen“ umsetzen, testen, prüfen lassen, mergen |
+| Kunibert Autopilot · Prüfen | täglich 23:23 | gemergte PRs unabhängig prüfen, Sicherheit, Datenschutz, Tests |
+| Kunibert Autopilot · Recherche | täglich 11:53 | Recherche mit Quellen, Doku gegen Code |
+| Kunibert Autopilot · Planen & Bericht | täglich 18:07 | Arbeitsliste pflegen und Tagesbericht; freitags zusätzlich der Wochenbericht |
 | Kunibert Restlimit (Mi, Do, Fr) | Mi 22:58, Do stündlich :03, Fr 00:03 bis 07:03 | ältere Aufgaben mit eigenem Auftrag vom 13.11.: arbeiten auf `restlimit/<Jahr>-KW<nn>` in einem Entwurfs-PR. Ihr Auftrag sieht kein Mergen vor. Sein Inhalt (Story-Stand mit Ablauf, Eltern-Server-Teil, Doku) ist Punkt A1 der Arbeitsliste. Der Autopilot übernimmt Brauchbares freitags (Punkt A2 der Arbeitsliste) |
 
 Im Endspurt arbeiten die Läufe des Autopiloten so lange weiter, bis das Limit greift. Dazu kommen die stündlichen Restlimit-Läufe.
+
+Die Zeiten sind so gelegt, dass ein 5-Stunden-Fenster des Nutzungslimits mit einem Lauf von Prüfen (23:23), Recherche (11:53) oder Planen & Bericht (18:07) beginnt. „Bauen“ folgt gut eine bis knapp zwei Stunden später und nutzt den Rest des Fensters. Nur Bauen 06:37 beginnt ein Fenster allein.
+
+## Welches Modell wofür
+
+Wort des Betreibers vom 20.11.2026, 09:40: Für den Autopiloten gilt immer das am besten passende Modell.
+
+- Bauen und Prüfen: Claude Opus 5.5. Diese Läufe schreiben und prüfen Code, der ohne Menschen gemergt wird.
+- Recherche und Planen & Bericht: Claude Sonnet 5.5. Sie lesen, fassen zusammen und pflegen Listen. Das spart Limit.
+- Unteragenten bekommen ihr Modell ausdrücklich: unabhängige Prüfung eines Diffs immer Opus; reine Abfragen und Zusammenfassungen Haiku; Teilfragen einer Recherche Sonnet; parallele Bauen-Punkte im Endspurt Opus.
+- Kein Claude Fable: Es verbraucht das Wochenlimit schneller; höchstens die Hälfte des Wochenlimits darf darauf entfallen. Opus reicht für diese Arbeit.
+- Läufe mit Sonnet übernehmen keine verwaisten Code-PRs und schreiben keinen Code für Server, Pi-Client, Firmware, Sicherheitsweiche oder das, was Kinder hören. Sie dürfen Recherche- und Planungs-PRs übernehmen und PRs mit „Status: fertig“ und grünen Checks mergen. Ein verwaister Code-PR bleibt also für den nächsten Lauf mit Opus liegen.
 
 ## Wie die Läufe sich abstimmen
 
