@@ -536,7 +536,7 @@ class StopPlaybackByPressTests(unittest.TestCase):
 class StopReportTests(unittest.TestCase):
     """Punkt B2: Nach einem Stopp per Taste meldet der Client Kennung und gespielte Sekunden."""
 
-    def run_story(self, api, script, **config_values):
+    def run_story(self, api, script, wait_report=True, **config_values):
         buttons = PressedButtons(story=True)
         steps = []
         for step in script:
@@ -560,6 +560,8 @@ class StopReportTests(unittest.TestCase):
         client.transition(ClientState.WIFI_CONNECTING)
         client.transition(ClientState.READY)
         client.step()
+        if wait_report:
+            client._finish_stop_report()
         return client, out
 
     def test_stop_by_press_reports_turn_id_and_played_seconds(self):
@@ -589,6 +591,7 @@ class StopReportTests(unittest.TestCase):
         client.transition(ClientState.WIFI_CONNECTING)
         client.transition(ClientState.READY)
         client.step()
+        client._finish_stop_report()
         self.assertEqual(api.reports, [("t_AAAAAAAAAAAAAAAA", 0.1)])
 
     def test_no_report_without_a_stop_by_press(self):
@@ -619,17 +622,25 @@ class StopReportTests(unittest.TestCase):
         client.transition(ClientState.WIFI_CONNECTING)
         client.transition(ClientState.READY)
         client.step()
+        client._finish_stop_report()
         self.assertTrue(out.stopped)
         self.assertEqual(api.reports, [], "Wiedergabe ohne gezählte Sekunden: keine Meldung")
 
     def test_failed_report_never_disturbs_the_child(self):
-        for result in (False, RuntimeError("kaputt")):
+        for result in (False, RuntimeError("kaputt t_AAAAAAAAAAAAAAAA")):
             with self.subTest(result=result):
                 api = ReportingApi(report_result=result)
-                client, out = self.run_story(api, [None, "loslassen", "drücken", None])
+                with self.assertLogs("kunibert", level="INFO") as logs:
+                    client, out = self.run_story(api, [None, "loslassen", "drücken", None])
                 self.assertTrue(out.stopped)
                 self.assertEqual(len(api.reports), 1)
                 self.assertEqual(client.state, ClientState.READY)
+                self.assertFalse(any("Stopp gemeldet" in line for line in logs.output))
+                if isinstance(result, Exception):
+                    failed = [line for line in logs.output if "Stopp-Meldung fehlgeschlagen" in line]
+                    self.assertEqual(len(failed), 1)
+                    self.assertTrue(failed[0].endswith("Stopp-Meldung fehlgeschlagen (RuntimeError)"), failed[0])
+                self.assertTrue(all("t_AAAA" not in line for line in logs.output), "keine Kennung, kein Fehlertext")
 
     def test_report_is_finished_before_the_next_request(self):
         events = []
@@ -648,10 +659,16 @@ class StopReportTests(unittest.TestCase):
         api = SlowReportApi()
         timer = threading.Timer(0.2, release.set)
         timer.start()
-        client, _out = self.run_story(api, [None, "loslassen", "drücken", None])
-        timer.join()
+        client, _out = self.run_story(api, [None, "loslassen", "drücken", None], wait_report=False)
+        # Kunibert ist gleich wieder bereit, die Meldung läuft noch (sie wartet auf `release`).
         self.assertEqual(client.state, ClientState.READY)
-        self.assertEqual(events, ["nächste Anfrage", "gemeldet"], "bereit erst, wenn die Meldung durch ist: vor jeder neuen Anfrage")
+        self.assertEqual(list(events), ["nächste Anfrage"])
+        # Die nächste Anfrage wartet auf die Meldung.
+        client.buttons.story_pressed = True
+        client.step()
+        client._finish_stop_report()
+        timer.join()
+        self.assertEqual(events[:3], ["nächste Anfrage", "gemeldet", "nächste Anfrage"])
 
     def test_report_log_line_has_only_a_number(self):
         api = ReportingApi()

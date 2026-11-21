@@ -976,6 +976,8 @@ class KunibertClient:
     clock: Callable[[], float] = time.monotonic
     # Warten zwischen Verbindungsversuchen (Tests setzen eine eigene Funktion).
     sleep: Callable[[float], None] = time.sleep
+    # Laufende Stopp-Meldung (Punkt B2); die nächste Anfrage wartet auf sie.
+    _stop_report: Optional[threading.Thread] = None
 
     def transition(self, new_state: ClientState) -> None:
         allowed = {
@@ -1140,8 +1142,8 @@ class KunibertClient:
         als Stopp, nicht zusätzlich als Frage oder Geschichte; erst wenn alle Tasten wieder
         losgelassen sind, ist Kunibert wieder bereit. Seit Punkt B2 meldet der Client den Stopp
         dem Server (Kennung der Antwort, gespielte Sekunden), damit die Geschichte an der Stelle
-        weitergeht. Die Meldung läuft, während der Client auf das Loslassen wartet, und ist vor
-        der nächsten Anfrage fertig.
+        weitergeht. Die Meldung läuft im Hintergrund; Kunibert ist trotzdem gleich wieder bereit.
+        Erst die nächste Anfrage wartet auf sie (`_finish_stop_report`).
         """
         # Drücke während des Wartens zählen nicht (nur die Tastatur im Probelauf merkt sie sich).
         self._discard_pending_presses()
@@ -1170,12 +1172,9 @@ class KunibertClient:
             return
         if stopped_by_press:
             LOG.info("Wiedergabe durch Tastendruck beendet")
-            report = self._start_stop_report(turn_id, played)
+            self._stop_report = self._start_stop_report(turn_id, played)
             self._discard_pending_presses()
             self._wait_for_release()
-            if report is not None:
-                # Vor der nächsten Anfrage fertig: Sonst gälte die Meldung für diese nicht mehr.
-                report.join(self.config.stop_report_timeout_seconds + 1.0)
         self._discard_pending_presses()
         self.transition(ClientState.MIC_OFF if self.buttons.mic_off else ClientState.READY)
 
@@ -1196,6 +1195,17 @@ class KunibertClient:
         thread = threading.Thread(target=send, name="kunibert-stopp", daemon=True)
         thread.start()
         return thread
+
+    def _finish_stop_report(self) -> None:
+        """Wartet vor der nächsten Anfrage auf eine laufende Stopp-Meldung (Punkt B2).
+
+        Sonst käme sie beim Server erst nach der nächsten Frage oder Geschichte an und gälte für
+        diese nicht mehr. Gewartet wird höchstens die Zeitgrenze der Meldung plus eine Sekunde;
+        danach geht die Anfrage trotzdem los (die Zeitgrenze von urllib gilt je Netzschritt).
+        """
+        report, self._stop_report = self._stop_report, None
+        if report is not None:
+            report.join(self.config.stop_report_timeout_seconds + 1.0)
 
     def _wait_for_release(self) -> None:
         """Wartet, bis keine Taste mehr gedrückt ist (höchstens RELEASE_WAIT_SECONDS)."""
@@ -1247,6 +1257,7 @@ class KunibertClient:
         Ton (acknowledge), die LED pulsiert ("denken"), und nach 2,5 s und 15 s ohne Antwort
         folgt je ein Zwischensatz. Es spielt immer nur eines nach dem anderen.
         """
+        self._finish_stop_report()
         feedback = self.feedback
         if feedback is None:
             return function()
