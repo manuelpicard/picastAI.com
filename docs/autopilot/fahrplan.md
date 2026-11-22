@@ -9,7 +9,7 @@ Warum es diesen Fahrplan gibt: Das Wochenlimit reicht nicht für alle Läufe ein
 - **Wochenmodus:** Freitag 08:00 bis Donnerstag 06:59. Ein Punkt je Lauf.
 - **Endspurt:** Donnerstag 07:00 bis Freitag 07:59. Weiter, bis das Limit greift oder nichts Sinnvolles mehr offen ist.
 - „arbeiten Mo Mi Fr So“ heißt: im Wochenmodus nur an diesen Tagen (Tag des Starts, Europe/Berlin), sonst Pause.
-- **Tageslimit:** Höchstens 15 geplante Aufgaben starten am Tag, alle zusammen (auch Läufe mit Pause, die Restlimit-Aufgaben und die anderen Aufgaben des Betreibers). Der Autopilot hat 10 Termine am Tag. Die stündlichen Restlimit-Aufgaben verbrauchen donnerstags das Tageslimit schon am Vormittag; danach startet an dem Tag keine Aufgabe mehr.
+- **Tageslimit:** Höchstens 15 geplante Aufgaben starten am Tag, alle zusammen (auch Läufe mit Pause, die Restlimit-Aufgaben und die anderen Aufgaben des Betreibers). Der Autopilot hat 7 Termine am Tag. Die stündlichen Restlimit-Aufgaben verbrauchen donnerstags das Tageslimit schon am Vormittag; danach startet an dem Tag keine Aufgabe mehr.
 - **Wochenbudget:** Im Wochenmodus bremst ein Budget an Laufzeit den Lauf „Bauen“. Prüfen, Recherche und Planen & Bericht laufen immer, wenn die Tabelle „arbeiten“ sagt; Prüfen und Recherche zählen aber zum Verbrauch. Es wächst gleichmäßig von Freitag 08:00 bis Donnerstag 07:00. Ein Lauf arbeitet nur, solange der Verbrauch der Woche unter dem bis dahin erlaubten Anteil liegt; sonst hat er Pause, auch wenn die Tabelle „arbeiten“ sagt. So verteilt sich die Arbeit über die Woche, und der Rest bleibt für den Endspurt. `ap.py fahrplan` rechnet den Verbrauch aus dem Laufprotokoll aus: Minuten von „Start“ bis „Ende“, Recherche zählt halb (Sonnet), ein Start ohne Ende zählt 45 Minuten. Planen & Bericht zählt nicht mit. Im Endspurt gilt das Budget nicht. `ap.py lage` zeigt den Stand.
 
 Wochenbudget im Wochenmodus: 1200 Minuten
@@ -18,14 +18,11 @@ Wochenbudget im Wochenmodus: 1200 Minuten
 |---|---|---|---|
 | Prüfen | 23:23 | arbeiten | arbeiten |
 | Bauen | 00:37 | arbeiten | arbeiten |
-| Bauen | 03:37 | arbeiten | arbeiten |
 | Bauen | 06:37 | arbeiten | arbeiten |
-| Bauen | 09:37 | arbeiten | arbeiten |
 | Recherche | 11:53 | arbeiten | arbeiten |
 | Bauen | 13:37 | arbeiten | arbeiten |
 | Planen & Bericht | 18:07 | arbeiten | arbeiten |
 | Bauen | 19:37 | arbeiten | arbeiten |
-| Bauen | 21:37 | arbeiten | arbeiten |
 
 Die Zeiten sind die der geplanten Aufgaben in der Claude-App. Ändern kann sie nur der Betreiber oder Claude im Chat, kein Lauf. Die Liste der Termine im Auftragstext ist älter; es gilt diese Tabelle.
 
@@ -43,4 +40,4 @@ Ziel: Das Limit greift erst im Endspurt. So bleibt unter der Woche Limit für di
 
 - 22.11.2026, Claude (Chat), vorläufig: Fahrplan angelegt. Limit der Woche ab 20.11. am Sa 21.11. gegen 23:30 erreicht (Lauf „Prüfen“ nach 10 Minuten abgebrochen, danach jeder Lauf nach Sekunden). Schätzung: Das Wochenlimit reicht für rund 6 bis 7 Stunden Arbeit mit Opus. Start mit vier bis fünf Läufen am Tag im Wochenmodus.
 - 22.11.2026, 17:00, Claude (Chat), vorläufig: Wochenbudget eingeführt, Start mit 150 Minuten. Grund: Die Tabelle allein hätte im Wochenmodus nach Schätzung so viel Arbeit erlaubt, wie das ganze Wochenlimit hergibt (rund 6 Bauen, 4 Prüfen, 3 Recherche). Dann wäre das Limit wieder vor dem Endspurt aufgebraucht. Das Budget misst den echten Verbrauch und bremst rechtzeitig. Nachgestellt wird ab jetzt das Budget, nicht mehr die Tabelle.
-- 22.11.2026, 17:45, Claude (Chat), vorläufig: Max-Tarif. Wochenbudget 150 → 1200 Minuten (das Wochenlimit ist ein Vielfaches; in dieser Woche bremst der Donnerstag wegen der Restlimit-Aufgaben). Bauen hat 7 Termine (neu 03:37, 09:37, 21:37), alle Termine arbeiten im Wochenmodus, gebremst wird nur Bauen. 10 Termine am Tag lassen Platz im Tageslimit von 15 für die anderen Aufgaben des Betreibers; freitags reicht es mit den Restlimit-Aufgaben noch für „Planen & Bericht“ um 18:07. Quelle Tageslimit: claude.com, „Introducing routines in Claude Code“ (14.04.2026), abgerufen 22.11.2026.
+- 22.11.2026, 17:45, Claude (Chat), vorläufig: Max-Tarif. Wochenbudget 150 → 1200 Minuten (das Wochenlimit ist ein Vielfaches; in dieser Woche bremst der Donnerstag wegen der Restlimit-Aufgaben). Alle Termine arbeiten im Wochenmodus, gebremst wird nur Bauen. Drei weitere Bauen-Termine (03:37, 09:37, 21:37) hat das System für Claude gesperrt; sie brauchen das Wort des Betreibers. Mit 7 Terminen am Tag bleibt im Tageslimit von 15 Platz für die anderen Aufgaben des Betreibers; freitags reicht es mit den Restlimit-Aufgaben noch für „Planen & Bericht“ um 18:07. Quelle Tageslimit: claude.com, „Introducing routines in Claude Code“ (14.04.2026), abgerufen 22.11.2026.
