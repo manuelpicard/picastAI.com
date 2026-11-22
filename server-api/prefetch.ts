@@ -41,7 +41,7 @@ export class StoryPrefetcher {
 
   constructor(
     /** Erzeugt den nächsten Teil fertig mit Ton; null oder Fehler = nichts vorbereiten. */
-    private readonly produce: (state: StoryState) => Promise<TurnResult | null>,
+    private readonly produce: (state: StoryState, deviceId: string) => Promise<TurnResult | null>,
     private readonly options: {
       /** Gültigkeit eines vorbereiteten Teils mitten in einer Folge (danach soll ein neuer Teil z. B. kurz erinnern). */
       ttlMs: number;
@@ -70,7 +70,7 @@ export class StoryPrefetcher {
     const key = prefetchKey(state);
     const existing = this.entries.get(deviceId);
     if (existing && existing.key === key && !this.expired(existing)) return;
-    const promise = this.produce(state)
+    const promise = this.produce(state, deviceId)
       .then((result) => {
         // Eine Pause ("Kunibert muss kurz überlegen") oder ein fester Text taugt nicht als
         // Vorbereitung: Dann soll die echte Anfrage es selbst noch einmal versuchen.

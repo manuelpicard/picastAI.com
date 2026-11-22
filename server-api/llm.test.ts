@@ -159,6 +159,22 @@ test('AnthropicProvider: vorübergehender Fehler (529, 429, Netzwerk) wird genau
   assert.equal(calls, 2, 'höchstens ein zweiter Versuch');
 });
 
+test('AnthropicProvider: keine Wiederholung, wenn die Anfrage nicht mehr darf (mayRetry, N1120-1610-b)', async () => {
+  let calls = 0;
+  let asked = 0;
+  const provider = new AnthropicProvider({
+    apiKey: 'k', model: 'm', retryDelayMs: 0,
+    fetchImpl: fakeFetch(() => (++calls === 1 ? new Response('overloaded', { status: 529 }) : new Response(OK_BODY, { status: 200 }))),
+  });
+  // Zum Beispiel: Das Gerät wurde gesperrt, während der erste Versuch lief.
+  await assert.rejects(() => provider.generateJson({ ...REQUEST, mayRetry: () => { asked++; return false; } }), LlmError);
+  assert.equal(calls, 1, 'keine Wiederholung');
+  assert.equal(asked, 1, 'direkt vor der Wiederholung gefragt');
+  calls = 0;
+  assert.deepEqual(await provider.generateJson({ ...REQUEST, mayRetry: () => true }), { category: 'frage', done: true });
+  assert.equal(calls, 2, 'darf die Anfrage noch: Wiederholung wie bisher');
+});
+
 test('AnthropicProvider: keine Wiederholung bei 400/401, bei fehlendem Tool-Ergebnis oder zu wenig Restzeit', async () => {
   for (const status of [400, 401, 404]) {
     let calls = 0;

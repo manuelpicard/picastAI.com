@@ -35,6 +35,11 @@ export interface StageTimer {
   log?(line: string): void;
   /** Eine Warnung dieser Anfrage (nur feste Wörter und Fehlercodes). Ohne: console.warn. */
   warn?(...args: unknown[]): void;
+  /**
+   * Darf diese Anfrage noch an das Sprachmodell? false: Das Gerät ist gesperrt, die Einwilligung
+   * widerrufen oder der Schlafmodus an (die Prüfung setzt server.ts, Punkt N1120-1610-b). Ohne: ja.
+   */
+  allowsLlm?(): boolean;
 }
 
 /** Misst nichts und kennt kein Budget. Standard für Aufrufer ohne Zeitmessung (Tests, eval-llm). */
@@ -77,6 +82,7 @@ export class TurnTimer implements StageTimer {
   private readonly startedAt: number;
   private readonly durations = new Map<TimedStage, number>();
   private readonly calls = new Map<TimedStage, number>();
+  private llmCheck: (() => boolean) | null = null;
 
   constructor(
     private readonly now: () => number = () => performance.now(),
@@ -89,6 +95,15 @@ export class TurnTimer implements StageTimer {
 
   remainingMs(): number {
     return Math.max(0, this.budgetMs - (this.now() - this.startedAt));
+  }
+
+  /** Setzt die Prüfung hinter `allowsLlm` (server.ts: Sperre, Einwilligung, Schlafmodus). */
+  guardLlm(check: () => boolean): void {
+    this.llmCheck = check;
+  }
+
+  allowsLlm(): boolean {
+    return this.llmCheck ? this.llmCheck() : true;
   }
 
   async time<T>(stage: TimedStage, fn: () => Promise<T>): Promise<T> {

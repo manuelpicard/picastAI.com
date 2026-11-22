@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { cleanState, type StoryState } from './brain.js';
-import { PURGE_INTERVAL_MS, STORY_STATE_TTL_MS, StoryStateStore, purgeExpired } from './story-states.js';
+import { PURGE_INTERVAL_MS, STORY_STATE_TTL_MS, StoryStateStore, purgeExpired, startPurging } from './story-states.js';
 
 const HOUR = 60 * 60 * 1000;
 const state = (over: Partial<StoryState> = {}): StoryState => ({ ...cleanState({}), ep: 3, part: 2, target: 5, ...over });
@@ -101,6 +101,37 @@ test('purgeExpired: abgelaufener Stand verwirft auch seine Vorbereitung; Vorbere
 
 test('Aufräumen alle fünf Minuten: Abgelaufenes bleibt höchstens so lange im Arbeitsspeicher', () => {
   assert.equal(PURGE_INTERVAL_MS, 5 * 60 * 1000);
+});
+
+test('startPurging: Takt alle fünf Minuten mit allen Aufräumern, hält den Prozess nicht am Leben', (t) => {
+  const none = { cancel: () => undefined, purge: () => 0 };
+  const real = startPurging({ states: new StoryStateStore(), prefetcher: none, audio: none, streams: none });
+  assert.equal(real.hasRef(), false, 'der Takt hält den Prozess nicht am Leben (unref)');
+  clearInterval(real);
+  t.mock.timers.enable({ apis: ['setInterval'] });
+  let now = 0;
+  const states = new StoryStateStore(STORY_STATE_TTL_MS, () => now);
+  states.set('alt', state());
+  now = 24 * HOUR + 1;
+  const calls: string[] = [];
+  const timer = startPurging({
+    states,
+    prefetcher: { cancel: (deviceId) => calls.push(`verworfen:${deviceId}`), purge: () => { calls.push('vorbereitung'); return 0; } },
+    audio: { purge: () => calls.push('audio') },
+    streams: { purge: () => calls.push('stroeme') },
+    stops: { delete: (deviceId) => calls.push(`stelle:${deviceId}`), purge: () => calls.push('stellen') },
+  }, [() => calls.push('codes'), () => calls.push('zaehler')]);
+  try {
+    t.mock.timers.tick(PURGE_INTERVAL_MS - 1);
+    assert.deepEqual(calls, [], 'vor fünf Minuten: nichts');
+    t.mock.timers.tick(1);
+    assert.deepEqual(calls, ['verworfen:alt', 'stelle:alt', 'vorbereitung', 'audio', 'stroeme', 'stellen', 'codes', 'zaehler']);
+    assert.equal(states.get('alt'), undefined, 'der abgelaufene Stand ist weg');
+    t.mock.timers.tick(PURGE_INTERVAL_MS);
+    assert.equal(calls.filter((call) => call === 'codes').length, 2, 'alle fünf Minuten wieder');
+  } finally {
+    clearInterval(timer);
+  }
 });
 
 test('purgeExpired: abgelaufener Stand löscht auch die gemerkte Stelle nach einem Stopp per Taste (B2)', () => {
