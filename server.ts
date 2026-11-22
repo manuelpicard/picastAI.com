@@ -81,6 +81,8 @@ const prefetcher = new StoryPrefetcher(
       const result = await synthesizeTimed(made, timer);
       timer.noteAudio(result.wav);
       ok = true;
+      // Auch wenn der Schlafmodus erst während der Vertonung begann: nichts bereitlegen.
+      if (!timer.allowsLlm()) return null;
       return result;
     } finally {
       const line = timer.logLine(ok ? 200 : 'abgebrochen');
