@@ -23,6 +23,8 @@ Vernetztes Sprach-Spielzeug für Kinder von 6 bis 10 Jahren: Sprechtaste (Frage)
 
 ## Prüfen vor jedem Commit
 
+Kurz: `bash docs/autopilot/pruefen.sh` führt alle Prüfungen unten aus und zeigt je Prüfung eine Zeile (bei Fehlern die letzten 40 Zeilen).
+
 ```bash
 npm ci
 npm test                 # Server-Tests (node:test)
@@ -31,7 +33,8 @@ npm run build
 npm run test:e2e         # echter Pi-Client gegen echten Server, Dienste als Attrappen
 python3 -m unittest discover -s pi-client -p "test_*.py"   # mit sounddevice und libportaudio2 auch gegen die echte Audio-Bibliothek (CI: ALSA-Nullgerät)
 bash deploy/setup-server.test.sh
-shellcheck -S warning deploy/*.sh pi-client/*.sh
+shellcheck -S warning deploy/*.sh pi-client/*.sh docs/autopilot/*.sh
+python3 -m unittest discover -s docs/autopilot -p "test_*.py"   # Werkzeuge des Wochen-Autopiloten
 # Firmware-Logik auf dem Rechner (der ESP-IDF-Build läuft nur in der CI):
 cd firmware/esp32-s3 && cc -std=c11 -Wall -Wextra -Werror -pedantic -fsanitize=address,undefined -I main \
   -o /tmp/kb_logic test/test_logic.c main/kb_state.c main/kb_wav.c main/kb_url.c main/kb_settings_rules.c && /tmp/kb_logic
