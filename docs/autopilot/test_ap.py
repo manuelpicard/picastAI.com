@@ -312,6 +312,85 @@ class FahrplanMitBudgetTest(unittest.TestCase):
         self.assertEqual(self.rufe("Bauen", b(2026, 11, 30, 6, 40), fehler=ap.GhFehler("kein Netz")), 0)
 
 
+class PrueflisteTest(unittest.TestCase):
+    """N1122-1808-a: gemergte PRs ohne Prüfung bis 7 Tage zurück, überfällig ab 36 Stunden."""
+
+    def setUp(self):
+        self.jetzt = b(2026, 11, 22, 20)
+
+    def gemergt(self, nummer, stunden, titel="[Autopilot B2] Stopp"):
+        zeit = (self.jetzt - timedelta(hours=stunden)).astimezone(timezone.utc)
+        return {"number": nummer, "title": titel, "merged_at": zeit.strftime("%Y-%m-%dT%H:%M:%SZ")}
+
+    def test_grenzen(self):
+        prs = [
+            self.gemergt(1, 10),  # jung: ohne Prüfung, aber noch nicht überfällig
+            self.gemergt(2, 60),  # 60 Stunden ohne Prüfung: überfällig (früher nach 48 Stunden aus der Liste)
+            self.gemergt(3, 60),  # geprüft
+            self.gemergt(4, 60, "[Autopilot Planung] 21.11.2026 18:07"),  # Planung: keine zweite Prüfung
+            self.gemergt(5, 24 * 7 + 1),  # älter als 7 Tage: nicht mehr in der Liste
+            self.gemergt(6, 24 * 6),  # sechs Tage: noch drin
+        ]
+        ohne, ueberfaellig = ap.pruefliste(prs, self.jetzt, geprueft={3})
+        self.assertEqual([eintrag.split()[0] for eintrag in ohne], ["#1", "#2", "#6"])
+        self.assertEqual(ueberfaellig, ["#2", "#6"])
+        self.assertEqual(ohne[1], "#2 (Fr 20.11. 08:00)")
+
+    def test_viele_prs_ohne_obergrenze(self):
+        prs = [self.gemergt(n, 40 + n) for n in range(1, 31)]
+        ohne, ueberfaellig = ap.pruefliste(prs, self.jetzt, geprueft=set())
+        self.assertEqual(len(ohne), 30, "früher nur die 20 jüngsten")
+        self.assertEqual(len(ueberfaellig), 30)
+
+    def test_zeile_nennt_die_grenze(self):
+        self.assertEqual(ap.zeile_ohne_pruefung([]), "Gemergt in 7 Tagen ohne „Autopilot-Prüfung“: keine")
+        self.assertEqual(ap.zeile_ohne_pruefung(["#2 (Fr 20.11. 08:00)"]),
+                         "Gemergt in 7 Tagen ohne „Autopilot-Prüfung“: #2 (Fr 20.11. 08:00)")
+
+    def test_gepruefte_prs_nur_vom_eigentuemer(self):
+        url = "https://api.github.com/repos/manuelpicard/picastAI.com/issues/"
+        kommentare = [
+            {"user": {"login": "manuelpicard"}, "body": "Autopilot-Prüfung: ok", "issue_url": url + "69"},
+            {"user": {"login": "jemand"}, "body": "Autopilot-Prüfung: gefälscht", "issue_url": url + "70"},
+            {"user": {"login": "manuelpicard"}, "body": "Start · Bauen · So 22.11. 19:29", "issue_url": url + "71"},
+            {"user": {"login": "manuelpicard"}, "body": "Autopilot-Prüfung (22.11.2026): ok", "issue_url": url + "73"},
+            {"user": {"login": "manuelpicard"}, "body": "Autopilot-Prüfung: ohne Adresse"},
+        ]
+        self.assertEqual(ap.gepruefte_prs(kommentare), {69, 73})
+
+    def test_gemergte_prs_seit_blaettert_bis_zur_grenze(self):
+        seit = self.jetzt - timedelta(days=7)
+
+        def pr_mit(nummer, tage, gemergt=True):
+            zeit = (self.jetzt - timedelta(days=tage)).astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            return {"number": nummer, "updated_at": zeit, "merged_at": zeit if gemergt else None}
+
+        seite1 = [pr_mit(n, 1, gemergt=n % 2 == 0) for n in range(100)]
+        seite2 = [pr_mit(100, 2), pr_mit(101, 8)]  # reicht über die Grenze: keine dritte Seite
+        aufrufe = []
+
+        def gh(pfad, **_):
+            aufrufe.append(pfad)
+            return {1: seite1, 2: seite2}.get(int(pfad.rsplit("page=", 1)[1]), [pr_mit(999, 1)])
+
+        with mock.patch.object(ap, "gh", side_effect=gh):
+            gemergt = ap.gemergte_prs_seit(seit)
+        self.assertEqual(len(aufrufe), 2)
+        self.assertEqual(len(gemergt), 52, "nur gemergte PRs")
+
+    def test_kommentare_seit_mit_einem_aufruf_je_seite(self):
+        aufrufe = []
+
+        def gh(pfad, **_):
+            aufrufe.append(pfad)
+            return [{"id": 1}] * (100 if "page=1&" in pfad else 3)
+
+        with mock.patch.object(ap, "gh", side_effect=gh):
+            self.assertEqual(len(ap.kommentare_seit(self.jetzt - timedelta(days=7))), 103)
+        self.assertEqual(len(aufrufe), 2)
+        self.assertIn("since=2026-11-15T19:00:00Z", aufrufe[0])
+
+
 class IssueTest(unittest.TestCase):
     def test_aeltestes_gilt(self):
         liste = [{"number": 88, "title": ap.ISSUE_LAEUFE}, {"number": 86, "title": ap.ISSUE_LAEUFE},
