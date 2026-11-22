@@ -115,3 +115,17 @@ export function purgeExpired(parts: ExpiringParts): void {
   parts.streams.purge();
   parts.stops?.purge();
 }
+
+/**
+ * Startet den Takt des Aufräumens: alle `intervalMs` (Standard `PURGE_INTERVAL_MS`) `purgeExpired` und
+ * danach die weiteren Aufräumer in `more` (zum Beispiel Kopplungscodes und Zähler). Der Takt hält den
+ * Prozess nicht am Leben (`unref`). Gibt den Takt zurück.
+ */
+export function startPurging(parts: ExpiringParts, more: Array<() => unknown> = [], intervalMs = PURGE_INTERVAL_MS): NodeJS.Timeout {
+  const timer = setInterval(() => {
+    purgeExpired(parts);
+    for (const purge of more) purge();
+  }, intervalMs);
+  timer.unref();
+  return timer;
+}

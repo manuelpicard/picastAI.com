@@ -139,10 +139,15 @@ export class DeviceRegistry {
   /**
    * Gerät widerrufen. Der Widerruf wirkt sofort im Speicher und bleibt auch
    * bestehen, wenn die Ablage nicht erreichbar ist (fail-safe); `persisted`
-   * sagt, ob er dauerhaft gespeichert werden konnte.
+   * sagt, ob er dauerhaft gespeichert werden konnte. `onRevoked` läuft direkt
+   * nach dem Sperren im Speicher, noch vor dem dauerhaften Speichern: Dort
+   * vergisst der Server alles, was am Gerät hängt. Sonst könnte eine laufende
+   * Anfrage, solange Firestore schreibt, noch einen Stand speichern und eine
+   * Vorbereitung starten, also noch etwas an Claude geben (N1120-1610-b).
    */
-  public async revokeAndPersist(deviceId: string): Promise<{ success: boolean; persisted: boolean }> {
+  public async revokeAndPersist(deviceId: string, onRevoked?: () => void): Promise<{ success: boolean; persisted: boolean }> {
     const success = this.revoke(deviceId);
+    if (success) onRevoked?.();
     if (!success || !this.store) return { success, persisted: false };
     try {
       await this.store.markRevoked(deviceId);
