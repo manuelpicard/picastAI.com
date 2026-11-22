@@ -101,9 +101,10 @@ Angelegt am 17.11.2026, 20:15, von Claude (Chat). Gepflegt von den Läufen des W
 - Zuschnitt (Planung 21.11.2026, Vorschlag; Einschätzung: drei Teile, je rund 30 Minuten): Teil 1 von 3, Raten-Schutz und Cookie, nur am Server: `PICASTAI_TRUST_PROXY` und wachsende Wartezeit je Fehlversuch statt einer harten Sperre (siehe oben; auch die Grenze „200 insgesamt“ testen); Cookie `Secure` entscheiden (zum Beispiel nur über HTTPS; dafür muss `req.secure` hinter Caddy stimmen, also mit `PICASTAI_TRUST_PROXY`); Tests, `deploy/EINRICHTUNG.md`, `deploy/kunibert.env.example`. Teil 2 von 3, Seite, Anfang: `deploy/Caddyfile` lässt `/eltern` und `/v1/eltern/*` durch (heute nur `/v1/device/*` und `/health`; alles andere, auch `/api/*`, bleibt gesperrt); `/eltern` als eine Datei ohne fremde Dienste und ohne externe Schriften; koppeln mit dem Code, Einwilligung erteilen und widerrufen, Status. Teil 3 von 3, Seite, Rest: Schlafmodus und Ruhezeiten, Geschichte neu beginnen, alles löschen, Infoseite. Die Routen gibt es seit PR #69 (`server.ts`: `/v1/eltern/koppeln`, `status`, `einwilligung`, `einstellungen`, `geschichte-neu`, `daten`).
 
 ### H1 · Lieferbarkeit und Preise der Hardware
-- Rolle: Recherche · Prio: 1 (vorher 2; 20.11.2026, Planung: Für „Pi bespielen“ braucht es einen Pi. Im Repo gibt es `docs/recherche/lieferbarkeit.md` noch nicht; zuletzt geprüft am 13.11., nur im Claude-Projekt) · Status: offen (wiederkehrend: erst anlegen, dann alle 3 Tage neu prüfen) · Bezug: Nr. 33, 42
+- Rolle: Recherche · Prio: 1 (vorher 2; 20.11.2026, Planung: Für „Pi bespielen“ braucht es einen Pi. Im Repo gibt es `docs/recherche/lieferbarkeit.md` noch nicht; zuletzt geprüft am 13.11., nur im Claude-Projekt) · Status: offen (wiederkehrend, zuletzt 22.11.2026, PR #97) · Bezug: Nr. 33, 42
 - Ziel: Raspberry Pi 5 (4 GB, 8 GB) und ESP32-S3-BOX-3 bei BerryBase und zwei weiteren deutschen Händlern; dazu zwei Alternativen zum BOX-3 mit Mikrofon und Lautsprecher. Mit Preis, Lieferbarkeit, Link und Abrufdatum.
 - Fertig, wenn: `docs/recherche/lieferbarkeit.md` angelegt. Danach wiederkehrend: neu prüfen, wenn der letzte Stand älter als 3 Tage ist. Nichts bestellen.
+- Stand 22.11.2026 (PR #97): `docs/recherche/lieferbarkeit.md` angelegt. Pi 5 (4 und 8 GB) bei fünf Händlern, BOX-3 bei fünf Händlern, vier Alternativen. Ergebnis: 4 GB nirgends sicher lieferbar, 8 GB lieferbar, BOX-3 nur bei Völkner (60,99 €). Nächste Prüfung ab 25.11.2026, also wenn der Stand älter als 3 Tage ist. Nichts bestellt.
 
 ### H2 · Vorgaben für ein Serienprodukt
 - Rolle: Recherche · Prio: 2 · Status: offen · Bezug: Nr. 46
@@ -440,3 +441,13 @@ Angelegt am 17.11.2026, 20:15, von Claude (Chat). Gepflegt von den Läufen des W
 - Ziel: (1) Legt der Betreiber eine aktive Geräte-ID neu an (`POST /api/devices`), gibt es ein neues Token, aber Einwilligung, Schlafmodus, Ruhezeiten, Eltern-Tokens und offene Kopplungscodes bleiben (`server-api/devices.ts`, `register`). Beim Neuanlegen aufräumen wie beim Sperren, oder das Neuanlegen einer aktiven ID ablehnen. (2) Eltern-Tokens laufen am Server nie ab, nur das Cookie nach 180 Tagen (`server-api/eltern.ts`). Am Server dieselbe Frist prüfen. (3) Fehlende Tests: 401 ohne Cookie bei allen Eltern-Routen; `/v1/device/pairing-code` mit 429 und bei Ausfall der Sprachausgabe (503, kein Code im Protokoll); ein zweiter Code macht den ersten ungültig (über HTTP).
 - Fertig, wenn: gemergt; Tests für (1) bis (3); `docs/picastAI-Pi-API.md` passt.
 
+
+### N1122-1941-a · Zubehör für den Pi-Aufbau neu prüfen
+- Rolle: Recherche · Prio: 2 · Status: offen · Bezug: H1, PR #97, Nr. 33
+- Ziel: Netzteil (offizielles 27 W), Active Cooler, microSD 32 GB (A2), USB-Mikrofon, USB-Lautsprecher und Kleinteile (Breadboard, Jumper, zwei Taster, zwei LEDs, Widerstände) als eigener Abschnitt „Zubehör“ in `docs/recherche/lieferbarkeit.md`: Preis, Lieferbarkeit, Link, Abrufdatum, wie viel wörtlich gelesen wurde. Die Werte vom 7. bis 11.11.2026 (nur im Claude-Projekt, `claude/stand-2026-11-07-anfragen-und-hosting.md`) als Vergleich. Summe als eigene Rechnung, mit 4-GB- und mit 8-GB-Pi.
+- Fertig, wenn: Abschnitt „Zubehör“ steht in der Datei, mit Quellen. Nichts bestellen. Danach gehört er zur wiederkehrenden Prüfung von H1.
+
+### N1122-1941-b · Zielboard für den ESP32-S3: Hersteller-Datenblätter lesen
+- Rolle: Recherche · Prio: 3 · Status: offen · Bezug: H1, H2, PR #97, Nr. 42
+- Ziel: `docs/recherche/lieferbarkeit.md` nennt vier Boards mit Mikrofon und Lautsprecher (BOX-3, Atom EchoS3R, CoreS3, Waveshare ESP32-S3-AUDIO-Board). Die Ausstattung stammt dort nur aus Händlerseiten. Je Board aus Hersteller-Datenblatt oder Herstellerseite lesen: Pins für zwei Taster und eine LED, Codec-Chips und ob es ESP-IDF-Treiber dafür gibt (die Firmware braucht dann eine eigene Fassung von `main/kb_audio.c` und `main/kb_board.c`), Mikrofon-Aus-Schalter, Stromversorgung. Dazu die Variante B (einzelne Bauteile) als Vergleich. Nur Originalquellen, Abrufdatum, keine Firmware ändern.
+- Fertig, wenn: `docs/recherche/zielboard.md` mit Quellen, Einschätzung, „Nicht geprüft“ und „Nächste Schritte“. Die Entscheidung bleibt beim Betreiber.
