@@ -169,7 +169,7 @@ Frage und Geschichte laufen durch Spracherkennung, Sprachmodell und Sprachausgab
 
 Die 120 s gelten **für die ganze Anfrage zusammen** (Entscheidung vom 11.11.2026, vorläufig). Ohne gemeinsames Budget wären es bei einem Geschichtenwunsch bis zu 45 + 30 + 30 + 45 = 150 s gewesen, denn dann fragt der Server Claude **zweimal** (erst die Einordnung, dann die Geschichte; siehe `docs/Zeitmessung.md`, Feld `sprachmodell_aufrufe`). Das wäre mehr als Caddy (130 s) und Pi (140 s) gewesen. So arbeitet der Server jetzt:
 
-- Die Frist beginnt, wenn die Anfrage beim Server ankommt und angemeldet ist (`startTurnTimer` in `server.ts`). Die Zeit für das Hochladen der Aufnahme davor zählt nicht mit; deshalb liegt zwischen 120 s und den 130 s von Caddy ein Puffer.
+- Die Frist beginnt, wenn die Anfrage beim Server ankommt und angemeldet ist (`startTurnTimer` in `server.ts`). Die Aufnahme liest der Server erst danach (`upload.single` bei `/v1/device/question` und `/v1/turn`). Das Hochladen zählt also mit (berichtigt am 22.11.2026). Zwischen 120 s und den 130 s von Caddy liegt ein Puffer.
 - Jeder Sprachmodell-Aufruf bekommt höchstens den Rest des Budgets **minus 15 s für die Sprachausgabe** (`TTS_RESERVE_MS`), und höchstens seine eigenen 30 s.
 - Bleiben für einen Aufruf weniger als 3 s, wird er nicht mehr gestartet. Dann greift der feste Fallback-Text (derselbe Weg wie bei einem Fehler des Sprachmodells), und die Sprachausgabe läuft wie gewohnt.
 - Die Sprachausgabe bekommt den Rest des Budgets, mindestens 5 s. Läuft sie in die Frist, antwortet der Server mit 503 `voice_provider_failed` (`retryable: true`), wie bisher bei einem Sprachdienst-Fehler. Die Erkennung kann nur die 45 s je Aufruf überschreiten, nicht das Budget; auch ihr Timeout ergibt 503.
