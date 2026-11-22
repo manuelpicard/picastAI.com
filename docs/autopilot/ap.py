@@ -6,7 +6,7 @@ Läufe und in README.md; dieses Programm setzt sie nur um. Im Zweifel gilt der
 Auftrag. Meldet das Programm einen Fehler, geht es von Hand mit `gh api` weiter.
 
 Aufrufe im Repo-Ordner:
-  python3 docs/autopilot/ap.py fahrplan <Rolle>            arbeitet dieser Lauf, oder ist Pause?
+  python3 docs/autopilot/ap.py fahrplan <Rolle>            arbeitet dieser Lauf (Fahrplan, Wochenbudget)?
   python3 docs/autopilot/ap.py lage                        die Lage in wenigen Zeilen
   python3 docs/autopilot/ap.py status <PR> <Wert>          in-arbeit | fertig | "blockiert: <Grund>"
   python3 docs/autopilot/ap.py mergen <PR>                 prüfen, auf Checks warten, mergen
@@ -344,6 +344,85 @@ def entscheide_fahrplan(zeilen, rolle: str, zeitpunkt: datetime) -> tuple[bool, 
     return True, f"Fahrplan: {termin} im {name}: arbeiten ({phase(zeitpunkt)[1]})."
 
 
+# ---------------------------------------------------------------- Wochenbudget
+
+WOCHENBUDGET_RE = re.compile(r"^[ \t>*_-]*Wochenbudget\b[^:\n]*:[ \t*_]*(\d+)\s*Minuten", re.IGNORECASE | re.MULTILINE)
+LAUF_ZEILE_RE = re.compile(r"^\s*(Start|Ende)\s*·\s*([^·\n]+?)\s*·")
+# Nur diese Rollen zählen und werden gebremst. Recherche läuft mit Sonnet (je Token die Hälfte).
+# Planen & Bericht zählt nicht mit und läuft immer, wenn die Tabelle „arbeiten“ sagt.
+GEWICHT = {"bauen": 1.0, "prüfen": 1.0, "recherche": 0.5}
+ABGEBROCHEN_MIN = 45       # ein Start ohne Ende zählt so viele Minuten
+LAUF_HOECHSTENS_MIN = 240  # mehr zählt ein einzelner Lauf nicht
+
+
+def lies_wochenbudget(text: str) -> int | None:
+    """Minuten aus der Zeile „Wochenbudget im Wochenmodus: <n> Minuten“ in fahrplan.md, sonst None."""
+    treffer = WOCHENBUDGET_RE.search(text or "")
+    return int(treffer.group(1)) if treffer else None
+
+
+def wochenbeginn(zeit: datetime) -> datetime:
+    """Letzter Freitag 08:00 (Europe/Berlin): Dann beginnt das Wochenlimit neu."""
+    b = zeit.astimezone(BERLIN)
+    beginn = (b - timedelta(days=(b.weekday() - 4) % 7)).replace(hour=8, minute=0, second=0, microsecond=0)
+    if beginn > b:
+        beginn -= timedelta(days=7)
+    return beginn
+
+
+def endspurt_beginn(beginn: datetime) -> datetime:
+    """Donnerstag 07:00 nach dem Wochenbeginn."""
+    return (beginn + timedelta(days=6)).replace(hour=7)
+
+
+def wochenverbrauch(eintraege: list[dict], beginn: datetime, bis: datetime, zeitpunkt: datetime) -> float:
+    """Gewichtete Minuten der Läufe, die zwischen `beginn` und `bis` gestartet sind.
+
+    Grundlage sind die Kommentare im Laufprotokoll („Start · Rolle · …“ und „Ende · Rolle · …“) mit
+    ihrer Zeit `created_at`. Ein Start ohne Ende zählt ABGEBROCHEN_MIN Minuten (läuft er noch, die Zeit
+    seit dem Start, höchstens ABGEBROCHEN_MIN).
+    """
+    zeilen = []
+    for eintrag in eintraege:
+        treffer = LAUF_ZEILE_RE.match((eintrag.get("body") or "").split("\n", 1)[0])
+        zeit = iso(eintrag.get("created_at"))
+        if treffer and zeit:
+            zeilen.append((zeit, treffer.group(1).lower(), normale_rolle(treffer.group(2))))
+    zeilen.sort(key=lambda z: z[0])
+    offen: dict[str, datetime] = {}
+    summe = 0.0
+
+    def anrechnen(rolle: str, minuten: float) -> None:
+        nonlocal summe
+        summe += GEWICHT[rolle] * max(0.0, min(minuten, LAUF_HOECHSTENS_MIN))
+
+    for zeit, art, rolle in zeilen:
+        if rolle not in GEWICHT:
+            continue
+        if art == "start":
+            if rolle in offen:
+                anrechnen(rolle, ABGEBROCHEN_MIN)
+                del offen[rolle]
+            if beginn <= zeit < bis:
+                offen[rolle] = zeit
+        elif rolle in offen:
+            anrechnen(rolle, (zeit - offen.pop(rolle)).total_seconds() / 60)
+    for rolle, start in offen.items():
+        anrechnen(rolle, min(ABGEBROCHEN_MIN, (zeitpunkt - start).total_seconds() / 60))
+    return summe
+
+
+def taktung(verbrauch: float, budget: int, beginn: datetime, bis: datetime,
+            zeitpunkt: datetime) -> tuple[bool, float]:
+    """Das Budget wächst gleichmäßig von `beginn` bis `bis`. Ein Lauf arbeitet, solange der Verbrauch
+    unter dem bis jetzt erlaubten Anteil liegt. Gibt (arbeiten, erlaubte Minuten) zurück."""
+    gesamt = (bis.astimezone(timezone.utc) - beginn.astimezone(timezone.utc)).total_seconds()
+    vergangen = (zeitpunkt.astimezone(timezone.utc) - beginn.astimezone(timezone.utc)).total_seconds()
+    anteil = min(1.0, max(0.0, vergangen / gesamt)) if gesamt > 0 else 1.0
+    erlaubt = budget * anteil
+    return verbrauch < erlaubt, erlaubt
+
+
 # ---------------------------------------------------------------- GitHub
 
 def gh(pfad: str, *, methode: str = "GET", daten: dict | None = None):
@@ -370,11 +449,17 @@ def checks_von(sha: str) -> list[dict]:
     return (gh(f"repos/{REPO}/commits/{sha}/check-runs?per_page=100") or {}).get("check_runs") or []
 
 
-def eigene_kommentare(nummer: int, seit: datetime | None = None) -> list[dict]:
-    pfad = f"repos/{REPO}/issues/{nummer}/comments?per_page=100"
-    if seit is not None:
-        pfad += "&since=" + seit.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    return [k for k in (gh(pfad) or []) if ((k.get("user") or {}).get("login")) == EIGENTUEMER]
+def eigene_kommentare(nummer: int, seit: datetime | None = None, seiten: int = 1) -> list[dict]:
+    ergebnis: list[dict] = []
+    for seite in range(1, seiten + 1):
+        pfad = f"repos/{REPO}/issues/{nummer}/comments?per_page=100&page={seite}"
+        if seit is not None:
+            pfad += "&since=" + seit.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        teil = gh(pfad) or []
+        ergebnis += [k for k in teil if ((k.get("user") or {}).get("login")) == EIGENTUEMER]
+        if len(teil) < 100:
+            break
+    return ergebnis
 
 
 def finde_issue(titel: str, anlegen: bool, beschreibung: str = "") -> int | None:
@@ -396,12 +481,38 @@ def main_ci() -> tuple[str, str, str]:
 
 # ---------------------------------------------------------------- Befehle
 
+def verbrauch_der_woche(zeitpunkt: datetime) -> tuple[float, datetime, datetime]:
+    """Verbrauch im Wochenmodus dieser Woche laut Laufprotokoll, dazu Wochenbeginn und Endspurt-Beginn."""
+    beginn = wochenbeginn(zeitpunkt)
+    bis = endspurt_beginn(beginn)
+    nummer = finde_issue(ISSUE_LAEUFE, anlegen=False)
+    eintraege = eigene_kommentare(nummer, seit=beginn, seiten=3) if nummer else []
+    return wochenverbrauch(eintraege, beginn, bis, zeitpunkt), beginn, bis
+
+
+def wochenbudget_zeile(budget: int, zeitpunkt: datetime) -> tuple[bool, str]:
+    verbrauch, beginn, bis = verbrauch_der_woche(zeitpunkt)
+    frei, erlaubt = taktung(verbrauch, budget, beginn, bis, zeitpunkt)
+    return frei, (f"Wochenbudget (Bauen, Prüfen, Recherche): {verbrauch:.0f} Minuten verbraucht, "
+                  f"bis jetzt erlaubt {erlaubt:.0f} von {budget} (wächst gleichmäßig bis Do 07:00)")
+
+
 def befehl_fahrplan(rolle: str) -> int:
     if not FAHRPLAN.exists():
         print("Fahrplan: fahrplan.md fehlt; der Lauf arbeitet.")
         return 0
-    arbeiten, text = entscheide_fahrplan(lies_fahrplan(FAHRPLAN.read_text(encoding="utf-8")), rolle, jetzt())
-    print(text)
+    text = FAHRPLAN.read_text(encoding="utf-8")
+    zeitpunkt = jetzt()
+    arbeiten, meldung = entscheide_fahrplan(lies_fahrplan(text), rolle, zeitpunkt)
+    print(meldung)
+    budget = lies_wochenbudget(text)
+    if arbeiten and budget and phase(zeitpunkt)[0] == "Wochenmodus" and normale_rolle(rolle) in GEWICHT:
+        try:
+            arbeiten, zeile = wochenbudget_zeile(budget, zeitpunkt)
+        except (GhFehler, OSError, ValueError, KeyError, TypeError) as fehler:
+            print(f"Wochenbudget: nicht lesbar ({fehler}); der Lauf arbeitet laut Fahrplan.")
+            return 0
+        print(zeile + (". Der Lauf arbeitet." if arbeiten else ". Pause. Lauf beenden."))
     return 0 if arbeiten else 10
 
 
@@ -473,6 +584,13 @@ def befehl_lage() -> int:
         eintraege = eigene_kommentare(nummer, seit=zeitpunkt - timedelta(hours=24))
         zeilen = [kurz((k.get("body") or "").split("\n", 1)[0], 90) for k in eintraege][-8:]
         print("Laufprotokoll (24 h): " + (" | ".join(zeilen) if zeilen else "keine Einträge"))
+
+    budget = lies_wochenbudget(FAHRPLAN.read_text(encoding="utf-8")) if FAHRPLAN.exists() else None
+    if budget:
+        try:
+            print(wochenbudget_zeile(budget, zeitpunkt)[1] + ".")
+        except (GhFehler, OSError, ValueError, KeyError, TypeError) as fehler:
+            print(f"Wochenbudget: nicht lesbar ({fehler}).")
     return 0
 
 
@@ -556,6 +674,8 @@ def befehl_mergen(nummer: int, warten: int, warten_main: int) -> int:
         print(f"main nach dem Merge {zustand_main}: sofort reparieren (PR „[Autopilot Reparatur] …“).")
         return 5
     print(f"main nach dem Merge: {zustand_main}")
+    name, hinweis = phase(jetzt())
+    print(f"Phase jetzt: {name} – {hinweis}.")
     return 0
 
 
