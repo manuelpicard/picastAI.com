@@ -634,7 +634,14 @@ app.post(
           prefetcher.take(deviceId, state, Math.max(0, timer.remainingMs() - PREFETCH_FRESH_RESERVE_MS)))
         : null;
       if (!prepared) {
-        return await respondTurn(req, res, deviceId, timer, 'kunibert_story', generation, (sink) => brain.handle('weiter', '', state || {}, timer, sink));
+        // Beim Warten auf die Vorbereitung gesperrt, die Einwilligung widerrufen oder der Schlafmodus
+        // begonnen? Dann geht nichts mehr an das Sprachmodell (N1120-1610-b).
+        const late = refusalFor(req, deviceId);
+        if (late) return await refuse(req, res, deviceId, 'kunibert_story', timer, late);
+        // Haben die Eltern die Geschichte beim Warten gelöscht (neu beginnen, alles löschen), geht der
+        // alte Stand nicht mehr an Claude.
+        const current = deviceStoryStates.generation(deviceId) === generation ? state : deviceStoryStates.get(deviceId);
+        return await respondTurn(req, res, deviceId, timer, 'kunibert_story', generation, (sink) => brain.handle('weiter', '', current || {}, timer, sink));
       }
       const result = prepared;
       timer.noteAudio(result.wav);
