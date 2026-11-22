@@ -6,8 +6,12 @@
 //   1. Hält das Kind einen Teil an und sagt dann eine Idee, bekommt Claude den Teil noch einmal, mit
 //      der gehörten Stelle und auf dem Stand davor. Die Folge rückt dabei nicht vor.
 //   2. Ohne Meldung und nach „alles gehört“ bleibt alles wie bisher: Die Idee erzählt den nächsten Teil.
-//   3. Die Erzähltaste nach einem Stopp erzählt wie bisher den nächsten Teil.
-//   4. Die Route prüft Anmeldung und Felder; das Protokoll enthält nur Zahlen.
+//   3. Auch die Erzähltaste und „weiter“ erzählen nach einem Stopp denselben Teil ab der gehörten Stelle
+//      weiter (vorläufig entschieden am 21.11.2026).
+//   4. Die Route prüft Anmeldung, Felder und die Grenze von 60 Meldungen in 10 Minuten. Ohne Einwilligung
+//      merkt sie sich nichts, im Schlafmodus schon. Das Protokoll enthält nur Zahlen.
+//   5. Mit Ton-Strom: Meldungen, solange der Teil entsteht, und abgebrochene Ströme (auch eine Meldung
+//      erst nach dem Abbruch).
 // Es gibt keine echten Aufrufe und keine echten Schlüssel; alle Werte unten sind erfunden.
 import assert from 'node:assert/strict';
 import { spawn, type ChildProcess } from 'node:child_process';
@@ -446,6 +450,25 @@ describe('Stopp per Taste (echter Server, Attrappen, Punkt B2)', () => {
     assert.ok(retold.user.includes(`«${sentence(1, 0)}»`));
   });
 
+  it('im Schlafmodus merkt sich der Server die Stelle trotzdem (ein begonnener Teil kann noch laufen)', async () => {
+    await k.freshStory();
+    const { turnId } = await k.storyButton();
+    const sleep = (schlafmodus: boolean) =>
+      fetch(`${k.base}/v1/eltern/einstellungen`, {
+        method: 'PUT',
+        headers: { Cookie: k.parentCookie, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ schlafmodus }),
+      });
+    assert.equal((await sleep(true)).status, 200);
+    try {
+      const outputBefore = k.output.length;
+      assert.equal((await k.reportStop({ turn_id: turnId, heard_seconds: afterFirstSentence(1) })).status, 204);
+      await waitFor(() => k.output.slice(outputBefore).includes('Stopp per Taste: gemerkt teil=1/5 saetze=1/4'), 'Stelle im Schlafmodus gemerkt');
+    } finally {
+      assert.equal((await sleep(false)).status, 200);
+    }
+  });
+
   it('Neue Geschichte (Eltern) und Sperren vergessen die gemerkte Stelle', async () => {
     await k.freshStory();
     const { turnId } = await k.storyButton();
@@ -593,6 +616,33 @@ describe('Stopp per Taste mit Ton-Strom (echter Server, Punkt B2)', () => {
     }
   });
 
+  it('neu erzählter Teil bricht im Strom ab, danach hält das Kind ihn an: Es zählt nur das Gehörte', async () => {
+    // Der Server ist schneller als die Wiedergabe: Die Meldung zum abgebrochenen Strom kommt erst nach
+    // dem Abbruch an (Prüfung von PR #75, Befund 1).
+    await k.freshStory();
+    const start = k.output.length;
+    const { turnId } = await k.storyButton();
+    await waitFor(() => k.output.slice(start).includes('Zeitmessung'), 'erster Teil fertig');
+    await k.reportStop({ turn_id: turnId, heard_seconds: afterFirstSentenceStreamed(1) });
+    k.speech.state.failIf = sentence(1, 2);
+    let retold = '';
+    try {
+      const outputBefore = k.output.length;
+      retold = (await k.speak()).turnId;
+      await waitFor(() => k.output.slice(outputBefore).includes('modus=frage_strom status=abgebrochen'), 'Strom bricht ab');
+    } finally {
+      k.speech.state.failIf = '';
+    }
+    const outputBefore = k.output.length;
+    assert.equal((await k.reportStop({ turn_id: retold, heard_seconds: afterFirstSentenceStreamed(1) })).status, 204);
+    await waitFor(() => k.output.slice(outputBefore).includes('Stopp per Taste: gemerkt'), 'Meldung zum abgebrochenen Strom zählt');
+    const mark = k.claude.calls.length;
+    await k.storyButton();
+    const [again] = k.storyCallsSince(mark);
+    assert.match(again.user, /Erzähle jetzt Teil 1 von 5/, 'derselbe Teil, nichts übersprungen');
+    assert.ok(again.user.includes(`«${sentence(1, 0)} ${sentence(1, 0)}»`), again.user);
+  });
+
   it('anderer Teil bricht im Strom ab, nachdem das Kind schon etwas gehört hat: Die alte Stelle gilt nicht mehr', async () => {
     await k.freshStory();
     const { turnId } = await k.storyButton();
@@ -665,5 +715,20 @@ describe('Stopp per Taste mit Ton-Strom (echter Server, Punkt B2)', () => {
     const [idea] = k.storyCallsSince(mark);
     assert.match(idea.user, /Erzähle jetzt Teil 2 von 5/);
     assert.ok(!idea.user.includes('Von diesem Teil hat das Kind schon gehört'));
+  });
+
+  // Muss der letzte Test in diesem Block bleiben: Danach nimmt der Server zehn Minuten lang keine Meldung
+  // dieses Geräts mehr an.
+  it('mehr als 60 Meldungen eines Geräts in 10 Minuten: 429 rate_limited', async () => {
+    let status = 0;
+    for (let sent = 0; sent < 61 && status !== 429; sent++) {
+      const res = await k.reportStop({ turn_id: 't_ZZZZZZZZZZZZZZZZ', heard_seconds: 1 });
+      status = res.status;
+      if (status === 429) assert.deepEqual(await res.json(), { error: 'rate_limited' });
+      else assert.equal(status, 204, `Meldung ${sent + 1}`);
+    }
+    assert.equal(status, 429, 'spätestens die 61. Meldung in diesem Block bekommt 429');
+    const again = await k.reportStop({ turn_id: 't_ZZZZZZZZZZZZZZZZ', heard_seconds: 1 });
+    assert.equal(again.status, 429, 'die Grenze gilt weiter');
   });
 });
