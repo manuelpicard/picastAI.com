@@ -2,8 +2,13 @@
 
 Aufruf im Repo-Ordner: python3 -m unittest discover -s docs/autopilot -p "test_*.py"
 """
+import contextlib
+import io
+import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from unittest import mock
 
 import ap
 
@@ -188,6 +193,96 @@ class FahrplanTest(unittest.TestCase):
 
     def test_unbekannt_arbeitet(self):
         self.assertTrue(self.entscheide("Recherche", b(2026, 11, 24, 12, 0)))
+
+
+def eintrag(zeit, text, login="manuelpicard"):
+    return {"created_at": zeit.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), "body": text,
+            "user": {"login": login}}
+
+
+class WochenbudgetTest(unittest.TestCase):
+    # 27.11.2026 ist ein Freitag, 30.11. ein Montag, 03.12. ein Donnerstag.
+    beginn, bis = b(2026, 11, 27, 8), b(2026, 12, 3, 7)
+
+    def test_lesen(self):
+        self.assertEqual(ap.lies_wochenbudget("x\nWochenbudget im Wochenmodus: 150 Minuten\n"), 150)
+        self.assertEqual(ap.lies_wochenbudget("**Wochenbudget im Wochenmodus:** 90 Minuten"), 90)
+        self.assertIsNone(ap.lies_wochenbudget("- **Wochenbudget:** Im Wochenmodus teilen sich drei Rollen 150 Minuten"))
+        self.assertIsNone(ap.lies_wochenbudget("- 27.11.2026: Wochenbudget: 150 → 110 Minuten"))
+        self.assertIsNone(ap.lies_wochenbudget(""))
+
+    def test_wochenbeginn(self):
+        self.assertEqual(ap.wochenbeginn(b(2026, 11, 22, 16, 45)), b(2026, 11, 20, 8))
+        self.assertEqual(ap.wochenbeginn(b(2026, 11, 27, 7, 59)), b(2026, 11, 20, 8))
+        self.assertEqual(ap.wochenbeginn(b(2026, 11, 27, 8, 0)), b(2026, 11, 27, 8))
+        self.assertEqual(ap.wochenbeginn(datetime(2026, 11, 27, 7, 30, tzinfo=timezone.utc)), b(2026, 11, 27, 8))
+        self.assertEqual(ap.endspurt_beginn(b(2026, 11, 27, 8)), self.bis)
+
+    def test_verbrauch(self):
+        eintraege = [
+            eintrag(b(2026, 11, 27, 6, 40), "Start · Bauen · Fr 27.11. 06:40"),             # vor Wochenbeginn
+            eintrag(b(2026, 11, 27, 9, 0), "Ende · Bauen · Fr 27.11. 09:00 · fertig"),
+            eintrag(b(2026, 11, 27, 11, 55), "Start · Recherche · Fr 27.11. 11:55"),
+            eintrag(b(2026, 11, 27, 12, 35), "Ende · Recherche · Fr 27.11. 12:35 · R3"),    # 40 × 0,5 = 20
+            eintrag(b(2026, 11, 27, 18, 8), "Start · Planen & Bericht · Fr 27.11. 18:08"),  # zählt nicht
+            eintrag(b(2026, 11, 27, 23, 25), "Start · Prüfen · Fr 27.11. 23:25"),           # ohne Ende: 45
+            eintrag(b(2026, 11, 28, 6, 38), "Start · Bauen · Sa 28.11. 06:38"),
+            eintrag(b(2026, 11, 28, 7, 8), "Ende · Bauen · Sa 28.11. 07:08 · B4 gemergt"),  # 30
+            eintrag(b(2026, 11, 29, 6, 38), "Start · Bauen · So 29.11. 06:38"),             # läuft seit 10 min
+            eintrag(b(2026, 11, 29, 6, 39), "Kein Laufeintrag"),
+        ]
+        verbrauch = ap.wochenverbrauch(eintraege, self.beginn, self.bis, b(2026, 11, 29, 6, 48))
+        self.assertAlmostEqual(verbrauch, 20 + 45 + 30 + 10)
+        self.assertEqual(ap.wochenverbrauch([], self.beginn, self.bis, b(2026, 11, 29, 6, 48)), 0)
+
+    def test_zweiter_start_ohne_ende(self):
+        eintraege = [
+            eintrag(b(2026, 11, 28, 6, 38), "Start · Bauen · Sa 28.11. 06:38"),
+            eintrag(b(2026, 11, 29, 6, 38), "Start · Bauen · So 29.11. 06:38"),
+            eintrag(b(2026, 11, 29, 7, 0), "Ende · Bauen · So 29.11. 07:00"),
+        ]
+        self.assertAlmostEqual(ap.wochenverbrauch(eintraege, self.beginn, self.bis, b(2026, 11, 30, 8)), 45 + 22)
+
+    def test_taktung(self):
+        frei, erlaubt = ap.taktung(0, 150, self.beginn, self.bis, b(2026, 11, 27, 11, 53))
+        self.assertTrue(frei)
+        self.assertLess(erlaubt, 10)
+        self.assertFalse(ap.taktung(80, 150, self.beginn, self.bis, b(2026, 11, 30, 6, 37))[0])  # erlaubt etwa 74
+        self.assertTrue(ap.taktung(80, 150, self.beginn, self.bis, b(2026, 11, 30, 23, 23))[0])  # erlaubt etwa 92
+        self.assertEqual(ap.taktung(149, 150, self.beginn, self.bis, b(2026, 12, 3, 9, 0)), (True, 150))
+
+
+class FahrplanMitBudgetTest(unittest.TestCase):
+    def setUp(self):
+        self.ordner = tempfile.TemporaryDirectory()
+        self.datei = Path(self.ordner.name) / "fahrplan.md"
+        self.datei.write_text(FAHRPLAN + "\nWochenbudget im Wochenmodus: 150 Minuten\n", encoding="utf-8")
+
+    def tearDown(self):
+        self.ordner.cleanup()
+
+    def rufe(self, rolle, zeit, verbrauch=0.0, fehler=None):
+        def verbrauch_der_woche(zeitpunkt):
+            if fehler:
+                raise fehler
+            beginn = ap.wochenbeginn(zeitpunkt)
+            return verbrauch, beginn, ap.endspurt_beginn(beginn)
+
+        with mock.patch.object(ap, "FAHRPLAN", self.datei), mock.patch.object(ap, "jetzt", return_value=zeit), \
+                mock.patch.object(ap, "verbrauch_der_woche", side_effect=verbrauch_der_woche), \
+                contextlib.redirect_stdout(io.StringIO()):
+            return ap.befehl_fahrplan(rolle)
+
+    def test_budget_bremst_nur_im_wochenmodus(self):
+        montag_frueh = b(2026, 11, 30, 6, 40)  # erlaubt etwa 74 von 150
+        self.assertEqual(self.rufe("Bauen", montag_frueh, verbrauch=60), 0)
+        self.assertEqual(self.rufe("Bauen", montag_frueh, verbrauch=80), 10)
+        self.assertEqual(self.rufe("Planen & Bericht", b(2026, 11, 30, 18, 10), verbrauch=500), 0)
+        self.assertEqual(self.rufe("Bauen", b(2026, 12, 4, 0, 40), verbrauch=500), 0)  # Fr 00:40: Endspurt
+        self.assertEqual(self.rufe("Bauen", b(2026, 12, 1, 0, 40)), 10)               # Tabelle: Pause
+
+    def test_fehler_heisst_arbeiten(self):
+        self.assertEqual(self.rufe("Bauen", b(2026, 11, 30, 6, 40), fehler=ap.GhFehler("kein Netz")), 0)
 
 
 if __name__ == "__main__":

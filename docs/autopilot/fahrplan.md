@@ -9,6 +9,9 @@ Warum es diesen Fahrplan gibt: Das Wochenlimit reicht nicht für alle Läufe ein
 - **Wochenmodus:** Freitag 08:00 bis Donnerstag 06:59. Ein Punkt je Lauf.
 - **Endspurt:** Donnerstag 07:00 bis Freitag 07:59. Weiter, bis das Limit greift oder nichts Sinnvolles mehr offen ist.
 - „arbeiten Mo Mi Fr So“ heißt: im Wochenmodus nur an diesen Tagen (Tag des Starts, Europe/Berlin), sonst Pause.
+- **Wochenbudget:** Im Wochenmodus teilen sich Bauen, Prüfen und Recherche ein Budget an Laufzeit. Es wächst gleichmäßig von Freitag 08:00 bis Donnerstag 07:00. Ein Lauf arbeitet nur, solange der Verbrauch der Woche unter dem bis dahin erlaubten Anteil liegt; sonst hat er Pause, auch wenn die Tabelle „arbeiten“ sagt. So verteilt sich die Arbeit über die Woche, und der Rest bleibt für den Endspurt. `ap.py fahrplan` rechnet den Verbrauch aus dem Laufprotokoll aus: Minuten von „Start“ bis „Ende“, Recherche zählt halb (Sonnet), ein Start ohne Ende zählt 45 Minuten. Planen & Bericht zählt nicht mit und wird nicht gebremst. Im Endspurt gilt das Budget nicht. `ap.py lage` zeigt den Stand.
+
+Wochenbudget im Wochenmodus: 150 Minuten
 
 | Rolle | Zeit | Wochenmodus | Endspurt |
 |---|---|---|---|
@@ -26,11 +29,13 @@ Die Zeiten sind die der geplanten Aufgaben in der Claude-App. Ändern kann sie n
 
 Ziel: Das Limit greift erst im Endspurt. So bleibt unter der Woche Limit für die anderen geplanten Aufgaben, und am Ende der Woche ist trotzdem alles verbraucht.
 
-1. Bestimme, wann das Limit in der zu Ende gegangenen Woche zuerst griff: Laufprotokoll (Issue „Wochen-Autopilot: Laufprotokoll“; ein Termin mit „arbeiten“ ohne Start-Zeile oder ein Start ohne Ende) und die Laufübersicht (`failure_reason` „USAGE_LIMIT_REACHED“).
-2. Griff es vor Donnerstag 07:00: Nimm im Wochenmodus einen Schritt weg, in dieser Reihenfolge: Recherche nur noch „arbeiten Di So“; Prüfen nur noch „arbeiten Mo Mi So“; Planen & Bericht nur noch „arbeiten Mo Mi Fr“ (freitags immer, wegen des Wochenberichts); Bauen 06:37 nur noch „arbeiten Mo Di Mi Fr Sa“.
-3. Kamen im Endspurt alle Läufe ohne Abbruch am Limit durch, war Limit übrig: Gib im Wochenmodus einen Schritt dazu, zuerst die zuletzt weggenommenen, sonst in dieser Reihenfolge: Bauen 13:37 auf „arbeiten“, Recherche und Prüfen täglich, Bauen 00:37, Bauen 19:37.
-4. Höchstens ein Schritt je Woche. Trag ihn unten im Verlauf ein: Datum, wann das Limit griff, was geändert ist. Die Änderung geht mit dem Planungs-PR.
+1. Bestimme, wann das Limit in der zu Ende gegangenen Woche zuerst griff: Laufprotokoll (Issue „Wochen-Autopilot: Laufprotokoll“; ein Start ohne Ende) und die Laufübersicht (`failure_reason` „USAGE_LIMIT_REACHED“).
+2. Griff es vor Donnerstag 07:00: Wochenbudget um ein Viertel kleiner (auf 10 Minuten gerundet, nicht unter 60 Minuten).
+3. Griff es bis Freitag 07:59 gar nicht (alle Läufe im Endspurt kamen ohne Abbruch am Limit durch): Wochenbudget um ein Viertel größer (auf 10 Minuten gerundet). Steht es schon bei 360 Minuten, stattdessen einen Termin im Wochenmodus dazu, in dieser Reihenfolge: Recherche täglich, Prüfen täglich, Bauen 19:37 auf „arbeiten“.
+4. Griff es im Endspurt: nichts ändern. Das ist das Ziel.
+5. Höchstens ein Schritt je Woche. Ändere nur die Zahl in der Zeile „Wochenbudget im Wochenmodus: … Minuten“ (oder den einen Termin). Trag den Schritt unten im Verlauf ein: Datum, wann das Limit griff, alter und neuer Wert. Die Änderung geht mit dem Planungs-PR.
 
 ## Verlauf
 
 - 22.11.2026, Claude (Chat), vorläufig: Fahrplan angelegt. Limit der Woche ab 20.11. am Sa 21.11. gegen 23:30 erreicht (Lauf „Prüfen“ nach 10 Minuten abgebrochen, danach jeder Lauf nach Sekunden). Schätzung: Das Wochenlimit reicht für rund 6 bis 7 Stunden Arbeit mit Opus. Start mit vier bis fünf Läufen am Tag im Wochenmodus.
+- 22.11.2026, 17:00, Claude (Chat), vorläufig: Wochenbudget eingeführt, Start mit 150 Minuten. Grund: Die Tabelle allein hätte im Wochenmodus nach Schätzung so viel Arbeit erlaubt, wie das ganze Wochenlimit hergibt (rund 6 Bauen, 4 Prüfen, 3 Recherche). Dann wäre das Limit wieder vor dem Endspurt aufgebraucht. Das Budget misst den echten Verbrauch und bremst rechtzeitig. Nachgestellt wird ab jetzt das Budget, nicht mehr die Tabelle.

@@ -13,7 +13,7 @@ Das Wochenlimit reicht nur für einen Teil der Woche (Schätzung nach der Woche 
 | Wochenmodus | Fr 08:00 bis Do 06:59 | nur die Termine, die der [Fahrplan](fahrplan.md) auf „arbeiten“ setzt; ein Punkt je Lauf |
 | Endspurt | Do 07:00 bis Fr 07:59 | alle Termine; weiterarbeiten, bis das Limit greift oder nichts Sinnvolles mehr offen ist |
 
-Jeder Lauf fragt beim Start `python3 docs/autopilot/ap.py fahrplan <Rolle>`. Bei Pause endet er sofort. Der Lauf „Planen & Bericht“ stellt den Fahrplan freitags nach: Griff das Limit vor dem Endspurt, ein Schritt weniger; blieb im Endspurt Limit übrig, ein Schritt mehr (Regeln in [`fahrplan.md`](fahrplan.md)).
+Jeder Lauf fragt beim Start `python3 docs/autopilot/ap.py fahrplan <Rolle>`. Bei Pause endet er sofort. Im Wochenmodus gilt zusätzlich das Wochenbudget: Bauen, Prüfen und Recherche teilen sich eine Laufzeit, die gleichmäßig bis Donnerstag 07:00 wächst; das Programm misst den Verbrauch im Laufprotokoll. Der Lauf „Planen & Bericht“ stellt das Budget freitags nach: Griff das Limit vor dem Endspurt, ein Viertel weniger; griff es gar nicht, ein Viertel mehr (Regeln in [`fahrplan.md`](fahrplan.md)).
 
 ## Die Aufgaben
 
@@ -43,7 +43,7 @@ Sie sparen den Läufen Schritte und Limit. Die Regeln stehen im Auftrag der Läu
 
 | Aufruf (im Repo-Ordner) | Was er tut |
 |---|---|
-| `python3 docs/autopilot/ap.py fahrplan <Rolle>` | sagt, ob der Lauf laut Fahrplan arbeitet (Rückgabe 0) oder Pause hat (10) |
+| `python3 docs/autopilot/ap.py fahrplan <Rolle>` | sagt, ob der Lauf laut Fahrplan und Wochenbudget arbeitet (Rückgabe 0) oder Pause hat (10); kann das Programm das Laufprotokoll nicht lesen, arbeitet der Lauf |
 | `python3 docs/autopilot/ap.py lage` | Zeit und Phase, CI auf `main`, offene PRs mit Einstufung (eigen, fremd, verwaist, belegt, fertig), gemergte PRs ohne Prüfung, Überfälliges, freie Punkte je Rolle, Laufprotokoll der letzten 24 Stunden |
 | `python3 docs/autopilot/ap.py status <PR> in-arbeit` | setzt die Status-Zeile mit der aktuellen Uhrzeit (Lebenszeichen); auch `fertig` oder `"blockiert: <Grund>"` |
 | `AP_PR=<PR> bash docs/autopilot/pruefen.sh` | alle Prüfungen aus `CLAUDE.md`, je eine Zeile; bei Fehlern die letzten 40 Zeilen; setzt dabei das Lebenszeichen. `--schnell`: nur Tests und Lint |
@@ -88,4 +88,4 @@ Kommentare im Laufprotokoll und „Autopilot-Prüfung“-Kommentare zählen nur,
 
 ## Anhalten
 
-In der Claude-App unter „Geplante Aufgaben“ (oder auf claude.ai/code/routines) die Aufgaben „Kunibert Autopilot · …“ ausschalten. Die Aufgaben „Kunibert Restlimit (Mi)“, „(Do)“ und „(Fr)“ laufen getrennt davon. Wer alles anhalten will, schaltet sie mit aus. Ausschalten löscht nichts. Langsamer oder schneller: im [Fahrplan](fahrplan.md) Termine auf „Pause“ oder „arbeiten“ setzen.
+In der Claude-App unter „Geplante Aufgaben“ (oder auf claude.ai/code/routines) die Aufgaben „Kunibert Autopilot · …“ ausschalten. Die Aufgaben „Kunibert Restlimit (Mi)“, „(Do)“ und „(Fr)“ laufen getrennt davon. Wer alles anhalten will, schaltet sie mit aus. Ausschalten löscht nichts. Langsamer oder schneller: im [Fahrplan](fahrplan.md) das Wochenbudget ändern oder Termine auf „Pause“ oder „arbeiten“ setzen.
