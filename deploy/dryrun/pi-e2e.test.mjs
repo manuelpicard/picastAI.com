@@ -47,14 +47,26 @@ function makeWav(seconds = 0.5) {
   return Buffer.concat([header, data]);
 }
 
-function freePort() {
+// Mehrere freie Ports auf einmal: Alle Proben bleiben offen, bis jeder Port vergeben ist. So kann das
+// Betriebssystem nicht zweimal denselben Port liefern. Nacheinander geholt kam das vor: Attrappe und
+// Server wollten denselben Port, der Server brach mit EADDRINUSE ab (CI auf main, 22.11.2026).
+function freePorts(count) {
   return new Promise((resolve, reject) => {
-    const probe = net.createServer();
-    probe.once('error', reject);
-    probe.listen(0, '127.0.0.1', () => {
-      const { port } = probe.address();
-      probe.close(() => resolve(port));
-    });
+    const probes = [];
+    const ports = [];
+    const closeAll = (done) => {
+      let open = probes.length;
+      for (const probe of probes) probe.close(() => (--open === 0 ? done() : undefined));
+    };
+    for (let i = 0; i < count; i += 1) {
+      const probe = net.createServer();
+      probes.push(probe);
+      probe.once('error', (error) => closeAll(() => reject(error)));
+      probe.listen(0, '127.0.0.1', () => {
+        ports.push(probe.address().port);
+        if (ports.length === count) closeAll(() => resolve(ports));
+      });
+    }
   });
 }
 
@@ -100,8 +112,7 @@ before(async () => {
   await new Promise((resolve) => voiceServer.listen(0, '127.0.0.1', resolve));
   const voicePort = voiceServer.address().port;
 
-  const mockPort = await freePort();
-  const serverPort = await freePort();
+  const [mockPort, serverPort] = await freePorts(2);
   base = `http://127.0.0.1:${serverPort}`;
 
   const mock = spawn(process.execPath, [path.join(root, 'deploy', 'dryrun', 'mock-anthropic.mjs')], {
