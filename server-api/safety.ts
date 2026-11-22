@@ -381,7 +381,7 @@ const PATTERNS_2026_11_D: RegExp[] = [
   new RegExp(`${L}(mann|frau|typ|fremder|fremde|fremden|unbekannter|unbekannte)( ${WORD}){0,8} (gesagt|sagt|sagte|meint|meinte) ich (soll|muss|darf) (mit ihm |mit ihr )?(mitkommen|mitgehen|einsteigen|ins auto|in sein auto|in ihr auto)${R}`),
   new RegExp(`${L}(mann|frau|typ|fremder|fremde|fremden|unbekannter|unbekannte)( ${WORD}){0,8} wenn ich (mit ihm |mit ihr )?(mitkomme|mitgehe|einsteige|ins auto steige)${R}`),
   // Sich selbst verletzen, keinen Sinn mehr sehen, sich wertlos fühlen
-  new RegExp(`^(?=.*${L}(mit absicht|absichtlich|extra)${R})(?!.*${L}(haare|nägel|fingernägel|fußnägel|pony|bart|brot|apfel|papier)${R}).*${L}ich (habe|hab) mir (${WORD} ){0,6}(geschnitten|geritzt|verletzt|wehgetan|weh getan|verbrannt|gekratzt)${R}`),
+  new RegExp(`^(?=.*${L}(mit absicht|absichtlich|extra)${R}).*${L}ich (habe|hab) mir ((?!(haare|nägel|fingernägel|fußnägel|pony|bart|brot|apfel|papier)${R})${WORD} ){0,6}(geschnitten|geritzt|verletzt|wehgetan|weh getan|verbrannt|gekratzt)${R}`),
   new RegExp(`${L}ich (haue|hau|schlage|schlag|schlug) mir (selber |selbst |immer |extra ){0,2}(${WORD} ){0,2}(gegen|auf|an) (den|meinen) kopf${R}`),
   new RegExp(`${L}(einschlafen|schlafen|einschlafe|schlafe)( ${WORD}){0,3} (und )?(nie mehr|nie wieder|nicht mehr) (aufwachen|aufwache|aufzuwachen)${R}`),
   new RegExp(`${L}(hat|macht) (doch |eh |jetzt |gar |überhaupt )?(alles|mein leben|das leben) (doch |eh |gar |überhaupt )?keinen sinn mehr${R}`),
@@ -429,7 +429,7 @@ const PATTERNS_2026_11_D: RegExp[] = [
   // Wie „ich will nicht mehr“ (nur am Satzende oder vor einem neuen Satzteil). Nicht: „nicht mehr weiter hören“,
   // „ich will nicht mehr weiter, ich will eine andere Geschichte“. Ausgenommen ist nur dieser Wunsch, nicht jedes
   // „erzählen“ oder „hören“ („Ich kann nicht mehr weiter, ich muss dir was erzählen“ schlägt an).
-  new RegExp(`^(?!.*${L}((andere|anderen|neue|neuen|nächste|nächsten) (geschichte|folge)|(was|etwas) anderes (hören|erzählen))${R}).*${L}ich (will|kann|mag) (${FILL} ){0,2}nicht mehr weiter(?= *$| ${CONTINUATION}${R})`),
+  new RegExp(`${L}ich (will|kann|mag) (${FILL} ){0,2}nicht mehr weiter(?= *$| ${CONTINUATION}${R})(?! (ich (will|möchte|mag) |erzähl mir |lieber |bitte )(${WORD} ){0,2}((andere|anderen|neue|neuen|nächste|nächsten) (geschichte|folge)|(was|etwas) anderes (hören|erzählen))${R})`),
   new RegExp(`${L}ich bin (${WORD} ){0,2}(zu nichts|für nichts) (nütze|gut|zu gebrauchen)${R}`),
   new RegExp(`${L}ich (glaube|glaub) ${ART}${PERSON_WIDE} ist tot${R}`),
   new RegExp(`^(?=.*${L}angst${R}).*${L}(allein|alleine) (zu hause|zuhause|daheim)${R}`),
@@ -444,10 +444,10 @@ const PATTERNS_2026_11_D: RegExp[] = [
   // Die Ausnahmen gelten nur für die Wörter zwischen „mich“ und dem Partizip: „Papa hat mich gestern geschlagen,
   // weil ich beim Fußball verloren habe“ schlägt an.
   // Steht das Spiel direkt vor „hat“ („Beim Memory hat Papa mich geschlagen“), gilt die Ausnahme auch.
-  new RegExp(`${L}(?<!${L}(beim|im|bei|in) ${GAME} )(hat|haben|hatte|hatten) (${SUBJ} )?(mich|uns) ((?!((beim|im|bei|in) ${GAME}|knapp|haushoch|zu ${NUM})${R})${WORD} ){0,3}geschlagen${R}`),
+  new RegExp(`${L}(?<!${L}(beim|im|bei|in) ${GAME} )(hat|haben|hatte|hatten) (${SUBJ} )?(mich|uns) ((?!((beim|im|bei|in) ${GAME}|knapp|haushoch|zu ${NUM})${R})${WORD} ){0,6}geschlagen${R}`),
   // Mit Trainer, Lehrer, Betreuer oder einem fremden Mann gilt keine Spiel-Ausnahme.
   new RegExp(`^(?=.*${L}(trainer|trainerin|lehrer|lehrerin|erzieher|erzieherin|betreuer|betreuerin|mann|fremde|fremder|typ)${R}).*${L}(hat|haben|hatte|hatten) (${SUBJ} )?(mich|uns) (${WORD} ){0,3}geschlagen${R}`),
-  new RegExp(`${L}(hat|haben|hatte|hatten) (${SUBJ} )?(mich|uns) ((?!(aus versehen|ausversehen)${R})${WORD} ){0,3}(gehauen|getreten|gewürgt|verhauen|verprügelt|geohrfeigt|eingesperrt)${R}`),
+  new RegExp(`${L}(hat|haben|hatte|hatten) (${SUBJ} )?(mich|uns) ((?!(aus versehen|ausversehen)${R})${WORD} ){0,6}(gehauen|gehaut|gehaun|getreten|gewürgt|verhauen|verprügelt|geohrfeigt|eingesperrt)${R}`),
   // Übergriffe im Perfekt und im Hauptsatz nach „aber“ und „und“
   new RegExp(`${L}(hat|haben|hatte) (${SUBJ} )?mich (${WORD} ){0,2}(da unten|untenrum|am po|am popo|zwischen den beinen|an der brust|an meinem ${KID_BODY}|am ${KID_BODY}|an der ${KID_BODY}|unter der (decke|bettdecke|hose|unterhose)) (${WORD} )?(berührt|gestreichelt|angefasst|angegrapscht|angegrabscht|begrapscht|begrabscht|geküsst)${R}`),
   new RegExp(`${L}(hat|haben|hatte) (${SUBJ} )?mich (${WORD} ){0,2}(geküsst|gestreichelt|berührt|angefasst|angegrapscht|begrapscht|ausgezogen)( ${WORD}){0,4} ${UNWANTED}${R}`),
@@ -472,7 +472,51 @@ const PATTERNS_2026_11_D: RegExp[] = [
   new RegExp(`${L}(mann|frau|typ|fremder|fremde|fremden)( ${WORD}){0,4} (bietet|bot|bieten) mir (${WORD} ){0,2}(süßigkeiten|bonbons|schokolade|geld|eis|geschenke|ein geschenk|spielzeug|ein handy) an${R}`),
 ];
 
-const ALL_PATTERNS: RegExp[] = [...PATTERNS, ...PATTERNS_EXTRA, ...PATTERNS_2026_11, ...PATTERNS_2026_11_B, ...PATTERNS_2026_11_C, ...PATTERNS_2026_11_D];
+// Prüfung der vierten Probe (22.11.2026, Prüfung von PR #71): naheliegende Abwandlungen, die vorher keine
+// Ansage auslösten. Nur zusätzliche Schablonen; keine ältere wird enger. Beispiele in beiden Listen von
+// safety.test.ts und in docs/Sicherheitsweiche-Pruefung.md, Abschnitt 10.
+const PATTERNS_REVIEW: RegExp[] = [
+  // V1 Übergriffe: weibliche Beugung, Perfekt mit „mir … gefasst“, Kinderwörter, „Nein gesagt“, „wenn er mich anfasst“
+  new RegExp(`${L}(berührt|berühren|streichelt|streicheln|fasst|fassen|grapscht|grabscht|küsst|küssen) mich (${WORD} ){0,2}an (meiner|meinem|meinen|der|dem|den) (${KID_BODY}|mumu|puller|vulva|po|popo|brust|busen)${R}`),
+  new RegExp(`${L}(hat|haben|hatte) (${SUBJ} )?mir (${WORD} ){0,2}(an|in) (mein|meinen|meine|den|die|das) (${KID_BODY}|mumu|puller|vulva|po|popo|brust|busen|unterhose|hose) (gefasst|gegriffen|gelangt|gefummelt|gegrapscht|gegrabscht)${R}`),
+  new RegExp(`${L}(fasst|fassen|fasste|greift|greifen|griff|langt|langen) mir (${WORD} ){0,2}(an|in) (mein|meinen|meine|den|die|das) (mumu|puller|vulva|busen)${R}`),
+  new RegExp(`^(?=.*${L}(küsst|küsste|küssen|streichelt|streichelte|streicheln|berührt|berührte|berühren|fasst|fasste|fassen|geküsst|gestreichelt|angefasst|ausgezogen)${R}).*${L}(obwohl|aber|und|dabei) ich (doch |schon |ganz laut )?(nein|stopp|stop) (gesagt|sage|sag|gerufen|rufe)${R}`),
+  new RegExp(`${L}ich (habe|hab) (${WORD} ){0,2}(nein|stopp|stop|hör auf)( ${WORD}){0,2} gesagt( ${WORD}){0,3} (aber|und) (er|sie|der|die) (hört|macht) (${WORD} ){0,2}(nicht auf|weiter)${R}`),
+  new RegExp(`${L}ich (mag|will|möchte) (es |das )?nicht( mehr)? (dass|wenn) (er|sie|der|die|${POSS}${PERSON_WIDE}|(der|die|ein|eine|dieser|diese) (${WORD} )?(mann|frau|typ|fremde|fremder|junge)) mich (${WORD} ){0,2}(anfasst|anfassen|an fasst|küsst|streichelt|berührt|auszieht)${R}`),
+  // V2 Gewalt: Perfekt mit Artikel vor der Person („Papa hat die Mama geschlagen“)
+  new RegExp(`${L}${POSS}${PARENTS} (hat|hatte) (${WORD} )?${ART}${PERSON_WIDE} (${WORD} ){0,3}(geschlagen|gehauen|gehaut|getreten|gewürgt|verprügelt)${R}`),
+  // V3 Drohung mit „töten“
+  new RegExp(`${L}(${POSS}${PERSON_WIDE}|er|sie|der|die|jemand) (tötet|tötete) (mich|uns)${R}`),
+  new RegExp(`${L}(${POSS}${PERSON_WIDE}|er|sie|der|die|jemand) (will|wollte|wird|würde|möchte) (mich|uns) (${WORD} )?(töten|totmachen|tot machen)${R}`),
+  // V4 Fremde: „gefragt, ob ich mitkomme“, „mit ihm gehen“, Kinderwörter für Süßes, Ort beim Ansprechen, Fotos gemacht
+  new RegExp(`${L}(mann|frau|typ|fremder|fremde|fremden|unbekannter|unbekannte)( ${WORD}){0,8} (ob|dass|wenn) ich (mit ihm |mit ihr )?(mitkomme|mitgehe|mitfahre|einsteige|ins auto steige)${R}`),
+  new RegExp(`${L}(mann|frau|typ|fremder|fremde|fremden|unbekannter|unbekannte)( ${WORD}){0,8} (ich soll|ich muss|dass ich) (mit ihm|mit ihr|mit zu ihm|mit zu ihr) (gehen|gehe|kommen|komme|fahren|fahre)${R}`),
+  new RegExp(`${L}(mann|frau|typ|fremder|fremde|fremden)( ${WORD}){0,4} (hat|haben|wollte|will|bietet|bot) mir (${WORD} ){0,2}(gummibärchen|lolli|lollis|lutscher|kaugummi|bonbon|schokoriegel) (angeboten|anbieten|an)${R}`),
+  new RegExp(`${L}(ein mann|eine frau|ein typ|ein junge|ein großer)( ${WORD}){0,4} (hat|haben) mich (${WORD} ){0,5}angesprochen${R}`),
+  new RegExp(`${L}(jemand|einer|ein mann|eine frau|ein fremder|eine fremde|ein typ|der mann|die frau|der fremde|die fremde|der typ|dieser mann)( ${WORD}){0,3} (hat|haben|hatte) (${WORD} ){0,2}(fotos|bilder|videos|ein foto|ein bild|ein video) von mir (${WORD} )?gemacht${R}`),
+  // V5 Weglaufen im Perfekt, „abhauen“
+  new RegExp(`${L}ich bin (${FILL} ){0,2}(von zu hause|von zuhause|von daheim) (${WORD} )?(weggelaufen|abgehauen|weggerannt)${R}`),
+  new RegExp(`${L}ich (will|möchte|werde) (${FILL} ){0,2}(von zu hause |von zuhause |von daheim )?(abhauen|weg laufen|wegrennen)${R}`),
+  // V6 Atemnot, Verschlucken, blau, Hundebiss mit zusammengesetztem Wort
+  new RegExp(`^(?!.*${L}vor (lauter )?lachen${R}).*${L}ich (habe|hab|bekomme|bekomm|kriege|krieg) (gerade |ganz |so |voll |echt )?(schwer|nur schwer|nicht genug|nicht richtig|schlecht)( noch)? luft( mehr)?${R}`),
+  new RegExp(`^(?!.*${L}vor (lauter )?lachen${R}).*${L}ich kann (gerade |fast )?(nur schwer|ganz schwer|schwer|nicht mehr richtig|nicht mehr gut) (noch |mehr )?atmen${R}`),
+  new RegExp(`${L}(${WHO}|das baby|${POSS}baby) (kriegt|bekommt|hat) (ganz |so )?(schlecht|schwer|nicht genug|nicht richtig)( noch)? luft${R}`),
+  new RegExp(`${L}${SMALL_PERSON} (habe|hab|hat) (was|etwas|irgendwas|irgendetwas|${WORD} magneten|magneten|münzen|knöpfe) (${WORD} )?(verschluckt|in die nase gesteckt|ins ohr gesteckt)${R}`),
+  new RegExp(`${L}(das baby|${SMALL_PERSON}|${WHO}) (ist|wird) (ganz |so |total )?(blau|lila)(?= *$| (und|aber|weil|im|an)${R})`),
+  new RegExp(`${L}[a-zäöüß]*(hund|katze|schlange|ratte|pferd)( ${WORD}){0,3} (hat|hatte) (mich|uns|ihn|sie|das baby|${ART}(kleine |kleinen |kleiner |große |großen |großer )?${PERSON_WIDE}) (${WORD} ){0,2}gebissen${R}`),
+  // V7 Wertlos, Leben hassen (Kurzform), Tod mit „ich glaube“
+  new RegExp(`${L}ich (hasse|hass) (mein|das) (${WORD} )?leben${R}`),
+  new RegExp(`${L}ich bin (${WORD} ){0,2}(wertlos|nutzlos|zu nix nütze|für nix gut)${R}`),
+  new RegExp(`${L}ich (glaube|glaub) ${ART}${PERSON_WIDE} (ist (${WORD} )?gestorben|lebt nicht mehr)${R}`),
+  // V8 Oma und Opa verloren
+  new RegExp(`${L}ich (habe|hab) ${POSS}(oma|opa|omi|opi|großmutter|großvater) (${WORD} ){0,3}verloren${R}`),
+  new RegExp(`${L}(finde|find|sehe|seh) ${POSS}(oma|opa|omi|opi)( ${WORD})? (nicht( mehr| wieder)?|nirgends|nirgendwo)(?= *$| ${CONTINUATION}${R})`),
+  // V9 Hilferuf mit „hallo“, „doch“, „komm“; Notruf mit zwei Füllwörtern
+  new RegExp(`^(?=.*${L}(hilfe|hilf mir|helft mir|hilf uns|helft uns)${R})((hilfe|hilf mir|helft mir|hilf uns|helft uns|bitte|feuer|schnell|polizei|feuerwehr|krankenwagen|notarzt|ritter|kunibert|mama|mami|papa|papi|oma|omi|opa|opi|jemand|irgendjemand|irgendwer|hallo|doch|komm|kommt|oh|nein) ){1,12}$`),
+  new RegExp(`${L}(ruf|ruft|rufen|rufe|anrufen|wählen|wähl|wähle) ((bitte|mal|schnell|sofort|jetzt|gleich) ){0,3}(die )?${EMERGENCY_NUMBER}${R}`),
+];
+
+const ALL_PATTERNS: RegExp[] = [...PATTERNS, ...PATTERNS_EXTRA, ...PATTERNS_2026_11, ...PATTERNS_2026_11_B, ...PATTERNS_2026_11_C, ...PATTERNS_2026_11_D, ...PATTERNS_REVIEW];
 
 export function screen(transcript: string): boolean {
   if (!transcript) return false;

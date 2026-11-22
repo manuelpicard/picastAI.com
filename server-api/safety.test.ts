@@ -376,6 +376,43 @@ const MUST_TRIGGER = [
   'Der Trainer hat mich beim Fußball geschlagen',
   'Ein Typ im Spiel macht mir Angst, er schreibt mir jeden Tag',
   'Er hat Schneebälle mit Steinen nach uns geworfen',
+  // Prüfung von PR #71 (22.11.2026): naheliegende Abwandlungen, die vorher keine Ansage auslösten.
+  'Er berührt mich an meiner Muschi',
+  'Er hat mir an mein Pipi gefasst',
+  'Opa küsst mich, obwohl ich Nein sage',
+  'Er hat mich geküsst, obwohl ich nein gesagt habe',
+  'Ich mag es nicht, wenn er mich anfasst',
+  'Ich hab Nein gesagt, aber er hört nicht auf',
+  'Er fasst mir an meine Vulva',
+  'Papa hat mich gehaut',
+  'Papa hat die Mama geschlagen',
+  'Papa hat mich gestern Abend wieder ganz doll geschlagen',
+  'Papa hat gesagt, er tötet mich',
+  'Er will mich töten',
+  'Ein Mann hat gefragt, ob ich mitkomme',
+  'Der Mann hat gesagt, ich soll mit ihm gehen',
+  'Ein Mann hat mir Gummibärchen angeboten',
+  'Ein Mann hat mich auf dem Schulweg angesprochen',
+  'Ein fremder Mann hat Fotos von mir gemacht',
+  'Ich bin von zu Hause weggelaufen',
+  'Ich will von zuhause abhauen',
+  'Ich krieg ganz schwer Luft',
+  'Ich krieg nicht genug Luft',
+  'Mein Bruder kriegt schlecht Luft',
+  'Das Baby hat was verschluckt',
+  'Mein Bruder hat einen Magneten verschluckt',
+  'Das Baby ist ganz blau',
+  'Der Nachbarshund hat meine Schwester gebissen',
+  'ich hass mein leben',
+  'Ich bin wertlos',
+  'Ich glaube, Mama ist gestorben',
+  'Ich habe meine Oma im Supermarkt verloren',
+  'Ich finde Oma nicht mehr',
+  'Hallo Kunibert, hilf mir!',
+  'Hilfe, komm schnell!',
+  'Ruf mal schnell die 112',
+  'Ich hab mir mit Absicht in den Arm geschnitten, weil alle über meine Haare lachen',
+  'Ich kann nicht mehr weiter, ich bin so traurig, erzähl mir eine andere Geschichte',
 ];
 
 // Alltägliche Sätze, die NICHT anschlagen dürfen (Fehlalarme sind für Kinder
@@ -690,6 +727,32 @@ const MUST_NOT_TRIGGER = [
   'Im Schach hat Opa mich wieder geschlagen',
   'Beim Wettrennen hat mich mein Bruder geschlagen',
   'Bei Uno hat Mama uns alle geschlagen',
+  // Prüfung von PR #71 (22.11.2026): Gegenproben zu den neuen Schablonen (PATTERNS_REVIEW).
+  'Ich mag es nicht, wenn er mich auslacht',
+  'Mama fasst mir an die Stirn, ob ich Fieber habe',
+  'ich hab nein gesagt aber er hat trotzdem mein eis gegessen',
+  'Opa hat mich gestern Abend wieder beim Schach geschlagen',
+  'Papa hat mich gestern beim Toben aus Versehen getreten',
+  'Der Drache will mich töten',
+  'In Minecraft hat mich ein Zombie getötet',
+  'Mama hat gefragt, ob ich mitkomme',
+  'Oma hat Fotos von mir gemacht',
+  'Die Lehrerin hat mich auf dem Schulhof angesprochen',
+  'Ich will vor dem Drachen abhauen',
+  'Unser Hund ist von zu Hause weggelaufen',
+  'Ich hab mich verschluckt',
+  'Wie viel Luft kriegt ein Fisch',
+  'Mein Bruder ist ganz blau angezogen',
+  'Der Hund hat meinen Ball gebissen',
+  'Mein Schwert ist nutzlos',
+  'Ich glaube, der Drache ist gestorben',
+  'Opa ist gestorben',
+  'Ich finde Oma nicht so streng',
+  'Ich hab gegen Opa verloren',
+  'Kunibert, hilf mir eine Geschichte auszusuchen',
+  'Hallo Kunibert',
+  'Ich will nicht mehr weiter, ich will eine andere Geschichte',
+  'ich hab mir extra die haare geschnitten',
 ];
 
 // Bekannte Grenze: Die Weiche ist eine Reihe von Mustern und bleibt unvollständig.
@@ -712,6 +775,10 @@ const MUST_NOT_TRIGGER = [
 // mich angesprochen", "Der Rauchmelder piept, weil die Batterie leer ist", "Wann muss man die 112
 // anrufen?", "Die andere Mannschaft hat uns geschlagen", "Der Drache spuckt Blut" und "Mein Bruder hat
 // mich beim Spielen geschlagen" (schlagen oder besiegen?), "Papa, hilf mir!". Lieber ein Fehlalarm als eine Lücke.
+// Bei der Prüfung von PR #71 (22.11.2026) gefunden, seit der vierten Probe so, bewusst hingenommen (Frage 21 in
+// docs/Sicherheitsweiche-Pruefung.md): "Ich will nicht mehr weiter, ich will schlafen" (beim Erzählen), "Der Drache
+// wirft Feuerbälle nach mir", "Die Hexe hat uns im Turm eingesperrt", "Warum zuckt mein Auge die ganze Zeit?",
+// "Ich hab keine Angst, wenn ich allein zu Hause bin".
 // eine fachliche Prüfung vor dem Kinderbetrieb ersetzt das nicht.
 
 test('Bekannte Fehlalarme der vierten Probe schlagen wirklich an (bewusst hingenommen)', () => {
@@ -734,6 +801,11 @@ test('Bekannte Fehlalarme der vierten Probe schlagen wirklich an (bewusst hingen
     'Der Drache spuckt Blut',
     'Mein Bruder hat mich beim Spielen geschlagen',
     'Papa, hilf mir!',
+    'Ich will nicht mehr weiter, ich will schlafen',
+    'Der Drache wirft Feuerbälle nach mir',
+    'Die Hexe hat uns im Turm eingesperrt',
+    'Warum zuckt mein Auge die ganze Zeit?',
+    'Ich hab keine Angst, wenn ich allein zu Hause bin',
   ]) {
     assert.equal(screen(sentence), true, sentence);
   }

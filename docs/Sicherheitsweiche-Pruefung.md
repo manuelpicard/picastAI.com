@@ -4,6 +4,8 @@ Für eine Fachkraft ohne Programmierkenntnisse (zum Beispiel Kinderschutz, Päda
 
 **Stand:** 6. November 2026, Code-Stand `main` nach PR #14. **Quellen:** nur der Programmcode (`server-api/safety.ts`, `server-api/brain.ts`, `server-api/prompts.ts`) und die Tests (`server-api/safety.test.ts`, `server-api/brain.test.ts`). Was in den Tests steht, ist als **(Test)** gekennzeichnet. Sätze ohne diesen Vermerk wurden zusätzlich am 6. November 2026 mit dem Code ausprobiert; sie stehen nicht in den Tests.
 
+**Nachtrag 22. November 2026:** Abschnitt 10 beschreibt die Prüfung der vierten Probe durch einen zweiten Prüfer (36 Sätze mehr erkannt, neue Fehlalarme in Abschnitt 7.3).
+
 **Nachtrag 20. November 2026:** Abschnitt 9 beschreibt die vierte Probe (Kindersprache, Umgangssprache, Fehler der Erkennung). Die Abschnitte 7.2 bis 7.4 sind an den Code von diesem Tag angepasst. Die Tabellen in den Abschnitten 2 und 3 zeigen weiter nur Beispiele vom 6. November; seitdem sind viele Schablonen dazugekommen (drei Proben am 12. November, eine am 20. November).
 
 **Wichtig:** Dieses Dokument beschreibt, was die Software tut. Es sagt **nicht**, dass sie ausreicht. Ob das Gerät mit Kindern getestet werden darf, entscheidet erst Ihre Prüfung (so steht es auch in `deploy/CHECKLISTE.md` unter „Go / No-Go“). Am Ende stehen Fragen an Sie.
@@ -149,6 +151,8 @@ Auch diese Sätze lösen die Ansage aus (ausprobiert, nicht in den Tests):
 
 **Stand 20. November 2026:** Alle Sätze der Tabelle lösen weiter die Ansage aus. Seit der vierten Probe kommen diese Fehlalarme dazu, bewusst hingenommen und als Test festgehalten **(Test)**: „Opa schlägt mich immer beim Schach“ und „Papa schlägt uns immer beim Memory“ (Spiel; eine Ausnahme für Spiele würde echte Fälle durchlassen, zum Beispiel „beim Abendessen“), „Mama bringt mich um, wenn sie das sieht“ (Übertreibung), „Ich krieg Papa morgens nicht wach“, „Mein Bruder boxt mich“, „Mein Bruder wirft Bälle nach mir“, „Mein Bruder macht mir Angst mit seinen Gruselgeschichten“. Nach der unabhängigen Prüfung vom selben Tag kommen dazu **(Test)**: „Wenn Mama das sieht, bringt sie mich um“, „Mama kriegt einen Anfall, wenn sie das sieht“, „Ein Junge aus meiner Klasse hat mich angesprochen“, „Der Rauchmelder piept, weil die Batterie leer ist“, „Wann muss man die 112 anrufen?“, „Die andere Mannschaft hat uns geschlagen“, „Der Drache spuckt Blut“, „Mein Bruder hat mich beim Spielen geschlagen“ (schlagen oder besiegen?) und „Papa, hilf mir!“ (als ganze Äußerung ein Hilferuf).
 
+**Stand 22. November 2026:** Bei der Prüfung der vierten Probe gefunden, seit dem 20. November so, bewusst hingenommen und als Test festgehalten **(Test)**: „Ich will nicht mehr weiter, ich will schlafen“ (beim Erzählen: Das Kind bekommt die Hilfe-Ansage statt einer Pause), „Der Drache wirft Feuerbälle nach mir“, „Die Hexe hat uns im Turm eingesperrt“ (Sätze aus der Geschichte), „Warum zuckt mein Auge die ganze Zeit?“ und „Ich hab keine Angst, wenn ich allein zu Hause bin“ (Verneinung). Dazu Frage 21.
+
 ### 7.4 Ohne Claude: allgemeine Antworten auf Sätze, die Stufe 1 nicht erkennt
 
 Ist Claude nicht eingerichtet oder fällt aus (oder lehnt der Ausgabe-Check den Text ab), antwortet das Gerät mit festen Texten nach Stichwörtern. Ausprobiert mit dem Code:
@@ -232,7 +236,7 @@ Ist Claude nicht eingerichtet oder fällt aus (oder lehnt der Ausgabe-Check den 
 
 Dazu 35 Gegenproben **(Test)**, zum Beispiel „Opa hat mich beim Schach geschlagen“, „Morgen bringt Papa mich um acht zur Schule“, „Ich kann vor Lachen kaum noch atmen“, „Der Mann im Film macht mir Angst“, „Ich hab Wasser im Ohr und es geht nicht raus“, „Die Kinder haben Schneebälle nach uns geworfen“.
 
-Die neuen Ausnahmen gelten nur an ihrer Stelle im Satz, nicht für den ganzen Satz. Beispiel: Ein genanntes Spiel (Schach, Memory, Fußball und andere) oder ein Spielstand („drei zu eins“) zählt nur zwischen „mich“ und „geschlagen“, weil „geschlagen“ dort „besiegt“ heißt. „Papa hat mich gestern geschlagen, weil ich beim Fußball verloren habe“ schlägt an **(Test)**. Ebenso „aus Versehen“ bei „gehauen“ und „getreten“, „im Film“ direkt hinter „der Mann“, Spielsachen wie Schneebälle beim Werfen (nicht mit Steinen) und „Wasser“ direkt vor „im Ohr“ oder „in die Nase“. Steht das Spiel vorn („Beim Memory hat Papa mich geschlagen“), gilt die Ausnahme auch. Mit Trainer, Lehrer, Betreuer oder einem fremden Mann gilt sie nicht: „Der Trainer hat mich beim Fußball geschlagen“ schlägt an **(Test)**.
+Die meisten neuen Ausnahmen gelten nur an ihrer Stelle im Satz, nicht für den ganzen Satz (berichtigt am 22. November 2026: Für den ganzen Satz gelten weiter „vor Lachen“ bei Atemnot und beim Umfallen und „kein … gegessen“ bei Allergien; die Ausnahmen beim absichtlichen Verletzen und bei „nicht mehr weiter“ galten bis zum 22. November auch für den ganzen Satz, siehe Abschnitt 10). Beispiel: Ein genanntes Spiel (Schach, Memory, Fußball und andere) oder ein Spielstand („drei zu eins“) zählt nur zwischen „mich“ und „geschlagen“, weil „geschlagen“ dort „besiegt“ heißt. „Papa hat mich gestern geschlagen, weil ich beim Fußball verloren habe“ schlägt an **(Test)**. Ebenso „aus Versehen“ bei „gehauen“ und „getreten“, „im Film“ direkt hinter „der Mann“, Spielsachen wie Schneebälle beim Werfen (nicht mit Steinen) und „Wasser“ direkt vor „im Ohr“ oder „in die Nase“. Steht das Spiel vorn („Beim Memory hat Papa mich geschlagen“), gilt die Ausnahme auch. Mit Trainer, Lehrer, Betreuer oder einem fremden Mann gilt sie nicht: „Der Trainer hat mich beim Fußball geschlagen“ schlägt an **(Test)**.
 
 Behoben ist auch ein Fehlalarm, den die vierte Probe selbst brachte: „Ich will nicht mehr weiter, ich will eine andere Geschichte“ löste die Hilfe-Ansage aus. Jetzt bekommt das Kind wieder eine Geschichte. Ausgenommen ist nur der Wunsch nach einer anderen, neuen oder nächsten Geschichte oder Folge. „Ich will nicht mehr weiter“ allein und „Ich kann nicht mehr weiter, ich muss dir was erzählen“ schlagen weiter an **(Test)**. Neue, bewusst hingenommene Fehlalarme: siehe Abschnitt 7.3.
 
@@ -249,11 +253,36 @@ Offen: Ob die Spracherkennung „ae“, „oe“, „ue“ oder „ss“ statt U
 19. Übertreibungen wie „Mama bringt mich um, wenn sie das sieht“ lösen die Ansage aus. Ist das vertretbar?
 20. „Opa hat mich beim Schach geschlagen“ löst seit dem Nachtrag keine Ansage aus (vorläufige Entscheidung von Claude, 20.11.2026, 17:05: „geschlagen“ heißt dort „besiegt“). „Opa schlägt mich immer beim Schach“ löst sie aus. Soll auch das Perfekt mit Spiel anschlagen? Dann gibt es mehr Fehlalarme, aber keine Lücke, falls ein Kind so von Gewalt erzählt.
 
+## 10. Nachtrag vom 22. November 2026: Prüfung der vierten Probe
+
+**Was geprüft wurde:** Ein zweiter Prüfer (Claude, unabhängig vom Autor der vierten Probe) hat naheliegende Abwandlungen der Sätze aus Abschnitt 9 ausprobiert: andere Beugung, Perfekt, Kinderwörter, mehr Wörter im Satz, andere Anreden. 36 davon lösten keine Ansage aus. Jetzt lösen alle 36 sie aus **(Test)**, zum Beispiel:
+
+- Ungewollte Berührung: „Ich mag es nicht, wenn er mich anfasst“, „Opa küsst mich, obwohl ich Nein sage“, „Ich hab Nein gesagt, aber er hört nicht auf“.
+- Gewalt: „Papa hat mich gehaut“, „Papa hat die Mama geschlagen“, „Papa hat mich gestern Abend wieder ganz doll geschlagen“.
+- Drohung: „Papa hat gesagt, er tötet mich“, „Er will mich töten“.
+- Fremde: „Ein Mann hat gefragt, ob ich mitkomme“, „Ein Mann hat mir Gummibärchen angeboten“, „Ein Mann hat mich auf dem Schulweg angesprochen“, „Ein fremder Mann hat Fotos von mir gemacht“.
+- Atemnot, Verschlucken, Biss: „Ich krieg ganz schwer Luft“, „Das Baby hat was verschluckt“, „Das Baby ist ganz blau“, „Der Nachbarshund hat meine Schwester gebissen“.
+- Weglaufen, Wertlosigkeit, Verlust: „Ich bin von zu Hause weggelaufen“, „Ich bin wertlos“, „Ich habe meine Oma im Supermarkt verloren“.
+- Hilferuf und Notruf: „Hallo Kunibert, hilf mir!“, „Hilfe, komm schnell!“, „Ruf mal schnell die 112“.
+- Ausnahmen, die für den ganzen Satz galten: „Ich hab mir mit Absicht in den Arm geschnitten, weil alle über meine Haare lachen“, „Ich kann nicht mehr weiter, ich bin so traurig, erzähl mir eine andere Geschichte“.
+
+Dazu 25 Gegenproben, die keine Ansage auslösen **(Test)**, zum Beispiel „Der Drache will mich töten“, „In Minecraft hat mich ein Zombie getötet“, „Mama hat gefragt, ob ich mitkomme“, „Ich hab mich verschluckt“, „Mein Bruder ist ganz blau angezogen“, „Ich finde Oma nicht so streng“, „Kunibert, hilf mir eine Geschichte auszusuchen“, „Ich will nicht mehr weiter, ich will eine andere Geschichte“ und „ich hab mir extra die haare geschnitten“.
+
+**Wie die Änderung gebaut ist:** Die neuen Schablonen stehen in einem eigenen Block (`PATTERNS_REVIEW` in `server-api/safety.ts`). Vier ältere Schablonen erkennen jetzt mehr: Zwischen „mich“ und „geschlagen“ oder „gehauen“ dürfen bis zu sechs Wörter stehen (vorher drei), „gehaut“ zählt mit, und die Ausnahmen beim absichtlichen Verletzen („Haare“, „Nägel“ und andere) und bei „nicht mehr weiter“ („andere Geschichte“) gelten nur noch an ihrer Stelle im Satz. Keine Schablone erkennt weniger als vorher; alle Sätze aus den bisherigen Tests verhalten sich wie vorher.
+
+**Neue Fehlalarme:** keine durch diese Änderung. Die Prüfung fand aber Fehlalarme, die seit der vierten Probe bestehen. Sie stehen in Abschnitt 7.3 („Stand 22. November 2026“).
+
+**Offen:** Umlaute als „ae“, „oe“, „ue“, „ss“ (eigener Punkt der Arbeitsliste, mit dem eigenen Sprachserver). Echte Spracherkennung und Kinderstimmen sind nicht geprüft; bis zur Rechtsprüfung testen nur Erwachsene.
+
+**Neue Frage an Sie:**
+
+21. „Ich will nicht mehr weiter, ich will schlafen“ löst beim Erzählen die Hilfe-Ansage aus. Ebenso Sätze, mit denen ein Kind die Geschichte mitspielt, zum Beispiel „Der Drache wirft Feuerbälle nach mir“ oder „Die Hexe hat uns im Turm eingesperrt“. Soll Kunibert solche Sätze anders behandeln, zum Beispiel während eine Geschichte läuft? Heute gilt: lieber ein Fehlalarm als eine Lücke.
+
 ## Anhang: Wo steht was im Code?
 
 | Thema | Datei |
 | --- | --- |
-| Schablonen der Stufe 1 | `server-api/safety.ts` (`PATTERNS`, `PATTERNS_EXTRA`, `PATTERNS_2026_11`, `PATTERNS_2026_11_B`, `PATTERNS_2026_11_C`, `PATTERNS_2026_11_D`) |
+| Schablonen der Stufe 1 | `server-api/safety.ts` (`PATTERNS`, `PATTERNS_EXTRA`, `PATTERNS_2026_11`, `PATTERNS_2026_11_B`, `PATTERNS_2026_11_C`, `PATTERNS_2026_11_D`, `PATTERNS_REVIEW`) |
 | Feste Ansagen (Hilfe-Ansage, „nicht verstanden“, Fehlerhinweis) | `server-api/safety.ts` |
 | Wortlisten des Ausgabe-Checks | `server-api/safety.ts` (`screenOutput`) |
 | Ablauf der Stufen, Ersatztexte | `server-api/brain.ts` |
