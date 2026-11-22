@@ -43,6 +43,10 @@ PLANUNG_UEBERFAELLIG = timedelta(hours=30)
 PRUEFUNG_UEBERFAELLIG = timedelta(hours=36)
 PRUEFUNG_ZEITRAUM = timedelta(hours=48)
 FAHRPLAN_TOLERANZ_MIN = 120
+# Neustart des Wochenlimits: Wochentag (Mo = 0), Stunde, Minute (Europe/Berlin). Standard Fr 08:00;
+# main() liest die Zeile „Neustart des Wochenlimits: So 17:30“ aus fahrplan.md.
+NEUSTART = (4, 8, 0)
+ENDSPURT_DAUER = timedelta(hours=25)
 ISSUE_BERICHTE = "Wochen-Autopilot: Berichte"
 ISSUE_LAEUFE = "Wochen-Autopilot: Laufprotokoll"
 ORDNER = Path(__file__).resolve().parent
@@ -71,13 +75,20 @@ def berlin(zeit: datetime) -> str:
     return f"{WOCHENTAGE[b.weekday()]} {b:%d.%m. %H:%M}"
 
 
-def phase(zeit: datetime) -> tuple[str, str]:
-    """Wochenphase: Endspurt von Donnerstag 07:00 bis Freitag 07:59, sonst Wochenmodus."""
+def zeitpunkt_text(zeit: datetime) -> str:
     b = zeit.astimezone(BERLIN)
-    tag, stunde = b.weekday(), b.hour
-    if (tag == 3 and stunde >= 7) or (tag == 4 and stunde < 8):
-        return "Endspurt", "weiter, bis das Limit greift (bis Fr 07:59)"
-    return "Wochenmodus", "ein Punkt je Lauf (Endspurt ab Do 07:00)"
+    return f"{WOCHENTAGE[b.weekday()]} {b:%H:%M}"
+
+
+def phase(zeit: datetime) -> tuple[str, str]:
+    """Wochenphase: Endspurt in den letzten 25 Stunden vor dem Neustart des Wochenlimits, sonst Wochenmodus."""
+    b = zeit.astimezone(BERLIN)
+    beginn = wochenbeginn(b)
+    endspurt = endspurt_beginn(beginn)
+    if b >= endspurt:
+        ende = beginn + timedelta(days=7) - timedelta(minutes=1)
+        return "Endspurt", f"weiter, bis das Limit greift (bis {zeitpunkt_text(ende)})"
+    return "Wochenmodus", f"ein Punkt je Lauf (Endspurt ab {zeitpunkt_text(endspurt)})"
 
 
 # ---------------------------------------------------------------- Status-Zeile
@@ -363,18 +374,33 @@ def lies_wochenbudget(text: str) -> int | None:
     return int(treffer.group(1)) if treffer else None
 
 
+NEUSTART_RE = re.compile(r"^[ \t>*_-]*Neustart des Wochenlimits\b[^:\n]*:[ \t*_]*(Mo|Di|Mi|Do|Fr|Sa|So)\s+(\d{1,2}):(\d{2})",
+                         re.IGNORECASE | re.MULTILINE)
+
+
+def lies_neustart(text: str) -> tuple[int, int, int] | None:
+    """(Wochentag, Stunde, Minute) aus der Zeile „Neustart des Wochenlimits: So 17:30“, sonst None."""
+    treffer = NEUSTART_RE.search(text or "")
+    if not treffer:
+        return None
+    tag = WOCHENTAGE.index(treffer.group(1).capitalize())
+    stunde, minute = int(treffer.group(2)), int(treffer.group(3))
+    return (tag, stunde, minute) if stunde < 24 and minute < 60 else None
+
+
 def wochenbeginn(zeit: datetime) -> datetime:
-    """Letzter Freitag 08:00 (Europe/Berlin): Dann beginnt das Wochenlimit neu."""
+    """Letzter Neustart des Wochenlimits (Europe/Berlin) vor `zeit`."""
+    tag, stunde, minute = NEUSTART
     b = zeit.astimezone(BERLIN)
-    beginn = (b - timedelta(days=(b.weekday() - 4) % 7)).replace(hour=8, minute=0, second=0, microsecond=0)
+    beginn = (b - timedelta(days=(b.weekday() - tag) % 7)).replace(hour=stunde, minute=minute, second=0, microsecond=0)
     if beginn > b:
         beginn -= timedelta(days=7)
     return beginn
 
 
 def endspurt_beginn(beginn: datetime) -> datetime:
-    """Donnerstag 07:00 nach dem Wochenbeginn."""
-    return (beginn + timedelta(days=6)).replace(hour=7)
+    """Beginn des Endspurts: 25 Stunden vor dem nächsten Neustart (Uhrzeit Europe/Berlin)."""
+    return beginn + timedelta(days=7) - ENDSPURT_DAUER
 
 
 def wochenverbrauch(eintraege: list[dict], beginn: datetime, bis: datetime, zeitpunkt: datetime) -> float:
@@ -464,14 +490,22 @@ def eigene_kommentare(nummer: int, seit: datetime | None = None, seiten: int = 1
     return ergebnis
 
 
-def finde_issue(titel: str, anlegen: bool, beschreibung: str = "") -> int | None:
+def finde_issues(titel: str) -> list[int]:
+    """Nummern aller offenen eigenen Issues mit diesem Titel, das älteste zuerst."""
     liste = gh(f"repos/{REPO}/issues?state=open&creator={EIGENTUEMER}&per_page=100") or []
-    for eintrag in liste:
-        if "pull_request" not in eintrag and eintrag.get("title") == titel:
-            return eintrag["number"]
+    return sorted(e["number"] for e in liste if "pull_request" not in e and e.get("title") == titel)
+
+
+def finde_issue(titel: str, anlegen: bool, beschreibung: str = "") -> int | None:
+    """Das älteste offene Issue mit diesem Titel. Legen zwei Läufe es gleichzeitig an, gilt danach das älteste."""
+    nummern = finde_issues(titel)
+    if nummern:
+        return nummern[0]
     if not anlegen:
         return None
-    return gh(f"repos/{REPO}/issues", methode="POST", daten={"title": titel, "body": beschreibung})["number"]
+    neu = gh(f"repos/{REPO}/issues", methode="POST", daten={"title": titel, "body": beschreibung})["number"]
+    nummern = finde_issues(titel)
+    return nummern[0] if nummern else neu
 
 
 def main_ci() -> tuple[str, str, str]:
@@ -487,8 +521,7 @@ def verbrauch_der_woche(zeitpunkt: datetime) -> tuple[float, datetime, datetime]
     """Verbrauch im Wochenmodus dieser Woche laut Laufprotokoll, dazu Wochenbeginn und Endspurt-Beginn."""
     beginn = wochenbeginn(zeitpunkt)
     bis = endspurt_beginn(beginn)
-    nummer = finde_issue(ISSUE_LAEUFE, anlegen=False)
-    eintraege = eigene_kommentare(nummer, seit=beginn, seiten=3) if nummer else []
+    eintraege = [k for n in finde_issues(ISSUE_LAEUFE) for k in eigene_kommentare(n, seit=beginn, seiten=3)]
     return wochenverbrauch(eintraege, beginn, bis, zeitpunkt), beginn, bis
 
 
@@ -496,7 +529,7 @@ def wochenbudget_zeile(budget: int, zeitpunkt: datetime) -> tuple[bool, str]:
     verbrauch, beginn, bis = verbrauch_der_woche(zeitpunkt)
     frei, erlaubt = taktung(verbrauch, budget, beginn, bis, zeitpunkt)
     return frei, (f"Wochenbudget (Bauen, Prüfen, Recherche): {verbrauch:.0f} Minuten verbraucht, "
-                  f"bis jetzt erlaubt {erlaubt:.0f} von {budget} (wächst gleichmäßig bis Do 07:00)")
+                  f"bis jetzt erlaubt {erlaubt:.0f} von {budget} (wächst gleichmäßig bis zum Endspurt)")
 
 
 def befehl_fahrplan(rolle: str) -> int:
@@ -581,12 +614,22 @@ def befehl_lage() -> int:
             zeile = " · ".join(f"{p.id} (P{p.prio}) {kurz(p.titel, 48)}" for p in auswahl) or "keine"
             print(f"  {rolle}: {zeile}")
 
-    nummer = finde_issue(ISSUE_LAEUFE, anlegen=False)
+    nummern = finde_issues(ISSUE_LAEUFE)
+    nummer = nummern[0] if nummern else None
     if nummer:
-        eintraege = eigene_kommentare(nummer, seit=zeitpunkt - timedelta(hours=24))
+        eintraege = sorted((k for n in nummern for k in eigene_kommentare(n, seit=zeitpunkt - timedelta(hours=24))),
+                           key=lambda k: k.get("created_at") or "")
         zeilen = [kurz((k.get("body") or "").split("\n", 1)[0], 90) for k in eintraege][-8:]
         print("Laufprotokoll (24 h): " + (" | ".join(zeilen) if zeilen else "keine Einträge"))
 
+    beginn = wochenbeginn(zeitpunkt)
+    print(f"Neustart des Wochenlimits: {zeitpunkt_text(beginn)} (zuletzt {berlin(beginn)}, "
+          f"nächster {berlin(beginn + timedelta(days=7))}).")
+    if nummer and zeitpunkt - beginn < timedelta(hours=48):  # nur in den ersten zwei Tagen nach dem Neustart
+        seit_neustart = [k for n in nummern for k in eigene_kommentare(n, seit=beginn, seiten=3)]
+        bericht_da = any((k.get("body") or "").startswith("Ende · Planen") for k in seit_neustart)
+        print("Wochenbericht fällig: " + ("nein (seit dem Neustart lief „Planen & Bericht“ schon)" if bericht_da
+                                          else "ja (erster Lauf „Planen & Bericht“ seit dem Neustart)"))
     budget = lies_wochenbudget(FAHRPLAN.read_text(encoding="utf-8")) if FAHRPLAN.exists() else None
     if budget:
         try:
@@ -728,6 +771,9 @@ def main(argumente: list[str] | None = None) -> int:
     p = befehle.add_parser("bericht")
     p.add_argument("datei")
     a = parser.parse_args(argumente)
+    global NEUSTART
+    if FAHRPLAN.exists():
+        NEUSTART = lies_neustart(FAHRPLAN.read_text(encoding="utf-8")) or NEUSTART
     try:
         if a.befehl == "lage":
             return befehl_lage()
