@@ -8,7 +8,7 @@ import { DeviceRegistry, DeviceStoreError, RateLimiter, AudioStore } from './ser
 import { Brain, FALLBACK_ANSWER_DE, StoryState, type StorySink, type TurnResult } from './server-api/brain.js';
 import { EPISODE_CLOSING, STORY_CLOSING, STORY_CLOSING_FIRST, STORY_PAUSE_TEXT } from './server-api/prompts.js';
 import { StoryPrefetcher } from './server-api/prefetch.js';
-import { PURGE_INTERVAL_MS, STORY_STATE_TTL_MS, StoryStateStore, purgeExpired } from './server-api/story-states.js';
+import { STORY_STATE_TTL_MS, StoryStateStore, startPurging } from './server-api/story-states.js';
 import { PARAGRAPH_PAUSE_MS, PcmStream, StreamingSpeaker, StreamRegistry, streamingWavHeader } from './server-api/audio-stream.js';
 import { MAX_HEARD_SECONDS, StopPoints, TURN_ID_PATTERN, speechParagraphs, type SpokenPart, type StopOutcome } from './server-api/stopp.js';
 import { AudioError, decodeWavHeader, generateMelodyWav, isPcmFormat, isSilentPcm16 } from './server-api/audio.js';
@@ -64,16 +64,25 @@ const stopReports = new RateLimiter(60, 600);
 const FIXED_STORY_TEXTS = new Set([STORY_CLOSING, STORY_CLOSING_FIRST, EPISODE_CLOSING, STORY_PAUSE_TEXT]);
 // Nächster Geschichtenteil im Hintergrund (Sprachmodell und Sprachausgabe), siehe server-api/prefetch.ts.
 const prefetcher = new StoryPrefetcher(
-  async (state) => {
+  async (state, deviceId) => {
     // Eigene Zeitmessung ohne Budget (läuft im Hintergrund): Die Zeile zeigt Dauer, Token und Kosten
     // des vorbereiteten Teils, damit auch diese Aufrufe in den Kosten je Folge sichtbar sind.
     const timer = new TurnTimer(undefined, undefined, Number.POSITIVE_INFINITY);
     timer.mode = 'vorbereitung';
+    // Gesperrt, ohne Einwilligung oder im Schlafmodus: kein weiterer Aufruf an Claude, auch keine
+    // Wiederholung (N1120-1610-b).
+    timer.guardLlm(() => registry.isActive(deviceId) && !blockReasonFor(deviceId));
     let ok = false;
     try {
-      const result = await synthesizeTimed(await brain.handle('weiter', '', state, timer), timer);
+      const made = await brain.handle('weiter', '', state, timer);
+      // Darf das Gerät inzwischen nicht mehr an Claude (zum Beispiel Schlafmodus), nichts bereitlegen:
+      // sonst läge vielleicht eine Ersatzgeschichte bereit, weil ein Aufruf verhindert wurde.
+      if (!timer.allowsLlm()) return null;
+      const result = await synthesizeTimed(made, timer);
       timer.noteAudio(result.wav);
       ok = true;
+      // Auch wenn der Schlafmodus erst während der Vertonung begann: nichts bereitlegen.
+      if (!timer.allowsLlm()) return null;
       return result;
     } finally {
       const line = timer.logLine(ok ? 200 : 'abgebrochen');
@@ -90,14 +99,13 @@ const pairingFailures = new RateLimiter(10, 600);
 const pairingFailuresTotal = new RateLimiter(200, 600);
 // Alle fünf Minuten aufräumen, auch bei Geräten, die sich nie wieder melden: abgelaufene Stände der
 // Geschichte samt ihrer Vorbereitung, abgelaufene Vorbereitungen, Audio und Ton-Ströme.
-setInterval(() => {
-  purgeExpired({ states: deviceStoryStates, prefetcher, audio: store, streams, stops });
+startPurging({ states: deviceStoryStates, prefetcher, audio: store, streams, stops }, [
   // Abgelaufene Kopplungscodes und alte Fehlversuche beim Koppeln (nur Zähler je Absender).
-  parents.purge();
-  pairingFailures.purge();
-  pairingFailuresTotal.purge();
-  stopReports.purge();
-}, PURGE_INTERVAL_MS).unref();
+  () => parents.purge(),
+  () => pairingFailures.purge(),
+  () => pairingFailuresTotal.purge(),
+  () => stopReports.purge(),
+]);
 // Ein frisch erzeugter Teil braucht Claude und die Sprachausgabe. So viel Zeit bleibt mindestens
 // übrig, wenn der Server auf eine laufende Vorbereitung wartet und sie nicht rechtzeitig fertig wird.
 const PREFETCH_FRESH_RESERVE_MS = 70_000;
@@ -234,10 +242,17 @@ async function respondTurn(
   generation: number,
   run: (sink?: StorySink) => Promise<Awaited<ReturnType<Brain['handle']>>>
 ): Promise<any> {
+  // Zwischen zwei Aufrufen an Claude (Einordnung, Geschichte, zweiter Versuch, Wiederholung) prüft der
+  // Erzähler, ob das Gerät noch darf (N1120-1610-b).
+  timer.guardLlm(() => !refusalFor(req, deviceId));
   if (!wantsAudioStream(req)) {
-    const result = await synthesizeTimed(await run(), timer);
-    timer.noteAudio(result.wav);
+    const made = await run();
     // Gesperrt oder von den Eltern angehalten, während die Antwort entstand: kein Audio, kein Stand.
+    // Gleich prüfen, ohne den Text erst zu vertonen, und noch einmal nach der Vertonung.
+    const early = refusalFor(req, deviceId);
+    if (early) return refuse(req, res, deviceId, type, timer, early);
+    const result = await synthesizeTimed(made, timer);
+    timer.noteAudio(result.wav);
     const refusal = refusalFor(req, deviceId);
     if (refusal) return refuse(req, res, deviceId, type, timer, refusal);
     return sendWholeTurn(req, res, deviceId, result, type, generation);
@@ -266,7 +281,10 @@ async function respondTurn(
     throw error;
   }
   if (first === 'fertig') {
-    const result = await synthesizeTimed(await resultPromise, timer);
+    const made = await resultPromise;
+    const early = refusalFor(req, deviceId);
+    if (early) return refuse(req, res, deviceId, type, timer, early);
+    const result = await synthesizeTimed(made, timer);
     timer.noteAudio(result.wav);
     const refusal = refusalFor(req, deviceId);
     if (refusal) return refuse(req, res, deviceId, type, timer, refusal);
@@ -285,8 +303,11 @@ async function respondTurn(
     try {
       const result = await resultPromise;
       await speaker.finish();
-      // Erst wenn alles vertont ist, rückt die Folge vor (wie ohne Strom: kein Stand ohne Ton).
-      if (advanceStory(deviceId, result.story_state, generation, preparesNext(deviceId, result))) {
+      // Erst wenn alles vertont ist, rückt die Folge vor (wie ohne Strom: kein Stand ohne Ton). Während
+      // des Stroms gesperrt: kein Stand und keine Vorbereitung, also nichts mehr an Claude (N1120-1610-b).
+      // Ohne Einwilligung oder im Schlafmodus auch keine Vorbereitung im Hintergrund.
+      const late = refusalFor(req, deviceId);
+      if (late !== 'gesperrt' && advanceStory(deviceId, result.story_state, generation, !late && preparesNext(deviceId, result))) {
         // Für den Stopp per Taste (B2): Die Sekunden je Absatz sind hier genau bekannt.
         const paragraphs = speechParagraphs(result.speech);
         noteDelivery(deviceId, turnId, result, {
@@ -634,7 +655,15 @@ app.post(
           prefetcher.take(deviceId, state, Math.max(0, timer.remainingMs() - PREFETCH_FRESH_RESERVE_MS)))
         : null;
       if (!prepared) {
-        return await respondTurn(req, res, deviceId, timer, 'kunibert_story', generation, (sink) => brain.handle('weiter', '', state || {}, timer, sink));
+        // Beim Warten auf die Vorbereitung gesperrt, die Einwilligung widerrufen oder der Schlafmodus
+        // begonnen? Dann geht nichts mehr an das Sprachmodell (N1120-1610-b).
+        const late = refusalFor(req, deviceId);
+        if (late) return await refuse(req, res, deviceId, 'kunibert_story', timer, late);
+        // Haben die Eltern die Geschichte beim Warten neu begonnen, geht der alte Stand nicht mehr an
+        // Claude. Es gilt der neue Stand mit seinem Zähler: So wird der neue Teil 1 gespeichert.
+        const nowGeneration = deviceStoryStates.generation(deviceId);
+        const current = nowGeneration === generation ? state : deviceStoryStates.get(deviceId);
+        return await respondTurn(req, res, deviceId, timer, 'kunibert_story', nowGeneration, (sink) => brain.handle('weiter', '', current || {}, timer, sink));
       }
       const result = prepared;
       timer.noteAudio(result.wav);
@@ -716,6 +745,41 @@ async function sendAudioStream(res: Response, stream: PcmStream): Promise<void> 
   }
 }
 
+/** Der Story-State, den der Web-Simulator bei /v1/turn mitschickt (Text oder Objekt); kaputt oder fehlend: leer. */
+function parseSentState(raw: unknown): any {
+  if (!raw) return {};
+  if (typeof raw !== 'string') return raw;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Fester Satz bei /v1/turn (ohne Einwilligung, im Schlafmodus, in den Ruhezeiten), ohne Sprachmodell.
+ * Der mitgeschickte Story-State kommt unverändert zurück. Gesperrt, während der Satz vertont wurde: 401.
+ */
+async function sendTurnHint(
+  req: Request,
+  res: Response,
+  deviceId: string,
+  reason: Exclude<BlockReason, null>,
+  timer: TurnTimer
+): Promise<Response> {
+  const hint = await synthesizeTimed(blockedTurn(reason, parseSentState(req.body.story_state)), timer);
+  timer.noteAudio(hint.wav);
+  if (!stillAuthorized(req)) return res.status(401).json({ error: 'unauthorized' });
+  const body: Record<string, any> = {
+    turn_id: store.put(deviceId, hint.wav || Buffer.alloc(0)),
+    kind: hint.kind,
+    story_state: hint.story_state,
+    fixed: hint.fixed,
+  };
+  if (config.diagnosticText) body.text = hint.speech;
+  return res.json(body);
+}
+
 // POST /v1/turn
 app.post(
   '/v1/turn',
@@ -726,6 +790,10 @@ app.post(
     try {
       const deviceId = res.locals.deviceId as string;
       const timer = res.locals.timer as TurnTimer;
+      // Gesperrt, während die Aufnahme hochlud? Dann nichts mehr verarbeiten (wie /v1/device/question).
+      if (!stillAuthorized(req)) {
+        return res.status(401).json({ error: 'unauthorized' });
+      }
 
       const mode = req.body.mode;
       if (!['frage', 'geschichte', 'weiter'].includes(mode)) {
@@ -741,37 +809,9 @@ app.post(
       // Ohne Einwilligung, im Schlafmodus und in den Ruhezeiten: fester Satz ohne Spracherkennung
       // und ohne Sprachmodell; der mitgeschickte Story-State kommt unverändert zurück.
       const blocked = blockReasonFor(deviceId);
-      if (blocked) {
-        let sentState: unknown = {};
-        try {
-          sentState = typeof req.body.story_state === 'string' ? JSON.parse(req.body.story_state) : (req.body.story_state ?? {});
-        } catch {
-          sentState = {};
-        }
-        const hint = await synthesizeTimed(blockedTurn(blocked, sentState), timer);
-        timer.noteAudio(hint.wav);
-        const hintBody: Record<string, any> = {
-          turn_id: store.put(deviceId, hint.wav || Buffer.alloc(0)),
-          kind: hint.kind,
-          story_state: hint.story_state,
-          fixed: hint.fixed,
-        };
-        if (config.diagnosticText) hintBody.text = hint.speech;
-        return res.json(hintBody);
-      }
+      if (blocked) return await sendTurnHint(req, res, deviceId, blocked, timer);
 
-      // Story-State parsen
-      let state: any = {};
-      if (req.body.story_state) {
-        try {
-          state =
-            typeof req.body.story_state === 'string'
-              ? JSON.parse(req.body.story_state)
-              : req.body.story_state;
-        } catch {
-          state = {};
-        }
-      }
+      const state: any = parseSentState(req.body.story_state);
 
       // Transcript ermitteln. Text statt Aufnahme (Felder text und transcript, für den
       // Web-Simulator) gilt wie bei /v1/device/question nur mit config.testTranscript: Im
@@ -801,8 +841,25 @@ app.post(
         return res.status(400).json({ error: 'audio_required' });
       }
 
-      const turnResult = await synthesizeTimed(await brain.handle(mode, transcript, state, timer), timer);
+      // Während der Erkennung gesperrt oder von den Eltern angehalten? Dann nicht an das Sprachmodell
+      // (N1120-1610-b): gesperrt 401, sonst der feste Satz.
+      const refusal = refusalFor(req, deviceId);
+      if (refusal === 'gesperrt') return res.status(401).json({ error: 'unauthorized' });
+      if (refusal) return await sendTurnHint(req, res, deviceId, refusal, timer);
+
+      timer.guardLlm(() => !refusalFor(req, deviceId));
+      const made = await brain.handle(mode, transcript, state, timer);
+      // Gesperrt oder angehalten, während die Antwort entstand: gleich 401 oder der feste Satz, ohne
+      // den Text erst zu vertonen; und noch einmal nach der Vertonung.
+      const early = refusalFor(req, deviceId);
+      if (early === 'gesperrt') return res.status(401).json({ error: 'unauthorized' });
+      if (early) return await sendTurnHint(req, res, deviceId, early, timer);
+      const turnResult = await synthesizeTimed(made, timer);
       timer.noteAudio(turnResult.wav);
+      // Gesperrt oder angehalten, während die Antwort entstand: kein Ton (wie bei den Geräte-Routen).
+      const late = refusalFor(req, deviceId);
+      if (late === 'gesperrt') return res.status(401).json({ error: 'unauthorized' });
+      if (late) return await sendTurnHint(req, res, deviceId, late, timer);
       const wav = turnResult.wav || Buffer.alloc(0);
       const turnId = store.put(deviceId, wav);
 
@@ -1055,13 +1112,13 @@ app.post('/api/devices', requireAdminAuth, async (req: Request, res: Response): 
 
 app.post('/api/devices/:id/revoke', requireAdminAuth, async (req: Request, res: Response): Promise<any> => {
   const deviceId = String(req.params.id);
-  const { success, persisted } = await registry.revokeAndPersist(deviceId);
   // Ein gesperrtes Gerät braucht seine Geschichte nicht mehr (Stand, Vorbereitung, wartendes Audio)
-  // und keine Eltern-Steuerung (Einwilligung, Einstellungen, Codes, Eltern-Tokens).
-  if (success) {
+  // und keine Eltern-Steuerung (Einwilligung, Einstellungen, Codes, Eltern-Tokens). Das geschieht
+  // sofort, noch bevor Firestore den Widerruf speichert (N1120-1610-b).
+  const { success, persisted } = await registry.revokeAndPersist(deviceId, () => {
     forgetDeviceStory(deviceId);
     parents.forgetDevice(deviceId);
-  }
+  });
   return res.json({ success, persisted });
 });
 
