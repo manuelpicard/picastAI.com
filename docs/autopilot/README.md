@@ -6,7 +6,7 @@ Der Wochen-Autopilot sind geplante Aufgaben in der Cloud (Claude Code). Sie arbe
 
 ## Wie eine Woche läuft
 
-Das Wochenlimit reicht nur für einen Teil der Woche (Schätzung nach der Woche ab 20.11.2026: rund 6 bis 7 Stunden Arbeit mit Opus). Ohne Bremse war es nach 1,6 Tagen aufgebraucht; danach brach jeder Lauf ab, auch die anderen geplanten Aufgaben des Betreibers. Deshalb gibt es zwei Phasen:
+Das Wochenlimit reicht nur für einen Teil der Woche (Schätzung nach der Woche ab 20.11.2026, vor dem Wechsel zum Max-Tarif am 22.11.2026: rund 6 bis 7 Stunden Arbeit mit Opus; für den Max-Tarif gibt es noch keine Messung, das Nachstellen im [Fahrplan](fahrplan.md) gleicht es aus). Ohne Bremse war es nach 1,6 Tagen aufgebraucht; danach brach jeder Lauf ab, auch die anderen geplanten Aufgaben des Betreibers. Deshalb gibt es zwei Phasen:
 
 | Phase | Zeit (Europe/Berlin) | Was ein Lauf tut |
 |---|---|---|
