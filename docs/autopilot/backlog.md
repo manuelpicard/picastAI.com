@@ -91,6 +91,7 @@ Angelegt am 17.11.2026, 20:15, von Claude (Chat). Gepflegt von den Läufen des W
 
 ### D2 · Eltern-Weboberfläche `/eltern`
 - Rolle: Bauen · Prio: 2 · Status: offen · Nach A1 · Bezug: Nr. 68E (PR C)
+- Dazu (Nachprüfung von PR #69, 22.11.2026, Befund 5): Die Grenze von 200 Fehlversuchen insgesamt (`server.ts`, `pairingFailuresTotal`) sperrt das Koppeln 10 Minuten für alle, auch wenn `PICASTAI_TRUST_PROXY` die Absender trennt. Sind `/v1/eltern/*` erst von außen erreichbar, reichen dafür wenige Adressen (IPv6). Bei Teil 1 mitlösen.
 - Ziel: Schlichte Seite auf dem Kunibert-Server für das Handy, ohne fremde Dienste und ohne externe Schriften: koppeln, einwilligen und widerrufen, Schlafmodus, Ruhezeiten, Geschichte neu beginnen, alles löschen, Infoseite. Deutsch, einfache Sprache.
 - Fertig, wenn: Seite und Routen getestet; kein Verlauf, keine Mitschriften, keine Statistik je Kind.
 - Hinweise (20.11.2026, nach PR #69): Die Routen `/v1/eltern/*` gibt es (`docs/picastAI-Pi-API.md`, Abschnitt „Eltern“). `deploy/Caddyfile` lässt sie von außen noch nicht durch; die Seite braucht `/eltern` und `/v1/eltern/*` dort. Das Eltern-Cookie hat mit `NODE_ENV=production` immer `Secure`: Im Heimnetz über http behält ein Browser es nicht. Für den Test im eigenen WLAN entscheiden (zum Beispiel HTTPS über Tailscale oder `Secure` nur über HTTPS).
@@ -221,6 +222,7 @@ Angelegt am 17.11.2026, 20:15, von Claude (Chat). Gepflegt von den Läufen des W
 - Rolle: Bauen · Prio: 3 · Status: offen · Bezug: Maßnahme M9, PR #63
 - Ziel: Seit PR #63 legen Anfragen nach dem Sperren eines Geräts nichts mehr ab und antworten mit 401. Vorbereitungen und noch nicht abgeholte Ströme verwirft `forgetDeviceStory` in `server.ts` schon. Ein Ton-Strom, den das Gerät schon abspielt, läuft aber zu Ende. Claude und die Sprachausgabe arbeiten für diese Anfrage noch fertig (Kosten). Laufende Sprecher (`StreamingSpeaker`) je Gerät merken und beim Sperren abbrechen. Dasselbe soll später „alles löschen“ aus A1 Teil 2 nutzen (seit PR #69: `DELETE /v1/eltern/daten`, dazu `DELETE /v1/eltern/einwilligung`).
 - Fertig, wenn: Test am echten Server (wie in `server-api/api.test.ts`): Nach dem Sperren endet ein laufender Ton-Strom, und die Sprachausgabe bekommt keine neuen Sätze mehr. `docs/picastAI-Pi-API.md` angepasst.
+- Dazu (PR #91, 22.11.2026): Ein Aufruf an Claude, der vor dem Sperren begann, wiederholt sich bei 429 oder 5xx einmal nach 700 ms (`generateJson` in `server-api/llm.ts`). Diese Wiederholung geht auch nach dem Sperren noch hinaus, zum Beispiel bei einer Vorbereitung (beim Bau von PR #91 mit der Attrappe beobachtet). Beim Abbrechen auch die Wiederholung verhindern (zum Beispiel ein `AbortSignal` je Gerät bis in `llm.ts`). Test: Vorbereitung angehalten, sperren, Attrappe antwortet mit 500, danach kein Aufruf mehr.
 - Gefunden bei der Prüfung von PR #63 (20.11.2026).
 
 ### N1120-0950-a · Ohne Claude: „nicht weitererzählen“ startet eine Geschichte (Kinder)
@@ -236,10 +238,11 @@ Angelegt am 17.11.2026, 20:15, von Claude (Chat). Gepflegt von den Läufen des W
 - Gefunden bei der Prüfung von PR #71 (20.11.2026).
 
 ### N1120-1610-b · Nach dem Sperren nichts mehr an Claude geben
-- Rolle: Bauen · Prio: 1 · Status: offen · Bezug: Maßnahme M9, PR #63, A1 Teil 2
+- Rolle: Bauen · Prio: 1 · Status: erledigt (PR #91, 22.11.2026) · Bezug: Maßnahme M9, PR #63, A1 Teil 2
 - Ziel: Der Server prüft nur direkt nach dem Hochladen, ob das Gerät noch zugelassen ist. Sperrt man das Gerät, während die Spracherkennung läuft, geht danach noch die Äußerung des Kindes an Claude. Erst dann kommt 401 (Prüfung von PR #63, mit Attrappen nachvollzogen). `stillAuthorized` direkt vor jedem Aufruf von `respondTurn` in `server.ts` prüfen (Frage und Erzähltaste), ebenso vor `advanceStory`. Mit `PICASTAI_DEVICE_STORE=firestore`: im Speicher sofort sperren und die Geschichte vergessen, danach dauerhaft speichern (`server-api/devices.ts`). `/v1/turn` antwortet nach dem Sperren mit 401 statt 200 und legt keinen Ton ab, oder `docs/picastAI-Pi-API.md` nennt die Ausnahme.
 - Fertig, wenn: Test am echten Server mit Claude-Attrappe (`ANTHROPIC_BASE_URL`) und angehaltener Spracherkennung: nach dem Sperren kein Aufruf an Claude. Dazu Tests für das Sperren im Ton-Strom, beim Abholen einer Vorbereitung und für den Fünf-Minuten-Takt. `docs/picastAI-Pi-API.md` passt. Lässt sich mit N1120-0939-c verbinden.
 - Stand 20.11.2026 (PR #69): `/v1/device/question` prüft nach der Spracherkennung `refusalFor` (Sperre, Einwilligung, Schlafmodus), bevor die Äußerung an Claude geht; die Erzähltaste prüft nach dem Warten auf eine laufende Anfrage. Ein Test mit angehaltener Spracherkennung fehlt noch. `/v1/turn` prüft weiter nur zu Beginn (so in `docs/picastAI-Pi-API.md` genannt). Offen bleiben auch die Reihenfolge mit Firestore und die Tests unter „Fertig, wenn“.
+- Stand 22.11.2026 (PR #91): Die Erzähltaste prüft nach dem Warten auf die Vorbereitung (Sperre, Einwilligung, Schlafmodus; auch Befund 1 der Nachprüfung von PR #69). `/v1/turn` prüft nach dem Hochladen, nach der Erkennung und nach der Antwort. Der Ton-Strom speichert nach dem Sperren keinen Stand und bereitet ohne Einwilligung oder im Schlafmodus nichts vor. Beim Sperren vergisst der Server alles sofort, noch vor Firestore (`revokeAndPersist` mit `onRevoked`, Test in `devices.test.ts`). Tests am echten Server mit Claude-Attrappe: `server-api/sperren-integration.test.ts`. Den Fünf-Minuten-Takt testet `startPurging` in `story-states.test.ts`. Offen bleibt die Wiederholung eines Aufrufs, der vor dem Sperren begann (siehe N1120-0939-c).
 - Gefunden bei der Prüfung von PR #63 (20.11.2026).
 
 ### N1120-1610-c · Frist von 24 Stunden mit einer Uhr, die nicht springt
@@ -282,6 +285,7 @@ Angelegt am 17.11.2026, 20:15, von Claude (Chat). Gepflegt von den Läufen des W
 - Rolle: Prüfen · Prio: 3 · Status: offen · Bezug: unabhängige Prüfung vor dem Merge von PR #69 (Befund 2, der offen gebliebene Teil zum Ton-Strom; siehe Bericht in PR #69), N1120-1610-b
 - Ziel: `server-api/api.test.ts` läuft ohne `PICASTAI_AUDIO_STREAM`. Ungetestet ist deshalb der Weg in `respondTurn` (`server.ts`), der vor dem ersten Ton `refusalFor` prüft, den Sprecher abbricht und den festen Satz schickt. Ebenso der Schlafmodus mitten in einer Erzählung. Tests mit Ton-Strom an: Widerruf und Schlafmodus, während Claude oder die Sprachausgabe arbeiten (fester Satz). Die Sperre im Ton-Strom (401) deckt N1120-1610-b ab.
 - Fertig, wenn: Tests grün; eine Gegenprobe (Prüfung entfernt) lässt sie scheitern.
+- Stand 22.11.2026 (PR #91): Die Sperre mit Ton-Strom (vor dem ersten Ton 401; während des Stroms kein Stand und keine Vorbereitung) testet `server-api/sperren-integration.test.ts`. Widerruf und Schlafmodus mit Ton-Strom fehlen noch; dort lassen sich die Attrappen wiederverwenden.
 - Gefunden bei der Prüfung von PR #69 (20.11.2026).
 
 ### N1120-2214-c · Dependabot-PRs sichten (wiederkehrend)
@@ -303,6 +307,7 @@ Angelegt am 17.11.2026, 20:15, von Claude (Chat). Gepflegt von den Läufen des W
 - Rolle: Prüfen · Prio: 3 · Status: offen · Bezug: B1, PR #73
 - Ziel: `likelyStoryTurn` (`server-api/brain.ts`) mit echten Äußerungen prüfen: Wie oft liegt sie daneben (Zeilen `modus=vorab_verworfen` im Protokoll), welche Wünsche und Ideen übersieht sie („Noch eine“, „weiterlesen“, „Was passiert dann“)? Nur mit Sätzen von Erwachsenen; keine Äußerungen ins Repo, nur gebaute Beispielsätze.
 - Fertig, wenn: Tabelle in `server-api/brain.test.ts` ergänzt; Anteil der verworfenen Aufrufe aus dem Probelauf im PR (nur Zahlen).
+- Dazu (Nachprüfung von PR #73, 22.11.2026, Befund 2): Die Regel schlägt auch bei Verneinungen an: „Ich will keine Geschichte hören“ ergibt `geschichte`, „Ich will nicht weiter hören“ `weiter`, „Der Drache soll nicht kommen, ich hab Angst“ `idee`. Hörbar ist nichts (die Einordnung entscheidet), aber ein Aufruf an Claude wird umsonst gestartet. Verneinungen in die Tabelle aufnehmen.
 
 ### N1121-0607-a · Stopp per Taste in der Firmware melden
 - Rolle: Bauen · Prio: 2 · Status: offen · Nach B2 · Bezug: B2, PR #75
@@ -350,3 +355,18 @@ Angelegt am 17.11.2026, 20:15, von Claude (Chat). Gepflegt von den Läufen des W
 - Rolle: Prüfen · Prio: 3 · Status: erledigt (PR #80, 21.11.2026) · Bezug: Kommentare „Autopilot-Prüfung“ an #64, #65 und #68 (21.11.2026)
 - Ziel: (1) `CLAUDE.md`: Bei den eigenen PRs fehlt „vom Konto des Eigentümers angelegt“ (wie `docs/autopilot/README.md`). (2) `deploy/EINRICHTUNG.md`, Abschnitt 4: Der Verweis `server-api/config.ts:231` für `PICASTAI_STT_MODEL` stimmt nicht mehr; Verweis ohne Zeilennummer. (3) `docs/autopilot/README.md`: Form und Zeitzone der Uhrzeit in der Status-Zeile („TT.MM. HH:MM“, Europe/Berlin) und was gilt, wenn sie fehlt (der letzte Commit).
 - Fertig, wenn: gemergt.
+
+### N1122-1751-a · Schlafmodus und Ruhezeiten: Sicherheitsweiche nicht ganz abschalten (Kinder)
+- Rolle: Bauen · Prio: 2 · Status: offen · Bezug: Nachprüfung von PR #69 (22.11.2026, Befund 2), Sicherheit vor Kindern
+- Ziel: Im Schlafmodus und in den Ruhezeiten geht die Aufnahme nicht an die Spracherkennung (`server.ts`, `/v1/device/question`). Damit läuft auch die Sicherheitsweiche (`screen`) nicht. Erzählt ein Kind in der Ruhezeit von einer Notlage, hört es nur „Psst! Ritter Kunibert schläft gerade …“ (`SLEEPING_DE` in `server-api/eltern.ts`). Wege: (1) Mit Einwilligung erkennen und nur die Weiche prüfen; bei einem Treffer der Sicherheitshinweis, sonst der Schlafsatz; nie Claude. (2) Ohne Erkennung ein Satz im Schlafsatz, der an Erwachsene verweist. Einschätzung: (2) verarbeitet weniger Daten, (1) erkennt die Notlage. Ohne Einwilligung bleibt es bei keiner Verarbeitung. Entscheidung vorläufig festhalten, eigener PR mit „(ändert, was Kinder hören)“.
+- Fertig, wenn: Entscheidung mit Datum und Begründung in `docs/picastAI-Pi-API.md` und im PR; Tests in beide Richtungen (Notlage im Schlafmodus, harmlose Äußerung im Schlafmodus); `safety.test.ts` unverändert oder nur ergänzt.
+
+### N1122-1751-b · Eltern-Zugänge aufräumen: Neuanlegen einer Geräte-ID und Ablauf der Eltern-Tokens
+- Rolle: Bauen · Prio: 2 · Status: offen · Bezug: Nachprüfung von PR #69 (22.11.2026, Befunde 3 und 4), E2
+- Ziel: (1) Legt der Betreiber eine aktive Geräte-ID neu an (`POST /api/devices`), gibt es ein neues Token, aber Einwilligung, Schlafmodus, Ruhezeiten, Eltern-Tokens und offene Kopplungscodes bleiben (`server-api/devices.ts`, `register`). Beim Neuanlegen aufräumen wie beim Sperren, oder das Neuanlegen einer aktiven ID ablehnen. (2) Eltern-Tokens laufen am Server nie ab, nur das Cookie nach 180 Tagen (`server-api/eltern.ts`). Am Server dieselbe Frist prüfen. (3) Fehlende Tests: 401 ohne Cookie bei allen Eltern-Routen; `/v1/device/pairing-code` mit 429 und bei Ausfall der Sprachausgabe (503, kein Code im Protokoll); ein zweiter Code macht den ersten ungültig (über HTTP).
+- Fertig, wenn: gemergt; Tests für (1) bis (3); `docs/picastAI-Pi-API.md` passt.
+
+### N1122-1751-c · Frühe Geschichte (B1): Protokoll in zeitlicher Reihenfolge, fehlende Tests
+- Rolle: Bauen · Prio: 4 · Status: offen · Bezug: Nachprüfung von PR #73 (22.11.2026, Befund 3 und fehlende Tests)
+- Ziel: Wird die frühe Geschichte genommen, schreibt `EarlyStoryTimer.flushTo` (`server-api/brain.ts`) erst alle Warnungen, dann alle Zeilen. Ohne Schalter ist die Reihenfolge zeitlich. Eine gemeinsame Liste in der Reihenfolge des Entstehens behebt das (nur Diagnose, nichts Hörbares). Dazu fehlende Tests: Server-Test mit `KUNIBERT_EINORDNUNG_PARALLEL=1` und Ton-Strom (keine `audio_url` vor der Einordnung; nach dem Verwerfen kein Strom und kein Stand); frühe Geschichte genommen, erster Entwurf vom Ausgabe-Check abgelehnt, ohne Ton-Strom; Einordnung „frage“ ohne Text während einer frühen Geschichte.
+- Fertig, wenn: gemergt; die Tests laufen mit und ohne Schalter.
