@@ -279,6 +279,29 @@ test('StopPoints.appendHeard: zweimal abgebrochen, dann gemeldet: Die Stellen h�
   assert.equal(stops.resumeFor('d', state())?.heard, 'Kunibert stand auf. Dann kam die Hexe.');
 });
 
+test('StopPoints.appendHeard: Die 15 Minuten für eine Meldung beginnen beim Abbruch neu', () => {
+  let now = 0;
+  const stops = new StopPoints(24 * 60 * 60 * 1000, () => now);
+  stops.delivered('d', TURN, state(), { before, heard: '' }, streamed);
+  stops.stopped('d', TURN, 6);
+  now = PART_HOLD_MS;
+  stops.appendHeard('d', OTHER, brokenOff('Dann kam die Hexe. Sie lachte laut und lange.', 'Das hörte das Kind nicht mehr.'));
+  now += 60 * 1000; // 16 Minuten nach dem ersten Teil, 1 Minute nach dem Abbruch
+  assert.equal(stops.stopped('d', OTHER, 6).outcome, 'gemerkt');
+  assert.equal(stops.resumeFor('d', state())?.heard, 'Kunibert stand auf. Dann kam die Hexe.');
+});
+
+test('StopPoints.appendHeard: 15 Minuten nach dem Abbruch zählt keine Meldung mehr, die Stelle bleibt', () => {
+  let now = 0;
+  const stops = new StopPoints(24 * 60 * 60 * 1000, () => now);
+  stops.delivered('d', TURN, state(), { before, heard: '' }, streamed);
+  stops.stopped('d', TURN, 6);
+  stops.appendHeard('d', OTHER, brokenOff('Dann kam die Hexe.'));
+  now = PART_HOLD_MS + 1;
+  assert.deepEqual(stops.stopped('d', OTHER, 0), { outcome: 'wartet' }, 'der Text des Stroms ist weg');
+  assert.equal(stops.resumeFor('d', state())?.heard, 'Kunibert stand auf. Dann kam die Hexe.');
+});
+
 test('heardUpTo: Satzgrenzen wie bei der Pocket-Stimme (wörtliche Rede, Kleinbuchstabe danach)', () => {
   const quoted: SpokenPart = {
     paragraphs: ['„Hallo!“ rief er. Dann ging er los.', STORY_CLOSING],

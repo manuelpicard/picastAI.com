@@ -716,19 +716,20 @@ describe('Stopp per Taste mit Ton-Strom (echter Server, Punkt B2)', () => {
     assert.match(idea.user, /Erzähle jetzt Teil 2 von 5/);
     assert.ok(!idea.user.includes('Von diesem Teil hat das Kind schon gehört'));
   });
+});
 
-  // Muss der letzte Test in diesem Block bleiben: Danach nimmt der Server zehn Minuten lang keine Meldung
-  // dieses Geräts mehr an.
-  it('mehr als 60 Meldungen eines Geräts in 10 Minuten: 429 rate_limited', async () => {
-    let status = 0;
-    for (let sent = 0; sent < 61 && status !== 429; sent++) {
-      const res = await k.reportStop({ turn_id: 't_ZZZZZZZZZZZZZZZZ', heard_seconds: 1 });
-      status = res.status;
-      if (status === 429) assert.deepEqual(await res.json(), { error: 'rate_limited' });
-      else assert.equal(status, 204, `Meldung ${sent + 1}`);
+describe('Stopp per Taste: Grenze für Meldungen (echter Server, Punkt B2)', () => {
+  let k: Awaited<ReturnType<typeof startKunibert>>;
+  // Eigener Server: Nach diesem Test nimmt er zehn Minuten lang keine Meldung des Geräts mehr an.
+  before(async () => { k = await startKunibert({ PICASTAI_STORY_PREFETCH: '0' }); });
+  after(async () => { await k?.stop(); });
+
+  it('60 Meldungen eines Geräts in 10 Minuten gehen durch, die 61. bekommt 429 rate_limited', async () => {
+    for (let sent = 1; sent <= 60; sent++) {
+      assert.equal((await k.reportStop({ turn_id: 't_ZZZZZZZZZZZZZZZZ', heard_seconds: 1 })).status, 204, `Meldung ${sent}`);
     }
-    assert.equal(status, 429, 'spätestens die 61. Meldung in diesem Block bekommt 429');
-    const again = await k.reportStop({ turn_id: 't_ZZZZZZZZZZZZZZZZ', heard_seconds: 1 });
-    assert.equal(again.status, 429, 'die Grenze gilt weiter');
+    const limited = await k.reportStop({ turn_id: 't_ZZZZZZZZZZZZZZZZ', heard_seconds: 1 });
+    assert.equal(limited.status, 429);
+    assert.deepEqual(await limited.json(), { error: 'rate_limited' });
   });
 });
