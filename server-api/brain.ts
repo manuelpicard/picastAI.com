@@ -889,12 +889,14 @@ export class Brain {
         const storyContext = active && state.summary ? `\nBisher in der laufenden Geschichte: ${state.summary}` : '';
         const userPrompt = `Läuft gerade eine Kunibert-Geschichte: ${active ? 'ja' : 'nein'}${storyContext}\nErkannte Äußerung des Kindes: «${transcript}»`;
 
+        // Vor der Messung: Ein Aufruf, der gar nicht erst startet, zählt nicht als Aufruf.
+        const timeoutMs = this.llmTimeoutMs(timer);
         const parsed = await timer.time('sprachmodell', () => llm.generateJson({
           system: systemPrompt,
           user: userPrompt,
           schemaName: 'kunibert_antwort',
           schema: QUESTION_SCHEMA,
-          timeoutMs: this.llmTimeoutMs(timer),
+          timeoutMs,
           mayRetry: () => llmAllowed(timer),
           onUsage: this.meter(timer),
         })) as { category?: string; speech?: string };
@@ -1096,13 +1098,15 @@ export class Brain {
       // Hinweis und schreibt ihn neu, wenn noch genug Zeit bleibt. Sonst greift die Ersatzgeschichte.
       for (let attempt = 1; attempt <= 2; attempt++) {
         try {
+          // Vor der Messung: Ein Aufruf, der gar nicht erst startet, zählt nicht als Aufruf.
+          const timeoutMs = this.llmTimeoutMs(timer);
           const parsed = await timer.time('sprachmodell', () => llm.generateJson({
             system: STORYTELLER_SYSTEM(this.age),
             user: buildStoryPrompt(promptState, part, settings, retryNote),
             schemaName: 'kunibert_geschichte',
             schema: STORY_SCHEMA,
             maxOutputTokens: 2000,
-            timeoutMs: this.llmTimeoutMs(timer),
+            timeoutMs,
             // Auch die eine Wiederholung in llm.ts nur, solange die Anfrage noch an Claude darf (nicht
             // gesperrt, nicht verworfen).
             mayRetry: () => llmAllowed(timer),

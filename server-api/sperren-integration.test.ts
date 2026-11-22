@@ -570,6 +570,40 @@ describe('Nach dem Sperren nichts mehr an Claude (echter Server, N1120-1610-b)',
     assert.equal((await pending).status, 401);
   });
 
+  it('/v1/turn: während der Einordnung gesperrt: die Geschichte geht nicht mehr an Claude', async () => {
+    const device = await k.device();
+    k.speech.state.transcript = 'erzähl mir eine geschichte vom drachen';
+    k.claude.state.holdIf = (call) => call.schema === 'kunibert_antwort';
+    try {
+      const pending = k.turn(device, { mode: 'frage' });
+      await waitFor(() => k.claude.waiting === 1, 'Einordnung wartet bei Claude');
+      k.claude.state.holdIf = null;
+      const mark = k.claude.calls.length;
+      assert.equal((await k.lock(device)).status, 200);
+      k.claude.release();
+      assert.equal((await pending).status, 401);
+      await pause(200);
+      assert.deepEqual(k.callsSince(mark), [], 'kein Geschichtenaufruf nach dem Sperren');
+    } finally {
+      k.speech.state.transcript = 'warum ist der himmel blau';
+    }
+  });
+
+  it('Vorbereitung: beginnt dabei der Schlafmodus, liegt danach nichts bereit', async () => {
+    const device = await k.device();
+    await firstPartWithHeldPreparation(k, device);
+    const since = k.output.length;
+    assert.equal((await k.parentJson(device, 'PUT', 'einstellungen', { schlafmodus: true })).status, 200);
+    k.claude.release(); // Claude liefert Teil 2, aber das Gerät schläft schon.
+    await k.logged('modus=vorbereitung', since);
+    assert.equal((await k.parentJson(device, 'PUT', 'einstellungen', { schlafmodus: false })).status, 200);
+    const mark = k.claude.calls.length;
+    const res = await k.storyButton(device);
+    assert.equal(res.status, 200, await res.clone().text());
+    const [fresh] = k.callsSince(mark).filter((call) => call.schema === 'kunibert_geschichte');
+    assert.match(fresh?.user ?? '', /Teil 2 von/, 'Teil 2 kommt frisch von Claude, nicht aus der Vorbereitung im Schlafmodus');
+  });
+
   it('Protokoll: keine Geräte-IDs und keine Äußerungen', () => {
     assert.ok(k.output.includes('Zeitmessung '), 'das Protokoll wurde mitgelesen');
     assert.ok(!k.output.includes('sperren-'), 'keine Geräte-ID');
@@ -626,6 +660,7 @@ describe('Nach dem Sperren nichts mehr an Claude, mit Ton-Strom (echter Server, 
 
   it('Schlafmodus beginnt, während der Strom läuft: der Teil zählt, aber nichts wird vorbereitet', async () => {
     const device = await k.device();
+    const before = await k.prefetches();
     k.speech.state.holdTtsIf = SECOND_PARAGRAPH;
     const res = await k.storyButton(device, stream);
     assert.equal(res.status, 200, await res.clone().text());
@@ -640,7 +675,14 @@ describe('Nach dem Sperren nichts mehr an Claude, mit Ton-Strom (echter Server, 
     assert.ok((await played).byteLength > 0);
     await k.logged('modus=weiter_strom status=200', since);
     await pause(200);
-    assert.deepEqual(k.callsSince(mark), [], 'im Schlafmodus keine Vorbereitung');
+    assert.deepEqual(k.callsSince(mark), [], 'im Schlafmodus kein Aufruf an Claude');
+    assert.equal(await k.prefetches(), before, 'und keine Vorbereitung');
+    // Der Teil zählt: Nach dem Schlafmodus geht es mit Teil 2 weiter.
+    assert.equal((await k.parentJson(device, 'PUT', 'einstellungen', { schlafmodus: false })).status, 200);
+    const next = k.claude.calls.length;
+    assert.equal((await k.storyButton(device, stream)).status, 200);
+    const [fresh] = k.callsSince(next).filter((call) => call.schema === 'kunibert_geschichte');
+    assert.match(fresh?.user ?? '', /Teil 2 von/);
   });
 
   it('Protokoll: keine Geräte-IDs', () => {

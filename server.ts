@@ -74,7 +74,11 @@ const prefetcher = new StoryPrefetcher(
     timer.guardLlm(() => registry.isActive(deviceId) && !blockReasonFor(deviceId));
     let ok = false;
     try {
-      const result = await synthesizeTimed(await brain.handle('weiter', '', state, timer), timer);
+      const made = await brain.handle('weiter', '', state, timer);
+      // Darf das Gerät inzwischen nicht mehr an Claude (zum Beispiel Schlafmodus), nichts bereitlegen:
+      // sonst läge vielleicht eine Ersatzgeschichte bereit, weil ein Aufruf verhindert wurde.
+      if (!timer.allowsLlm()) return null;
+      const result = await synthesizeTimed(made, timer);
       timer.noteAudio(result.wav);
       ok = true;
       return result;
@@ -240,9 +244,13 @@ async function respondTurn(
   // Erzähler, ob das Gerät noch darf (N1120-1610-b).
   timer.guardLlm(() => !refusalFor(req, deviceId));
   if (!wantsAudioStream(req)) {
-    const result = await synthesizeTimed(await run(), timer);
-    timer.noteAudio(result.wav);
+    const made = await run();
     // Gesperrt oder von den Eltern angehalten, während die Antwort entstand: kein Audio, kein Stand.
+    // Gleich prüfen, ohne den Text erst zu vertonen, und noch einmal nach der Vertonung.
+    const early = refusalFor(req, deviceId);
+    if (early) return refuse(req, res, deviceId, type, timer, early);
+    const result = await synthesizeTimed(made, timer);
+    timer.noteAudio(result.wav);
     const refusal = refusalFor(req, deviceId);
     if (refusal) return refuse(req, res, deviceId, type, timer, refusal);
     return sendWholeTurn(req, res, deviceId, result, type, generation);
@@ -271,7 +279,10 @@ async function respondTurn(
     throw error;
   }
   if (first === 'fertig') {
-    const result = await synthesizeTimed(await resultPromise, timer);
+    const made = await resultPromise;
+    const early = refusalFor(req, deviceId);
+    if (early) return refuse(req, res, deviceId, type, timer, early);
+    const result = await synthesizeTimed(made, timer);
     timer.noteAudio(result.wav);
     const refusal = refusalFor(req, deviceId);
     if (refusal) return refuse(req, res, deviceId, type, timer, refusal);
@@ -835,7 +846,13 @@ app.post(
       if (refusal) return await sendTurnHint(req, res, deviceId, refusal, timer);
 
       timer.guardLlm(() => !refusalFor(req, deviceId));
-      const turnResult = await synthesizeTimed(await brain.handle(mode, transcript, state, timer), timer);
+      const made = await brain.handle(mode, transcript, state, timer);
+      // Gesperrt oder angehalten, während die Antwort entstand: gleich 401 oder der feste Satz, ohne
+      // den Text erst zu vertonen; und noch einmal nach der Vertonung.
+      const early = refusalFor(req, deviceId);
+      if (early === 'gesperrt') return res.status(401).json({ error: 'unauthorized' });
+      if (early) return await sendTurnHint(req, res, deviceId, early, timer);
+      const turnResult = await synthesizeTimed(made, timer);
       timer.noteAudio(turnResult.wav);
       // Gesperrt oder angehalten, während die Antwort entstand: kein Ton (wie bei den Geräte-Routen).
       const late = refusalFor(req, deviceId);
