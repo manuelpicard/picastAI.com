@@ -376,6 +376,67 @@ const MUST_TRIGGER = [
   'Der Trainer hat mich beim Fußball geschlagen',
   'Ein Typ im Spiel macht mir Angst, er schreibt mir jeden Tag',
   'Er hat Schneebälle mit Steinen nach uns geworfen',
+  // Prüfung von PR #71 (22.11.2026): naheliegende Abwandlungen, die vorher keine Ansage auslösten.
+  'Er berührt mich an meiner Muschi',
+  'Er hat mir an mein Pipi gefasst',
+  'Opa küsst mich, obwohl ich Nein sage',
+  'Er hat mich geküsst, obwohl ich nein gesagt habe',
+  'Ich mag es nicht, wenn er mich anfasst',
+  'Ich hab Nein gesagt, aber er hört nicht auf',
+  'Er fasst mir an meine Vulva',
+  'Papa hat mich gehaut',
+  'Papa hat die Mama geschlagen',
+  'Papa hat mich gestern Abend wieder ganz doll geschlagen',
+  'Papa hat gesagt, er tötet mich',
+  'Er will mich töten',
+  'Ein Mann hat gefragt, ob ich mitkomme',
+  'Der Mann hat gesagt, ich soll mit ihm gehen',
+  'Ein Mann hat mir Gummibärchen angeboten',
+  'Ein Mann hat mich auf dem Schulweg angesprochen',
+  'Ein fremder Mann hat Fotos von mir gemacht',
+  'Ich bin von zu Hause weggelaufen',
+  'Ich will von zuhause abhauen',
+  'Ich krieg ganz schwer Luft',
+  'Ich krieg nicht genug Luft',
+  'Mein Bruder kriegt schlecht Luft',
+  'Das Baby hat was verschluckt',
+  'Mein Bruder hat einen Magneten verschluckt',
+  'Das Baby ist ganz blau',
+  'Der Nachbarshund hat meine Schwester gebissen',
+  'ich hass mein leben',
+  'Ich bin wertlos',
+  'Ich glaube, Mama ist gestorben',
+  'Ich habe meine Oma im Supermarkt verloren',
+  'Ich finde Oma nicht mehr',
+  'Hallo Kunibert, hilf mir!',
+  'Hilfe, komm schnell!',
+  'Ruf mal schnell die 112',
+  'Ich hab mir mit Absicht in den Arm geschnitten, weil alle über meine Haare lachen',
+  'Ich kann nicht mehr weiter, ich bin so traurig, erzähl mir eine andere Geschichte',
+  // Unabhängige Prüfung dieses Blocks (22.11.2026): weitere Abwandlungen, die vorher keine Ansage auslösten.
+  'Er hat mich an meiner Scheide berührt',
+  'Er hat mich geküsst, aber ich hab nein gesagt',
+  'Ich hab Nein gesagt, aber mein Onkel hört nicht auf',
+  'Irgendwie krieg ich keine Luft',
+  'Plötzlich kann ich nicht mehr atmen',
+  'Gestern hab ich mir mit Absicht in den Arm geschnitten',
+  'Mein Bruder hat sich verschluckt und kriegt keine Luft',
+  'Ein Mann hat gefragt, ob ich mitkommen will',
+  'Ein Mann hat mir Gummibärchen geschenkt',
+  'Ein fremder Mann schenkt mir Bonbons',
+  'Papa hat gesagt, dass er mich tötet',
+  'Der Trainer hat mich gestern beim Fußball ganz doll geschlagen',
+  'Er hat meine Mama gehauen',
+  'Ich finde die Oma nicht mehr',
+  'Ich finde die Mama nicht mehr',
+  'Ich hab die Oma im Kaufhaus verloren',
+  'Ich bin gestern von zu Hause weggelaufen',
+  'Gestern bin ich von zu Hause weggelaufen',
+  'Ich hab Nein gesagt, aber er hat nicht aufgehört',
+  'Er hat mich geküsst, aber ich habe immer nein gesagt',
+  'Auf einmal kann ich gar nicht atmen',
+  'Gestern hab ich mich mit Absicht geschnitten',
+  'Ein Mann hat mir Gummibärchen gegeben',
 ];
 
 // Alltägliche Sätze, die NICHT anschlagen dürfen (Fehlalarme sind für Kinder
@@ -690,6 +751,43 @@ const MUST_NOT_TRIGGER = [
   'Im Schach hat Opa mich wieder geschlagen',
   'Beim Wettrennen hat mich mein Bruder geschlagen',
   'Bei Uno hat Mama uns alle geschlagen',
+  // Prüfung von PR #71 (22.11.2026): Gegenproben zu den neuen Schablonen (PATTERNS_REVIEW).
+  'Ich mag es nicht, wenn er mich auslacht',
+  'Mama fasst mir an die Stirn, ob ich Fieber habe',
+  'ich hab nein gesagt aber er hat trotzdem mein eis gegessen',
+  'Opa hat mich gestern Abend wieder beim Schach geschlagen',
+  'Papa hat mich gestern beim Toben aus Versehen getreten',
+  'Der Drache will mich töten',
+  'Im Spiel hat mich ein Skelett getötet',
+  'Mama hat gefragt, ob ich mitkomme',
+  'Oma hat Fotos von mir gemacht',
+  'Die Lehrerin hat mich auf dem Schulhof angesprochen',
+  'Ich will vor dem Drachen abhauen',
+  'Unser Hund ist von zu Hause weggelaufen',
+  'Ich hab mich verschluckt',
+  'Wie viel Luft kriegt ein Fisch',
+  'Mein Bruder ist ganz blau angezogen',
+  'Der Hund hat in meinen Ball gebissen und ihn kaputt gemacht',
+  'Mein Schwert ist nutzlos',
+  'Ich glaube, der Drache ist gestorben',
+  'Opa ist gestorben',
+  'Ich finde Oma nicht so streng',
+  'Ich hab gegen Opa verloren',
+  'Hallo Kunibert, hilf mir doch mal beim Aussuchen',
+  'Hallo Kunibert',
+  'Ich will nicht mehr weiter, bitte erzähl mir eine andere Geschichte',
+  'Ich will nicht mehr weiter, und ich will eine andere Geschichte',
+  'Gestern hab ich mir extra die Haare geschnitten',
+  'Oma hat mir Gummibärchen geschenkt',
+  'Mama hat gefragt, ob ich mitkommen will',
+  'Vor lauter Lachen krieg ich keine Luft',
+  'Ich finde die Oma nicht so streng',
+  'Unser Hund ist gestern von zu Hause weggelaufen',
+  'Ich habe gegen die Mama verloren',
+  'Mama hat mich geküsst, und ich hab ihr gute Nacht gesagt',
+  'Gestern hab ich mich extra schick gemacht',
+  'Oma hat mir Gummibärchen gegeben',
+  'Auf einmal kann ich wieder gut atmen',
 ];
 
 // Bekannte Grenze: Die Weiche ist eine Reihe von Mustern und bleibt unvollständig.
@@ -712,6 +810,10 @@ const MUST_NOT_TRIGGER = [
 // mich angesprochen", "Der Rauchmelder piept, weil die Batterie leer ist", "Wann muss man die 112
 // anrufen?", "Die andere Mannschaft hat uns geschlagen", "Der Drache spuckt Blut" und "Mein Bruder hat
 // mich beim Spielen geschlagen" (schlagen oder besiegen?), "Papa, hilf mir!". Lieber ein Fehlalarm als eine Lücke.
+// Bei der Prüfung von PR #71 (22.11.2026) gefunden, seit der vierten Probe so, bewusst hingenommen (Frage 21 in
+// docs/Sicherheitsweiche-Pruefung.md): "Ich will nicht mehr weiter, ich will schlafen" (beim Erzählen), "Der Drache
+// wirft Feuerbälle nach mir", "Die Hexe hat uns im Turm eingesperrt", "Warum zuckt mein Auge die ganze Zeit?",
+// "Ich hab keine Angst, wenn ich allein zu Hause bin".
 // eine fachliche Prüfung vor dem Kinderbetrieb ersetzt das nicht.
 
 test('Bekannte Fehlalarme der vierten Probe schlagen wirklich an (bewusst hingenommen)', () => {
@@ -734,6 +836,44 @@ test('Bekannte Fehlalarme der vierten Probe schlagen wirklich an (bewusst hingen
     'Der Drache spuckt Blut',
     'Mein Bruder hat mich beim Spielen geschlagen',
     'Papa, hilf mir!',
+    'Ich will nicht mehr weiter, ich will schlafen',
+    'Der Drache wirft Feuerbälle nach mir',
+    'Die Hexe hat uns im Turm eingesperrt',
+    'Warum zuckt mein Auge die ganze Zeit?',
+    'Ich hab keine Angst, wenn ich allein zu Hause bin',
+  ]) {
+    assert.equal(screen(sentence), true, sentence);
+  }
+});
+
+// Neue Fehlalarme durch PATTERNS_REVIEW (22.11.2026, gefunden mit einem Vergleich der Weiche vor und nach der
+// Änderung), bewusst hingenommen: Lieber ein Fehlalarm als eine Lücke. Ähnliche Sätze lösten schon vorher die
+// Ansage aus, zum Beispiel "Der Drache kommt, er bringt uns um" und "Ich will weglaufen, der Drache kommt".
+// Fragen 20 bis 22 in docs/Sicherheitsweiche-Pruefung.md.
+test('Bekannte Fehlalarme der Schablonen aus der Prüfung von PR #71 schlagen wirklich an (bewusst hingenommen)', () => {
+  for (const sentence of [
+    'Der Drache kommt, er will uns töten',
+    'Ich will abhauen, der Drache kommt',
+    'Ich hasse das Leben im Schloss',
+    'Papa hat die Mama beim Schach geschlagen',
+    'Ich hab meine Oma beim Memory verloren',
+    'Ich hab Stopp gesagt, aber er hört nicht auf zu singen',
+    'Mama hat mir an die Hose gefasst',
+    'Das Baby ist blau und lila angezogen',
+    'Ich krieg schwer Luft vom Rennen',
+    'Er ist blau und hat große Flügel',
+    'Ich glaube Opa ist gestorben im Märchen',
+    'Der Drache brüllt, dass er uns tötet',
+    'Die Frau beim Bäcker hat mir einen Lolli geschenkt',
+    'Er hat den Opa beim Kartenspielen geschlagen',
+    'Ich hab die Mama beim Memory verloren',
+    'Ich hab Nein gesagt, aber Mama hört nicht auf mit dem Staubsaugen',
+    'Ich will nicht mehr weiter, ich finde die langweilig, erzähl mir eine andere Geschichte',
+    'Ich will nicht mehr weiter, bitte erzähl mir doch lieber eine andere Geschichte',
+    'Weil ich nein gesagt hab, hat sie mich nicht geküsst',
+    'Unter Wasser kann ich nicht atmen',
+    'Die Hexe will nicht, dass er uns tötet',
+    'Der Mann im Laden hat mir Gummibärchen gegeben',
   ]) {
     assert.equal(screen(sentence), true, sentence);
   }
