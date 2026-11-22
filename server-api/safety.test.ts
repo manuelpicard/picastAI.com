@@ -432,6 +432,11 @@ const MUST_TRIGGER = [
   'Ich hab die Oma im Kaufhaus verloren',
   'Ich bin gestern von zu Hause weggelaufen',
   'Gestern bin ich von zu Hause weggelaufen',
+  'Ich hab Nein gesagt, aber er hat nicht aufgehört',
+  'Er hat mich geküsst, aber ich habe immer nein gesagt',
+  'Auf einmal kann ich gar nicht atmen',
+  'Gestern hab ich mich mit Absicht geschnitten',
+  'Ein Mann hat mir Gummibärchen gegeben',
 ];
 
 // Alltägliche Sätze, die NICHT anschlagen dürfen (Fehlalarme sind für Kinder
@@ -779,6 +784,10 @@ const MUST_NOT_TRIGGER = [
   'Ich finde die Oma nicht so streng',
   'Unser Hund ist gestern von zu Hause weggelaufen',
   'Ich habe gegen die Mama verloren',
+  'Mama hat mich geküsst, und ich hab ihr gute Nacht gesagt',
+  'Gestern hab ich mich extra schick gemacht',
+  'Oma hat mir Gummibärchen gegeben',
+  'Auf einmal kann ich wieder gut atmen',
 ];
 
 // Bekannte Grenze: Die Weiche ist eine Reihe von Mustern und bleibt unvollständig.
@@ -859,6 +868,12 @@ test('Bekannte Fehlalarme der Schablonen aus der Prüfung von PR #71 schlagen wi
     'Er hat den Opa beim Kartenspielen geschlagen',
     'Ich hab die Mama beim Memory verloren',
     'Ich hab Nein gesagt, aber Mama hört nicht auf mit dem Staubsaugen',
+    'Ich will nicht mehr weiter, ich finde die langweilig, erzähl mir eine andere Geschichte',
+    'Ich will nicht mehr weiter, bitte erzähl mir doch lieber eine andere Geschichte',
+    'Weil ich nein gesagt hab, hat sie mich nicht geküsst',
+    'Unter Wasser kann ich nicht atmen',
+    'Die Hexe will nicht, dass er uns tötet',
+    'Der Mann im Laden hat mir Gummibärchen gegeben',
   ]) {
     assert.equal(screen(sentence), true, sentence);
   }
