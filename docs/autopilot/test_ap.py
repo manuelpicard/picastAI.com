@@ -330,15 +330,18 @@ class PrueflisteTest(unittest.TestCase):
             self.gemergt(4, 60, "[Autopilot Planung] 21.11.2026 18:07"),  # Planung: keine zweite Prüfung
             self.gemergt(5, 24 * 7 + 1),  # älter als 7 Tage: nicht mehr in der Liste
             self.gemergt(6, 24 * 6),  # sechs Tage: noch drin
+            self.gemergt(7, 50),  # Kommentar „Autopilot-Prüfung“ vor dem Merge: zählt nicht
         ]
-        ohne, ueberfaellig = ap.pruefliste(prs, self.jetzt, geprueft={3})
-        self.assertEqual([eintrag.split()[0] for eintrag in ohne], ["#1", "#2", "#6"])
-        self.assertEqual(ueberfaellig, ["#2", "#6"])
-        self.assertEqual(ohne[1], "#2 (Fr 20.11. 08:00)")
+        nach_dem_merge = self.jetzt - timedelta(hours=59)
+        vor_dem_merge = self.jetzt - timedelta(hours=51)
+        ohne, ueberfaellig = ap.pruefliste(prs, self.jetzt, geprueft={3: nach_dem_merge, 7: vor_dem_merge})
+        self.assertEqual([eintrag.split()[0] for eintrag in ohne], ["#1", "#7", "#2", "#6"])
+        self.assertEqual(ueberfaellig, ["#7", "#2", "#6"])
+        self.assertEqual(ohne[2], "#2 (Fr 20.11. 08:00)")
 
     def test_viele_prs_ohne_obergrenze(self):
         prs = [self.gemergt(n, 40 + n) for n in range(1, 31)]
-        ohne, ueberfaellig = ap.pruefliste(prs, self.jetzt, geprueft=set())
+        ohne, ueberfaellig = ap.pruefliste(prs, self.jetzt, geprueft={})
         self.assertEqual(len(ohne), 30, "früher nur die 20 jüngsten")
         self.assertEqual(len(ueberfaellig), 30)
 
@@ -349,14 +352,16 @@ class PrueflisteTest(unittest.TestCase):
 
     def test_gepruefte_prs_nur_vom_eigentuemer(self):
         url = "https://api.github.com/repos/manuelpicard/picastAI.com/issues/"
+        zeit = "2026-11-22T17:21:01Z"
         kommentare = [
-            {"user": {"login": "manuelpicard"}, "body": "Autopilot-Prüfung: ok", "issue_url": url + "69"},
-            {"user": {"login": "jemand"}, "body": "Autopilot-Prüfung: gefälscht", "issue_url": url + "70"},
-            {"user": {"login": "manuelpicard"}, "body": "Start · Bauen · So 22.11. 19:29", "issue_url": url + "71"},
-            {"user": {"login": "manuelpicard"}, "body": "Autopilot-Prüfung (22.11.2026): ok", "issue_url": url + "73"},
-            {"user": {"login": "manuelpicard"}, "body": "Autopilot-Prüfung: ohne Adresse"},
+            {"user": {"login": "manuelpicard"}, "body": "Autopilot-Prüfung: ok", "issue_url": url + "69", "created_at": "2026-11-22T16:52:44Z"},
+            {"user": {"login": "manuelpicard"}, "body": "Autopilot-Prüfung: zweite", "issue_url": url + "69", "created_at": zeit},
+            {"user": {"login": "jemand"}, "body": "Autopilot-Prüfung: gefälscht", "issue_url": url + "70", "created_at": zeit},
+            {"user": {"login": "manuelpicard"}, "body": "Start · Bauen · So 22.11. 19:29", "issue_url": url + "71", "created_at": zeit},
+            {"user": {"login": "manuelpicard"}, "body": "Autopilot-Prüfung (22.11.2026): ok", "issue_url": url + "73", "created_at": zeit},
+            {"user": {"login": "manuelpicard"}, "body": "Autopilot-Prüfung: ohne Adresse", "created_at": zeit},
         ]
-        self.assertEqual(ap.gepruefte_prs(kommentare), {69, 73})
+        self.assertEqual(ap.gepruefte_prs(kommentare), {69: ap.iso(zeit), 73: ap.iso(zeit)}, "der jüngste Kommentar zählt")
 
     def test_gemergte_prs_seit_blaettert_bis_zur_grenze(self):
         seit = self.jetzt - timedelta(days=7)
@@ -366,7 +371,8 @@ class PrueflisteTest(unittest.TestCase):
             return {"number": nummer, "updated_at": zeit, "merged_at": zeit if gemergt else None}
 
         seite1 = [pr_mit(n, 1, gemergt=n % 2 == 0) for n in range(100)]
-        seite2 = [pr_mit(100, 2), pr_mit(101, 8)]  # reicht über die Grenze: keine dritte Seite
+        # Volle Seite, deren letzter PR über die Grenze zurückreicht: keine dritte Seite.
+        seite2 = [pr_mit(100 + n, 2, gemergt=n == 0) for n in range(99)] + [pr_mit(199, 8)]
         aufrufe = []
 
         def gh(pfad, **_):
@@ -375,7 +381,7 @@ class PrueflisteTest(unittest.TestCase):
 
         with mock.patch.object(ap, "gh", side_effect=gh):
             gemergt = ap.gemergte_prs_seit(seit)
-        self.assertEqual(len(aufrufe), 2)
+        self.assertEqual(len(aufrufe), 2, "Schluss nach der Seite, die über die Grenze reicht")
         self.assertEqual(len(gemergt), 52, "nur gemergte PRs")
 
     def test_kommentare_seit_mit_einem_aufruf_je_seite(self):
@@ -389,6 +395,12 @@ class PrueflisteTest(unittest.TestCase):
             self.assertEqual(len(ap.kommentare_seit(self.jetzt - timedelta(days=7))), 103)
         self.assertEqual(len(aufrufe), 2)
         self.assertIn("since=2026-11-15T19:00:00Z", aufrufe[0])
+
+    def test_kommentare_seit_meldet_die_grenze(self):
+        ausgabe = io.StringIO()
+        with mock.patch.object(ap, "gh", return_value=[{"id": 1}] * 100), contextlib.redirect_stdout(ausgabe):
+            self.assertEqual(len(ap.kommentare_seit(self.jetzt - timedelta(days=7), seiten=2)), 200)
+        self.assertIn("mehr als 200 Kommentare", ausgabe.getvalue())
 
 
 class IssueTest(unittest.TestCase):

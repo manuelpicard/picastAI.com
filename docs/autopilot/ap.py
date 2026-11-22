@@ -559,27 +559,31 @@ def nummer_aus_url(url: str | None) -> int | None:
     return int(ende) if ende.isdigit() else None
 
 
-def gepruefte_prs(kommentare: list[dict]) -> set[int]:
-    """Nummern der PRs mit einem Kommentar „Autopilot-Prüfung“ vom Konto des Eigentümers."""
-    nummern: set[int] = set()
+def gepruefte_prs(kommentare: list[dict]) -> dict[int, datetime]:
+    """PRs mit einem Kommentar „Autopilot-Prüfung“ vom Konto des Eigentümers: Nummer und Zeit des
+    jüngsten solchen Kommentars. Kommentare anderer Konten zählen nie (das Repo ist öffentlich)."""
+    geprueft: dict[int, datetime] = {}
     for k in kommentare:
         if ((k.get("user") or {}).get("login")) != EIGENTUEMER or not (k.get("body") or "").startswith("Autopilot-Prüfung"):
             continue
-        nummer = nummer_aus_url(k.get("issue_url"))
-        if nummer is not None:
-            nummern.add(nummer)
-    return nummern
+        nummer, zeit = nummer_aus_url(k.get("issue_url")), iso(k.get("created_at"))
+        if nummer is not None and zeit is not None and (nummer not in geprueft or zeit > geprueft[nummer]):
+            geprueft[nummer] = zeit
+    return geprueft
 
 
 def kommentare_seit(seit: datetime, seiten: int = 10) -> list[dict]:
-    """Alle Kommentare an Issues und PRs des Repos seit `seit`: wenige Aufrufe statt einem je PR."""
+    """Alle Kommentare an Issues und PRs des Repos seit `seit`: wenige Aufrufe statt einem je PR.
+    Höchstens `seiten` mal 100; greift die Grenze, sagt eine Zeile das (dann fehlen die jüngsten, und
+    `lage` meldet eher zu viele PRs ohne Prüfung als zu wenige)."""
     ergebnis: list[dict] = []
     stempel = seit.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     for seite in range(1, seiten + 1):
         teil = gh(f"repos/{REPO}/issues/comments?per_page=100&page={seite}&sort=created&direction=asc&since={stempel}") or []
         ergebnis += teil
         if len(teil) < 100:
-            break
+            return ergebnis
+    print(f"Hinweis: mehr als {seiten * 100} Kommentare seit {berlin(seit)}; die jüngsten fehlen in der Prüfliste.")
     return ergebnis
 
 
@@ -598,15 +602,18 @@ def gemergte_prs_seit(seit: datetime, seiten: int = 5) -> list[dict]:
     return [p for p in ergebnis if p.get("merged_at")]
 
 
-def pruefliste(gemergt: list[dict], zeitpunkt: datetime, geprueft: set[int]) -> tuple[list[str], list[str]]:
+def pruefliste(gemergt: list[dict], zeitpunkt: datetime, geprueft: dict[int, datetime]) -> tuple[list[str], list[str]]:
     """Gemergte PRs ohne „Autopilot-Prüfung“ (bis PRUEFUNG_ZEITRAUM zurück) und davon die überfälligen
-    (älter als PRUEFUNG_UEBERFAELLIG). Planungs-PRs brauchen keine zweite Prüfung."""
+    (älter als PRUEFUNG_UEBERFAELLIG). Als Prüfung zählt nur ein Kommentar nach dem Merge. Planungs-PRs
+    brauchen keine zweite Prüfung."""
     ohne_pruefung, ueberfaellig = [], []
     for pr in sorted(gemergt, key=lambda p: p["merged_at"], reverse=True):
         gemergt_um = iso(pr["merged_at"])
         if zeitpunkt - gemergt_um > PRUEFUNG_ZEITRAUM:
             break  # absteigend sortiert: alle weiteren sind älter
-        if (pr.get("title") or "").startswith("[Autopilot Planung]") or pr["number"] in geprueft:
+        if (pr.get("title") or "").startswith("[Autopilot Planung]"):
+            continue
+        if pr["number"] in geprueft and geprueft[pr["number"]] >= gemergt_um:
             continue
         ohne_pruefung.append(f"#{pr['number']} ({berlin(gemergt_um)})")
         if zeitpunkt - gemergt_um > PRUEFUNG_UEBERFAELLIG:
