@@ -278,6 +278,7 @@ class FahrplanMitBudgetTest(unittest.TestCase):
         self.assertEqual(self.rufe("Bauen", montag_frueh, verbrauch=60), 0)
         self.assertEqual(self.rufe("Bauen", montag_frueh, verbrauch=80), 10)
         self.assertEqual(self.rufe("Planen & Bericht", b(2026, 11, 30, 18, 10), verbrauch=500), 0)
+        self.assertEqual(self.rufe("Prüfen", b(2026, 11, 30, 23, 25), verbrauch=500), 0)  # nur Bauen gebremst
         self.assertEqual(self.rufe("Bauen", b(2026, 12, 4, 0, 40), verbrauch=500), 0)  # Fr 00:40: Endspurt
         self.assertEqual(self.rufe("Bauen", b(2026, 12, 1, 0, 40)), 10)               # Tabelle: Pause
 
