@@ -10,7 +10,7 @@ Das Wochenlimit reicht nur für einen Teil der Woche (Schätzung nach der Woche 
 
 | Phase | Zeit (Europe/Berlin) | Was ein Lauf tut |
 |---|---|---|
-| Wochenmodus | Fr 08:00 bis Do 06:59 | nur die Termine, die der [Fahrplan](fahrplan.md) auf „arbeiten“ setzt; ein Punkt je Lauf |
+| Wochenmodus | Fr 08:00 bis Do 06:59 (Neustart des Wochenlimits: Zeile im [Fahrplan](fahrplan.md)) | nur die Termine, die der [Fahrplan](fahrplan.md) auf „arbeiten“ setzt; ein Punkt je Lauf |
 | Endspurt | Do 07:00 bis Fr 07:59 | alle Termine; weiterarbeiten, bis das Limit greift oder nichts Sinnvolles mehr offen ist |
 
 Jeder Lauf fragt beim Start `python3 docs/autopilot/ap.py fahrplan <Rolle>`. Bei Pause endet er sofort. Im Wochenmodus bremst zusätzlich das Wochenbudget den Lauf „Bauen“: Die erlaubte Laufzeit wächst gleichmäßig bis Donnerstag 07:00; Bauen, Prüfen und Recherche zählen zum Verbrauch, das Programm misst ihn im Laufprotokoll. Höchstens 15 geplante Aufgaben starten am Tag (alle zusammen); der Autopilot hat 7 Termine. Der Lauf „Planen & Bericht“ stellt das Budget freitags nach: Griff das Limit vor dem Endspurt, ein Viertel weniger; griff es gar nicht, ein Viertel mehr (Regeln in [`fahrplan.md`](fahrplan.md)).
@@ -23,7 +23,6 @@ Jeder Lauf fragt beim Start `python3 docs/autopilot/ap.py fahrplan <Rolle>`. Bei
 | Kunibert Autopilot · Prüfen | täglich 23:23 | Claude Opus 5.5 | gemergte PRs unabhängig prüfen, Sicherheit, Datenschutz, Tests; Punkte mit Rolle „Prüfen“ |
 | Kunibert Autopilot · Recherche | täglich 11:53 | Claude Sonnet 5.5 | Recherche mit Quellen; ist keine offen, ein Routine-Punkt (Doku, Tests, Werkzeuge) |
 | Kunibert Autopilot · Planen & Bericht | täglich 18:07 | Claude Sonnet 5.5 | Arbeitsliste pflegen und Tagesbericht; freitags zusätzlich Wochenbericht und Fahrplan |
-| Kunibert Restlimit (Mi, Do, Fr) | Mi 22:58, Do stündlich :03, Fr 00:03 bis 07:03 | Claude Sonnet 5.5 | ältere Aufgaben mit eigenem Auftrag vom 13.11.: arbeiten auf `restlimit/<Jahr>-KW<nn>` in einem Entwurfs-PR, ohne Mergen. Ihr Inhalt ist erledigt (A1). Der Autopilot übernimmt Brauchbares freitags (Punkt A2). Einschätzung: überflüssig; ausschalten kann sie nur der Betreiber |
 
 Die Zeiten sind so gelegt, dass ein 5-Stunden-Fenster des Nutzungslimits mit einem Lauf von Prüfen (23:23), Recherche (11:53) oder Planen & Bericht (18:07) beginnt. „Bauen“ folgt gut eine bis knapp zwei Stunden später und nutzt im Endspurt den Rest des Fensters. Bauen 06:37 beginnt ein Fenster allein; das ist der Bauen-Termin im Wochenmodus.
 
@@ -88,4 +87,4 @@ Kommentare im Laufprotokoll und „Autopilot-Prüfung“-Kommentare zählen nur,
 
 ## Anhalten
 
-In der Claude-App unter „Geplante Aufgaben“ (oder auf claude.ai/code/routines) die Aufgaben „Kunibert Autopilot · …“ ausschalten. Die Aufgaben „Kunibert Restlimit (Mi)“, „(Do)“ und „(Fr)“ laufen getrennt davon. Wer alles anhalten will, schaltet sie mit aus. Ausschalten löscht nichts. Langsamer oder schneller: im [Fahrplan](fahrplan.md) das Wochenbudget ändern oder Termine auf „Pause“ oder „arbeiten“ setzen.
+In der Claude-App unter „Geplante Aufgaben“ (oder auf claude.ai/code/routines) die Aufgaben „Kunibert Autopilot · …“ ausschalten. Ausschalten löscht nichts. Langsamer oder schneller: im [Fahrplan](fahrplan.md) das Wochenbudget ändern oder Termine auf „Pause“ oder „arbeiten“ setzen.

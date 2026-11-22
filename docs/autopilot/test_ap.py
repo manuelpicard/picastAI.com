@@ -39,6 +39,32 @@ class PhaseTest(unittest.TestCase):
         self.assertEqual(ap.phase(datetime(2026, 11, 26, 6, 30, tzinfo=timezone.utc))[0], "Endspurt")
 
 
+class NeustartTest(unittest.TestCase):
+    def setUp(self):
+        self.alt = ap.NEUSTART
+        ap.NEUSTART = (6, 17, 30)  # So 17:30
+
+    def tearDown(self):
+        ap.NEUSTART = self.alt
+
+    def test_lesen(self):
+        self.assertEqual(ap.lies_neustart("Neustart des Wochenlimits: So 17:30"), (6, 17, 30))
+        self.assertEqual(ap.lies_neustart("**Neustart des Wochenlimits:** Fr 08:00"), (4, 8, 0))
+        self.assertIsNone(ap.lies_neustart("- Neustart des Wochenlimits am Sonntag"))
+        self.assertIsNone(ap.lies_neustart("Neustart des Wochenlimits: So 25:00"))
+
+    def test_sonntag(self):
+        # 22.11.2026 und 29.11.2026 sind Sonntage, 28.11. ein Samstag.
+        self.assertEqual(ap.wochenbeginn(b(2026, 11, 22, 17, 55)), b(2026, 11, 22, 17, 30))
+        self.assertEqual(ap.wochenbeginn(b(2026, 11, 22, 17, 29)), b(2026, 11, 15, 17, 30))
+        self.assertEqual(ap.endspurt_beginn(b(2026, 11, 22, 17, 30)), b(2026, 11, 28, 16, 30))
+        self.assertEqual(ap.phase(b(2026, 11, 28, 16, 29))[0], "Wochenmodus")
+        self.assertEqual(ap.phase(b(2026, 11, 28, 16, 30))[0], "Endspurt")
+        self.assertEqual(ap.phase(b(2026, 11, 29, 17, 29))[0], "Endspurt")
+        self.assertEqual(ap.phase(b(2026, 11, 29, 17, 30))[0], "Wochenmodus")
+        self.assertIn("Sa 16:30", ap.phase(b(2026, 11, 24, 12, 0))[1])
+
+
 class StatusTest(unittest.TestCase):
     bezug = b(2026, 11, 20, 10, 0)
 
