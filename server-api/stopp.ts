@@ -152,6 +152,12 @@ interface DeliveredPart {
   deliveredMs: number;
   /** Zeitpunkt der letzten Meldung (oder Fortschreibung) für diesen Teil. */
   stoppedMs: number;
+  /**
+   * true: `spoken` ist nur der Anfang eines neu erzählten Teils, dessen Ton-Strom abbrach (`appendHeard`),
+   * und `basis.heard` die Stelle davor. Eine Meldung zu diesem Strom kürzt die Stelle auf das Gehörte.
+   * „Alles gehört“ heißt hier nur: alles Gesprochene. Der Teil selbst ist dann noch nicht zu Ende.
+   */
+  broken: boolean;
 }
 
 /**
@@ -188,6 +194,7 @@ export class StopPoints {
       heard: null,
       deliveredMs: this.now(),
       stoppedMs: 0,
+      broken: false,
     });
     const waiting = this.pending.get(deviceId);
     this.pending.delete(deviceId);
@@ -207,7 +214,7 @@ export class StopPoints {
       return { outcome: 'wartet' };
     }
     const result = heardUpTo(part.spoken, seconds);
-    if (result.complete) {
+    if (result.complete && !part.broken) {
       part.heard = null;
       return { outcome: 'ganz_gehoert', part: part.part, target: part.target };
     }
@@ -218,20 +225,27 @@ export class StopPoints {
 
   /**
    * Ein Teil, der nach einem Stopp neu erzählt wurde, brach mitten im Ton-Strom `turnId` ab (Ausgabe-Check,
-   * Claude oder Sprachausgabe). Das Kind hat dann auch dessen gesprochene Absätze gehört (`spoken`, ohne
-   * feste Sätze; der letzte Absatz zählt wie sonst als Abschluss und nicht mit): Sie kommen zur gemerkten
-   * Stelle dazu. Hat das Kind auch diesen Strom angehalten und es gemeldet, nur bis dahin. Danach zählt
-   * keine Meldung mehr zum ursprünglichen Teil (sein Text ist weg).
+   * Claude oder Sprachausgabe). Das Kind hört dann auch dessen gesprochene Absätze (`spoken`, ohne feste
+   * Sätze; der letzte Absatz zählt wie sonst als Abschluss und nicht mit): Sie kommen zur gemerkten Stelle
+   * dazu. Hat das Kind auch diesen Strom angehalten und es schon gemeldet, nur bis dahin. Sonst kann die
+   * Meldung noch kommen: Der Server ist schneller als die Wiedergabe, das Gerät spielt den Strom oft noch.
+   * Deshalb gilt ab jetzt dieser Strom als der Teil, zu dem eine Meldung gehört (`broken`); eine Meldung
+   * zum ursprünglichen Teil zählt nicht mehr (sein Text ist weg).
    */
   appendHeard(deviceId: string, turnId: string, spoken: SpokenPart): void {
     const part = this.current(deviceId);
     const waiting = this.pending.get(deviceId);
-    const stoppedThere = waiting && waiting.turnId === turnId && this.now() - waiting.atMs <= PENDING_STOP_TTL_MS;
+    const stoppedThere = waiting !== undefined && waiting.turnId === turnId && this.now() - waiting.atMs <= PENDING_STOP_TTL_MS;
     if (stoppedThere) this.pending.delete(deviceId);
     if (!part || part.heard === null) return;
-    part.heard = joinHeard(part.heard, heardUpTo(spoken, stoppedThere ? waiting.seconds : Number.POSITIVE_INFINITY).heard);
+    const heardBefore = part.heard;
+    part.turnId = turnId;
+    part.basis = { before: part.basis.before, heard: heardBefore };
+    part.spoken = spoken;
+    part.broken = true;
+    part.deliveredMs = this.now();
+    part.heard = joinHeard(heardBefore, heardUpTo(spoken, stoppedThere ? waiting.seconds : Number.POSITIVE_INFINITY).heard);
     part.stoppedMs = this.now();
-    part.spoken = null;
   }
 
   /**
