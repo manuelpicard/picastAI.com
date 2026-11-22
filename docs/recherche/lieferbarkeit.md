@@ -67,6 +67,21 @@ Ausgewählt wurden Boards mit ESP32-S3 (wie die Firmware), mit Mikrofon und Laut
 - **Tasten und LED.** Kunibert braucht zwei Bedientasten (Sprechtaste, Erzähltaste, `CLAUDE.md`) und eine LED (`firmware/esp32-s3/README.md`). Beim EchoS3R und beim Waveshare-Board nennen die Seiten keine Zahl von Tasten. Beim CoreS3 stehen Power und Reset, kein Bedienknopf. Ob zwei Taster angeschlossen werden können, ist nicht geprüft.
 - **Verfügbarkeit.** Nur der EchoS3R war lieferbar. Er ist am kleinsten und billigsten. Er hat nur ein Mikrofon und kein Display.
 
+## Vergleich mit früheren Prüfungen (8. bis 13.11.2026)
+
+Diese Werte stammen aus Notizen früherer Läufe im Claude-Projekt (nicht im Repo): `claude/stand-2026-11-07-anfragen-und-hosting.md` (8. und 11.11.), `claude/stand-2026-11-11-nachtschicht.md` (11.11., 21:54) und `claude/nachtrag-2026-11-13-restlimit-nacht.md` (13.11., gegen 17:04). Sie wurden hier nicht neu belegt. Alles bei BerryBase, Preise mit MwSt.
+
+| Artikel | 8.11. | 11.11. | 13.11. | 22.11. (diese Prüfung) |
+| --- | --- | --- | --- | --- |
+| Pi 5, 4 GB (123,90 €) | nicht lieferbar | nicht lieferbar | nicht lieferbar | nicht lieferbar |
+| Pi 5, 8 GB (189,00 €) | lieferbar, 1 bis 3 Tage | lieferbar | lieferbar, höchstens 2 je Bestellung | lieferbar, höchstens 2 je Bestellung |
+| ESP32-S3-BOX-3 (69,90 €) | nicht geprüft | nicht lieferbar | nicht lieferbar (nur aus der Suchliste gelesen) | nicht lieferbar |
+
+- Der 4-GB-Pi ist bei BerryBase seit mindestens 8.11.2026 nicht lieferbar, also seit 14 Tagen. Der Preis ist gleich geblieben.
+- Neu in dieser Prüfung: Welectron, buyzero, Pollin und Farnell (Pi 5) sowie Völkner, Schukat und Botland (BOX-3). Völkner ist das erste lieferbare BOX-3-Angebot in den Notizen.
+- Am 8.11. standen außerdem Rasppishop (4 GB, 123,90 €, ausverkauft, höchstens 1 Stück je Bestellung) und Soldered (4 GB, 108,95 €, die Seite widersprach sich) in den Notizen. Heute wurden beide nicht gelesen (Rasppishop ließ sich nicht laden). Geizhals und Galaxus (8.11.) ebenfalls nicht.
+- Der Betreiber hatte am 9.11.2026 entschieden, auf den 4-GB-Pi bei BerryBase zu warten (Notiz im Claude-Projekt).
+
 ## Widersprüche auf den Seiten
 
 1. **BerryBase, Pi 5 mit 4 GB.** Die eigene Produktseite und die Kategorieliste nennen den Artikel nicht lieferbar (Q1, Q3). Ein FAQ-Satz auf derselben Seite sagt aber, die Modelle mit 2, 4 und 8 GB seien derzeit lieferbar. Auf der Seite des BOX-3B zeigt eine Empfehlungsleiste den 4-GB-Pi für 118,50 € als lieferbar (mit der Angabe 100+ Stück), die eigene Seite nennt 123,90 €. Einschätzung: Es gilt die Produktseite. FAQ und Leisten sind vermutlich veraltet.
@@ -89,7 +104,7 @@ Keine Rechtsberatung. Es sind nur Aussagen von Händlerseiten, keine Bewertung.
 
 ## Einschätzung
 
-1. **Pi 5.** Heute ist nur der 8-GB-Pi sicher zu bekommen. Das Gerät nimmt nach `CLAUDE.md` nur auf und spielt ab; der erste Aufbau in `pi-client/README.md` ist mit 4 GB beschrieben. Ob 4 GB reichen, ist nicht gemessen. Der 8-GB-Pi würde dieselbe Rolle spielen und kostet etwa 65 bis 73 € mehr als der nicht lieferbare 4-GB-Pi. Ob der Betreiber wartet oder 8 GB nimmt, entscheidet der Betreiber. Jeder einzelne Kauf braucht seine Bestätigung im Chat.
+1. **Pi 5.** Heute ist nur der 8-GB-Pi sicher zu bekommen. Das Gerät nimmt nach `CLAUDE.md` nur auf und spielt ab; der erste Aufbau in `pi-client/README.md` ist mit 4 GB beschrieben. Ob 4 GB reichen, ist nicht gemessen. Der 8-GB-Pi würde dieselbe Rolle spielen und kostet etwa 65 bis 73 € mehr als der nicht lieferbare 4-GB-Pi. Der Betreiber hatte am 9.11.2026 entschieden, auf den 4-GB-Pi bei BerryBase zu warten. Ob er dabei bleibt oder 8 GB nimmt, entscheidet der Betreiber. Jeder einzelne Kauf braucht seine Bestätigung im Chat.
 2. **Händler für den 8-GB-Pi.** BerryBase und Welectron verlangen beide 189,00 €. Welectron nennt freien Versand in Deutschland. BerryBase nennt freien Versand erst ab 200 € (auf einer Seite ab 150 €). Farnell zeigt nur den Nettopreis (155,11 €, brutto etwa 184,58 €, eigene Rechnung). Ob Farnell an Privatkunden liefert und was der Versand kostet, steht auf der gelesenen Seite nicht.
 3. **BOX-3.** Völkner ist das einzige lieferbare Angebot für Privatkunden in diesem Satz von Händlern (60,99 €). BerryBase hat BOX-3 und BOX-3B nicht lieferbar. Schukat verkauft nur an Gewerbe.
 4. **Alternativen.** Nur der EchoS3R ist lieferbar. Ob er für Sprechtaste, Erzähltaste und LED taugt, ist nicht geprüft. CoreS3 und Waveshare-Board haben zwei Mikrofone, sind aber nirgends sicher lieferbar.
@@ -144,8 +159,8 @@ Alle Seiten abgerufen am 22.11.2026 (etwa 19:00 bis 19:35 Uhr). Ein Zitat je Que
 | Wer | Was | Wo |
 | --- | --- | --- |
 | Betreiber | Vor jedem Kauf die Händlerseite öffnen und Preis, Bestand und Versandkosten prüfen (die Seiten nennen kein Datum). Jeden einzelnen Kauf im Chat bestätigen. | Browser, Chat |
-| Betreiber | Entscheiden, ob statt des 4-GB-Pi der 8-GB-Pi genommen wird, solange 4 GB nirgends lieferbar ist. | Chat |
+| Betreiber | Entscheiden, ob er weiter auf den 4-GB-Pi wartet (Entscheidung vom 9.11.) oder den 8-GB-Pi nimmt, solange 4 GB nirgends lieferbar ist. | Chat |
 | Betreiber | Optional: Conrad, Elektor, Rasppishop und Mouser im Browser ansehen, weil sie sich hier nicht lesen ließen. | Browser |
-| Claude (Lauf Recherche) | Diese Datei neu prüfen, sobald der Stand älter als 3 Tage ist (ab 25.11.2026): zuerst BerryBase 4 GB, BOX-3, EchoS3R, dann die übrigen Zeilen. | `docs/recherche/lieferbarkeit.md` |
+| Claude (Lauf Recherche) | Diese Datei neu prüfen, sobald der Stand älter als 3 Tage ist (ab 25.11.2026): zuerst BerryBase 4 GB, BOX-3, EchoS3R, dann die übrigen Zeilen und die am 8.11. gesehenen Händler Soldered, Geizhals und Galaxus. | `docs/recherche/lieferbarkeit.md` |
 | Claude (Lauf Recherche) | Zubehör neu prüfen (Netzteil, Kühler, microSD, Mikrofon, Lautsprecher). | `docs/recherche/lieferbarkeit.md` |
 | Claude (Lauf Planen & Bericht) | Entscheidung „Zielboard für die Firmware“ vorbereiten: BOX-3, Atom EchoS3R, CoreS3 oder Variante B mit einzelnen Bauteilen. | `docs/autopilot/backlog.md` |
