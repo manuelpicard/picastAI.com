@@ -490,14 +490,22 @@ def eigene_kommentare(nummer: int, seit: datetime | None = None, seiten: int = 1
     return ergebnis
 
 
-def finde_issue(titel: str, anlegen: bool, beschreibung: str = "") -> int | None:
+def finde_issues(titel: str) -> list[int]:
+    """Nummern aller offenen eigenen Issues mit diesem Titel, das älteste zuerst."""
     liste = gh(f"repos/{REPO}/issues?state=open&creator={EIGENTUEMER}&per_page=100") or []
-    for eintrag in liste:
-        if "pull_request" not in eintrag and eintrag.get("title") == titel:
-            return eintrag["number"]
+    return sorted(e["number"] for e in liste if "pull_request" not in e and e.get("title") == titel)
+
+
+def finde_issue(titel: str, anlegen: bool, beschreibung: str = "") -> int | None:
+    """Das älteste offene Issue mit diesem Titel. Legen zwei Läufe es gleichzeitig an, gilt danach das älteste."""
+    nummern = finde_issues(titel)
+    if nummern:
+        return nummern[0]
     if not anlegen:
         return None
-    return gh(f"repos/{REPO}/issues", methode="POST", daten={"title": titel, "body": beschreibung})["number"]
+    neu = gh(f"repos/{REPO}/issues", methode="POST", daten={"title": titel, "body": beschreibung})["number"]
+    nummern = finde_issues(titel)
+    return nummern[0] if nummern else neu
 
 
 def main_ci() -> tuple[str, str, str]:
@@ -513,8 +521,7 @@ def verbrauch_der_woche(zeitpunkt: datetime) -> tuple[float, datetime, datetime]
     """Verbrauch im Wochenmodus dieser Woche laut Laufprotokoll, dazu Wochenbeginn und Endspurt-Beginn."""
     beginn = wochenbeginn(zeitpunkt)
     bis = endspurt_beginn(beginn)
-    nummer = finde_issue(ISSUE_LAEUFE, anlegen=False)
-    eintraege = eigene_kommentare(nummer, seit=beginn, seiten=3) if nummer else []
+    eintraege = [k for n in finde_issues(ISSUE_LAEUFE) for k in eigene_kommentare(n, seit=beginn, seiten=3)]
     return wochenverbrauch(eintraege, beginn, bis, zeitpunkt), beginn, bis
 
 
@@ -607,9 +614,11 @@ def befehl_lage() -> int:
             zeile = " · ".join(f"{p.id} (P{p.prio}) {kurz(p.titel, 48)}" for p in auswahl) or "keine"
             print(f"  {rolle}: {zeile}")
 
-    nummer = finde_issue(ISSUE_LAEUFE, anlegen=False)
+    nummern = finde_issues(ISSUE_LAEUFE)
+    nummer = nummern[0] if nummern else None
     if nummer:
-        eintraege = eigene_kommentare(nummer, seit=zeitpunkt - timedelta(hours=24))
+        eintraege = sorted((k for n in nummern for k in eigene_kommentare(n, seit=zeitpunkt - timedelta(hours=24))),
+                           key=lambda k: k.get("created_at") or "")
         zeilen = [kurz((k.get("body") or "").split("\n", 1)[0], 90) for k in eintraege][-8:]
         print("Laufprotokoll (24 h): " + (" | ".join(zeilen) if zeilen else "keine Einträge"))
 
@@ -617,7 +626,7 @@ def befehl_lage() -> int:
     print(f"Neustart des Wochenlimits: {zeitpunkt_text(beginn)} (zuletzt {berlin(beginn)}, "
           f"nächster {berlin(beginn + timedelta(days=7))}).")
     if nummer and zeitpunkt - beginn < timedelta(hours=48):  # nur in den ersten zwei Tagen nach dem Neustart
-        seit_neustart = eigene_kommentare(nummer, seit=beginn, seiten=3)
+        seit_neustart = [k for n in nummern for k in eigene_kommentare(n, seit=beginn, seiten=3)]
         bericht_da = any((k.get("body") or "").startswith("Ende · Planen") for k in seit_neustart)
         print("Wochenbericht fällig: " + ("nein (seit dem Neustart lief „Planen & Bericht“ schon)" if bericht_da
                                           else "ja (erster Lauf „Planen & Bericht“ seit dem Neustart)"))

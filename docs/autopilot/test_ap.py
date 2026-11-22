@@ -312,5 +312,14 @@ class FahrplanMitBudgetTest(unittest.TestCase):
         self.assertEqual(self.rufe("Bauen", b(2026, 11, 30, 6, 40), fehler=ap.GhFehler("kein Netz")), 0)
 
 
+class IssueTest(unittest.TestCase):
+    def test_aeltestes_gilt(self):
+        liste = [{"number": 88, "title": ap.ISSUE_LAEUFE}, {"number": 86, "title": ap.ISSUE_LAEUFE},
+                 {"number": 90, "title": "anders"}, {"number": 85, "title": ap.ISSUE_LAEUFE, "pull_request": {}}]
+        with mock.patch.object(ap, "gh", return_value=liste):
+            self.assertEqual(ap.finde_issues(ap.ISSUE_LAEUFE), [86, 88])
+            self.assertEqual(ap.finde_issue(ap.ISSUE_LAEUFE, anlegen=False), 86)
+
+
 if __name__ == "__main__":
     unittest.main()
