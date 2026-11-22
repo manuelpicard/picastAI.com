@@ -1355,12 +1355,14 @@ test('B1: Verworfene Geschichte macht keinen zweiten Versuch und schreibt keine 
   let release!: () => void;
   const gate = new Promise<void>((resolve) => (release = resolve));
   const storyCalls: string[] = [];
+  let storyRequest: LlmJsonRequest | undefined;
   const llm: LlmProvider = {
     name: 'anthropic',
     model: 'fake',
     generateJson: async (request: LlmJsonRequest) => {
       if (request.schemaName === 'kunibert_antwort') return answer('Ein Einhorn ist ein Fabeltier.');
       storyCalls.push(request.schemaName);
+      storyRequest = request;
       await gate;
       // Der erste Entwurf fällt durch den Ausgabe-Check; ohne Verwerfen käme ein zweiter Versuch.
       return story('Der Drache war tot.');
@@ -1380,10 +1382,36 @@ test('B1: Verworfene Geschichte macht keinen zweiten Versuch und schreibt keine 
   console.warn = originalWarn;
   assert.equal(result.kind, 'frage');
   assert.equal(storyCalls.length, 1, 'kein zweiter Versuch nach dem Verwerfen');
+  assert.equal(storyRequest?.mayRetry?.(), false, 'auch keine Wiederholung in llm.ts nach dem Verwerfen');
   const discarded = lines.find((line) => line.includes('modus=vorab_verworfen')) ?? '';
   assert.match(discarded, / sprachmodell_aufrufe=1 /);
   assert.deepEqual(warnings, [], 'keine Warnung zu einem Teil, den niemand hört');
 });
+
+test('N1120-1610-b: Darf die Anfrage nicht mehr an Claude (zum Beispiel gesperrt), folgt nach der Einordnung kein Aufruf mehr', silent(async () => {
+  const schemas: string[] = [];
+  let allowed = true;
+  let classification: LlmJsonRequest | undefined;
+  const llm: LlmProvider = {
+    name: 'anthropic',
+    model: 'fake',
+    generateJson: async (request: LlmJsonRequest) => {
+      schemas.push(request.schemaName);
+      if (request.schemaName === 'kunibert_antwort') {
+        classification = request;
+        allowed = false; // Das Gerät wird gesperrt, während Claude einordnet.
+        return { category: 'geschichte', speech: '' };
+      }
+      return story('Kunibert ritt in den Wald. Dort sang ein Vogel ein Lied.');
+    },
+  };
+  const timer = new TurnTimer();
+  timer.guardLlm(() => allowed);
+  const result = await new Brain(llm, { storyMinWords: 5 }).handle('frage', 'Erzähl mir eine Geschichte', {}, timer);
+  assert.deepEqual(schemas, ['kunibert_antwort'], 'kein Geschichtenaufruf');
+  assert.equal(classification?.mayRetry?.(), false, 'auch keine Wiederholung der Einordnung');
+  assert.ok(result.speech, 'der Erzähler antwortet trotzdem (server.ts ersetzt das dann durch 401 oder den festen Satz)');
+}));
 
 // ---------------------------------------------------------------------------
 // Punkt B2: Stopp per Taste. Eine Idee nach dem Stopp setzt an der gehörten Stelle an.

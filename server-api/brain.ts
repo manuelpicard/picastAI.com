@@ -655,6 +655,11 @@ class EarlyStoryTimer implements StageTimer {
     return this.stopped ? 0 : this.parent.remainingMs();
   }
 
+  /** Nach dem Verwerfen nichts mehr an Claude, auch keine Wiederholung in llm.ts; sonst wie die Anfrage. */
+  allowsLlm(): boolean {
+    return !this.stopped && llmAllowed(this.parent);
+  }
+
   noteLlm(usage: LlmUsage, usd: number | null): void {
     this.turn.noteLlm(usage, usd);
   }
@@ -680,6 +685,11 @@ class EarlyStoryTimer implements StageTimer {
     for (const args of this.warnings.splice(0)) warnTurn(parent, ...args);
     for (const line of this.lines.splice(0)) logTurn(parent, line);
   }
+}
+
+/** Darf die Anfrage noch an das Sprachmodell (`StageTimer.allowsLlm`; ohne Prüfung: ja)? */
+function llmAllowed(timer: StageTimer): boolean {
+  return timer.allowsLlm ? timer.allowsLlm() : true;
 }
 
 /** Protokollzeile einer Anfrage über ihre Messung (eine früh gestartete Geschichte hält sie zurück). */
@@ -758,8 +768,8 @@ export class Brain {
         settled = true;
         held?.drop();
         early.stop();
-        // Der laufende Aufruf endet normal (er lässt sich nicht abbrechen), aber ohne zweiten Versuch;
-        // sein Verbrauch kommt ins Protokoll.
+        // Der laufende Aufruf endet normal (er lässt sich nicht abbrechen), aber ohne neuen zweiten
+        // Versuch und ohne Wiederholung in llm.ts; sein Verbrauch kommt ins Protokoll.
         void promise.catch(() => undefined).finally(() => {
           const line = early.turn.logLine('verworfen');
           if (line) console.log(line);
@@ -784,6 +794,10 @@ export class Brain {
    * eigene Grenze des Anbieters.
    */
   private llmTimeoutMs(timer: StageTimer): number | undefined {
+    // Gesperrt, Einwilligung widerrufen oder Schlafmodus: kein Aufruf mehr (N1120-1610-b). Der Aufrufer
+    // fängt den Fehler wie bei einem aufgebrauchten Zeitbudget; server.ts antwortet dann mit 401 oder
+    // dem festen Satz.
+    if (!llmAllowed(timer)) throw new Error('Anfrage angehalten, kein weiterer Sprachmodell-Aufruf');
     const left = budgetTimeoutMs(timer, TTS_RESERVE_MS);
     if (left !== undefined && left < MIN_LLM_MS) throw new Error('Zeitbudget der Anfrage aufgebraucht, kein weiterer Sprachmodell-Aufruf');
     return left;
@@ -881,6 +895,7 @@ export class Brain {
           schemaName: 'kunibert_antwort',
           schema: QUESTION_SCHEMA,
           timeoutMs: this.llmTimeoutMs(timer),
+          mayRetry: () => llmAllowed(timer),
           onUsage: this.meter(timer),
         })) as { category?: string; speech?: string };
         if (early) {
@@ -1088,6 +1103,9 @@ export class Brain {
             schema: STORY_SCHEMA,
             maxOutputTokens: 2000,
             timeoutMs: this.llmTimeoutMs(timer),
+            // Auch die eine Wiederholung in llm.ts nur, solange die Anfrage noch an Claude darf (nicht
+            // gesperrt, nicht verworfen).
+            mayRetry: () => llmAllowed(timer),
             onUsage: this.meter(timer, (usd) => { spent += usd; }),
             // Nur im ersten Versuch und nur mit Empfänger: fertige Absätze sofort weitergeben.
             ...(sink && attempt === 1 ? {

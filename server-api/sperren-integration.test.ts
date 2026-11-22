@@ -4,8 +4,9 @@
 // mitschreibt und Aufrufe anhalten kann; als Sprachdienst eine zweite Attrappe, deren Erkennung und
 // Sprachausgabe sich ebenfalls anhalten lassen. Geprüft wird von außen, dass nach dem Sperren, nach
 // einem Widerruf der Einwilligung und im Schlafmodus kein neuer Aufruf an Claude hinausgeht:
-//   1. während der Spracherkennung (Sprechtaste und /v1/turn),
-//   2. während die Erzähltaste auf die Vorbereitung des nächsten Teils wartet,
+//   1. während der Spracherkennung (Sprechtaste und /v1/turn) und zwischen Einordnung und Geschichte,
+//   2. während die Erzähltaste auf die Vorbereitung des nächsten Teils wartet, und keine Wiederholung
+//      eines Aufrufs, der vor dem Sperren begann,
 //   3. im Ton-Strom, vor dem ersten Ton und während der Strom läuft.
 // Es gibt keine echten Aufrufe und keine echten Schlüssel; alle Werte unten sind erfunden.
 import assert from 'node:assert/strict';
@@ -67,13 +68,14 @@ const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
  * Attrappe für die Messages-API. Fragen beantwortet sie („Das weiß ich.“), Geschichten erzählt sie als
- * Teil N, den der Auftrag nennt (mit Ton-Strom als Server-Sent Events). `holdIf`: Diese Aufrufe warten,
- * bis `release` sie freigibt; mit `fail` antworten sie dann mit HTTP 400. Ein bleibender Fehler: `llm.ts`
- * wiederholt ihn nicht (anders als 429 und 5xx).
+ * Teil N, den der Auftrag nennt (mit Ton-Strom als Server-Sent Events). Klingt die Äußerung nach einem
+ * Geschichtenwunsch („geschichte“), ordnet sie sie so ein. `holdIf`: Diese Aufrufe warten, bis `release`
+ * sie freigibt; mit einem Status antworten sie dann mit diesem Fehler. 400 wiederholt `llm.ts` nicht,
+ * 500 einmal nach 700 ms.
  */
 function startFakeClaude() {
   const calls: ClaudeCall[] = [];
-  const held: Array<(fail: boolean) => void> = [];
+  const held: Array<(status: number | null) => void> = [];
   const state = { holdIf: null as null | ((call: ClaudeCall) => boolean) };
   const server = http.createServer((req, res) => {
     const chunks: Buffer[] = [];
@@ -87,16 +89,17 @@ function startFakeClaude() {
       const call = { schema: body.tools?.[0]?.name ?? '', user: String(body.messages[0]?.content ?? '') };
       calls.push(call);
       if (state.holdIf?.(call)) {
-        const fail = await new Promise<boolean>((resolve) => held.push(resolve));
-        if (fail) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end('{"type":"error","error":{"type":"invalid_request_error"}}');
+        const status = await new Promise<number | null>((resolve) => held.push(resolve));
+        if (status) {
+          res.writeHead(status, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ type: 'error', error: { type: status === 400 ? 'invalid_request_error' : 'api_error' } }));
           return;
         }
       }
       let input: Record<string, unknown>;
       if (call.schema === 'kunibert_antwort') {
-        input = { category: 'frage', speech: 'Das weiß ich.' };
+        const said = call.user.match(/«([^»]*)»/)?.[1] ?? '';
+        input = /geschichte/.test(said) ? { category: 'geschichte', speech: '' } : { category: 'frage', speech: 'Das weiß ich.' };
       } else {
         const part = Number(call.user.match(/Teil (\d+) von/)?.[1] ?? 1);
         input = {
@@ -133,9 +136,9 @@ function startFakeClaude() {
     get waiting() {
       return held.length;
     },
-    /** Gibt alle angehaltenen Aufrufe frei. */
-    release(fail = false) {
-      for (const resolve of held.splice(0)) resolve(fail);
+    /** Gibt alle angehaltenen Aufrufe frei; mit `status` antworten sie mit diesem HTTP-Fehler. */
+    release(status: number | null = null) {
+      for (const resolve of held.splice(0)) resolve(status);
     },
     listening: listen(server),
   };
@@ -148,7 +151,7 @@ function startFakeClaude() {
 function startFakeSpeech() {
   const sttHeld: Array<() => void> = [];
   const ttsHeld: Array<() => void> = [];
-  const state = { holdStt: false, holdTtsIf: '' };
+  const state = { holdStt: false, holdTtsIf: '', transcript: 'warum ist der himmel blau' };
   const server = http.createServer((req, res) => {
     const chunks: Buffer[] = [];
     req.on('data', (chunk: Buffer) => chunks.push(chunk));
@@ -164,7 +167,7 @@ function startFakeSpeech() {
       if (req.url === '/audio/transcriptions') {
         if (state.holdStt) await new Promise<void>((resolve) => sttHeld.push(resolve));
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ text: 'warum ist der himmel blau' }));
+        res.end(JSON.stringify({ text: state.transcript }));
         return;
       }
       res.writeHead(404);
@@ -304,6 +307,17 @@ async function startKunibert(extraEnv: Record<string, string>) {
     callsSince(mark: number): ClaudeCall[] {
       return claude.calls.slice(mark);
     },
+
+    /** Anzahl der Vorbereitungen im Server (alle Geräte; nur eine Zahl aus /api/status). */
+    async prefetches(): Promise<number> {
+      const res = await fetch(`${base}/api/status`, { headers: admin });
+      return ((await res.json()) as { storyPrefetches: number }).storyPrefetches;
+    },
+
+    /** Wartet, bis eine Zeile mit `text` im Protokoll des Servers steht (ab Position `since`). */
+    async logged(text: string, since: number): Promise<void> {
+      await waitFor(() => kunibert.output.slice(since).includes(text), `Protokoll: ${text}`);
+    },
   };
   kunibert.child.stdout?.on('data', (chunk: Buffer) => (kunibert.output += chunk));
   kunibert.child.stderr?.on('data', (chunk: Buffer) => (kunibert.output += chunk));
@@ -343,6 +357,23 @@ async function firstPartWithHeldPreparation(k: Awaited<ReturnType<typeof startKu
   assert.equal(first.status, 200, await first.clone().text());
   await waitFor(() => k.claude.waiting === 1, 'Vorbereitung von Teil 2 wartet bei Claude');
   k.claude.state.holdIf = null;
+}
+
+/**
+ * Zweiter Druck auf die Erzähltaste; kehrt zurück, sobald der Server auf die Vorbereitung wartet. Die
+ * Antwort steckt in einem Objekt: Ein async-Rückgabewert, der selbst ein Versprechen ist, würde sonst
+ * mit abgewartet.
+ */
+async function secondPressWaiting(k: Awaited<ReturnType<typeof startKunibert>>, device: Device): Promise<{ response: Promise<Response> }> {
+  const before = await k.prefetches();
+  const pending = k.storyButton(device);
+  // prefetcher.take nimmt den Eintrag sofort heraus und wartet dann auf die Vorbereitung.
+  const deadline = Date.now() + 5_000;
+  while ((await k.prefetches()) !== before - 1) {
+    if (Date.now() > deadline) throw new Error('Zeit abgelaufen: Erzähltaste wartet auf die Vorbereitung');
+    await pause(20);
+  }
+  return { response: pending };
 }
 
 describe('Nach dem Sperren nichts mehr an Claude (echter Server, N1120-1610-b)', () => {
@@ -420,12 +451,10 @@ describe('Nach dem Sperren nichts mehr an Claude (echter Server, N1120-1610-b)',
   it('Erzähltaste: beim Warten auf die Vorbereitung gesperrt: 401, kein neuer Aufruf an Claude', async () => {
     const device = await k.device();
     await firstPartWithHeldPreparation(k, device);
-    const pending = k.storyButton(device);
-    // Der Server wartet jetzt auf die Vorbereitung (prefetcher.take).
-    await pause(300);
+    const { response: pending } = await secondPressWaiting(k, device);
     const mark = k.claude.calls.length;
     assert.equal((await k.lock(device)).status, 200);
-    k.claude.release(true); // Die Vorbereitung scheitert: Ohne Prüfung käme jetzt ein frischer Aufruf an Claude.
+    k.claude.release(400); // Die Vorbereitung scheitert: Ohne Prüfung käme jetzt ein frischer Aufruf an Claude.
     const res = await pending;
     assert.equal(res.status, 401);
     await pause(200);
@@ -435,11 +464,10 @@ describe('Nach dem Sperren nichts mehr an Claude (echter Server, N1120-1610-b)',
   it('Erzähltaste: Einwilligung beim Warten auf die Vorbereitung widerrufen: fester Satz, kein neuer Aufruf an Claude', async () => {
     const device = await k.device();
     await firstPartWithHeldPreparation(k, device);
-    const pending = k.storyButton(device);
-    await pause(300);
+    const { response: pending } = await secondPressWaiting(k, device);
     const mark = k.claude.calls.length;
     assert.equal((await k.withdrawConsent(device)).status, 200);
-    k.claude.release(true);
+    k.claude.release(400);
     const res = await pending;
     assert.equal(res.status, 200);
     const body = (await res.json()) as { text: string; session_end: boolean };
@@ -452,11 +480,10 @@ describe('Nach dem Sperren nichts mehr an Claude (echter Server, N1120-1610-b)',
   it('Erzähltaste: Schlafmodus beim Warten auf die Vorbereitung: fester Satz, kein neuer Aufruf an Claude', async () => {
     const device = await k.device();
     await firstPartWithHeldPreparation(k, device);
-    const pending = k.storyButton(device);
-    await pause(300);
+    const { response: pending } = await secondPressWaiting(k, device);
     const mark = k.claude.calls.length;
     assert.equal((await k.parentJson(device, 'PUT', 'einstellungen', { schlafmodus: true })).status, 200);
-    k.claude.release(true);
+    k.claude.release(400);
     const res = await pending;
     assert.equal(res.status, 200);
     assert.equal(((await res.json()) as { text: string }).text, SLEEPING_DE);
@@ -467,17 +494,86 @@ describe('Nach dem Sperren nichts mehr an Claude (echter Server, N1120-1610-b)',
   it('Erzähltaste: Geschichte beim Warten neu begonnen: der alte Stand geht nicht mehr an Claude', async () => {
     const device = await k.device();
     await firstPartWithHeldPreparation(k, device);
-    const pending = k.storyButton(device);
-    await pause(300);
+    const { response: pending } = await secondPressWaiting(k, device);
     const mark = k.claude.calls.length;
     assert.equal((await k.parentJson(device, 'POST', 'geschichte-neu', {})).status, 200);
-    k.claude.release(true);
+    k.claude.release(400);
     const res = await pending;
     assert.equal(res.status, 200, await res.clone().text());
-    const calls = k.callsSince(mark);
-    assert.equal(calls.length, 1, 'genau ein frischer Aufruf');
-    assert.match(calls[0].user, /Teil 1 von/, 'eine neue Folge beginnt');
-    assert.ok(!calls[0].user.includes(summaryOf(1)), 'ohne den gelöschten Stand');
+    const [fresh] = k.callsSince(mark);
+    assert.match(fresh.user, /Teil 1 von/, 'eine neue Folge beginnt');
+    assert.ok(!fresh.user.includes(summaryOf(1)), 'ohne den gelöschten Stand');
+    // Der neue Teil 1 ist gespeichert (Zähler des neuen Stands): Der Server bereitet Teil 2 vor.
+    await waitFor(() => k.callsSince(mark).some((call) => /Teil 2 von/.test(call.user)), 'Vorbereitung von Teil 2 der neuen Folge');
+  });
+
+  it('Sprechtaste: während der Einordnung gesperrt: die Geschichte geht nicht mehr an Claude', async () => {
+    const device = await k.device();
+    k.speech.state.transcript = 'erzähl mir eine geschichte vom drachen';
+    k.claude.state.holdIf = (call) => call.schema === 'kunibert_antwort';
+    try {
+      const pending = k.question(device);
+      await waitFor(() => k.claude.waiting === 1, 'Einordnung wartet bei Claude');
+      k.claude.state.holdIf = null;
+      const mark = k.claude.calls.length;
+      assert.equal((await k.lock(device)).status, 200);
+      k.claude.release(); // Die Einordnung sagt „geschichte“: Ohne Prüfung käme jetzt der Geschichtenaufruf.
+      const res = await pending;
+      assert.equal(res.status, 401);
+      await pause(200);
+      assert.deepEqual(k.callsSince(mark), [], 'kein Geschichtenaufruf nach dem Sperren');
+    } finally {
+      k.speech.state.transcript = 'warum ist der himmel blau';
+    }
+  });
+
+  it('Sprechtaste: Einwilligung während der Einordnung widerrufen: fester Satz, die Geschichte geht nicht an Claude', async () => {
+    const device = await k.device();
+    k.speech.state.transcript = 'erzähl mir eine geschichte vom drachen';
+    k.claude.state.holdIf = (call) => call.schema === 'kunibert_antwort';
+    try {
+      const pending = k.question(device);
+      await waitFor(() => k.claude.waiting === 1, 'Einordnung wartet bei Claude');
+      k.claude.state.holdIf = null;
+      const mark = k.claude.calls.length;
+      assert.equal((await k.withdrawConsent(device)).status, 200);
+      k.claude.release();
+      const res = await pending;
+      assert.equal(res.status, 200);
+      assert.equal(((await res.json()) as { text: string }).text, CONSENT_MISSING_DE);
+      await pause(200);
+      assert.deepEqual(k.callsSince(mark), [], 'kein Geschichtenaufruf nach dem Widerruf');
+    } finally {
+      k.speech.state.transcript = 'warum ist der himmel blau';
+    }
+  });
+
+  it('Vorbereitung: gesperrt, während Claude sie schreibt, dann Ausfall (500): keine Wiederholung nach dem Sperren', async () => {
+    const device = await k.device();
+    await firstPartWithHeldPreparation(k, device);
+    const mark = k.claude.calls.length;
+    const since = k.output.length;
+    assert.equal((await k.lock(device)).status, 200);
+    k.claude.release(500); // llm.ts wiederholte das sonst nach 700 ms.
+    await k.logged('modus=vorbereitung', since);
+    await pause(200);
+    assert.deepEqual(k.callsSince(mark), [], 'keine Wiederholung nach dem Sperren');
+  });
+
+  it('/v1/turn: gesperrt, während die Antwort vertont wird: 401 und kein Ton', async () => {
+    const device = await k.device();
+    k.speech.state.holdTtsIf = 'Das weiß ich';
+    const pending = k.turn(device, { mode: 'frage' });
+    await waitFor(() => k.speech.ttsWaiting === 1, 'Antwort wartet auf die Sprachausgabe');
+    assert.equal((await k.lock(device)).status, 200);
+    k.speech.releaseTts();
+    assert.equal((await pending).status, 401);
+  });
+
+  it('Protokoll: keine Geräte-IDs und keine Äußerungen', () => {
+    assert.ok(k.output.includes('Zeitmessung '), 'das Protokoll wurde mitgelesen');
+    assert.ok(!k.output.includes('sperren-'), 'keine Geräte-ID');
+    assert.ok(!/himmel blau|geschichte vom drachen/.test(k.output), 'keine Äußerung');
   });
 });
 
@@ -520,9 +616,35 @@ describe('Nach dem Sperren nichts mehr an Claude, mit Ton-Strom (echter Server, 
     await waitFor(() => k.speech.ttsWaiting === 1, 'zweiter Absatz wartet auf die Sprachausgabe');
     const mark = k.claude.calls.length;
     assert.equal((await k.lock(device)).status, 200);
+    const since = k.output.length;
     k.speech.releaseTts();
     assert.ok((await played).byteLength > 0, 'der schon begonnene Strom läuft zu Ende');
-    await pause(500);
+    await k.logged('modus=weiter_strom', since);
+    await pause(200);
     assert.deepEqual(k.callsSince(mark), [], 'nach dem Strom keine Vorbereitung von Teil 2');
+  });
+
+  it('Schlafmodus beginnt, während der Strom läuft: der Teil zählt, aber nichts wird vorbereitet', async () => {
+    const device = await k.device();
+    k.speech.state.holdTtsIf = SECOND_PARAGRAPH;
+    const res = await k.storyButton(device, stream);
+    assert.equal(res.status, 200, await res.clone().text());
+    const body = (await res.json()) as { audio_url: string };
+    const audio = await fetch(k.base + new URL(body.audio_url).pathname, { headers: device.auth });
+    const played = audio.arrayBuffer();
+    await waitFor(() => k.speech.ttsWaiting === 1, 'zweiter Absatz wartet auf die Sprachausgabe');
+    const mark = k.claude.calls.length;
+    const since = k.output.length;
+    assert.equal((await k.parentJson(device, 'PUT', 'einstellungen', { schlafmodus: true })).status, 200);
+    k.speech.releaseTts();
+    assert.ok((await played).byteLength > 0);
+    await k.logged('modus=weiter_strom status=200', since);
+    await pause(200);
+    assert.deepEqual(k.callsSince(mark), [], 'im Schlafmodus keine Vorbereitung');
+  });
+
+  it('Protokoll: keine Geräte-IDs', () => {
+    assert.ok(k.output.includes('Zeitmessung '), 'das Protokoll wurde mitgelesen');
+    assert.ok(!k.output.includes('sperren-'), 'keine Geräte-ID');
   });
 });

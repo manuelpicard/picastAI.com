@@ -207,6 +207,28 @@ test('Store: Sperren vergisst sofort, noch während der Store schreibt (N1120-16
   });
 });
 
+test('Store: scheitert das Aufräumen beim Sperren, wird der Widerruf trotzdem gespeichert (ohne Geräte-ID im Protokoll)', async () => {
+  await withEnv({ ...CLEAN, NODE_ENV: 'production' }, async () => {
+    const store = new FakeStore();
+    const registry = new DeviceRegistry(store);
+    const { deviceId } = await registry.register('kinderzimmer-mia');
+    const warnings: string[] = [];
+    const warn = console.warn;
+    console.warn = (...args: unknown[]) => { warnings.push(args.map(String).join(' ')); };
+    try {
+      const result = await registry.revokeAndPersist(deviceId, () => {
+        throw new Error(`kaputt bei ${deviceId}`);
+      });
+      assert.deepEqual(result, { success: true, persisted: true });
+    } finally {
+      console.warn = warn;
+    }
+    assert.equal(store.entries.get(deviceId)?.revoked, true);
+    assert.deepEqual(warnings, ['Aufräumen nach einem Widerruf fehlgeschlagen (Error).']);
+    assert.ok(!warnings.join('').includes('kinderzimmer'), 'keine Geräte-ID im Protokoll');
+  });
+});
+
 test('Sperren ohne Store ruft onRevoked auf, ein unbekanntes Gerät nicht', async () => {
   await withEnv({ ...CLEAN, NODE_ENV: 'production' }, async () => {
     const registry = new DeviceRegistry();

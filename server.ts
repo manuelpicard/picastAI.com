@@ -64,11 +64,14 @@ const stopReports = new RateLimiter(60, 600);
 const FIXED_STORY_TEXTS = new Set([STORY_CLOSING, STORY_CLOSING_FIRST, EPISODE_CLOSING, STORY_PAUSE_TEXT]);
 // Nächster Geschichtenteil im Hintergrund (Sprachmodell und Sprachausgabe), siehe server-api/prefetch.ts.
 const prefetcher = new StoryPrefetcher(
-  async (state) => {
+  async (state, deviceId) => {
     // Eigene Zeitmessung ohne Budget (läuft im Hintergrund): Die Zeile zeigt Dauer, Token und Kosten
     // des vorbereiteten Teils, damit auch diese Aufrufe in den Kosten je Folge sichtbar sind.
     const timer = new TurnTimer(undefined, undefined, Number.POSITIVE_INFINITY);
     timer.mode = 'vorbereitung';
+    // Gesperrt, ohne Einwilligung oder im Schlafmodus: kein weiterer Aufruf an Claude, auch keine
+    // Wiederholung (N1120-1610-b).
+    timer.guardLlm(() => registry.isActive(deviceId) && !blockReasonFor(deviceId));
     let ok = false;
     try {
       const result = await synthesizeTimed(await brain.handle('weiter', '', state, timer), timer);
@@ -233,6 +236,9 @@ async function respondTurn(
   generation: number,
   run: (sink?: StorySink) => Promise<Awaited<ReturnType<Brain['handle']>>>
 ): Promise<any> {
+  // Zwischen zwei Aufrufen an Claude (Einordnung, Geschichte, zweiter Versuch, Wiederholung) prüft der
+  // Erzähler, ob das Gerät noch darf (N1120-1610-b).
+  timer.guardLlm(() => !refusalFor(req, deviceId));
   if (!wantsAudioStream(req)) {
     const result = await synthesizeTimed(await run(), timer);
     timer.noteAudio(result.wav);
@@ -640,10 +646,11 @@ app.post(
         // begonnen? Dann geht nichts mehr an das Sprachmodell (N1120-1610-b).
         const late = refusalFor(req, deviceId);
         if (late) return await refuse(req, res, deviceId, 'kunibert_story', timer, late);
-        // Haben die Eltern die Geschichte beim Warten gelöscht (neu beginnen, alles löschen), geht der
-        // alte Stand nicht mehr an Claude.
-        const current = deviceStoryStates.generation(deviceId) === generation ? state : deviceStoryStates.get(deviceId);
-        return await respondTurn(req, res, deviceId, timer, 'kunibert_story', generation, (sink) => brain.handle('weiter', '', current || {}, timer, sink));
+        // Haben die Eltern die Geschichte beim Warten neu begonnen, geht der alte Stand nicht mehr an
+        // Claude. Es gilt der neue Stand mit seinem Zähler: So wird der neue Teil 1 gespeichert.
+        const nowGeneration = deviceStoryStates.generation(deviceId);
+        const current = nowGeneration === generation ? state : deviceStoryStates.get(deviceId);
+        return await respondTurn(req, res, deviceId, timer, 'kunibert_story', nowGeneration, (sink) => brain.handle('weiter', '', current || {}, timer, sink));
       }
       const result = prepared;
       timer.noteAudio(result.wav);
@@ -827,6 +834,7 @@ app.post(
       if (refusal === 'gesperrt') return res.status(401).json({ error: 'unauthorized' });
       if (refusal) return await sendTurnHint(req, res, deviceId, refusal, timer);
 
+      timer.guardLlm(() => !refusalFor(req, deviceId));
       const turnResult = await synthesizeTimed(await brain.handle(mode, transcript, state, timer), timer);
       timer.noteAudio(turnResult.wav);
       // Gesperrt oder angehalten, während die Antwort entstand: kein Ton (wie bei den Geräte-Routen).

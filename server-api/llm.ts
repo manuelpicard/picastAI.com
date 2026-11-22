@@ -27,6 +27,11 @@ export interface LlmJsonRequest {
   /** Token-Zahlen jedes einzelnen Aufrufs (auch eines wiederholten); nur Zahlen. */
   onUsage?: (usage: LlmUsage) => void;
   /**
+   * Wird direkt vor der einen Wiederholung gefragt. false: keine Wiederholung, zum Beispiel weil das
+   * Gerät inzwischen gesperrt ist oder die Antwort verworfen wurde (Punkt N1120-1610-b).
+   */
+  mayRetry?: () => boolean;
+  /**
    * Streaming (Punkt 71): Anthropic liefert die Antwort Stück für Stück, und diese Funktion bekommt
    * nach jedem Stück den bisher erhaltenen Wert des Felds `streamField` (Standard `text`). Das
    * Ergebnis am Ende ist dasselbe Objekt wie ohne Streaming. Ist schon Text angekommen, wird bei einem
@@ -116,6 +121,7 @@ export class AnthropicProvider implements LlmProvider {
       const left = deadline - Date.now() - retryDelayMs;
       if (!(error instanceof LlmError) || !error.transient || left < MIN_RETRY_MS || delivered) throw error;
       await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+      if (request.mayRetry && !request.mayRetry()) throw error;
       return this.attempt(request, left);
     }
   }

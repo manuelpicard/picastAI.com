@@ -147,7 +147,14 @@ export class DeviceRegistry {
    */
   public async revokeAndPersist(deviceId: string, onRevoked?: () => void): Promise<{ success: boolean; persisted: boolean }> {
     const success = this.revoke(deviceId);
-    if (success) onRevoked?.();
+    if (success && onRevoked) {
+      try {
+        onRevoked();
+      } catch (err) {
+        // Der Widerruf wird trotzdem gespeichert. Ohne Geräte-ID und ohne Fehlertext im Protokoll.
+        console.warn(`Aufräumen nach einem Widerruf fehlgeschlagen (${storeErrorCode(err)}).`);
+      }
+    }
     if (!success || !this.store) return { success, persisted: false };
     try {
       await this.store.markRevoked(deviceId);
