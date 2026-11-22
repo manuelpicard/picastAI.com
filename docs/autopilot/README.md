@@ -13,13 +13,13 @@ Das Wochenlimit reicht nur für einen Teil der Woche (Schätzung nach der Woche 
 | Wochenmodus | Fr 08:00 bis Do 06:59 | nur die Termine, die der [Fahrplan](fahrplan.md) auf „arbeiten“ setzt; ein Punkt je Lauf |
 | Endspurt | Do 07:00 bis Fr 07:59 | alle Termine; weiterarbeiten, bis das Limit greift oder nichts Sinnvolles mehr offen ist |
 
-Jeder Lauf fragt beim Start `python3 docs/autopilot/ap.py fahrplan <Rolle>`. Bei Pause endet er sofort. Im Wochenmodus gilt zusätzlich das Wochenbudget: Bauen, Prüfen und Recherche teilen sich eine Laufzeit, die gleichmäßig bis Donnerstag 07:00 wächst; das Programm misst den Verbrauch im Laufprotokoll. Der Lauf „Planen & Bericht“ stellt das Budget freitags nach: Griff das Limit vor dem Endspurt, ein Viertel weniger; griff es gar nicht, ein Viertel mehr (Regeln in [`fahrplan.md`](fahrplan.md)).
+Jeder Lauf fragt beim Start `python3 docs/autopilot/ap.py fahrplan <Rolle>`. Bei Pause endet er sofort. Im Wochenmodus bremst zusätzlich das Wochenbudget den Lauf „Bauen“: Die erlaubte Laufzeit wächst gleichmäßig bis Donnerstag 07:00; Bauen, Prüfen und Recherche zählen zum Verbrauch, das Programm misst ihn im Laufprotokoll. Höchstens 15 geplante Aufgaben starten am Tag (alle zusammen); der Autopilot hat 10 Termine. Der Lauf „Planen & Bericht“ stellt das Budget freitags nach: Griff das Limit vor dem Endspurt, ein Viertel weniger; griff es gar nicht, ein Viertel mehr (Regeln in [`fahrplan.md`](fahrplan.md)).
 
 ## Die Aufgaben
 
 | Aufgabe | Zeiten (Europe/Berlin) | Modell | Rolle |
 |---|---|---|---|
-| Kunibert Autopilot · Bauen | täglich 00:37, 06:37, 13:37, 19:37 | Claude Opus 5.5 | Punkte mit Rolle „Bauen“ umsetzen, testen, prüfen lassen, mergen |
+| Kunibert Autopilot · Bauen | täglich 00:37, 03:37, 06:37, 09:37, 13:37, 19:37, 21:37 | Claude Opus 5.5 | Punkte mit Rolle „Bauen“ umsetzen, testen, prüfen lassen, mergen |
 | Kunibert Autopilot · Prüfen | täglich 23:23 | Claude Opus 5.5 | gemergte PRs unabhängig prüfen, Sicherheit, Datenschutz, Tests; Punkte mit Rolle „Prüfen“ |
 | Kunibert Autopilot · Recherche | täglich 11:53 | Claude Sonnet 5.5 | Recherche mit Quellen; ist keine offen, ein Routine-Punkt (Doku, Tests, Werkzeuge) |
 | Kunibert Autopilot · Planen & Bericht | täglich 18:07 | Claude Sonnet 5.5 | Arbeitsliste pflegen und Tagesbericht; freitags zusätzlich Wochenbericht und Fahrplan |

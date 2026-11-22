@@ -348,9 +348,11 @@ def entscheide_fahrplan(zeilen, rolle: str, zeitpunkt: datetime) -> tuple[bool, 
 
 WOCHENBUDGET_RE = re.compile(r"^[ \t>*_-]*Wochenbudget\b[^:\n]*:[ \t*_]*(\d+)\s*Minuten", re.IGNORECASE | re.MULTILINE)
 LAUF_ZEILE_RE = re.compile(r"^\s*(Start|Ende)\s*·\s*([^·\n]+?)\s*·")
-# Nur diese Rollen zählen und werden gebremst. Recherche läuft mit Sonnet (je Token die Hälfte).
-# Planen & Bericht zählt nicht mit und läuft immer, wenn die Tabelle „arbeiten“ sagt.
+# Diese Rollen zählen zum Verbrauch. Recherche läuft mit Sonnet (je Token die Hälfte).
+# Planen & Bericht zählt nicht mit. Gebremst wird nur Bauen; Prüfen, Recherche und Planen & Bericht
+# laufen immer, wenn die Tabelle „arbeiten“ sagt.
 GEWICHT = {"bauen": 1.0, "prüfen": 1.0, "recherche": 0.5}
+GEBREMST = {"bauen"}
 ABGEBROCHEN_MIN = 45       # ein Start ohne Ende zählt so viele Minuten
 LAUF_HOECHSTENS_MIN = 240  # mehr zählt ein einzelner Lauf nicht
 
@@ -506,7 +508,7 @@ def befehl_fahrplan(rolle: str) -> int:
     arbeiten, meldung = entscheide_fahrplan(lies_fahrplan(text), rolle, zeitpunkt)
     print(meldung)
     budget = lies_wochenbudget(text)
-    if arbeiten and budget and phase(zeitpunkt)[0] == "Wochenmodus" and normale_rolle(rolle) in GEWICHT:
+    if arbeiten and budget and phase(zeitpunkt)[0] == "Wochenmodus" and normale_rolle(rolle) in GEBREMST:
         try:
             arbeiten, zeile = wochenbudget_zeile(budget, zeitpunkt)
         except (GhFehler, OSError, ValueError, KeyError, TypeError) as fehler:
