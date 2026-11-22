@@ -360,6 +360,7 @@ class PrueflisteTest(unittest.TestCase):
             {"user": {"login": "manuelpicard"}, "body": "Start · Bauen · So 22.11. 19:29", "issue_url": url + "71", "created_at": zeit},
             {"user": {"login": "manuelpicard"}, "body": "Autopilot-Prüfung (22.11.2026): ok", "issue_url": url + "73", "created_at": zeit},
             {"user": {"login": "manuelpicard"}, "body": "Autopilot-Prüfung: ohne Adresse", "created_at": zeit},
+            {"user": {"login": "manuelpicard"}, "body": "Autopilot-Prüfung: ohne Zeit", "issue_url": url + "75"},
         ]
         self.assertEqual(ap.gepruefte_prs(kommentare), {69: ap.iso(zeit), 73: ap.iso(zeit)}, "der jüngste Kommentar zählt")
 
@@ -391,8 +392,10 @@ class PrueflisteTest(unittest.TestCase):
             aufrufe.append(pfad)
             return [{"id": 1}] * (100 if "page=1&" in pfad else 3)
 
-        with mock.patch.object(ap, "gh", side_effect=gh):
+        ausgabe = io.StringIO()
+        with mock.patch.object(ap, "gh", side_effect=gh), contextlib.redirect_stdout(ausgabe):
             self.assertEqual(len(ap.kommentare_seit(self.jetzt - timedelta(days=7))), 103)
+        self.assertEqual(ausgabe.getvalue(), "", "kein Hinweis, wenn die Grenze nicht greift")
         self.assertEqual(len(aufrufe), 2)
         self.assertIn("since=2026-11-15T19:00:00Z", aufrufe[0])
 
