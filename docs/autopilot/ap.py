@@ -41,7 +41,9 @@ WOCHENTAGE = ("Mo", "Di", "Mi", "Do", "Fr", "Sa", "So")
 VERWAIST_NACH = timedelta(minutes=60)
 PLANUNG_UEBERFAELLIG = timedelta(hours=30)
 PRUEFUNG_UEBERFAELLIG = timedelta(hours=36)
-PRUEFUNG_ZEITRAUM = timedelta(hours=48)
+# So weit zurück sucht `lage` gemergte PRs ohne „Autopilot-Prüfung“ (N1122-1808-a). Überfällig sind sie
+# ab PRUEFUNG_UEBERFAELLIG, ohne Obergrenze im Auftrag; 7 Tage decken auch eine Woche ohne Prüfläufe ab.
+PRUEFUNG_ZEITRAUM = timedelta(days=7)
 FAHRPLAN_TOLERANZ_MIN = 120
 # Neustart des Wochenlimits: Wochentag (Mo = 0), Stunde, Minute (Europe/Berlin). Standard Fr 08:00;
 # main() liest die Zeile „Neustart des Wochenlimits: So 17:30“ aus fahrplan.md.
@@ -551,6 +553,79 @@ def befehl_fahrplan(rolle: str) -> int:
     return 0 if arbeiten else 10
 
 
+def nummer_aus_url(url: str | None) -> int | None:
+    """Nummer des Issues oder PRs aus `issue_url` eines Kommentars (…/issues/69 → 69)."""
+    ende = (url or "").rstrip("/").rsplit("/", 1)[-1]
+    return int(ende) if ende.isdigit() else None
+
+
+def gepruefte_prs(kommentare: list[dict]) -> dict[int, datetime]:
+    """PRs mit einem Kommentar „Autopilot-Prüfung“ vom Konto des Eigentümers: Nummer und Zeit des
+    jüngsten solchen Kommentars. Kommentare anderer Konten zählen nie (das Repo ist öffentlich)."""
+    geprueft: dict[int, datetime] = {}
+    for k in kommentare:
+        if ((k.get("user") or {}).get("login")) != EIGENTUEMER or not (k.get("body") or "").startswith("Autopilot-Prüfung"):
+            continue
+        nummer, zeit = nummer_aus_url(k.get("issue_url")), iso(k.get("created_at"))
+        if nummer is not None and zeit is not None and (nummer not in geprueft or zeit > geprueft[nummer]):
+            geprueft[nummer] = zeit
+    return geprueft
+
+
+def kommentare_seit(seit: datetime, seiten: int = 10) -> list[dict]:
+    """Alle Kommentare an Issues und PRs des Repos seit `seit`: wenige Aufrufe statt einem je PR.
+    Höchstens `seiten` mal 100; greift die Grenze, sagt eine Zeile das (dann fehlen die jüngsten, und
+    `lage` meldet eher zu viele PRs ohne Prüfung als zu wenige)."""
+    ergebnis: list[dict] = []
+    stempel = seit.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    for seite in range(1, seiten + 1):
+        teil = gh(f"repos/{REPO}/issues/comments?per_page=100&page={seite}&sort=created&direction=asc&since={stempel}") or []
+        ergebnis += teil
+        if len(teil) < 100:
+            return ergebnis
+    print(f"Hinweis: mehr als {seiten * 100} Kommentare seit {berlin(seit)}; die jüngsten fehlen in der Prüfliste.")
+    return ergebnis
+
+
+def gemergte_prs_seit(seit: datetime, seiten: int = 5) -> list[dict]:
+    """Gemergte PRs, die seit `seit` zuletzt geändert wurden (ein Merge ist auch eine Änderung).
+
+    Die Liste ist nach der letzten Änderung sortiert. Sie wird seitenweise gelesen, bis eine Seite
+    über `seit` hinaus zurückreicht oder nicht mehr voll ist.
+    """
+    ergebnis: list[dict] = []
+    for seite in range(1, seiten + 1):
+        teil = gh(f"repos/{REPO}/pulls?state=closed&sort=updated&direction=desc&per_page=100&page={seite}") or []
+        ergebnis += teil
+        if len(teil) < 100 or (iso(teil[-1].get("updated_at")) or seit) < seit:
+            break
+    return [p for p in ergebnis if p.get("merged_at")]
+
+
+def pruefliste(gemergt: list[dict], zeitpunkt: datetime, geprueft: dict[int, datetime]) -> tuple[list[str], list[str]]:
+    """Gemergte PRs ohne „Autopilot-Prüfung“ (bis PRUEFUNG_ZEITRAUM zurück) und davon die überfälligen
+    (älter als PRUEFUNG_UEBERFAELLIG). Als Prüfung zählt nur ein Kommentar nach dem Merge. Planungs-PRs
+    brauchen keine zweite Prüfung."""
+    ohne_pruefung, ueberfaellig = [], []
+    for pr in sorted(gemergt, key=lambda p: p["merged_at"], reverse=True):
+        gemergt_um = iso(pr["merged_at"])
+        if zeitpunkt - gemergt_um > PRUEFUNG_ZEITRAUM:
+            break  # absteigend sortiert: alle weiteren sind älter
+        if (pr.get("title") or "").startswith("[Autopilot Planung]"):
+            continue
+        if pr["number"] in geprueft and geprueft[pr["number"]] >= gemergt_um:
+            continue
+        ohne_pruefung.append(f"#{pr['number']} ({berlin(gemergt_um)})")
+        if zeitpunkt - gemergt_um > PRUEFUNG_UEBERFAELLIG:
+            ueberfaellig.append(f"#{pr['number']}")
+    return ohne_pruefung, ueberfaellig
+
+
+def zeile_ohne_pruefung(ohne_pruefung: list[str]) -> str:
+    tage = PRUEFUNG_ZEITRAUM.days
+    return f"Gemergt in {tage} Tagen ohne „Autopilot-Prüfung“: " + (", ".join(ohne_pruefung) or "keine")
+
+
 def befehl_lage() -> int:
     zeitpunkt = jetzt()
     name, regel = phase(zeitpunkt)
@@ -579,29 +654,19 @@ def befehl_lage() -> int:
     erlaubt = "ja" if eigene_offen < grenze else "nein, erst einen fertig machen"
     print(f"Eigene Autopilot-PRs offen (ohne blockiert): {eigene_offen} von höchstens {grenze} · neue Punkte: {erlaubt}")
 
-    geschlossen = gh(f"repos/{REPO}/pulls?state=closed&sort=updated&direction=desc&per_page=60") or []
-    gemergt = [p for p in geschlossen if p.get("merged_at")]
+    gemergt = gemergte_prs_seit(zeitpunkt - PRUEFUNG_ZEITRAUM)
     letzte_planung = max((iso(p["merged_at"]) for p in gemergt if (p.get("title") or "").startswith("[Autopilot Planung]")),
                          default=None)
-    ohne_pruefung, ueberfaellig = [], []
-    for pr in sorted(gemergt, key=lambda p: p["merged_at"], reverse=True)[:20]:
-        gemergt_um = iso(pr["merged_at"])
-        if zeitpunkt - gemergt_um > PRUEFUNG_ZEITRAUM:
-            continue
-        if (pr.get("title") or "").startswith("[Autopilot Planung]"):
-            continue  # Planungs-PRs ändern nur die Arbeitsliste: keine zweite Prüfung nötig.
-        if any((k.get("body") or "").startswith("Autopilot-Prüfung") for k in eigene_kommentare(pr["number"])):
-            continue
-        ohne_pruefung.append(f"#{pr['number']} ({berlin(gemergt_um)})")
-        if zeitpunkt - gemergt_um > PRUEFUNG_UEBERFAELLIG:
-            ueberfaellig.append(f"#{pr['number']}")
-    print("Gemergt in 48 h ohne „Autopilot-Prüfung“: " + (", ".join(ohne_pruefung) or "keine"))
+    geprueft = gepruefte_prs(kommentare_seit(zeitpunkt - PRUEFUNG_ZEITRAUM))
+    ohne_pruefung, ueberfaellig = pruefliste(gemergt, zeitpunkt, geprueft)
+    print(zeile_ohne_pruefung(ohne_pruefung))
     punkte_ueberfaellig = []
     if letzte_planung is None or zeitpunkt - letzte_planung > PLANUNG_UEBERFAELLIG:
-        seit = berlin(letzte_planung) if letzte_planung else "nicht in den letzten 60 PRs"
+        seit = berlin(letzte_planung) if letzte_planung else f"nicht in den letzten {PRUEFUNG_ZEITRAUM.days} Tagen"
         punkte_ueberfaellig.append(f"Planung (zuletzt gemergt: {seit})")
     if ueberfaellig:
-        punkte_ueberfaellig.append("Prüfung von " + ", ".join(ueberfaellig))
+        stunden = int(PRUEFUNG_UEBERFAELLIG.total_seconds() // 3600)
+        punkte_ueberfaellig.append("Prüfung von " + ", ".join(ueberfaellig) + f" (gemergt vor mehr als {stunden} h)")
     print("Überfällig: " + ("; ".join(punkte_ueberfaellig) or "nichts"))
 
     if ARBEITSLISTE.exists():
