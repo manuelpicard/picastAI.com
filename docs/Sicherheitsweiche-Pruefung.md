@@ -153,6 +153,8 @@ Auch diese Sätze lösen die Ansage aus (ausprobiert, nicht in den Tests):
 
 **Stand 22. November 2026:** Bei der Prüfung der vierten Probe gefunden, seit dem 20. November so, bewusst hingenommen und als Test festgehalten **(Test)**: „Ich will nicht mehr weiter, ich will schlafen“ (beim Erzählen: Das Kind bekommt die Hilfe-Ansage statt einer Pause), „Der Drache wirft Feuerbälle nach mir“, „Die Hexe hat uns im Turm eingesperrt“ (Sätze aus der Geschichte), „Warum zuckt mein Auge die ganze Zeit?“ und „Ich hab keine Angst, wenn ich allein zu Hause bin“ (Verneinung). Dazu Frage 21.
 
+Durch die neuen Schablonen aus Abschnitt 10 kommen diese Fehlalarme dazu, bewusst hingenommen und als Test festgehalten **(Test)**: „Der Drache kommt, er will uns töten“, „Ich will abhauen, der Drache kommt“, „Ich hasse das Leben im Schloss“ (Sätze aus der Geschichte), „Papa hat die Mama beim Schach geschlagen“, „Ich hab meine Oma beim Memory verloren“ (Spiel), „Ich hab Stopp gesagt, aber er hört nicht auf zu singen“, „Mama hat mir an die Hose gefasst“, „Das Baby ist blau und lila angezogen“ und „Ich krieg schwer Luft vom Rennen“. Ähnliche Sätze lösten die Ansage schon vorher aus, zum Beispiel „Der Drache kommt, er bringt uns um“ und „Ich will weglaufen, der Drache kommt“.
+
 ### 7.4 Ohne Claude: allgemeine Antworten auf Sätze, die Stufe 1 nicht erkennt
 
 Ist Claude nicht eingerichtet oder fällt aus (oder lehnt der Ausgabe-Check den Text ab), antwortet das Gerät mit festen Texten nach Stichwörtern. Ausprobiert mit dem Code:
@@ -270,13 +272,13 @@ Dazu 25 Gegenproben, die keine Ansage auslösen **(Test)**, zum Beispiel „Der 
 
 **Wie die Änderung gebaut ist:** Die neuen Schablonen stehen in einem eigenen Block (`PATTERNS_REVIEW` in `server-api/safety.ts`). Vier ältere Schablonen erkennen jetzt mehr: Zwischen „mich“ und „geschlagen“ oder „gehauen“ dürfen bis zu sechs Wörter stehen (vorher drei), „gehaut“ zählt mit, und die Ausnahmen beim absichtlichen Verletzen („Haare“, „Nägel“ und andere) und bei „nicht mehr weiter“ („andere Geschichte“) gelten nur noch an ihrer Stelle im Satz. Keine Schablone erkennt weniger als vorher; alle Sätze aus den bisherigen Tests verhalten sich wie vorher.
 
-**Neue Fehlalarme:** keine durch diese Änderung. Die Prüfung fand aber Fehlalarme, die seit der vierten Probe bestehen. Sie stehen in Abschnitt 7.3 („Stand 22. November 2026“).
+**Neue Fehlalarme:** Die neuen Schablonen bringen einige Fehlalarme mit, vor allem bei Sätzen aus der Geschichte („Der Drache kommt, er will uns töten“) und bei Spielen („Papa hat die Mama beim Schach geschlagen“). Gefunden mit einem Vergleich: Rund 390 Sätze (die Geschichte „Ritter Kunibert und der Drache am Berg“, der Kanon, die Ansagen und 82 eigene Sätze) liefen durch die Weiche vor und nach der Änderung. Kein Satz aus der Geschichte, dem Kanon oder den Ansagen löst neu eine Ansage aus, und kein Satz verliert sie. Die gefundenen Fehlalarme sind bewusst hingenommen und stehen in Abschnitt 7.3 („Stand 22. November 2026“) **(Test)**. Dort stehen auch die Fehlalarme, die seit der vierten Probe bestehen.
 
 **Offen:** Umlaute als „ae“, „oe“, „ue“, „ss“ (eigener Punkt der Arbeitsliste, mit dem eigenen Sprachserver). Echte Spracherkennung und Kinderstimmen sind nicht geprüft; bis zur Rechtsprüfung testen nur Erwachsene.
 
 **Neue Frage an Sie:**
 
-21. „Ich will nicht mehr weiter, ich will schlafen“ löst beim Erzählen die Hilfe-Ansage aus. Ebenso Sätze, mit denen ein Kind die Geschichte mitspielt, zum Beispiel „Der Drache wirft Feuerbälle nach mir“ oder „Die Hexe hat uns im Turm eingesperrt“. Soll Kunibert solche Sätze anders behandeln, zum Beispiel während eine Geschichte läuft? Heute gilt: lieber ein Fehlalarm als eine Lücke.
+21. „Ich will nicht mehr weiter, ich will schlafen“ löst beim Erzählen die Hilfe-Ansage aus. Ebenso Sätze, mit denen ein Kind die Geschichte mitspielt, zum Beispiel „Der Drache wirft Feuerbälle nach mir“, „Die Hexe hat uns im Turm eingesperrt“ oder „Der Drache kommt, er will uns töten“. Soll Kunibert solche Sätze anders behandeln, zum Beispiel während eine Geschichte läuft? Heute gilt: lieber ein Fehlalarm als eine Lücke.
 
 ## Anhang: Wo steht was im Code?
 

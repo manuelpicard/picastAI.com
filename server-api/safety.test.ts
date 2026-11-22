@@ -811,6 +811,26 @@ test('Bekannte Fehlalarme der vierten Probe schlagen wirklich an (bewusst hingen
   }
 });
 
+// Neue Fehlalarme durch PATTERNS_REVIEW (22.11.2026, gefunden mit einem Vergleich der Weiche vor und nach der
+// Änderung), bewusst hingenommen: Lieber ein Fehlalarm als eine Lücke. Ähnliche Sätze lösten schon vorher die
+// Ansage aus, zum Beispiel "Der Drache kommt, er bringt uns um" und "Ich will weglaufen, der Drache kommt".
+// Fragen 20 und 21 in docs/Sicherheitsweiche-Pruefung.md.
+test('Bekannte Fehlalarme der Schablonen aus der Prüfung von PR #71 schlagen wirklich an (bewusst hingenommen)', () => {
+  for (const sentence of [
+    'Der Drache kommt, er will uns töten',
+    'Ich will abhauen, der Drache kommt',
+    'Ich hasse das Leben im Schloss',
+    'Papa hat die Mama beim Schach geschlagen',
+    'Ich hab meine Oma beim Memory verloren',
+    'Ich hab Stopp gesagt, aber er hört nicht auf zu singen',
+    'Mama hat mir an die Hose gefasst',
+    'Das Baby ist blau und lila angezogen',
+    'Ich krieg schwer Luft vom Rennen',
+  ]) {
+    assert.equal(screen(sentence), true, sentence);
+  }
+});
+
 test('Eingabe-Weiche erkennt Notlagen', async (t) => {
   for (const sentence of MUST_TRIGGER) {
     await t.test(sentence, () => assert.equal(screen(sentence), true));
