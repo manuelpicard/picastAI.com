@@ -34,9 +34,11 @@ jobs:
         run: npm run test:e2e
       - name: Einrichtungsskript (Hilfsfunktionen)
         run: bash deploy/setup-server.test.sh
+      - name: Werkzeuge des Wochen-Autopiloten (docs/autopilot)
+        run: python -m unittest discover -s docs/autopilot -p "test_*.py"
       # shellcheck ist auf den GitHub-Runnern vorinstalliert.
       - name: Shell-Skripte (shellcheck)
-        run: shellcheck -S warning deploy/*.sh pi-client/*.sh
+        run: shellcheck -S warning deploy/*.sh pi-client/*.sh docs/autopilot/*.sh
 
   # Pi-Client gegen die echte Audio-Bibliothek (sounddevice mit PortAudio, ohne NumPy, wie auf dem
   # Pi). Die Attrappen allein hatten übersehen, dass die Wiedergabe mit der echten Bibliothek
