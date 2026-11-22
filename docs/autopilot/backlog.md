@@ -24,7 +24,7 @@ Angelegt am 17.11.2026, 20:15, von Claude (Chat). Gepflegt von den Läufen des W
 - Hinweise (Prüfung 18.11.2026): Teil 1 (M9) ist PR #63. Teil 2 (Eltern-Teil) ändert, was Kinder hören (fester Satz bei fehlender Einwilligung, Schlafmodus, Ansage des Codes): eigener PR mit „(ändert, was Kinder hören)“. Die Aufgaben „Kunibert Restlimit (Mi, Do, Fr)“ haben denselben Inhalt in ihrem Auftrag vom 13.11.; was sie davon bauen, gleicht A2 mit A1 ab.
 
 ### A2 · Restlimit-PR der Woche übernehmen (wiederkehrend)
-- Rolle: Prüfen · Prio: 1 · Status: offen (wiederkehrend, bleibt „offen“)
+- Rolle: Prüfen · Prio: 1 · Status: erledigt (entfällt: Restlimit-Aufgaben am 22.11.2026 gelöscht)
 - Nur von Freitag 08:00 bis Sonntag 23:59 und nur, wenn ein offener Entwurfs-PR vom Branch `restlimit/<Jahr>-KW<nn>` existiert, dessen Runde vorbei ist. Der Branch muss in diesem Repo liegen (kein Fork), und der PR muss vom Konto des Repo-Eigentümers stammen. Sonst ist er fremd: nicht übernehmen, nur im Bericht nennen. Die letzte Restlimit-Runde einer Woche startet Freitag 07:03. Gemeint ist also auch der PR der laufenden Kalenderwoche: Freitag bis Sonntag gehören noch zu ihr. Der Titel des PRs ist nicht festgelegt, es zählt der Branch. PR #49 (KW46) gehört zu A1, nicht hierher. Sonst überspringen.
 - Ziel: Die älteren Aufgaben „Kunibert Restlimit (Mi, Do, Fr)“ arbeiten mit eigenem Auftrag auf dem Branch `restlimit/<Jahr>-KW<nn>` in einem Entwurfs-PR. Ihr Auftrag sieht kein Mergen vor. Diesen PR sichten. Was gut ist und noch nicht in `main` steckt, als eigene Autopilot-PRs „[Autopilot A2] …“ übernehmen (mit Tests und unabhängiger Prüfung). Doppelt Gebautes verwerfen; Story-Stand und Eltern-Server-Teil nur mit A1 abgleichen. Danach den Entwurfs-PR mit Verweis schließen und den Branch löschen (letzten Commit-Hash im Bericht nennen).
 - Fertig, wenn: Der Restlimit-PR der Woche ist geschlossen, übernommene Teile sind gemergt, der Bericht steht im letzten A2-PR.
@@ -59,7 +59,7 @@ Angelegt am 17.11.2026, 20:15, von Claude (Chat). Gepflegt von den Läufen des W
 - Fertig, wenn: `docs/recherche/stimme-lizenz.md` mit Quellen und Abrufdatum, Einschätzung, nötigen Schritten (zum Beispiel Hinweis in der Doku). Keine Rechtsberatung.
 
 ### C1 · Ton-Strom in der Firmware
-- Rolle: Bauen · Prio: 2 · Status: offen · Bezug: Nr. 71b
+- Rolle: Bauen · Prio: 3 (vorher 2; 22.11.2026, Planung: Die Firmware wartet laut Nr. 71b auf Nr. 42, die Wahl des Boards, und steht nicht in der Reihenfolge des Betreibers) · Status: offen · Bezug: Nr. 71b
 - Ziel: Die Firmware (`firmware/esp32-s3/`) fordert wie der Pi-Client den Ton-Strom an (Kopf `X-Kunibert-Audio-Stream: 1`), versteht den WAV-Kopf mit unbekannter Länge und spielt in Blöcken, während der Rest lädt.
 - Fertig, wenn: Rechner-Tests (`test/test_logic.c`) für den neuen Fall, CI-Build grün, Schnittstellen-Doku und `firmware/esp32-s3/README.md` angepasst. Auf keinem Gerät gelaufen: so im Bericht nennen.
 
@@ -145,9 +145,10 @@ Angelegt am 17.11.2026, 20:15, von Claude (Chat). Gepflegt von den Läufen des W
 - Fertig, wenn: Doku-PR gemergt.
 
 ### I2 · Einrichtung und Checkliste gegen den Code
-- Rolle: Recherche · Prio: 3 · Status: offen
+- Rolle: Recherche · Prio: 2 (vorher 3; 22.11.2026, Planung: „Testserver“ steht auf der Liste des Betreibers vor „schneller werden“, und die Vorlage `deploy/kunibert.env.example` ist die Grundlage jedes gemieteten Servers) · Status: offen
 - Ziel: `deploy/CHECKLISTE.md` und `deploy/EINRICHTUNG.md` prüfen (Ton-Strom, Caddy `flush_interval -1`, neue Schalter, Eltern-Routen).
 - Hinweis (21.11.2026, PR #79): `PICASTAI_AUDIO_STREAM` fehlt in `deploy/kunibert.env.example` und `deploy/EINRICHTUNG.md`. Ohne den Schalter liefert der gemietete Server keinen Ton-Strom.
+- Stand 22.11.2026 (Planung, Abgleich der Namen hinter `process.env.` in `server.ts` und `server-api/*.ts` ohne Tests mit den beiden Dateien): In `deploy/kunibert.env.example` fehlen 23 der 50 Namen, in `deploy/EINRICHTUNG.md` 34. In beiden fehlen zum Beispiel `PICASTAI_AUDIO_STREAM`, `PICASTAI_STORY_PREFETCH`, `PICASTAI_ANTHROPIC_MODEL`, `KUNIBERT_EINORDNUNG_PARALLEL` und `KUNIBERT_PARTS_PER_EPISODE`; `PICASTAI_TRUST_PROXY` fehlt nur in der Vorlage (siehe D2). Nicht jeder Name gehört hinein (Auswertung und Entwicklung zum Beispiel nicht): je Name entscheiden, in den PR-Bericht schreiben, und den Rest der Vorlage gegen `server-api/config.ts` lesen. Ein Test gegen künftigen Drift: N1122-1808-b.
 - Fertig, wenn: Doku-PR gemergt.
 
 ### H3 · KI-Hinweis und Kennzeichnung der Sprachausgabe
@@ -232,7 +233,7 @@ Angelegt am 17.11.2026, 20:15, von Claude (Chat). Gepflegt von den Läufen des W
 - Gefunden bei E3 (PR #71, 20.11.2026).
 
 ### N1120-1610-a · Sicherheitsweiche: Schreibweisen der echten Spracherkennung
-- Rolle: Prüfen · Prio: 3 · Status: offen · Bezug: E3, Nr. 22
+- Rolle: Prüfen · Prio: 3 · Status: blockiert (braucht den laufenden Sprachserver und Aufnahmen von Erwachsenen, also einen Probelauf des Betreibers; 22.11.2026, Planung) · Bezug: E3, Nr. 22
 - Ziel: Die Muster in `server-api/safety.ts` setzen Umlaute und ß voraus. Schreibt die Spracherkennung „ae“, „oe“, „ue“ oder „ss“ (zum Beispiel „Süssigkeiten“), rutschen Sätze durch („Ein Mann hat mir Süssigkeiten angeboten“). Mit dem eigenen Sprachserver und Aufnahmen von Erwachsenen prüfen, welche Schreibweisen wirklich vorkommen (auch Zahlen, Zusammen- und Getrenntschreibung). Erst dann die Muster anpassen. `normalize()` nicht blind umschreiben (sonst wird aus „feuer“ etwas anderes). Braucht den laufenden Sprachserver.
 - Fertig, wenn: Ergebnis mit Beispielen in `docs/Sicherheitsweiche-Pruefung.md`; gefundene Lücken mit Sätzen in beiden Listen von `server-api/safety.test.ts`. Keine Aufnahmen von Kindern.
 - Gefunden bei der Prüfung von PR #71 (20.11.2026).
@@ -307,10 +308,11 @@ Angelegt am 17.11.2026, 20:15, von Claude (Chat). Gepflegt von den Läufen des W
 - Rolle: Prüfen · Prio: 3 · Status: offen · Bezug: B1, PR #73
 - Ziel: `likelyStoryTurn` (`server-api/brain.ts`) mit echten Äußerungen prüfen: Wie oft liegt sie daneben (Zeilen `modus=vorab_verworfen` im Protokoll), welche Wünsche und Ideen übersieht sie („Noch eine“, „weiterlesen“, „Was passiert dann“)? Nur mit Sätzen von Erwachsenen; keine Äußerungen ins Repo, nur gebaute Beispielsätze.
 - Fertig, wenn: Tabelle in `server-api/brain.test.ts` ergänzt; Anteil der verworfenen Aufrufe aus dem Probelauf im PR (nur Zahlen).
+- Hinweis (22.11.2026, Planung): Zwei Teile. Teil 1 geht in der Cloud: gebaute Beispielsätze für Wünsche und Ideen, die `likelyStoryTurn` übersieht, mit Test und Nachschärfen der Regel (Standard bleibt aus, Sicherheitsweiche und Ausgabe-Check unverändert). Teil 2 (die Zahlen) braucht einen Probelauf des Betreibers mit `KUNIBERT_EINORDNUNG_PARALLEL=1` und echtem Claude: bis dahin im PR als „offen“ nennen, den Punkt nicht auf „erledigt“ setzen.
 - Dazu (Nachprüfung von PR #73, 22.11.2026, Befund 2): Die Regel schlägt auch bei Verneinungen an: „Ich will keine Geschichte hören“ ergibt `geschichte`, „Ich will nicht weiter hören“ `weiter`, „Der Drache soll nicht kommen, ich hab Angst“ `idee`. Hörbar ist nichts (die Einordnung entscheidet), aber ein Aufruf an Claude wird umsonst gestartet. Verneinungen in die Tabelle aufnehmen.
 
 ### N1121-0607-a · Stopp per Taste in der Firmware melden
-- Rolle: Bauen · Prio: 2 · Status: offen · Nach B2 · Bezug: B2, PR #75
+- Rolle: Bauen · Prio: 3 (vorher 2; 22.11.2026, Planung: wie C1, die Firmware wartet auf die Wahl des Boards) · Status: offen · Nach B2 · Bezug: B2, PR #75
 - Ziel: Die Firmware (`firmware/esp32-s3/`) meldet wie der Pi-Client einen Stopp per Taste mit `POST /v1/device/playback-stopped` (`turn_id` aus der `audio_url`, gespielte Sekunden aus den geschriebenen Samples). Die Meldung geht sofort nach dem Stopp hinaus, vor der nächsten Anfrage, und darf das Kind nicht warten lassen (kurze Zeitgrenze, kein zweiter Versuch).
 - Fertig, wenn: Rechner-Tests (`test/test_logic.c`) für das Zählen der Sekunden und das Bauen der Meldung, CI-Build grün, `firmware/esp32-s3/README.md` und `docs/picastAI-Pi-API.md` angepasst. Auf keinem Gerät gelaufen: so im Bericht nennen.
 
@@ -355,6 +357,21 @@ Angelegt am 17.11.2026, 20:15, von Claude (Chat). Gepflegt von den Läufen des W
 - Rolle: Prüfen · Prio: 3 · Status: erledigt (PR #80, 21.11.2026) · Bezug: Kommentare „Autopilot-Prüfung“ an #64, #65 und #68 (21.11.2026)
 - Ziel: (1) `CLAUDE.md`: Bei den eigenen PRs fehlt „vom Konto des Eigentümers angelegt“ (wie `docs/autopilot/README.md`). (2) `deploy/EINRICHTUNG.md`, Abschnitt 4: Der Verweis `server-api/config.ts:231` für `PICASTAI_STT_MODEL` stimmt nicht mehr; Verweis ohne Zeilennummer. (3) `docs/autopilot/README.md`: Form und Zeitzone der Uhrzeit in der Status-Zeile („TT.MM. HH:MM“, Europe/Berlin) und was gilt, wenn sie fehlt (der letzte Commit).
 - Fertig, wenn: gemergt.
+
+### N1122-1808-a · Werkzeug: gemergte PRs ohne Prüfung auch nach 48 Stunden melden
+- Rolle: Bauen · Prio: 2 · Status: offen · Bezug: `docs/autopilot/ap.py` (`PRUEFUNG_ZEITRAUM`, `befehl_lage`), Auftrag der Läufe (Vorbereitung, Punkt 7)
+- Ziel: `ap.py lage` listet gemergte PRs ohne „Autopilot-Prüfung“ nur bis zu einem Alter von 48 Stunden (`PRUEFUNG_ZEITRAUM`), und „Überfällig“ zeigt sie nur zwischen 36 und 48 Stunden. Der Auftrag der Läufe kennt dafür keine obere Grenze: Jeder gemergte PR, der älter als 36 Stunden ist und keine Prüfung hat, ist überfällig. Fällt der Lauf „Prüfen“ aus (so nach dem Wochenlimit vom 21.11.2026, gegen 23:30), verschwinden die PRs nach 48 Stunden aus der Liste und werden nie geprüft. #69 und #73 wären es am 22.11. um 22:51 und 23:12 geworden, wenn nicht ein von Hand gestarteter Lauf „Prüfen“ (17:51) sie vorher aufgegriffen hätte. Die Grenze für die Liste auf 7 Tage heben, ebenso die Zahl der geprüften PRs (`[:20]` in `befehl_lage`; am 20. und 21.11. kamen 14 gemergte PRs in zwei Tagen) und die Zahl der abgefragten geschlossenen PRs (`per_page=60`; die Abfrage sortiert nach letzter Änderung und enthält auch nicht gemergte PRs). Der Ausgabetext „in 48 h“ passt sich an. Mehr Aufrufe an GitHub (einer je PR für die Kommentare) sind in Ordnung, solange `lage` in wenigen Sekunden antwortet.
+- Fertig, wenn: `docs/autopilot/test_ap.py` deckt ab: Ein 60 Stunden alter PR ohne Prüfung steht in „Überfällig“; ein PR mit Kommentar „Autopilot-Prüfung“ vom Konto des Eigentümers nicht; ein Planungs-PR nicht; ein PR, der älter als 7 Tage ist, nicht. Der Ausgabetext von `lage` nennt die neue Grenze und trennt „ohne Prüfung“ (bis 7 Tage) von „Überfällig“ (älter als 36 Stunden). `docs/autopilot/README.md`, Abschnitt „Wie die Läufe sich abstimmen“, sagt in einem Satz, wie weit die Liste zurückreicht. Werkzeug des Autopiloten: Das darf auch ein Lauf mit Sonnet bauen. Der Auftragstext der Läufe nennt die 48 Stunden nur für die normale Prüfliste der Rolle „Prüfen“; für „Überfälliges zuerst“ (älter als 36 Stunden) nennt er keine obere Grenze. Darauf stützt sich dieser Punkt; er ändert den Auftragstext nicht.
+
+### N1122-1808-b · Test: jede Umgebungsvariable des Servers ist dokumentiert
+- Rolle: Prüfen · Prio: 3 · Status: offen · Bezug: I2, frühere Doku-Drift-Funde (PR #21, #79)
+- Ziel: Doku-Drift hat mehrfach Zeit gekostet, zuletzt bei `PICASTAI_AUDIO_STREAM` (siehe I2). Teil 1 von 2: Ein Test in `npm test` liest alle Namen hinter `process.env.` in `server.ts` und `server-api/*.ts` (ohne Testdateien) und prüft, dass jeder in `.env.example` steht (die vollständige Referenz) oder auf einer kleinen Ausnahmeliste mit Grund (zum Beispiel nur für Auswertung oder Entwicklung). Heute fehlen dort 4 von 50 Namen (Stand 22.11.2026): `ANTHROPIC_BASE_URL`, `EVAL_SEED`, `KUNIBERT_DEVICE_ID` und `KUNIBERT_DEVICE_TOKEN`. Teil 2 von 2, erst wenn I2 erledigt ist: Der Test prüft auch, dass `deploy/kunibert.env.example` und `deploy/EINRICHTUNG.md` die Namen nennen, die I2 für einen gemieteten Server festlegt (die Liste steht im Test, jeder Name mit Grund). Die Meldung nennt nur den Namen. Optional ein dritter Teil, wenn die ersten klein bleiben: dasselbe für den Pi-Client (`os.getenv` und `os.environ` in `pi-client/*.py` ohne `test_*.py`, gegen `pi-client/README.md`).
+- Fertig, wenn: Teil 1 und Teil 2 grün in `npm test` und in der CI. Eine Gegenprobe zeigt, dass ein neuer, nicht dokumentierter Name den Test rot macht (der Name wird erst im Test zusammengesetzt, sonst findet der Test sich selbst). Die Ausnahmeliste ist kurz, jede Zeile hat einen Grund. Nach Teil 1 steht der Status „offen (Teil 1 von 2 erledigt, PR #x)“.
+
+### N1122-1808-c · Vorschläge für die Datenschutz-Folgenabschätzung sammeln
+- Rolle: Recherche · Prio: 3 · Status: offen · Bezug: PR #69 (Befund 4), PR #75 und #76 (Maßnahme M9), E2, „Freigabe-Checkliste vor dem ersten Kind“
+- Ziel: Die PR-Berichte enthalten Vorschläge für das Doc „Datenschutz-Folgenabschätzung“ (es liegt nicht im Repo, nur beim Betreiber): zum Beispiel M9 (Text des letzten Teils 15 Minuten lang und gehörte Sätze mit Stand bis 24 Stunden im Arbeitsspeicher, PR #75 und #76), IP-Adressen als Schlüssel beim Koppeln bis etwa 15 Minuten im Speicher (PR #69), Einwilligung nur im Arbeitsspeicher (E2). Sie stehen verstreut in Berichten und gehen verloren. Eine Datei sammelt sie: je Vorschlag die Maßnahme, ein Wortlaut in einfacher Sprache, die Quelle (PR, Datei im Repo), der Stand im Code (gelesen und gegen den Code geprüft) und der Vermerk „im Doc eingetragen?“ (das weiß nur der Betreiber: bis dahin „offen“).
+- Fertig, wenn: `docs/recherche/dsfa-vorschlaege.md` mit Quellen und Datum; keine personenbezogenen Daten; einmal „keine Rechtsberatung“; oben der Satz, dass Tests mit Kindern erst nach der „Freigabe-Checkliste vor dem ersten Kind“ stattfinden. Nichts am Doc selbst ändern, nichts abschicken.
 
 ### N1122-1751-a · Schlafmodus und Ruhezeiten: Sicherheitsweiche nicht ganz abschalten (Kinder)
 - Rolle: Bauen · Prio: 2 · Status: offen · Bezug: Nachprüfung von PR #69 (22.11.2026, Befund 2), Sicherheit vor Kindern
