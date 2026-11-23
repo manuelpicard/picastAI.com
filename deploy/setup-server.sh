@@ -266,6 +266,8 @@ write_env() {
   env_set "$ENV_FILE" NODE_ENV production
   env_set "$ENV_FILE" HOST 127.0.0.1
   env_set "$ENV_FILE" PICASTAI_PUBLIC_BASE_URL "https://$HOSTNAME_ARG"
+  # Caddy auf demselben Rechner (Punkt D2): echte Adressen der Eltern beim Koppeln. Ein eigener Wert bleibt.
+  env_set_if_empty "$ENV_FILE" PICASTAI_TRUST_PROXY loopback || true
   env_set "$ENV_FILE" PICASTAI_STT_MODEL "$STT_MODEL"
   env_set "$ENV_FILE" PICASTAI_TTS_MODEL "$TTS_MODEL"
   env_set "$ENV_FILE" PICASTAI_TTS_VOICE "$TTS_VOICE"

@@ -159,7 +159,7 @@ sudo caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
 sudo systemctl reload caddy
 ```
 
-Die Vorlage erzwingt HTTPS, reicht nur `/health` und `/v1/device/*` durch, begrenzt den Body auf 3 MB und schreibt keine Zugriffsprotokolle. Steht noch ein weiterer Proxy davor, zusätzlich `PICASTAI_TRUST_PROXY` setzen (siehe [`docs/picastAI-Pi-API.md`](../docs/picastAI-Pi-API.md)).
+Die Vorlage erzwingt HTTPS, reicht nur `/health` und `/v1/device/*` durch, begrenzt den Body auf 3 MB und schreibt keine Zugriffsprotokolle. In der env-Datei steht dazu `PICASTAI_TRUST_PROXY=loopback` (Vorlage und `setup-server.sh`): Der Server glaubt nur Caddy auf demselben Rechner und sieht so die echte Adresse der Eltern beim Koppeln. Ohne die Einstellung warten alle Eltern zusammen, wenn irgendwer falsche Codes rät; der Server warnt dann einmal im Journal. Steht noch ein weiterer Proxy vor Caddy (zum Beispiel ein CDN), die Einstellung anpassen (siehe [`docs/picastAI-Pi-API.md`](../docs/picastAI-Pi-API.md), „Betrieb hinter einem Proxy“).
 
 ### Zeitkette
 

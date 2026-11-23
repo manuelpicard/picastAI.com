@@ -92,7 +92,8 @@ Angelegt am 17.11.2026, 20:15, von Claude (Chat). Gepflegt von den Läufen des W
 - Fertig, wenn: läuft in `npm run test:e2e` in der CI.
 
 ### D2 · Eltern-Weboberfläche `/eltern`
-- Rolle: Bauen · Prio: 2 · Status: offen · Nach A1 · Bezug: Nr. 68E (PR C)
+- Rolle: Bauen · Prio: 2 · Status: offen (Teil 1 von 3 erledigt, PR #106) · Nach A1 · Bezug: Nr. 68E (PR C)
+- Stand nach Teil 1 (PR #106, 23.11.2026): Schutz vor dem Raten in `server-api/kopplungsschutz.ts` (wachsende Wartezeit je Absender, IPv6 je /56; höchstens 200 Fehlversuche insgesamt, darüber nur das Netz eines Geräts, das gerade einen Code gesprochen hat), `PICASTAI_TRUST_PROXY=loopback` in Vorlage und `setup-server.sh`, Cookie `Secure` nur über HTTPS (auch laut `X-Forwarded-Proto`). Für Teil 2: Die Seite zeigt bei 429 die Wartezeit (`warten_sekunden`, Kopf `Retry-After`); bei `grund: "insgesamt"` rät sie, das Handy ins WLAN des Geräts zu bringen und den Code neu sprechen zu lassen.
 - Dazu (Nachprüfung von PR #69, 22.11.2026, Befund 5): Die Grenze von 200 Fehlversuchen insgesamt (`server.ts`, `pairingFailuresTotal`) sperrt das Koppeln 10 Minuten für alle, auch wenn `PICASTAI_TRUST_PROXY` die Absender trennt. Sind `/v1/eltern/*` erst von außen erreichbar, reichen dafür wenige Adressen (IPv6). Bei Teil 1 mitlösen.
 - Ziel: Schlichte Seite auf dem Kunibert-Server für das Handy, ohne fremde Dienste und ohne externe Schriften: koppeln, einwilligen und widerrufen, Schlafmodus, Ruhezeiten, Geschichte neu beginnen, alles löschen, Infoseite. Deutsch, einfache Sprache.
 - Fertig, wenn: Seite und Routen getestet; kein Verlauf, keine Mitschriften, keine Statistik je Kind.

@@ -140,17 +140,26 @@ Der Code steht nicht in der Antwort (auch nicht mit `KUNIBERT_DIAGNOSTIC_TEXT=1`
 
 ## Eltern (Server-Teil der Eltern-App)
 
-Die Eltern koppeln ihr Handy einmal mit dem Gerät. Danach hält ein Cookie `kb_eltern` das Eltern-Token (`HttpOnly`, `SameSite=Strict`, `Path=/v1/eltern`, 180 Tage; `Secure` mit `NODE_ENV=production` oder über HTTPS). Der Server speichert nur den SHA-256-Hash des Tokens, höchstens 5 je Gerät; das älteste fällt heraus. `POST` und `PUT` müssen `Content-Type: application/json` haben (sonst 415); `DELETE` braucht keinen Inhalt. Alle Antworten der angemeldeten Routen haben `Cache-Control: no-store`.
+Die Eltern koppeln ihr Handy einmal mit dem Gerät. Danach hält ein Cookie `kb_eltern` das Eltern-Token (`HttpOnly`, `SameSite=Strict`, `Path=/v1/eltern`, 180 Tage; `Secure`, sobald die Anfrage über HTTPS kam: direkt oder laut `X-Forwarded-Proto` des Proxys, hinter Caddy also immer. Im eigenen WLAN über `http` fehlt `Secure`, sonst behielte der Browser das Cookie nicht; seit 23.11.2026, vorläufig, Punkt D2). Der Server speichert nur den SHA-256-Hash des Tokens, höchstens 5 je Gerät; das älteste fällt heraus. `POST` und `PUT` müssen `Content-Type: application/json` haben (sonst 415); `DELETE` braucht keinen Inhalt. Alle Antworten der angemeldeten Routen haben `Cache-Control: no-store`.
 
 | Route | Wirkung |
 | --- | --- |
-| `POST /v1/eltern/koppeln` `{"code":"123456"}` | Code einlösen, Cookie setzen. Falscher oder abgelaufener Code: 400 `invalid_code`. Nach 10 Fehlversuchen je Absender oder 200 insgesamt in 10 Minuten: 429. |
+| `POST /v1/eltern/koppeln` `{"code":"123456"}` | Code einlösen, Cookie setzen. Falscher oder abgelaufener Code: 400 `invalid_code`. Zu viele Fehlversuche: 429 `{"error":"rate_limited","warten_sekunden":8,"grund":"absender"}` und Kopf `Retry-After` (Sekunden); in dieser Zeit prüft der Server keinen Code, auch keinen richtigen. Regeln unten („Schutz vor dem Raten“). |
 | `GET /v1/eltern/status` | Aktueller Stand: `einwilligung {erteilt, zeitpunkt, elterntextVersion, weg}`, `schlafmodus`, `ruhezeiten {von, bis}` oder `null`. Bei der Einwilligung steht nur der letzte Stand: `erteilt` sagt, ob sie gerade gilt (`false`, solange alle Einwilligungen ruhen, Abschnitt „Dauerhaft“ unten); `zeitpunkt` ist der Zeitpunkt der letzten Änderung (Erteilung oder Widerruf), `elterntextVersion` die Version des Elterntexts in diesem Moment (`"0"`: noch kein Elterntext, nur Tests mit Erwachsenen; `ELTERNTEXT_VERSION` in `server-api/eltern.ts`), `weg` wer die letzte Änderung gemacht hat: `"geraet"` (ein Handy, dessen Kopplungscode das Gerät sprach), `"betreiber"` (ein Handy mit Code über die Betreiber-Route, unten) oder `"server"` (der Server hat beim Start alle Einwilligungen widerrufen, unten). Nie entschieden: alles `null`, `erteilt: false`. |
 | `PUT /v1/eltern/einwilligung` | Einwilligung erteilen |
 | `DELETE /v1/eltern/einwilligung` | Einwilligung widerrufen; Stand der Geschichte, Vorbereitung und wartendes Audio werden gelöscht. Der Widerruf bleibt als letzter Stand stehen (mit Zeitpunkt). |
 | `PUT /v1/eltern/einstellungen` `{"schlafmodus":true, "ruhezeiten":{"von":"19:00","bis":"07:00"}}` | Schlafmodus und Ruhezeiten (Felder einzeln möglich; `ruhezeiten: null` löscht sie). Ungültige Werte und gleicher Beginn und gleiches Ende: 400 `invalid_settings` |
 | `POST /v1/eltern/geschichte-neu` | Löscht den Stand der Geschichte samt Gedächtnis der letzten Folgen und den vorbereiteten Teil: Die nächste Erzählung beginnt eine neue Folge wie beim ersten Mal |
 | `DELETE /v1/eltern/daten` | Alles löschen: Einwilligung, Einstellungen, alle Eltern-Tokens des Geräts, Kopplungscodes, Geschichte, wartendes Audio, auch in der Datei der Eltern-Steuerung (unten). Das Cookie wird gelöscht. Die Geräte-Anmeldung bleibt. |
+
+### Schutz vor dem Raten von Kopplungscodes
+
+Seit 23.11.2026 (vorläufig, Punkt D2, `server-api/kopplungsschutz.ts`):
+
+- Je Absender: Nach dem dritten Fehlversuch wartet ein Absender 2 Sekunden, nach jedem weiteren doppelt so lange, höchstens 10 Minuten (`grund: "absender"`). Es gibt keine harte Sperre; ein Absender bremst nur sich selbst. 15 Minuten nach seinem letzten Fehlversuch ist er vergessen.
+- Absender ist die IPv4-Adresse oder bei IPv6 das Netz aus den ersten 56 Bit (meist ein Anschluss). Hinter Caddy stimmt die Adresse nur mit `PICASTAI_TRUST_PROXY=loopback` (Abschnitt „Betrieb hinter einem Proxy“).
+- Insgesamt: höchstens 200 Fehlversuche aller Absender in 10 Minuten (`grund: "insgesamt"`). Darüber dürfen nur Absender aus dem Netz eines Geräts weiter, das in den letzten 10 Minuten einen Code gesprochen hat (`POST /v1/device/pairing-code`): Eltern im WLAN des Geräts sperrt auch ein Angriff mit vielen Adressen nicht aus. Über die Betreiber-Route gibt es diese Ausnahme nicht.
+- Im Arbeitsspeicher liegen keine Adressen, nur Pseudonyme (HMAC-SHA-256 mit einem zufälligen Schlüssel, der bei jedem Start neu ist), die Zahl der Fehlversuche und der Zeitpunkt des letzten. Gelöscht wird spätestens 5 Minuten nach dem Vergessen. Nichts davon kommt ins Protokoll; `GET /api/status` zeigt unter `kopplungsschutz` nur Zahlen.
 
 Ohne gültiges Cookie oder für ein gesperrtes Gerät: 401. Es gibt keinen Verlauf, keine Mitschriften und keine Statistik je Kind. Die Weboberfläche unter `/eltern` kommt später (Punkt D2). Hinter Caddy (`deploy/Caddyfile`) sind `/v1/eltern/*` und `/api/*` von außen gesperrt; bis D2 erreicht man sie nur auf dem Server selbst oder im eigenen WLAN.
 
@@ -187,7 +196,7 @@ Geschrieben wird die ganze Datei auf einmal (Rechte 600, erst eine neue Datei, d
 | 400 | `bad_audio`, `unsupported_audio_format`, `audio_required`, `bad_upload`, `bad_json`, `unsupported_length`, `bad_request` (z. B. ungültig kodierter Pfad) | Anfrage fehlerhaft, nicht wiederholen |
 | 401 | `unauthorized` | Gerät unbekannt, widerrufen oder Token falsch |
 | 413 | `audio_too_large`, `payload_too_large` | Aufnahme über 2 MB, nicht wiederholen |
-| 429 | `rate_limited` | Rate-Limit pro Gerät erreicht |
+| 429 | `rate_limited` | Rate-Limit pro Gerät erreicht (beim Koppeln: Wartezeit in `Retry-After`, Abschnitt „Eltern“) |
 | 503 | `voice_provider_failed` mit `retryable: true` | Sprachdienst vorübergehend gestört, Wiederholen sinnvoll; der Story-Zustand rückt nicht vor |
 | 502 | `voice_provider_failed` mit `retryable: false` | Sprachdienst dauerhaft fehlerhaft (z. B. ungültiger Schlüssel); der Pi-Client wiederholt nicht |
 | 500 | `internal_error` | Unerwarteter Fehler, ohne Fehlertext nach außen |
@@ -197,7 +206,9 @@ Geschrieben wird die ganze Datei auf einmal (Rechte 600, erst eine neue Datei, d
 Terminiert ein Reverse Proxy (nginx, Caddy, Cloud Run) das HTTPS, sieht der Node-Server nur `http` und den Host des Proxys. Die `audio_url` in der Antwort würde dann mit `http://` oder einem internen Host beginnen, und der Pi-Client lehnt sie ab, weil Schema und Host nicht zu seiner API-Adresse passen. Zwei Wege:
 
 - **`PICASTAI_PUBLIC_BASE_URL=https://kunibert.example`** (empfohlen): Der Server baut die `audio_url` aus diesem Ursprung, unabhängig von Headern. Pfad, Query und Zugangsdaten sind nicht erlaubt; Schreibweise und Port übernimmt der Server, wie sie dort stehen. Der Pi-Client vergleicht Schema, Host (ohne Beachtung der Groß-/Kleinschreibung) und effektiven Port, sodass `https://picastAI.com` und `https://picastai.com:443` als derselbe Ursprung gelten.
-- **`PICASTAI_TRUST_PROXY=1`** (Anzahl der Proxy-Hops, oder `true`/`loopback`): Der Server glaubt `X-Forwarded-Proto`. Der Proxy muss dann den Host-Header mit durchreichen (nginx: `proxy_set_header Host $host;`).
+- **`PICASTAI_TRUST_PROXY=1`** (Anzahl der Proxy-Hops, oder `true`/`loopback`): Der Server glaubt `X-Forwarded-Proto` und `X-Forwarded-For`. Der Proxy muss dann den Host-Header mit durchreichen (nginx: `proxy_set_header Host $host;`).
+
+Für Caddy auf demselben Rechner (`deploy/Caddyfile`) gilt seit 23.11.2026 `PICASTAI_TRUST_PROXY=loopback` (in `deploy/kunibert.env.example`, `deploy/setup-server.sh` setzt es, wenn der Wert fehlt). Dann sieht der Server die echte Adresse der Eltern beim Koppeln (Schutz vor dem Raten je Absender, Abschnitt „Eltern“) und erkennt HTTPS. Ohne die Einstellung sieht jede Anfrage über Caddy aus, als käme sie von `127.0.0.1`: Dann warten alle Eltern zusammen, wenn irgendwer falsch rät. Der Server warnt einmal, wenn eine Anfrage mit `X-Forwarded-For` von diesem Rechner kommt und die Einstellung fehlt (ohne Adresse). Steht noch ein Proxy vor Caddy (zum Beispiel ein CDN), muss die Einstellung auch ihm trauen, sonst zählt seine Adresse als Absender. `Secure` am Eltern-Cookie hängt nicht an der Einstellung: Der Server setzt es, sobald `X-Forwarded-Proto` `https` nennt; ein anderer Proxy als Caddy muss den Kopf dafür setzen (nginx: `proxy_set_header X-Forwarded-Proto $scheme;`).
 
 Für den echten Betrieb außerdem `NODE_ENV=production` setzen (und vorher `npm run build` ausführen). Ohne diese Einstellung sind Entwicklungsgeräte mit bekannten Tokens aktiv; der Server warnt beim Start.
 
@@ -283,7 +294,7 @@ Die `audio_url` aus der Antwort mit denselben Authentifizierungsheadern abrufen.
 - Audio nur im flüchtigen RAM, TTL standardmäßig 120 Sekunden.
 - Audio-URL benötigt erneut Geräteauthentifizierung.
 - Story-State, Rate-Limit und Audio sind im Prozessspeicher, nicht hochverfügbar. Die Geräteliste ist es nur ohne `PICASTAI_DEVICE_STORE=firestore`. Der Story-State verfällt 24 Stunden nach der letzten Nutzung. Für den Stopp per Taste hält der Server den Text des zuletzt erzählten Teils 15 Minuten bereit und eine gemerkte Stelle längstens 24 Stunden nach der letzten Meldung oder dem Abbruch eines neu erzählten Teils (Abschnitt `POST /v1/device/playback-stopped`); `GET /api/status` zeigt nur die Anzahl (`storyStates`, `storyPrefetches`, `storyStops`, `eltern`), keine Geräte-IDs und keine Inhalte.
-- Kopplungscodes liegen nur im Arbeitsspeicher. Einwilligung, Schlafmodus, Ruhezeiten und die Hashes der Eltern-Tokens überstehen einen Neustart nur mit der Datei der Eltern-Steuerung (Abschnitt „Dauerhaft: Datei der Eltern-Steuerung“, seit 23.11.2026); ohne sie hört nach einem Neustart jedes Gerät nur den festen Hinweis, bis die Eltern neu koppeln und einwilligen.
+- Kopplungscodes liegen nur im Arbeitsspeicher, ebenso die Pseudonyme der Absender beim Schutz vor dem Raten (Abschnitt „Eltern“). Einwilligung, Schlafmodus, Ruhezeiten und die Hashes der Eltern-Tokens überstehen einen Neustart nur mit der Datei der Eltern-Steuerung (Abschnitt „Dauerhaft: Datei der Eltern-Steuerung“, seit 23.11.2026); ohne sie hört nach einem Neustart jedes Gerät nur den festen Hinweis, bis die Eltern neu koppeln und einwilligen.
 - Geräteverwaltung, Status und sichere Konfigurationsübersicht benötigen ein starkes Admin-Bearer-Token.
 - CORS akzeptiert nur exakt konfigurierte Browser-Ursprünge; ohne Allowlist gibt es keine Cross-Origin-Freigabe.
 - Firestore-Regeln verweigern direkte Clientzugriffe; serverseitige Admin-SDK-Zugriffe sind hiervon nicht erfasst.
