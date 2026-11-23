@@ -19,7 +19,7 @@ import { config, getSafeConfigSummary, llmConfigWarnings, parentStateWarnings, t
 import { isAdminTokenConfigured, verifyAdminAuthorization } from './server-api/admin-auth.js';
 import { VoicePipeline, VoiceProviderError } from './server-api/voice.js';
 import { FirestoreDeviceStore } from './server-api/firestore-service.js';
-import { buildAudioUrl } from './server-api/http-utils.js';
+import { buildAudioUrl, parentCookieSecure } from './server-api/http-utils.js';
 import { ERROR_RESPONSE_DE, SAFETY_RESPONSE_DE, UNCLEAR_RESPONSE_DE } from './server-api/safety.js';
 import { budgetTimeoutMs, MIN_TTS_MS, NO_TIMER, TurnTimer, type StageTimer } from './server-api/timing.js';
 
@@ -954,8 +954,8 @@ app.post('/v1/device/pairing-code', requireDevice, startTurnTimer, async (req: R
   }
   try {
     const { code, expiresInSeconds } = parents.createPairingCode(deviceId, 'geraet');
-    // Eltern im selben Netz wie das Gerät können den Code einlösen, auch wenn gerade viele raten.
-    pairingGuard.noteDeviceNetwork(req.ip, expiresInSeconds * 1000);
+    // Eltern im selben Netz wie das Gerät können diesen Code einlösen, auch wenn gerade viele raten.
+    pairingGuard.noteDeviceNetwork(req.ip, deviceId, expiresInSeconds * 1000);
     const speech = pairingCodeSpeech(code);
     let wav = generateMelodyWav([523.25, 659.25], [0.3, 0.4], config.audioSampleRate);
     if (voice.ttsConfigured) {
@@ -994,22 +994,15 @@ function readCookie(req: Request, name: string): string | null {
   return null;
 }
 
-/**
- * Kam die Anfrage über HTTPS? Direkt (`req.secure`) oder laut Proxy (`X-Forwarded-Proto`, Caddy setzt
- * ihn immer). Den Kopf liest der Server hier auch ohne PICASTAI_TRUST_PROXY: Ein gefälschter Kopf kann
- * nur `Secure` hinzufügen, und das macht höchstens das eigene Cookie unbrauchbar.
- */
-function viaHttps(req: Request): boolean {
-  if (req.secure) return true;
-  const forwarded = req.headers['x-forwarded-proto'];
-  const values = (Array.isArray(forwarded) ? forwarded.join(',') : forwarded || '').split(',');
-  return values.some((value) => value.trim().toLowerCase() === 'https');
-}
-
 function parentCookie(req: Request, value: string, maxAgeSeconds: number): string {
-  // Secure, sobald die Anfrage über HTTPS kam (hinter Caddy immer). Im eigenen WLAN über http ohne
-  // Secure: Sonst behält der Browser das Cookie nicht (vorläufig, 23.11.2026, Punkt D2).
-  const secure = viaHttps(req);
+  // Secure über HTTPS und im Betrieb hinter einem Proxy auf diesem Rechner (Caddy); ohne nur bei http
+  // direkt aus dem eigenen WLAN, sonst behält der Browser das Cookie nicht (server-api/http-utils.ts).
+  const secure = parentCookieSecure({
+    secure: req.secure,
+    forwardedProto: req.headers['x-forwarded-proto'],
+    remoteAddress: req.socket.remoteAddress,
+    production: process.env.NODE_ENV === 'production',
+  });
   return [
     `${PARENT_COOKIE}=${value}`,
     'Path=/v1/eltern',
@@ -1061,6 +1054,12 @@ app.post('/v1/eltern/koppeln', requireJson, (req: Request, res: Response): any =
   if (!verdict.allowed) {
     res.set('Retry-After', String(verdict.retryAfterSeconds));
     return res.status(429).json({ error: 'rate_limited', warten_sekunden: verdict.retryAfterSeconds, grund: verdict.grund });
+  }
+  // Über der Grenze für alle nur der Code eines Geräts aus dem eigenen Netz. Ein anderer zählt wie ein
+  // falscher und bleibt gültig: Die Antwort verrät nicht, dass es ihn gibt.
+  if (verdict.onlyDevices && !verdict.onlyDevices.includes(parents.pairingCodeDevice(req.body?.code) ?? '')) {
+    pairingGuard.recordFailure(req.ip);
+    return res.status(400).json({ error: 'invalid_code' });
   }
   let redeemed: { deviceId: string; token: string } | null;
   try {

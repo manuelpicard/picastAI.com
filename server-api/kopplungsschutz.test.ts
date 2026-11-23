@@ -62,7 +62,7 @@ describe('PairingGuard: Raten von Kopplungscodes', () => {
     assert.equal(guard.check(parent).allowed, true, 'nach zwei Fehlversuchen keine Wartezeit');
     guard.recordFailure(parent);
     const blocked = guard.check(parent);
-    assert.deepEqual(blocked, { allowed: false, retryAfterSeconds: 2, grund: 'absender' });
+    assert.deepEqual(blocked, { allowed: false, retryAfterSeconds: 2, grund: 'absender', onlyDevices: null });
     clock.advance(1_999);
     assert.equal(guard.check(parent).allowed, false);
     clock.advance(1);
@@ -109,22 +109,51 @@ describe('PairingGuard: Raten von Kopplungscodes', () => {
     assert.ok(attempts >= 12, `Versuche: ${attempts}`);
   });
 
-  it('Vergessen: 15 Minuten nach dem letzten Fehlversuch zählt alles neu', () => {
+  it('Vergessen: je 10 Minuten ohne Fehlversuch zählt einer weniger; wer sich einmal vertippt, ist nach 10 Minuten vergessen', () => {
     const clock = fakeClock();
     const guard = new PairingGuard(clock.now);
+    guard.recordFailure('198.51.100.4');
+    assert.equal(guard.counts.absender, 1);
+    clock.advance(10 * 60_000 - 1);
+    assert.equal(guard.counts.absender, 1);
+    clock.advance(1);
+    assert.equal(guard.counts.absender, 0, 'nach 10 Minuten vergessen');
+
     for (let i = 0; i < 12; i++) guard.recordFailure('198.51.100.5');
     assert.equal(guard.check('198.51.100.5').retryAfterSeconds, 600);
+    // 15 Minuten Pause: Es zählt einer weniger, nicht alles neu.
     clock.advance(15 * 60_000);
     assert.equal(guard.check('198.51.100.5').allowed, true);
     guard.recordFailure('198.51.100.5');
-    assert.equal(guard.check('198.51.100.5').retryAfterSeconds, 600, 'genau 15 Minuten: noch nicht vergessen');
-    clock.advance(15 * 60_000 + 1);
-    guard.recordFailure('198.51.100.5');
-    assert.equal(guard.check('198.51.100.5').allowed, true, 'danach beginnt die Zählung bei 1');
+    assert.equal(guard.check('198.51.100.5').retryAfterSeconds, 600, 'nach der Pause gleich wieder die längste Wartezeit');
+    // Vergessen erst, wenn alle abgezogen sind: 12 mal 10 Minuten.
+    clock.advance(12 * 60 * 60_000 / 6 - 1);
     assert.equal(guard.counts.absender, 1);
-    clock.advance(15 * 60_000 + 1);
+    clock.advance(1);
     guard.purge();
     assert.equal(guard.counts.absender, 0, 'purge löscht vergessene Absender');
+    assert.equal((guard as unknown as { senders: Map<string, unknown> }).senders.size, 0);
+  });
+
+  it('Wer rät und Pausen macht, fängt nicht bei null an: höchstens 160 Versuche am Tag, wie auch immer er wartet', () => {
+    for (const pauseAfterWaitMs of [0, 8_000, 64_000, 512_000]) {
+      const clock = fakeClock();
+      const guard = new PairingGuard(clock.now);
+      let attempts = 0;
+      const end = clock.now() + 24 * 60 * 60_000;
+      while (clock.now() < end) {
+        const verdict = guard.check('203.0.113.10');
+        if (verdict.allowed) {
+          attempts++;
+          guard.recordFailure('203.0.113.10');
+        } else if (pauseAfterWaitMs && verdict.retryAfterSeconds * 1000 >= pauseAfterWaitMs) {
+          clock.advance(15 * 60_000);
+        } else {
+          clock.advance(verdict.retryAfterSeconds * 1000);
+        }
+      }
+      assert.ok(attempts <= 160, `Pause ab ${pauseAfterWaitMs} ms Wartezeit: ${attempts} Versuche`);
+    }
   });
 
   it('Höchstens 200 Fehlversuche insgesamt in 10 Minuten; danach warten Fremde, bis wieder Platz ist', () => {
@@ -148,7 +177,7 @@ describe('PairingGuard: Raten von Kopplungscodes', () => {
     assert.equal(guard.check('192.0.2.44').allowed, true, 'wieder Platz');
   });
 
-  it('Eltern im Netz eines Geräts, das gerade einen Code gesprochen hat, sperrt auch ein großer Angriff nicht aus', () => {
+  it('Eltern im Netz eines Geräts, das gerade einen Code geholt hat, sperrt auch ein großer Angriff nicht aus', () => {
     const clock = fakeClock();
     const guard = new PairingGuard(clock.now);
     for (let i = 0; i < 100; i++) {
@@ -157,10 +186,11 @@ describe('PairingGuard: Raten von Kopplungscodes', () => {
     }
     const home = '198.51.100.77';
     assert.equal(guard.check(home).grund, 'insgesamt', 'vor dem Code des Geräts gilt die Grenze auch zu Hause');
-    guard.noteDeviceNetwork(home, 10 * 60_000);
+    assert.equal(guard.check(home).onlyDevices, null);
+    guard.noteDeviceNetwork(home, 'geraet-a', 10 * 60_000);
     assert.equal(guard.counts.geraeteNetze, 1);
-    assert.equal(guard.check(home).allowed, true);
-    assert.equal(guard.check('::ffff:198.51.100.77').allowed, true, 'dieselbe Adresse als IPv4 in IPv6');
+    assert.deepEqual(guard.check(home), { allowed: true, retryAfterSeconds: 0, grund: null, onlyDevices: ['geraet-a'] });
+    assert.deepEqual(guard.check('::ffff:198.51.100.77').onlyDevices, ['geraet-a'], 'dieselbe Adresse als IPv4 in IPv6');
     assert.equal(guard.check('198.51.100.78').grund, 'insgesamt', 'nur das Netz des Geräts');
     // Auch zu Hause gilt die eigene Wartezeit.
     for (let i = 0; i < 3; i++) guard.recordFailure(home);
@@ -175,10 +205,28 @@ describe('PairingGuard: Raten von Kopplungscodes', () => {
     assert.equal(guard.counts.geraeteNetze, 0);
   });
 
+  it('Ein eigenes Gerät in vielen Netzen hilft nicht beim Raten fremder Codes: über der Grenze nur der eigene Code', () => {
+    const clock = fakeClock();
+    const guard = new PairingGuard(clock.now);
+    for (let i = 0; i < 200; i++) guard.recordFailure(`2001:db8:${i}::1`);
+    // Der Angreifer holt mit seinem Gerät aus 30 Netzen Codes; die Familie aus ihrem eigenen.
+    for (let i = 0; i < 30; i++) guard.noteDeviceNetwork(`203.0.113.${i}`, 'angreifer-geraet', 10 * 60_000);
+    guard.noteDeviceNetwork('198.51.100.9', 'familien-geraet', 10 * 60_000);
+    for (let i = 0; i < 30; i++) assert.deepEqual(guard.check(`203.0.113.${i}`).onlyDevices, ['angreifer-geraet']);
+    assert.deepEqual(guard.check('198.51.100.9').onlyDevices, ['familien-geraet']);
+    // Zwei Geräte im selben Netz: beide Codes gehen.
+    guard.noteDeviceNetwork('198.51.100.9', 'zweites-geraet', 10 * 60_000);
+    assert.deepEqual(guard.check('198.51.100.9').onlyDevices?.sort(), ['familien-geraet', 'zweites-geraet']);
+    assert.equal(guard.counts.geraeteNetze, 31);
+    // Unter der Grenze gilt jeder Code, auch für die Netze der Geräte.
+    clock.advance(10 * 60_000);
+    assert.equal(guard.check('203.0.113.1').onlyDevices, null);
+  });
+
   it('Mehr als 200 Fehlversuche: Die Grenze gilt, bis der 200.-jüngste aus dem Fenster fällt', () => {
     const clock = fakeClock();
     const guard = new PairingGuard(clock.now);
-    guard.noteDeviceNetwork('198.51.100.1', 60 * 60_000);
+    guard.noteDeviceNetwork('198.51.100.1', 'geraet-a', 60 * 60_000);
     // 250 Fehlversuche aus dem Netz des Geräts (dürfen über die Grenze), je 1 s auseinander, mit
     // eigener Wartezeit nicht beachtet: recordFailure zählt jeden.
     for (let i = 0; i < 250; i++) {

@@ -8,20 +8,24 @@
  * - Je Absender: Nach dem dritten Fehlversuch wartet ein Absender 2 Sekunden, nach jedem weiteren
  *   doppelt so lange, höchstens 10 Minuten. Wer sich vertippt, kann also gleich weitermachen; wer
  *   rät, wird schnell langsam. Es gibt keine harte Sperre: Ein Absender bremst nur sich selbst.
- *   15 Minuten nach seinem letzten Fehlversuch ist ein Absender vergessen.
+ *   Je 10 Minuten ohne Fehlversuch zählt einer weniger: Wer sich einmal vertippt, ist nach 10 Minuten
+ *   vergessen; wer rät und dann Pause macht, fängt nicht wieder bei null an.
  * - Insgesamt: höchstens 200 Fehlversuche in 10 Minuten, von allen Absendern zusammen (Angreifer mit
- *   vielen Adressen). Darüber dürfen nur noch Absender aus dem Netz eines Geräts raten, das gerade
- *   einen Code gesprochen hat: Eltern, die zu Hause beim Gerät stehen, sperrt so niemand aus. Die
- *   übrigen warten, bis die Zahl wieder unter 200 fällt.
+ *   vielen Adressen). Darüber darf ein Absender nur noch den Code eines Geräts einlösen, das in den
+ *   letzten 10 Minuten aus seinem Netz einen Code geholt hat: Eltern, die zu Hause beim Gerät stehen,
+ *   sperrt so niemand aus, und ein eigenes Gerät in vielen Netzen hilft nicht beim Raten fremder
+ *   Codes. Die übrigen warten, bis die Zahl wieder unter 200 fällt.
  *
- * Absender ist die IPv4-Adresse oder bei IPv6 das Netz aus den ersten 56 Bit (meist ein Anschluss;
- * sonst hätte ein einzelner Haushalt Milliarden Adressen). Hinter Caddy auf demselben Rechner stimmt
- * die Adresse nur mit `PICASTAI_TRUST_PROXY=loopback`; ohne sind alle Absender 127.0.0.1 und teilen
- * sich die Wartezeit.
+ * Absender ist die IPv4-Adresse oder bei IPv6 das Netz aus den ersten 56 Bit (oft ein Anschluss;
+ * sonst hätte ein einzelner Haushalt Milliarden Adressen). Im Mobilfunk und hinter Carrier-NAT teilen
+ * sich auch fremde Kunden einen Absender. Hinter Caddy auf demselben Rechner stimmt die Adresse nur mit
+ * `PICASTAI_TRUST_PROXY=loopback`; ohne sind alle Absender 127.0.0.1 und teilen sich die Wartezeit.
  *
  * Datenschutz: Im Speicher liegen keine Adressen, nur Pseudonyme (HMAC-SHA-256 mit einem zufälligen
  * Schlüssel, der nur im Arbeitsspeicher liegt und bei jedem Start neu ist), dazu die Zahl der
- * Fehlversuche und der Zeitpunkt des letzten. Nichts davon kommt ins Protokoll oder in eine Datei.
+ * Fehlversuche, der Zeitpunkt des letzten und für die Netze der Geräte die Geräte-ID. Mit dem Schlüssel
+ * ließen sich die Pseudonyme durch Ausprobieren zurückrechnen: Es ist Pseudonymisierung, keine
+ * Anonymisierung. Nichts davon kommt ins Protokoll oder in eine Datei.
  */
 import crypto from 'node:crypto';
 import net from 'node:net';
@@ -34,8 +38,8 @@ export interface PairingGuardOptions {
   firstWaitMs: number;
   /** Längste Wartezeit je Absender. */
   maxWaitMs: number;
-  /** So lange nach dem letzten Fehlversuch bleibt ein Absender im Speicher. */
-  forgetAfterMs: number;
+  /** Je so viel Zeit ohne Fehlversuch zählt ein Fehlversuch weniger; bei null ist der Absender vergessen. */
+  decayMs: number;
   /** Höchstens so viele Fehlversuche aller Absender zusammen im Zeitfenster. */
   maxFailuresAll: number;
   windowAllMs: number;
@@ -45,7 +49,7 @@ export const PAIRING_GUARD_DEFAULTS: PairingGuardOptions = {
   waitFromFailure: 3,
   firstWaitMs: 2_000,
   maxWaitMs: 10 * 60_000,
-  forgetAfterMs: 15 * 60_000,
+  decayMs: 10 * 60_000,
   maxFailuresAll: 200,
   windowAllMs: 10 * 60_000,
 };
@@ -53,14 +57,19 @@ export const PAIRING_GUARD_DEFAULTS: PairingGuardOptions = {
 /** Präfixlänge, die bei IPv6 als ein Absender gilt. */
 export const IPV6_SENDER_PREFIX_BITS = 56;
 
-/** `allowed: false`: `retryAfterSeconds` (mindestens 1) und `grund` sagen, wie lange und warum. */
+/**
+ * `allowed: false`: `retryAfterSeconds` (mindestens 1) und `grund` sagen, wie lange und warum.
+ * `onlyDevices`: Über der Grenze für alle darf der Absender nur den Code dieser Geräte einlösen; ein
+ * anderer Code zählt wie ein falscher (und bleibt gültig). `null`: jeder Code.
+ */
 export interface PairingVerdict {
   allowed: boolean;
   retryAfterSeconds: number;
   grund: 'absender' | 'insgesamt' | null;
+  onlyDevices: string[] | null;
 }
 
-const ALLOWED: PairingVerdict = Object.freeze({ allowed: true, retryAfterSeconds: 0, grund: null });
+const ALLOWED: PairingVerdict = Object.freeze({ allowed: true, retryAfterSeconds: 0, grund: null, onlyDevices: null });
 
 interface SenderEntry {
   failures: number;
@@ -117,13 +126,13 @@ function secondsUntil(targetMs: number, nowMs: number): number {
 
 export class PairingGuard {
   private readonly options: PairingGuardOptions;
-  /** Nur im Arbeitsspeicher, bei jedem Start neu: Die Pseudonyme lassen sich nicht auf Adressen zurückführen. */
+  /** Nur im Arbeitsspeicher, bei jedem Start neu: Ohne ihn lassen sich die Pseudonyme nicht auf Adressen zurückführen. */
   private readonly secret = crypto.randomBytes(32);
   private senders = new Map<string, SenderEntry>();
   /** Zeitpunkte der letzten Fehlversuche aller Absender, höchstens `maxFailuresAll` (die ältesten fallen heraus). */
   private failuresAll: number[] = [];
-  /** Netze von Geräten, die gerade einen Code gesprochen haben (Pseudonym → gültig bis). */
-  private deviceNetworks = new Map<string, number>();
+  /** Netze von Geräten, die gerade einen Code geholt haben (Pseudonym des Netzes → Geräte-ID → gültig bis). */
+  private deviceNetworks = new Map<string, Map<string, number>>();
 
   /** `now`: Millisekunden einer Uhr, die nicht springt (Standard: seit dem Start des Prozesses). */
   constructor(private readonly now: () => number = () => performance.now(), options: Partial<PairingGuardOptions> = {}) {
@@ -142,10 +151,15 @@ export class PairingGuard {
     return Math.min(maxWaitMs, firstWaitMs * 2 ** Math.min(30, failures - waitFromFailure));
   }
 
+  /** Fehlversuche, die jetzt noch zählen (je `decayMs` ohne Fehlversuch einer weniger). */
+  private remainingFailures(entry: SenderEntry, nowMs: number): number {
+    return entry.failures - Math.floor(Math.max(0, nowMs - entry.lastFailureMs) / this.options.decayMs);
+  }
+
   private liveEntry(key: string, nowMs: number): SenderEntry | null {
     const entry = this.senders.get(key);
     if (!entry) return null;
-    if (nowMs - entry.lastFailureMs > this.options.forgetAfterMs) {
+    if (this.remainingFailures(entry, nowMs) <= 0) {
       this.senders.delete(key);
       return null;
     }
@@ -156,9 +170,11 @@ export class PairingGuard {
     return this.failuresAll.length >= this.options.maxFailuresAll && nowMs - this.failuresAll[0] < this.options.windowAllMs;
   }
 
-  private inDeviceNetwork(key: string, nowMs: number): boolean {
-    const until = this.deviceNetworks.get(key);
-    return until !== undefined && until > nowMs;
+  /** Geräte, die aus diesem Netz gerade einen gültigen Code geholt haben. */
+  private devicesInNetwork(key: string, nowMs: number): string[] {
+    const devices = this.deviceNetworks.get(key);
+    if (!devices) return [];
+    return [...devices].filter(([, until]) => until > nowMs).map(([deviceId]) => deviceId);
   }
 
   /** Vor dem Prüfen des Codes: Darf dieser Absender jetzt einen Code versuchen? */
@@ -167,11 +183,21 @@ export class PairingGuard {
     const key = this.keyFor(address);
     const entry = this.liveEntry(key, nowMs);
     if (entry) {
+      // Die Wartezeit läuft ab dem letzten Fehlversuch, mit der Zahl von damals.
       const readyMs = entry.lastFailureMs + this.waitAfter(entry.failures);
-      if (readyMs > nowMs) return { allowed: false, retryAfterSeconds: secondsUntil(readyMs, nowMs), grund: 'absender' };
+      if (readyMs > nowMs) {
+        return { allowed: false, retryAfterSeconds: secondsUntil(readyMs, nowMs), grund: 'absender', onlyDevices: null };
+      }
     }
-    if (this.exhaustedAll(nowMs) && !this.inDeviceNetwork(key, nowMs)) {
-      return { allowed: false, retryAfterSeconds: secondsUntil(this.failuresAll[0] + this.options.windowAllMs, nowMs), grund: 'insgesamt' };
+    if (this.exhaustedAll(nowMs)) {
+      const devices = this.devicesInNetwork(key, nowMs);
+      if (devices.length) return { ...ALLOWED, onlyDevices: devices };
+      return {
+        allowed: false,
+        retryAfterSeconds: secondsUntil(this.failuresAll[0] + this.options.windowAllMs, nowMs),
+        grund: 'insgesamt',
+        onlyDevices: null,
+      };
     }
     return ALLOWED;
   }
@@ -181,27 +207,29 @@ export class PairingGuard {
     const nowMs = this.now();
     const key = this.keyFor(address);
     const entry = this.liveEntry(key, nowMs);
-    this.senders.set(key, { failures: (entry?.failures ?? 0) + 1, lastFailureMs: nowMs });
+    this.senders.set(key, { failures: (entry ? this.remainingFailures(entry, nowMs) : 0) + 1, lastFailureMs: nowMs });
     this.failuresAll.push(nowMs);
     if (this.failuresAll.length > this.options.maxFailuresAll) this.failuresAll.shift();
   }
 
-  /** Ein Gerät hat einen Code geholt: Sein Netz darf so lange auch über der Grenze für alle raten. */
-  public noteDeviceNetwork(address: string | undefined | null, validForMs: number): void {
+  /** Ein Gerät hat einen Code geholt: Aus seinem Netz darf man diesen Code so lange auch über der Grenze für alle einlösen. */
+  public noteDeviceNetwork(address: string | undefined | null, deviceId: string, validForMs: number): void {
     const key = this.keyFor(address);
-    const until = this.now() + validForMs;
-    this.deviceNetworks.set(key, Math.max(until, this.deviceNetworks.get(key) ?? 0));
+    const devices = this.deviceNetworks.get(key) ?? new Map<string, number>();
+    devices.set(deviceId, this.now() + validForMs);
+    this.deviceNetworks.set(key, devices);
   }
 
   /** Vergisst alte Absender, alte Fehlversuche und abgelaufene Gerätenetze (der Server ruft das regelmäßig auf). */
   public purge(): void {
     const nowMs = this.now();
     for (const [key, entry] of this.senders) {
-      if (nowMs - entry.lastFailureMs > this.options.forgetAfterMs) this.senders.delete(key);
+      if (this.remainingFailures(entry, nowMs) <= 0) this.senders.delete(key);
     }
     this.failuresAll = this.failuresAll.filter((t) => nowMs - t < this.options.windowAllMs);
-    for (const [key, until] of this.deviceNetworks) {
-      if (until <= nowMs) this.deviceNetworks.delete(key);
+    for (const [key, devices] of this.deviceNetworks) {
+      for (const [deviceId, until] of devices) if (until <= nowMs) devices.delete(deviceId);
+      if (!devices.size) this.deviceNetworks.delete(key);
     }
   }
 
@@ -209,9 +237,9 @@ export class PairingGuard {
   public get counts(): { absender: number; fehlversucheInsgesamt: number; geraeteNetze: number } {
     const nowMs = this.now();
     return {
-      absender: [...this.senders.values()].filter((entry) => nowMs - entry.lastFailureMs <= this.options.forgetAfterMs).length,
+      absender: [...this.senders.values()].filter((entry) => this.remainingFailures(entry, nowMs) > 0).length,
       fehlversucheInsgesamt: this.failuresAll.filter((t) => nowMs - t < this.options.windowAllMs).length,
-      geraeteNetze: [...this.deviceNetworks.values()].filter((until) => until > nowMs).length,
+      geraeteNetze: [...this.deviceNetworks.values()].filter((devices) => [...devices.values()].some((until) => until > nowMs)).length,
     };
   }
 }

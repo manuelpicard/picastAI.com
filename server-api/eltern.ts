@@ -353,6 +353,16 @@ export class ParentControls {
   }
 
   /**
+   * Zu welchem Gerät gehört dieser gültige Code? Löst ihn nicht ein (Schutz vor dem Raten über der
+   * Grenze für alle, `server-api/kopplungsschutz.ts`).
+   */
+  public pairingCodeDevice(code: unknown): string | null {
+    this.purgeCodes();
+    if (typeof code !== 'string' || !/^\d{6}$/.test(code)) return null;
+    return this.codes.get(code)?.deviceId ?? null;
+  }
+
+  /**
    * Löst einen Kopplungscode ein (nur einmal). Liefert das Eltern-Token im Klartext genau
    * einmal zurück; gespeichert wird nur sein Hash. Lässt sich die Kopplung nicht speichern, wirft
    * es `ParentStateWriteError`; dann gilt die Kopplung nicht, und der Code bleibt gültig.

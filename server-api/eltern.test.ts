@@ -29,6 +29,22 @@ test('Kopplungscode hat sechs Ziffern und gilt nur einmal', () => {
   assert.equal(p.redeemPairingCode(code), null);
 });
 
+test('pairingCodeDevice: nennt das Gerät eines gültigen Codes, ohne ihn einzulösen', () => {
+  const c = clock();
+  const p = new ParentControls(c.now);
+  const { code } = p.createPairingCode('g1');
+  assert.equal(p.pairingCodeDevice(code), 'g1');
+  assert.equal(p.pairingCodeDevice(code), 'g1', 'zweimal nachsehen geht');
+  for (const wrong of [code === '000000' ? '000001' : '000000', 123456, null, undefined, `${code} `, '12345']) {
+    assert.equal(p.pairingCodeDevice(wrong), null, String(wrong));
+  }
+  assert.equal(p.redeemPairingCode(code)?.deviceId, 'g1', 'der Code ist danach noch einlösbar');
+  assert.equal(p.pairingCodeDevice(code), null, 'eingelöst: kein Gerät mehr');
+  const later = p.createPairingCode('g2').code;
+  c.advance(PAIRING_CODE_TTL_SECONDS * 1000);
+  assert.equal(p.pairingCodeDevice(later), null, 'abgelaufen');
+});
+
 test('Kopplungscode verfällt nach 10 Minuten', () => {
   const c = clock();
   const p = new ParentControls(c.now);

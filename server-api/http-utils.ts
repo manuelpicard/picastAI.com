@@ -1,5 +1,6 @@
 // Kleine, framework-freie Hilfen für den HTTP-Rand des Servers.
 // Bewusst ohne Express-Import, damit sie ohne Server testbar bleiben.
+import { isLoopbackAddress } from './kopplungsschutz.js';
 
 export type TrustProxySetting = boolean | number | string;
 
@@ -60,4 +61,27 @@ export function buildAudioUrl(
 ): string {
   const base = source.publicBaseUrl ?? `${source.protocol}://${source.host || 'localhost'}`;
   return `${base}${routePrefix}/${encodeURIComponent(turnId)}`;
+}
+
+/**
+ * Bekommt das Eltern-Cookie `Secure`? Vorläufig festgelegt am 23.11.2026 (Punkt D2, Teil 1):
+ *
+ * - ja, wenn die Anfrage über HTTPS kam: direkt (`secure`) oder laut `X-Forwarded-Proto` eines Proxys.
+ *   Den Kopf liest der Server dafür auch ohne PICASTAI_TRUST_PROXY: Ein gefälschter Kopf kann nur
+ *   `Secure` hinzufügen, und das macht höchstens das eigene Cookie unbrauchbar.
+ * - ja, im Betrieb (`production`), wenn die Verbindung von diesem Rechner kommt: Dort steht ein Proxy
+ *   wie Caddy, der HTTPS beendet, auch wenn er `X-Forwarded-Proto` nicht setzt.
+ * - nein nur bei http direkt von einem anderen Rechner (Test im eigenen WLAN): Sonst behielte der
+ *   Browser das Cookie nicht.
+ */
+export function parentCookieSecure(request: {
+  secure: boolean;
+  forwardedProto: string | string[] | undefined;
+  remoteAddress: string | undefined;
+  production: boolean;
+}): boolean {
+  if (request.secure) return true;
+  const forwarded = Array.isArray(request.forwardedProto) ? request.forwardedProto.join(',') : request.forwardedProto || '';
+  if (forwarded.split(',').some((value) => value.trim().toLowerCase() === 'https')) return true;
+  return request.production && isLoopbackAddress(request.remoteAddress);
 }
