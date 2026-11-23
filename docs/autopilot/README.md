@@ -24,7 +24,7 @@ Jeder Lauf fragt beim Start `python3 docs/autopilot/ap.py fahrplan <Rolle>`. Bei
 | Kunibert Autopilot · Recherche | täglich 11:53 | Claude Sonnet 5.5 | Recherche mit Quellen; ist keine offen, ein Routine-Punkt (Doku, Tests, Werkzeuge) |
 | Kunibert Autopilot · Planen & Bericht | täglich 18:07 | Claude Sonnet 5.5 | Arbeitsliste pflegen und Tagesbericht; freitags zusätzlich Wochenbericht und Fahrplan |
 
-Die Zeiten sind so gelegt, dass ein 5-Stunden-Fenster des Nutzungslimits mit einem Lauf von Prüfen (23:23), Recherche (11:53) oder Planen & Bericht (18:07) beginnt. „Bauen“ folgt gut eine bis knapp zwei Stunden später und nutzt im Endspurt den Rest des Fensters. Bauen 06:37 beginnt ein Fenster allein; das ist der Bauen-Termin im Wochenmodus.
+Die Zeiten sind so gelegt, dass ein 5-Stunden-Fenster des Nutzungslimits mit einem Lauf von Prüfen (23:23), Recherche (11:53) oder Planen & Bericht (18:07) beginnt. „Bauen“ folgt gut eine bis knapp zwei Stunden später und nutzt im Endspurt den Rest des Fensters. Bauen 06:37 beginnt ein Fenster allein. Im Wochenmodus arbeiten alle vier Bauen-Termine; gebremst werden sie nur vom Wochenbudget (siehe oben und [Fahrplan](fahrplan.md)).
 
 ## Welches Modell wofür
 
