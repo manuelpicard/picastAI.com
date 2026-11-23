@@ -3,8 +3,9 @@
 // Einwilligung, so wie Eltern es später in der Eltern-App tun. Ohne Einwilligung antwortet der
 // Server im Betrieb (NODE_ENV=production) nur mit einem festen Hinweis.
 //
-// Nötig nach jedem Neustart des Servers: Die Einwilligung liegt vorläufig nur im Arbeitsspeicher
-// (Punkt E2 der Arbeitsliste), und das Gerät spricht den Code noch nicht selbst (Punkt D1).
+// Einmal nötig, solange das Gerät den Code noch nicht selbst spricht (Punkt D1). Mit der Datei der
+// Eltern-Steuerung (KUNIBERT_ELTERN_DATEI und KUNIBERT_ELTERN_SCHLUESSEL, Punkt E2) übersteht die
+// Einwilligung einen Neustart; ohne sie liegt sie nur im Arbeitsspeicher, dann nach jedem Neustart.
 //
 //   PICASTAI_API_BASE_URL=http://127.0.0.1:3000 \
 //   PICASTAI_ADMIN_TOKEN=<Betreiber-Token> \

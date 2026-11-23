@@ -167,7 +167,7 @@ export function parentStateSettings(
 
 /**
  * Warnungen beim Start zur Eltern-Steuerung. Im Betrieb ohne Datei oder Schlüssel startet der Server
- * (vorläufig entschieden am 23.11.2026, 07:05): Ohne Speicher gehen nach einem Neustart nur die
+ * (vorläufig entschieden am 23.11.2026, 06:50): Ohne Speicher gehen nach einem Neustart nur die
  * Einwilligungen verloren, und das Gerät sagt dann nur den festen Hinweis. Das schützt die Kinder;
  * ein Server, der nicht startet, schützte niemanden zusätzlich. Die Warnung ist dafür deutlich.
  */

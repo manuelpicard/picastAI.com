@@ -14,8 +14,8 @@
 # Was das Skript NICHT tut (Absicht):
 #   - Es kennt und setzt keinen ANTHROPIC_API_KEY. Den trägst du selbst ein:
 #       sudoedit /etc/kunibert/kunibert.env
-#   - Es gibt keine Tokens auf dem Bildschirm aus. Admin- und Geräte-Token werden
-#     erzeugt und nur in /etc/kunibert/kunibert.env geschrieben (Rechte 600).
+#   - Es gibt keine Tokens auf dem Bildschirm aus. Admin- und Geräte-Token und der Schlüssel der
+#     Eltern-Steuerung werden erzeugt und nur in /etc/kunibert/kunibert.env geschrieben (Rechte 600).
 #   - Es bestellt nichts und ändert kein DNS und keine Hetzner-Firewall.
 #
 # Stand: auf keinem echten Server ausgeführt. Geprüft: bash -n, shellcheck und die
@@ -24,6 +24,8 @@ set -euo pipefail
 
 APP_DIR=/opt/kunibert/app
 ENV_FILE=/etc/kunibert/kunibert.env
+# Datei der Eltern-Steuerung (Punkt E2). Muss im StateDirectory des Dienstes liegen (deploy/kunibert-server.service).
+ELTERN_DATEI=/var/lib/kunibert/eltern.json
 REPO_SSH=git@github.com:manuelpicard/picastAI.com.git
 DEPLOY_KEY=/root/.ssh/kunibert_deploy
 # Feste Version statt latest-cpu, damit ein neuer Server dieselbe Version bekommt wie die Tests.
@@ -269,6 +271,10 @@ write_env() {
   env_set "$ENV_FILE" PICASTAI_TTS_VOICE "$TTS_VOICE"
   if env_set_if_empty "$ENV_FILE" PICASTAI_ADMIN_TOKEN "$(openssl rand -hex 32)"; then note "Admin-Token erzeugt (steht nur in der Datei)"; fi
   if env_set_if_empty "$ENV_FILE" PICASTAI_DEVICE_TOKEN "$(openssl rand -hex 32)"; then note "Geräte-Token erzeugt (steht nur in der Datei)"; fi
+  # Eltern-Steuerung dauerhaft (Punkt E2). Einen vorhandenen Schlüssel nie überschreiben: Ein neuer
+  # Schlüssel löscht beim nächsten Start alle Einwilligungen und Kopplungen.
+  env_set_if_empty "$ENV_FILE" KUNIBERT_ELTERN_DATEI "$ELTERN_DATEI" || true
+  if env_set_if_empty "$ENV_FILE" KUNIBERT_ELTERN_SCHLUESSEL "$(openssl rand -hex 32)"; then note "Schlüssel der Eltern-Steuerung erzeugt (steht nur in der Datei)"; fi
   chmod 600 "$ENV_FILE"; chown root:root "$ENV_FILE"
 }
 

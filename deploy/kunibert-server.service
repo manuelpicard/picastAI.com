@@ -17,8 +17,10 @@ ExecStart=/usr/bin/node --import tsx server.ts
 SyslogIdentifier=kunibert-server
 Restart=on-failure
 RestartSec=3
-# Schreibbares Verzeichnis nur für Zwischenspeicher (tsx); Audio liegt nur im Arbeitsspeicher.
+# Schreibbares Verzeichnis für Zwischenspeicher (tsx) und die Datei der Eltern-Steuerung
+# (KUNIBERT_ELTERN_DATEI, Punkt E2); nur der Dienst darf hinein. Audio liegt nur im Arbeitsspeicher.
 StateDirectory=kunibert
+StateDirectoryMode=0700
 Environment=HOME=/var/lib/kunibert
 # Härtung
 NoNewPrivileges=true
