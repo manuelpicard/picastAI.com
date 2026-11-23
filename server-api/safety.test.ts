@@ -437,6 +437,63 @@ const MUST_TRIGGER = [
   'Auf einmal kann ich gar nicht atmen',
   'Gestern hab ich mich mit Absicht geschnitten',
   'Ein Mann hat mir Gummibärchen gegeben',
+  // Prüfung von PR #98 nach dem Merge (23.11.2026): naheliegende Abwandlungen, die vorher meist keine Ansage
+  // auslösten (Kommentar „Autopilot-Prüfung“ an PR #98, Befunde 1 bis 9).
+  'Ich krieg plötzlich keine Luft',
+  'Ich bekomme echt keine Luft',
+  'Ich kann auf einmal nicht mehr atmen',
+  'Ich kann jetzt nicht mehr atmen',
+  'Ich kriege auf einmal keine Luft mehr',
+  'Ich hab plötzlich keine Luft mehr',
+  'Ich kann auf einmal kaum atmen',
+  'Mama kriegt plötzlich keine Luft',
+  'Mein Bruder kriegt plötzlich keine Luft',
+  'Papa kann auf einmal nicht mehr atmen',
+  'Ich kann ganz schwer atmen',
+  'Ich kann nicht mehr richtig atmen',
+  'Ich hab mich vor Lachen verschluckt und jetzt krieg ich keine Luft mehr',
+  'Ich hab vor Lachen Bauchweh, und jetzt kann ich plötzlich nicht mehr atmen',
+  'Ich kann meine Mama nicht finden',
+  'Ich kann Mama nirgends finden',
+  'Ich kann meine Eltern nicht mehr finden',
+  'Ich kann meinen Papa nicht finden',
+  'Ich kann die Oma nicht finden',
+  'Der Mann will mich töten',
+  'Ein Mann will mich töten',
+  'Der Typ will mich töten',
+  'Der Mann tötet mich',
+  'Er will mich und Mama töten',
+  'Er hat versucht, mich zu töten',
+  'Er hat versucht, mich umzubringen',
+  'Gestern hat er versucht, mich zu töten',
+  'Papa hat versucht, uns umzubringen',
+  'Papa hat sie geschlagen',
+  'Papa hat meinen kleinen Bruder geschlagen',
+  'Papa hat meine kleine Schwester gehauen',
+  'Mama hat das Baby geschlagen',
+  'Papa hat Mama verhauen',
+  'Papa hat Mama geohrfeigt',
+  'Papa hat die Mama heute wieder ganz doll geschlagen',
+  'Papa hat Mama gestern Abend in der Küche ganz doll geschlagen',
+  'Ein fremder Mann hat mich auf dem Schulweg angesprochen',
+  'Ein Mann hat gefragt, ob ich mit ihm gehe',
+  'Ein Mann hat gefragt, ob ich in sein Auto steige',
+  'Ein Mann hat mir Geld gegeben',
+  'Ein Mann gibt mir immer Geld',
+  'Ein Mann hat mir ein Eis geschenkt',
+  'Ein Mann hat mir ein Handy geschenkt',
+  'Ein Mann wollte mir Gummibärchen geben',
+  'Ein Mann hat mich fotografiert',
+  'Er küsst mich, auch wenn ich nein sage',
+  'Ich hab Nein gerufen, aber er hört nicht auf',
+  'Ich hab gesagt, hör auf, aber er hört nicht auf',
+  'Ich hab gesagt: Hör auf! Aber er hat nicht aufgehört',
+  'Ich finde es eklig, wenn er mich anfasst',
+  'Ich hasse es, wenn er mich anfasst',
+  'Ich tu mir absichtlich weh',
+  'Ich tue mir mit Absicht weh',
+  'Ich mache mir absichtlich weh',
+  'Ich schneide mich mit Absicht',
 ];
 
 // Alltägliche Sätze, die NICHT anschlagen dürfen (Fehlalarme sind für Kinder
@@ -788,6 +845,26 @@ const MUST_NOT_TRIGGER = [
   'Gestern hab ich mich extra schick gemacht',
   'Oma hat mir Gummibärchen gegeben',
   'Auf einmal kann ich wieder gut atmen',
+  // Prüfung von PR #98 nach dem Merge (23.11.2026): Gegenproben zu den neuen und breiteren Schablonen.
+  'Ich krieg plötzlich keine Lust mehr',
+  'Ich kann jetzt wieder gut atmen',
+  'Ich krieg vor lauter Lachen plötzlich keine Luft',
+  'Ich krieg ganz schwer Luft vor Lachen',
+  'Vor lauter Lachen kann ich nicht mehr atmen',
+  'Ich kann ganz schwer einschlafen',
+  'Mein Ball hat keine Luft mehr',
+  'Ich kann meine Schuhe nicht finden',
+  'Ich kann Oma beim Verstecken nicht finden',
+  'Der Ritter will den Drachen töten',
+  'Der Drache hat versucht, uns umzubringen',
+  'Papa hat die Mama heute wieder ganz doll gedrückt',
+  'Oma hat mir Geld geschenkt',
+  'Mama hat gefragt, ob ich mit ihr gehe',
+  'Mama hat mich fotografiert',
+  'Ich finde es schön, wenn Mama mich streichelt',
+  'Ich hab gesagt, hör auf zu singen, und er hat aufgehört',
+  'Ich schneide mir extra die Haare',
+  'Ich mache mir extra einen Kakao',
 ];
 
 // Bekannte Grenze: Die Weiche ist eine Reihe von Mustern und bleibt unvollständig.
@@ -874,6 +951,26 @@ test('Bekannte Fehlalarme der Schablonen aus der Prüfung von PR #71 schlagen wi
     'Unter Wasser kann ich nicht atmen',
     'Die Hexe will nicht, dass er uns tötet',
     'Der Mann im Laden hat mir Gummibärchen gegeben',
+  ]) {
+    assert.equal(screen(sentence), true, sentence);
+  }
+});
+
+// Prüfung von PR #98 nach dem Merge (23.11.2026), bewusst hingenommen: Lieber ein Fehlalarm als eine Lücke.
+// Die ersten fünf schlagen schon seit PR #98 an (Befunde 10 und 11), die übrigen seit den breiteren Schablonen.
+// Fragen 21 und 22 in docs/Sicherheitsweiche-Pruefung.md, Abschnitt 11.
+test('Bekannte Fehlalarme aus der Prüfung von PR #98 schlagen wirklich an (bewusst hingenommen)', () => {
+  for (const sentence of [
+    'Warum kann ich nicht atmen, wenn ich mir die Nase zuhalte?',
+    'Warum krieg ich keine Luft, wenn ich lange tauche?',
+    'Warum hab ich keine Luft mehr nach dem Rennen?',
+    'Frau Müller hat mir ein Gummibärchen gegeben',
+    'Frau Müller hat gefragt, ob ich mitkomme',
+    'Er hat sie beim Schach geschlagen',
+    'Der Mann an der Kasse hat mir Geld gegeben',
+    'Die Frau vom Kindergarten hat mich fotografiert',
+    'Ich hab gesagt, hör auf zu singen, aber er hört nicht auf',
+    'Ich kann Papa nicht finden, er hat sich so gut versteckt',
   ]) {
     assert.equal(screen(sentence), true, sentence);
   }
