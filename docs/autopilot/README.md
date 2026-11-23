@@ -65,7 +65,7 @@ Kommentare im Laufprotokoll und „Autopilot-Prüfung“-Kommentare zählen nur,
 - Sind drei (im Endspurt sechs) Autopilot-PRs offen, macht ein Lauf erst einen davon fertig, bevor er Neues beginnt. Darf er keinen davon anfassen (frisch „in Arbeit“ oder „fertig“ und rot seit weniger als einer Stunde), beginnt er nichts Neues. Er macht dann nur Arbeit ohne eigenen Punkt (zum Beispiel Prüfungen) und berichtet.
 - Erledigt ist ein Punkt, wenn sein PR gemergt ist. Der PR setzt den Status in `backlog.md` selbst.
 - Braucht ein Punkt mehrere PRs, steht „Teil k von n“ im PR-Text. Ein Teil vor dem letzten setzt den Status auf „offen (Teil k von n erledigt, PR #x)“. Erst der letzte Teil setzt „erledigt“. Punkte mit „Nach …“ warten bis dahin.
-- Jeder PR wird vor dem Merge von einem unabhängigen Unteragenten (Opus) geprüft. Gemergt wird nur, wenn alle Checks des letzten Commits fertig und grün sind und mindestens `test`, `pi-audio` und `firestore-emulator` mit Erfolg gelaufen sind. Fehlt ein Check, wird nicht gemergt.
+- Jeder PR wird vor dem Merge von einem unabhängigen Unteragenten (Opus) geprüft. Gemergt wird nur, wenn alle Checks des letzten Commits fertig und grün sind und mindestens `test`, `pi-audio`, `firestore-emulator` und `pi-installer` (seit PR #108) mit Erfolg gelaufen sind. Fehlt ein Check, wird nicht gemergt.
 - Ist `main` rot, hat die Reparatur Vorrang vor allem anderen.
 - Branches löschen geht aus den Läufen bisher nicht: Die Cloud-Umgebung sperrt es (HTTP 403 am 20. und 21.11.2026). Scheitert das Löschen, keinen Umweg suchen. Der Bericht nennt Branch und letzten Commit-Hash, der Betreiber löscht ihn auf GitHub (Seite „Branches“). Den Branch eines gemergten PRs löscht GitHub selbst.
 

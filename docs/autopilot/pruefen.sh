@@ -45,6 +45,15 @@ firmware_logik() (
     && /tmp/kb_logic
 )
 
+pi_installer() {
+  local ca=()
+  if [ -n "${PIP_CERT:-}" ] && [ -f "$PIP_CERT" ]; then
+    ca=(-e PIP_CERT=/ca.crt -v "$PIP_CERT:/ca.crt:ro")
+  fi
+  docker run --rm -e KUNIBERT_INSTALLER_TEST=1 "${ca[@]}" -v "$PWD:/src:ro" debian:trixie \
+    bash /src/pi-client/install_raspberry_pi.test.sh
+}
+
 lebenszeichen
 pruefe npm-test npm test
 pruefe lint npm run lint
@@ -58,6 +67,13 @@ if [ "${1:-}" != "--schnell" ]; then
     pruefe shellcheck shellcheck -S warning deploy/*.sh pi-client/*.sh docs/autopilot/*.sh
   else
     echo "OFFEN   shellcheck       (nicht installiert; die CI prüft es)"
+  fi
+  # Pi-Installer als root in einem Wegwerf-Container (ändert sonst das System). Nur mit laufendem
+  # Docker. Hinter einem Proxy mit eigener Zertifizierungsstelle: PIP_CERT=<Datei> setzen.
+  if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+    pruefe pi-installer pi_installer
+  else
+    echo "OFFEN   pi-installer     (kein laufendes Docker; die CI prüft es, Job pi-installer)"
   fi
   if command -v cc >/dev/null 2>&1; then
     pruefe firmware-logik firmware_logik

@@ -34,7 +34,7 @@ from zoneinfo import ZoneInfo
 REPO = "manuelpicard/picastAI.com"
 EIGENTUEMER = "manuelpicard"
 BRANCH_PRAEFIX = "claude/autopilot-"
-PFLICHT_CHECKS = ("test", "pi-audio", "firestore-emulator")
+PFLICHT_CHECKS = ("test", "pi-audio", "firestore-emulator", "pi-installer")
 GUTE_ERGEBNISSE = {"success", "skipped", "neutral"}
 BERLIN = ZoneInfo("Europe/Berlin")
 WOCHENTAGE = ("Mo", "Di", "Mi", "Do", "Fr", "Sa", "So")

@@ -5,7 +5,7 @@ Der Client läuft auf zwei Geräten, mit demselben Code:
 - **Erster Aufbau: Raspberry Pi 5 (4 GB)** mit Raspberry Pi OS Lite, USB-Mikrofon und getrenntem USB-Lautsprecher, zwei Tastern und Status-LED. Siehe [Erster Aufbau](#erster-aufbau-pi-5-mit-usb-mikrofon-und-usb-lautsprecher).
 - **Endgerät (Serie): ESP32-S3** (Entscheidung des Betreibers, 7. bis 9.11.2026). Dieser Python-Client läuft dort nicht; er dient als Vorlage für den Ablauf (`docs/picastAI-Pi-API.md`). Der Pi Zero 2 W mit Audio-HAT ist nicht mehr geplant; die Hinweise zu WM8960-/ReSpeaker-HATs unten bleiben für den Fall, dass jemand einen Pi mit HAT nutzt.
 
-> **Stand:** Weder der Client noch das Installationsskript wurden bisher auf echter Pi-Hardware ausgeführt. Getestet sind die Python-Unit-Tests, der Client gegen einen lokalen Server und das Installationsskript in einem Debian-Container. Was am echten Pi noch zu prüfen ist, steht am Ende des Abschnitts zum ersten Aufbau.
+> **Stand:** Weder der Client noch das Installationsskript wurden bisher auf echter Pi-Hardware ausgeführt. Getestet sind die Python-Unit-Tests, der Client gegen einen lokalen Server und das Installationsskript in einem frischen Debian-13-Container ([`install_raspberry_pi.test.sh`](install_raspberry_pi.test.sh), in der CI als Job `pi-installer`; Einzelheiten unten). Was am echten Pi noch zu prüfen ist, steht am Ende des Abschnitts zum ersten Aufbau.
 
 ## Automatische Installation auf frischem Raspberry Pi OS
 
@@ -14,19 +14,30 @@ Das Skript `install_raspberry_pi.sh` installiert die Python-Laufzeit, GPIO-/Audi
 Auf dem Pi nach dem Kopieren oder Klonen des Repositories:
 
 ```bash
-sudo bash pi-client/install_raspberry_pi.sh \
-  --device-id prototype-001 \
-  --api-token 'TOKEN_AUS_SECRET_MANAGER'
+sudo bash pi-client/install_raspberry_pi.sh --device-id prototype-001
 ```
 
-Für automatisierte Provisionierung ohne Eingabeaufforderung `--non-interactive` verwenden. Ohne `--api-token` wird dann absichtlich nur eine leere Konfiguration geschrieben:
+**Das Token** fragt der Installer verdeckt ab. So steht es nicht in der Befehlszeile, nicht in der Prozessliste und nicht im Shell-Verlauf. Eine Option, das Token direkt mitzugeben, gibt es deshalb nicht (`--api-token` lehnt der Installer ab). Erlaubt sind Buchstaben, Ziffern und `. _ ~ + / = : -` (zum Beispiel hex aus `openssl rand -hex 32`).
+
+Für automatisierte Provisionierung ohne Eingabeaufforderung: `--non-interactive` und das Token aus einer Datei, die nur root lesen kann (erste Zeile). Die Datei ohne Shell-Verlauf anlegen und danach löschen:
 
 ```bash
+sudo install -m 600 /dev/null /root/kunibert-token
+sudoedit /root/kunibert-token          # Token in die erste Zeile, speichern
 sudo bash pi-client/install_raspberry_pi.sh \
   --non-interactive \
   --device-id prototype-001 \
-  --api-token "$PICASTAI_DEVICE_TOKEN"
+  --api-token-file /root/kunibert-token
+sudo rm /root/kunibert-token
 ```
+
+Gibt es weder ein Token noch eine vorhandene Konfiguration mit Token, schreibt der Installer ein leeres Token und warnt; der Dienst arbeitet dann erst nach `sudoedit /etc/kunibert/kunibert.env`.
+
+**Ein zweiter Lauf** übernimmt aus der vorhandenen `/etc/kunibert/kunibert.env` alles, was beim Aufruf fehlt: Adresse, Geräte-ID, Token, Name, Abtastrate, Mikrofon, Lautsprecher und Zeilen, die du mit `sudoedit` geändert oder ergänzt hast. Er nennt die Namen der behaltenen Werte, nie die Werte. Fehlende Zeilen ergänzt er mit dem Standardwert. Neue Standardwerte einer späteren Fassung ersetzen vorhandene Zeilen also nicht. Ausnahmen setzt er immer neu, mit Warnung: `KUNIBERT_PIPELINE_TIMEOUT=140` (Zeitkette: Server 120 s, Caddy 130 s, Gerät 140 s) sowie `KUNIBERT_CACHE_DIR` und `KUNIBERT_ANNOUNCEMENTS_DIR` (müssen zur Dienstdatei passen). Kommentare übernimmt er nicht; Windows-Zeilenenden und Einrückung vor einem Namen fallen weg. Mit denselben Angaben ändert ein zweiter Lauf an `kunibert.env`, Dienstdatei, Rechten und Besitzern nichts. Bei jedem Lauf neu: Systempakete, `pip install --upgrade` und die Sicherung einer vorhandenen `/etc/asound.conf`. Ein neues Token: `--ask-token` (verdeckte Abfrage, auch wenn schon eines gespeichert ist) oder `--api-token-file`.
+
+**Wer das Token lesen darf:** nur root und das Dienstkonto `kunibert`. Der Ordner `/etc/kunibert` (Rechte 0750) und `kunibert.env` (Rechte 0640) gehören root, Gruppe `kunibert`. In dieser Gruppe ist nur das Dienstkonto; findet der Installer dort weitere Konten, warnt er. Andere Nutzer, auch Mitglieder von `audio` wie der Standardnutzer, lesen die Datei nicht. systemd liest sie beim Start des Dienstes als root (Einschätzung; am Pi noch nicht geprüft). Werte ohne das Token ansehen: `sudo grep -v '^PICASTAI_DEVICE_TOKEN=' /etc/kunibert/kunibert.env`.
+
+**Getestet** (nicht am Pi): [`install_raspberry_pi.test.sh`](install_raspberry_pi.test.sh) führt den Installer als root in einem frischen Debian 13 aus (wie Raspberry Pi OS „Trixie“), in der CI als Job `pi-installer`. Er prüft Dienstkonto, Ordner, `kunibert.env` (Werte, Rechte, Besitzer), die Dienstdatei (auch mit `systemd-analyze verify`), den zweiten Lauf, einen Lauf ohne Token, Änderungen von Hand, wer die Datei lesen darf, den Health-Aufruf aus „Manuell starten“, die verdeckte Abfrage an einem Pseudo-Terminal und dass das Token nie in einer Ausgabe und in keiner anderen Datei steht. `systemctl` ist dabei eine Attrappe (nur `enable` läuft echt): Ob der Dienst startet, zeigt erst der echte Pi. Selbst ausführen (ändert das System, deshalb nur im Wegwerf-Container; der Test bricht ab, wenn er keinen erkennt): `docker run --rm -e KUNIBERT_INSTALLER_TEST=1 -v "$PWD":/src:ro debian:trixie bash /src/pi-client/install_raspberry_pi.test.sh`.
 
 Vor einer echten Installation kann die Auflösung der Quelle und Optionen geprüft werden:
 
@@ -41,7 +52,6 @@ aplay -l
 arecord -l
 sudo bash pi-client/install_raspberry_pi.sh \
   --device-id prototype-001 \
-  --api-token 'TOKEN_AUS_SECRET_MANAGER' \
   --audio-card 'hw:wm8960soundcard,0'
 ```
 
@@ -72,19 +82,18 @@ Vorgehen auf dem Pi:
 ```bash
 arecord -l        # Aufnahmekarten
 aplay -l          # Wiedergabekarten
-sudo bash pi-client/install_raspberry_pi.sh --non-interactive --device-id prototype-001 --api-token "$PICASTAI_DEVICE_TOKEN"
+sudo bash pi-client/install_raspberry_pi.sh --device-id prototype-001   # fragt das Token verdeckt ab
 /opt/kunibert/.venv/bin/python -m sounddevice     # Liste der Geräte, wie der Client sie sieht
 ```
 
 Aus der Liste je einen eindeutigen Namensteil für Mikrofon und Lautsprecher nehmen und eintragen (Namen sind stabiler als Nummern, weil sich die Kartennummern von USB-Geräten ändern können):
 
 ```bash
-sudo bash pi-client/install_raspberry_pi.sh --non-interactive --device-id prototype-001 \
-  --api-token "$PICASTAI_DEVICE_TOKEN" \
+sudo bash pi-client/install_raspberry_pi.sh --non-interactive \
   --capture-device 'NAMENSTEIL_MIKROFON' --playback-device 'NAMENSTEIL_LAUTSPRECHER'
 ```
 
-Das schreibt `KUNIBERT_INPUT_DEVICE` und `KUNIBERT_OUTPUT_DEVICE` in `/etc/kunibert/kunibert.env`. Nachträglich geht es mit `sudoedit /etc/kunibert/kunibert.env` und `sudo systemctl restart kunibert.service`. Trifft ein Namensteil auf mehrere Geräte zu, besser einen längeren Namensteil oder die Nummer nehmen (das Verhalten von `sounddevice` bei mehrdeutigen Namen wurde nicht geprüft).
+Das schreibt `KUNIBERT_INPUT_DEVICE` und `KUNIBERT_OUTPUT_DEVICE` in `/etc/kunibert/kunibert.env`. Adresse, Geräte-ID und Token aus dem ersten Lauf bleiben (siehe „Ein zweiter Lauf“ oben). Nachträglich geht es mit `sudoedit /etc/kunibert/kunibert.env` und `sudo systemctl restart kunibert.service`. Trifft ein Namensteil auf mehrere Geräte zu, besser einen längeren Namensteil oder die Nummer nehmen (das Verhalten von `sounddevice` bei mehrdeutigen Namen wurde nicht geprüft).
 
 **GPIO auf dem Pi 5:** gpiozero kann dort nur das Backend `lgpio` benutzen (gpiozero-Dokumentation, „Changing the pin factory“). Das Paket `python3-gpiozero` empfiehlt `python3-lgpio` nur (`Recommends`, Raspberry-Pi-OS-Archiv). Das Installationsskript lässt Empfehlungen aus und installiert `python3-lgpio` deshalb ausdrücklich, wenn die Paketquellen es kennen. Außerdem wird der Dienstnutzer in die Gruppe `gpio` aufgenommen, und der Dienst läuft in `/var/lib/kunibert` statt in `/opt/kunibert` (dort ist wegen `ProtectSystem=strict` nichts beschreibbar, und `lgpio` legt laut Dokumentation Hilfsdateien im Arbeitsverzeichnis an).
 
@@ -96,6 +105,8 @@ Das schreibt `KUNIBERT_INPUT_DEVICE` und `KUNIBERT_OUTPUT_DEVICE` in `/etc/kunib
 4. Funktionieren Taster und LED (Sprechtaste, Erzähltaste, Dauerlicht in `READY`)?
 5. Reagiert der Client mit offenem GPIO 22 wie erwartet (kein Dauer-`MIC_OFF`)?
 6. Ohne Sprachserver antwortet der Server mit Tönen statt Sprache (Glockenton bzw. Fanfare); damit lässt sich die Audiokette (Mikrofon, Server, Lautsprecher) schon vor dem Sprachserver prüfen.
+7. Startet der Dienst mit `kunibert.env` (Rechte 0640, Gruppe `kunibert`)? Steht in `journalctl -u kunibert.service` „Failed to load environment files“, liest systemd die Datei nicht als root (anders als im Abschnitt „Wer das Token lesen darf“ eingeschätzt).
+8. In welchen Gruppen ist der Standardnutzer (`id`)? Der Containertest nimmt an, dass er in `audio` ist, aber nicht in `kunibert`.
 
 ## Zustandsautomat
 
@@ -259,27 +270,37 @@ KUNIBERT_OUTPUT_DEVICE=
 
 Zeitgrenzen in Sekunden: `KUNIBERT_REQUEST_TIMEOUT` gilt für den Health-Check, `KUNIBERT_PIPELINE_TIMEOUT` für Frage und Geschichte, `KUNIBERT_AUDIO_TIMEOUT` für den Abruf der WAV-Antwort. Frage und Geschichte laufen auf dem Server durch Spracherkennung, Sprachmodell und Sprachsynthese; der Server hält dafür ein gemeinsames Zeitbudget von 120 s ein. Der Client muss länger warten als diese Kette, sonst bricht er ab und schickt die Anfrage erneut, und der Server erzeugt die Antwort ein zweites Mal (bei der Geschichte rückt die Folge dabei weiter). Die abgestimmte Zeitkette mit dem Reverse Proxy steht in [`deploy/EINRICHTUNG.md`](../deploy/EINRICHTUNG.md).
 
+Dienstkonto, Ordner und Rechte wie beim Installer (das Token lesen nur root und das Dienstkonto, siehe „Wer das Token lesen darf“ oben):
+
 ```bash
-sudo install -d -m 0750 /etc/kunibert /var/lib/kunibert/audio
-sudo chmod 600 /etc/kunibert/kunibert.env
+sudo groupadd --system kunibert
+sudo useradd --system --gid kunibert --groups audio --home-dir /opt/kunibert --shell /usr/sbin/nologin kunibert
+getent group gpio >/dev/null && sudo usermod -a -G gpio kunibert   # GPIO auf dem Pi 5 (siehe „Erster Aufbau“)
+sudo install -d -o kunibert -g audio -m 0750 /opt/kunibert /var/lib/kunibert /var/lib/kunibert/audio /var/lib/kunibert/ansagen
+sudo install -d -o root -g kunibert -m 0750 /etc/kunibert
+sudoedit /etc/kunibert/kunibert.env
+sudo chown root:kunibert /etc/kunibert/kunibert.env
+sudo chmod 0640 /etc/kunibert/kunibert.env
 ```
 
 ## Manuell starten
 
+Der Client läuft dabei wie im Dienst als Dienstkonto `kunibert`: Nur dieses Konto (und root) darf `kunibert.env` lesen. Vorher den Dienst anhalten, sonst greifen zwei Clients auf Taster und Ton zu:
+
 ```bash
-set -a
-. /etc/kunibert/kunibert.env
-set +a
-/opt/kunibert/.venv/bin/python pi-client/kunibert_client.py --debug
+sudo systemctl stop kunibert.service
+sudo -u kunibert bash -c 'cd /var/lib/kunibert && set -a && . /etc/kunibert/kunibert.env && set +a && exec /opt/kunibert/.venv/bin/python /opt/kunibert/pi-client/kunibert_client.py --debug'
 ```
 
 Beim Start wartet der Client, bis der Server antwortet: Ist er nicht erreichbar (WLAN noch nicht da, Router startet noch), blinkt die LED schnell (Fehler), und der Client versucht es alle `KUNIBERT_CONNECT_RETRY` Sekunden (Standard 10) wieder. Er beendet sich dabei nicht.
 
-Nur Health prüfen:
+Nur Health prüfen (muss `OK` melden; prüft die Adresse aus `kunibert.env`, nicht die Standardadresse):
 
 ```bash
-/opt/kunibert/.venv/bin/python pi-client/kunibert_client.py --once health
+sudo -u kunibert bash -c 'cd /var/lib/kunibert && set -a && . /etc/kunibert/kunibert.env && set +a && exec /opt/kunibert/.venv/bin/python /opt/kunibert/pi-client/kunibert_client.py --once health'
 ```
+
+Genau diesen Aufruf führt der Containertest aus (`install_raspberry_pi.test.sh`, gegen einen kleinen Test-Server unter der Adresse aus `kunibert.env`).
 
 Ohne Pi-Hardware gibt es zwei Prüfungen:
 
