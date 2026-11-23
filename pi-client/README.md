@@ -17,20 +17,27 @@ Auf dem Pi nach dem Kopieren oder Klonen des Repositories:
 sudo bash pi-client/install_raspberry_pi.sh --device-id prototype-001
 ```
 
-**Das Token** fragt der Installer verdeckt ab. So steht es nicht in der Befehlszeile, nicht in der Prozessliste und nicht im Shell-Verlauf. Eine Option, das Token direkt mitzugeben, gibt es deshalb nicht (`--api-token` lehnt der Installer ab). Für automatisierte Provisionierung ohne Eingabeaufforderung: `--non-interactive` und das Token aus einer Datei, die nur root lesen kann (erste Zeile; die Datei danach löschen). Ohne Token schreibt der Installer eine Konfiguration mit leerem Token und warnt:
+**Das Token** fragt der Installer verdeckt ab. So steht es nicht in der Befehlszeile, nicht in der Prozessliste und nicht im Shell-Verlauf. Eine Option, das Token direkt mitzugeben, gibt es deshalb nicht (`--api-token` lehnt der Installer ab). Erlaubt sind Buchstaben, Ziffern und `. _ ~ + / = : -` (zum Beispiel hex aus `openssl rand -hex 32`).
+
+Für automatisierte Provisionierung ohne Eingabeaufforderung: `--non-interactive` und das Token aus einer Datei, die nur root lesen kann (erste Zeile). Die Datei ohne Shell-Verlauf anlegen und danach löschen:
 
 ```bash
+sudo install -m 600 /dev/null /root/kunibert-token
+sudoedit /root/kunibert-token          # Token in die erste Zeile, speichern
 sudo bash pi-client/install_raspberry_pi.sh \
   --non-interactive \
   --device-id prototype-001 \
   --api-token-file /root/kunibert-token
+sudo rm /root/kunibert-token
 ```
 
-**Ein zweiter Lauf** übernimmt aus der vorhandenen `/etc/kunibert/kunibert.env` alles, was beim Aufruf fehlt: Adresse, Geräte-ID, Token, Name, Abtastrate, Mikrofon, Lautsprecher und Zeilen, die du mit `sudoedit` geändert oder ergänzt hast. Fehlende Zeilen ergänzt er mit dem Standardwert. Mit denselben Angaben ändert ein zweiter Lauf an `kunibert.env`, Dienstdatei, Rechten und Besitzern nichts. Bei jedem Lauf neu: Systempakete, `pip install --upgrade` und die Sicherung einer vorhandenen `/etc/asound.conf`. Ein neues Token: `--ask-token` (verdeckte Abfrage, auch wenn schon eines gespeichert ist) oder `--api-token-file`.
+Gibt es weder ein Token noch eine vorhandene Konfiguration mit Token, schreibt der Installer ein leeres Token und warnt; der Dienst arbeitet dann erst nach `sudoedit /etc/kunibert/kunibert.env`.
 
-**Wer das Token lesen darf:** nur root und das Dienstkonto `kunibert`. Der Ordner `/etc/kunibert` (Rechte 0750) und `kunibert.env` (Rechte 0640) gehören root, Gruppe `kunibert`. In dieser Gruppe ist nur das Dienstkonto. Andere Nutzer, auch Mitglieder von `audio` wie der Standardnutzer, lesen die Datei nicht. systemd liest sie beim Start des Dienstes als root (Einschätzung; am Pi noch nicht geprüft). Werte ohne das Token ansehen: `sudo grep -v '^PICASTAI_DEVICE_TOKEN=' /etc/kunibert/kunibert.env`.
+**Ein zweiter Lauf** übernimmt aus der vorhandenen `/etc/kunibert/kunibert.env` alles, was beim Aufruf fehlt: Adresse, Geräte-ID, Token, Name, Abtastrate, Mikrofon, Lautsprecher und Zeilen, die du mit `sudoedit` geändert oder ergänzt hast. Er nennt die Namen der behaltenen Werte, nie die Werte. Fehlende Zeilen ergänzt er mit dem Standardwert. Neue Standardwerte einer späteren Fassung ersetzen vorhandene Zeilen also nicht. Ausnahmen setzt er immer neu, mit Warnung: `KUNIBERT_PIPELINE_TIMEOUT=140` (Zeitkette: Server 120 s, Caddy 130 s, Gerät 140 s) sowie `KUNIBERT_CACHE_DIR` und `KUNIBERT_ANNOUNCEMENTS_DIR` (müssen zur Dienstdatei passen). Kommentare übernimmt er nicht; Windows-Zeilenenden und Einrückung vor einem Namen fallen weg. Mit denselben Angaben ändert ein zweiter Lauf an `kunibert.env`, Dienstdatei, Rechten und Besitzern nichts. Bei jedem Lauf neu: Systempakete, `pip install --upgrade` und die Sicherung einer vorhandenen `/etc/asound.conf`. Ein neues Token: `--ask-token` (verdeckte Abfrage, auch wenn schon eines gespeichert ist) oder `--api-token-file`.
 
-**Getestet** (nicht am Pi): [`install_raspberry_pi.test.sh`](install_raspberry_pi.test.sh) führt den Installer als root in einem frischen Debian 13 aus (wie Raspberry Pi OS „Trixie“), in der CI als Job `pi-installer`. Er prüft Dienstkonto, Ordner, `kunibert.env` (Werte, Rechte, Besitzer), die Dienstdatei (auch mit `systemd-analyze verify`), den zweiten Lauf, einen Lauf ohne Token, Änderungen von Hand, wer die Datei lesen darf, den Health-Aufruf aus „Manuell starten“ und dass das Token nie in einer Ausgabe steht. `systemctl` ist dabei eine Attrappe: Ob der Dienst startet, zeigt erst der echte Pi. Selbst ausführen (ändert das System, deshalb nur im Wegwerf-Container): `docker run --rm -e KUNIBERT_INSTALLER_TEST=1 -v "$PWD":/src:ro debian:trixie bash /src/pi-client/install_raspberry_pi.test.sh`.
+**Wer das Token lesen darf:** nur root und das Dienstkonto `kunibert`. Der Ordner `/etc/kunibert` (Rechte 0750) und `kunibert.env` (Rechte 0640) gehören root, Gruppe `kunibert`. In dieser Gruppe ist nur das Dienstkonto; findet der Installer dort weitere Konten, warnt er. Andere Nutzer, auch Mitglieder von `audio` wie der Standardnutzer, lesen die Datei nicht. systemd liest sie beim Start des Dienstes als root (Einschätzung; am Pi noch nicht geprüft). Werte ohne das Token ansehen: `sudo grep -v '^PICASTAI_DEVICE_TOKEN=' /etc/kunibert/kunibert.env`.
+
+**Getestet** (nicht am Pi): [`install_raspberry_pi.test.sh`](install_raspberry_pi.test.sh) führt den Installer als root in einem frischen Debian 13 aus (wie Raspberry Pi OS „Trixie“), in der CI als Job `pi-installer`. Er prüft Dienstkonto, Ordner, `kunibert.env` (Werte, Rechte, Besitzer), die Dienstdatei (auch mit `systemd-analyze verify`), den zweiten Lauf, einen Lauf ohne Token, Änderungen von Hand, wer die Datei lesen darf, den Health-Aufruf aus „Manuell starten“, die verdeckte Abfrage an einem Pseudo-Terminal und dass das Token nie in einer Ausgabe und in keiner anderen Datei steht. `systemctl` ist dabei eine Attrappe (nur `enable` läuft echt): Ob der Dienst startet, zeigt erst der echte Pi. Selbst ausführen (ändert das System, deshalb nur im Wegwerf-Container; der Test bricht ab, wenn er keinen erkennt): `docker run --rm -e KUNIBERT_INSTALLER_TEST=1 -v "$PWD":/src:ro debian:trixie bash /src/pi-client/install_raspberry_pi.test.sh`.
 
 Vor einer echten Installation kann die Auflösung der Quelle und Optionen geprüft werden:
 
@@ -268,8 +275,9 @@ Dienstkonto, Ordner und Rechte wie beim Installer (das Token lesen nur root und 
 ```bash
 sudo groupadd --system kunibert
 sudo useradd --system --gid kunibert --groups audio --home-dir /opt/kunibert --shell /usr/sbin/nologin kunibert
+getent group gpio >/dev/null && sudo usermod -a -G gpio kunibert   # GPIO auf dem Pi 5 (siehe „Erster Aufbau“)
+sudo install -d -o kunibert -g audio -m 0750 /opt/kunibert /var/lib/kunibert /var/lib/kunibert/audio /var/lib/kunibert/ansagen
 sudo install -d -o root -g kunibert -m 0750 /etc/kunibert
-sudo install -d -o kunibert -g audio -m 0750 /var/lib/kunibert /var/lib/kunibert/audio /var/lib/kunibert/ansagen
 sudoedit /etc/kunibert/kunibert.env
 sudo chown root:kunibert /etc/kunibert/kunibert.env
 sudo chmod 0640 /etc/kunibert/kunibert.env
