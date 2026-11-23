@@ -575,7 +575,7 @@ Angelegt am 17.11.2026, 20:15, von Claude (Chat). Gepflegt von den Läufen des W
 - Fertig, wenn: Datei aktualisiert, oder im PR-Bericht „keine Änderung“; jede Änderung mit Quelle und Abrufdatum.
 
 ### N1123-1337-a · Echtes Caddy vor dem Server: Adressen und HTTPS beim Koppeln prüfen
-- Rolle: Prüfen · Prio: 2 · Status: offen · Nach D2 (Teil 2 von 3) · Bezug: D2 Teil 1 (PR #106, unabhängige Prüfung: „nicht gegen echtes Caddy getestet“), E4
+- Rolle: Prüfen · Prio: 2 · Status: offen · Nach D2 · Bezug: D2 Teil 1 (PR #106, unabhängige Prüfung: „nicht gegen echtes Caddy getestet“), E4
 - Ziel: Der Schutz vor dem Raten (`server-api/kopplungsschutz.ts`) und `Secure` am Eltern-Cookie verlassen sich auf die Köpfe, die Caddy setzt (`X-Forwarded-For`, `X-Forwarded-Proto`), und auf `PICASTAI_TRUST_PROXY=loopback`. Geprüft ist das bisher nur mit nachgebauten Köpfen in `server-api/api.test.ts`. Ein Test (CI-Job oder Skript in `deploy/dryrun/`) startet Caddy mit `deploy/Caddyfile` (lokales Zertifikat, `tls internal`) vor dem Server.
 - Fertig, wenn: belegt ist, dass der Server die Adresse des Absenders sieht, ein vom Absender gefälschtes `X-Forwarded-For` nicht zählt, das Cookie `Secure` hat und ohne `PICASTAI_TRUST_PROXY` der Hinweis im Journal kommt; Ergebnis mit Caddy-Version in `deploy/EINRICHTUNG.md`.
 
