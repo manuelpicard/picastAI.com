@@ -66,7 +66,7 @@ Angelegt am 17.11.2026, 20:15, von Claude (Chat). Gepflegt von den Läufen des W
 - Fertig, wenn: Rechner-Tests (`test/test_logic.c`) für den neuen Fall, CI-Build grün, Schnittstellen-Doku und `firmware/esp32-s3/README.md` angepasst. Auf keinem Gerät gelaufen: so im Bericht nennen.
 
 ### E1 · Wie lange bleiben die Zeitzeilen im Protokoll
-- Rolle: Bauen · Prio: 2 · Status: offen · Bezug: Nr. 47
+- Rolle: Bauen · Prio: 2 · Status: offen (in Arbeit, PR folgt) · Bezug: Nr. 47
 - Ziel: Eine vorläufige Frist festlegen (Einschätzung, keine Rechtsberatung; zum Beispiel 14 Tage) und technisch umsetzen (journald oder logrotate über `deploy/`), Doku in `deploy/EINRICHTUNG.md`.
 - Fertig, wenn: Einrichtungsskript und Test (`deploy/setup-server.test.sh`) decken die Frist ab; Entscheidung als „vorläufig“ im Bericht.
 
