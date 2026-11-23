@@ -24,7 +24,7 @@ Gesamt bis zum ersten Pi-Durchlauf grob **2 bis 3 Stunden** reine Arbeitszeit (S
 
 ### Kürzer mit dem Skript
 
-Die Schritte 5, 6 und 8 und die Vorbereitung von Schritt 7 erledigt [`setup-server.sh`](setup-server.sh) in einem Lauf (Pakete, Node.js 22, Docker, Caddy, Benutzer, Code, Build, env-Datei, Sprachserver mit Modellen, Dienst, Caddyfile). Es ist mehrfach ausführbar. **Stand: auf keinem echten Server gelaufen.** Geprüft sind `bash -n`, `shellcheck` und die Hilfsfunktionen (`bash deploy/setup-server.test.sh`). Bricht es ab, geht es von Hand mit den Abschnitten 1 bis 6 weiter.
+Die Schritte 5, 6 und 8 und die Vorbereitung von Schritt 7 erledigt [`setup-server.sh`](setup-server.sh) in einem Lauf (Pakete, Node.js 22, Docker, Caddy, Benutzer, Frist für Protokolle, Code, Build, env-Datei, Sprachserver mit Modellen, Dienst, Caddyfile). Es ist mehrfach ausführbar. **Stand: auf keinem echten Server gelaufen.** Geprüft sind `bash -n`, `shellcheck` und die Hilfsfunktionen (`bash deploy/setup-server.test.sh`). Bricht es ab, geht es von Hand mit den Abschnitten 1 bis 6 weiter.
 
 ```bash
 # von deinem Rechner (im Repo-Ordner; unter Windows in PowerShell mit OpenSSH)
@@ -96,8 +96,11 @@ Spracherkennung und Sprachausgabe laufen auf einem eigenen Server, hier [Speache
 sudo docker run --detach --name speaches --restart unless-stopped \
   --publish 127.0.0.1:8000:8000 \
   --volume hf-hub-cache:/home/ubuntu/.cache/huggingface/hub \
+  --log-driver journald --log-opt tag=speaches \
   ghcr.io/speaches-ai/speaches:0.8.3-cpu
 ```
+
+Die Zeile mit `--log-driver` schickt die Meldungen des Sprachservers ins Journal. Dort gilt die Frist für Protokolle (Abschnitt „Betrieb“). Ohne sie schreibt Docker in eine eigene Datei, für die diese Frist nicht gilt.
 
 `127.0.0.1` ist Absicht: der Sprachserver lauscht nur lokal und braucht deshalb keinen Schlüssel. Port 8000 nie nach außen freigeben. Mit NVIDIA-Grafikkarte stattdessen `latest-cuda` und `--gpus=all`. Liegt der Sprachserver auf einem anderen Rechner, nur per `https` und mit Schlüssel (`PICASTAI_STT_API_KEY`, `PICASTAI_TTS_API_KEY`) ansprechen; der Server warnt beim Start vor `http` zu fremden Rechnern.
 
@@ -206,7 +209,29 @@ Auf dem Pi (siehe [`pi-client/README.md`](../pi-client/README.md)) `PICASTAI_API
 
 ## Betrieb
 
-- **Update:** neuen Stand holen (`git pull`), `npm ci`, `npm run build`, `sudo systemctl restart kunibert-server`, Abnahme wiederholen. Ein Neustart verwirft laufende Folgen und nicht abgeholtes Audio (nur im Arbeitsspeicher).
+- **Update:** neuen Stand holen (`git pull`), `npm ci`, `npm run build`, `sudo systemctl restart kunibert-server`, Abnahme wiederholen. Hat sich `deploy/kunibert-server.service` geändert (zum Beispiel `SyslogIdentifier=` seit 23.11.2026), die Datei wie in Abschnitt 5 neu installieren und `sudo systemctl daemon-reload` vor dem Neustart. Einfacher: `setup-server.sh` noch einmal starten. Ein Neustart verwirft laufende Folgen und nicht abgeholtes Audio (nur im Arbeitsspeicher).
 - **Gerät sperren:** bei Umgebungs-Gerät Token in der env-Datei ändern und neu starten; bei Geräten aus der Admin-API `POST /api/devices/<id>/revoke` von lokal.
 - **Schlüssel tauschen:** env-Datei ändern, Dienst neu starten, alten Schlüssel beim Anbieter widerrufen.
-- **Logs:** Das Journal enthält Fehlermeldungen, aber keine Aufnahmen und keine Antworttexte (`KUNIBERT_DIAGNOSTIC_TEXT` wirkt in Produktion nicht).
+- **Logs:** Das Journal enthält Fehlermeldungen und die Zeilen `Zeitmessung`, aber keine Aufnahmen und keine Antworttexte (`KUNIBERT_DIAGNOSTIC_TEXT` wirkt in Produktion nicht).
+- **Frist für Protokolle** (vorläufig, 23.11.2026, 01:10, Punkt E1; Einschätzung, keine Rechtsberatung): 14 Tage für alles im Journal dieses Servers, also Kunibert-Dienst, Sprachserver, Caddy und System. Grund: Die Zeilen zeigen, wann ein Gerät benutzt wurde. Für die Auswertung eines Tests reichen 14 Tage. Für die Fehlersuche nach einem Vorfall ist das kurz; wer mehr braucht, legt eine eigene Datei an (unten, „Eigener Wert“).
+  - `setup-server.sh` legt `/etc/systemd/journald.conf.d/50-kunibert-frist.conf` an: `MaxRetentionSec=14day` und `MaxFileSec=1day`. journald löscht nur ganze Dateien. Weil jeden Tag eine neue Datei beginnt, weicht die Frist höchstens etwa einen Tag ab (nach der Beschreibung von `journald.conf`; auf einem Server nicht geprüft).
+  - Der Container des Sprachservers schreibt ins Journal (Abschnitt 4). Ein älterer Container ohne diese Einstellung bekommt beim Skript einen Hinweis. Dann einmal neu anlegen: `sudo docker rm -f speaches` und das Skript noch einmal starten. Die Modelle bleiben im Volume `hf-hub-cache`.
+  - Ist rsyslog installiert (es gibt `/etc/rsyslog.d`), hält `/etc/rsyslog.d/10-kunibert.conf` die Zeilen von `kunibert-server`, `speaches` und `caddy` aus `/var/log/syslog` heraus. Die Kennung `kunibert-server` setzt `SyslogIdentifier=` in `deploy/kunibert-server.service`. Für die übrigen Dateien unter `/var/log` (zum Beispiel Anmeldungen per SSH) gelten weiter die Fristen von logrotate. Das ändert das Skript nicht.
+  - Von Hand, ohne Skript:
+
+    ```bash
+    sudo install -d -m 755 /etc/systemd/journald.conf.d
+    printf '[Journal]\nMaxRetentionSec=14day\nMaxFileSec=1day\n' | sudo tee /etc/systemd/journald.conf.d/50-kunibert-frist.conf
+    sudo systemctl restart systemd-journald
+    # nur, wenn es /etc/rsyslog.d gibt:
+    printf '%s\n' "if \$programname == 'kunibert-server' or \$programname == 'speaches' or \$programname == 'caddy' then stop" | sudo tee /etc/rsyslog.d/10-kunibert.conf
+    sudo systemctl restart rsyslog
+    ```
+
+    Dazu die Dienstdatei mit `SyslogIdentifier=` (Abschnitt 5) und den Sprachserver mit `--log-driver journald` (Abschnitt 4).
+
+  - Eigener Wert: `/etc/systemd/journald.conf.d/60-eigene-frist.conf` mit `[Journal]` und zum Beispiel `MaxRetentionSec=30day` anlegen, dann `sudo systemctl restart systemd-journald`. Diese Datei wird nach der des Skripts gelesen und gilt. Das Skript fasst sie nicht an; seine eigene Datei setzt es bei jedem Lauf wieder auf 14 Tage.
+  - Prüfen: `systemd-analyze cat-config systemd/journald.conf | grep -E '^(MaxRetentionSec|MaxFileSec)='` zeigt `14day` und `1day`. `sudo docker inspect --format '{{.HostConfig.LogConfig.Type}}' speaches` zeigt `journald`. `sudo journalctl --disk-usage` zeigt, wie viel das Journal belegt.
+  - Offen: Was der Sprachserver selbst protokolliert (Stufe, ob erkannte Sätze dabei sind), ist nicht geprüft. Nach der ersten Frage im Test `sudo journalctl -t speaches -n 50 --no-pager` ansehen (Checkliste, Teil C, Schritt 1).
+  - Backups oder Snapshots des Servers (zum Beispiel bei Hetzner) enthalten auch das Journal. Für sie gilt die Frist nicht.
+  - Am Pi gilt diese Frist noch nicht (Punkt N1123-0037-b der Arbeitsliste). Auf dem eigenen Rechner gibt es keine Frist (Checkliste, Teil A1).

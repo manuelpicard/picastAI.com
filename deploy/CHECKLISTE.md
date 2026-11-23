@@ -11,7 +11,7 @@ Für den Server gibt es zwei Wege. Teil B bis D gelten für beide.
 
 Stand 21.11.2026: **nicht unter Windows und nicht mit einem Pi getestet**; geschrieben nach dem Code (`server.ts`, `server-api/config.ts`, `server-api/devices.ts`, `deploy/eltern-einwilligung.mjs`).
 
-- [ ] **Sprachserver:** `docker start speaches` (beim ersten Mal `docker run …` und die beiden Modelle laden, siehe README). `curl.exe -fsS http://127.0.0.1:8000/health` antwortet.
+- [ ] **Sprachserver:** `docker start speaches` (beim ersten Mal und nach `docker rm -f speaches` wieder `docker run …` und die beiden Modelle laden, siehe README). `curl.exe -fsS http://127.0.0.1:8000/health` antwortet.
 - [ ] **Stimme:** Pocket TTS läuft im eigenen Fenster (`uvx --python 3.12 pocket-tts@4.0.1 serve --language german --default-voice stuart_bell --host 127.0.0.1 --port 8001`). `curl.exe -fsS http://127.0.0.1:8001/health` antwortet. Sprachserver und Stimme lauschen nur auf `127.0.0.1`, also nur für den Rechner selbst.
 - [ ] **Zwei Tokens** erzeugt (README, Schritt 1, je 64 Zeichen): eines für den Pi (`PICASTAI_DEVICE_TOKEN`) und eines für den Betreiber (`PICASTAI_ADMIN_TOKEN`; unter 32 Zeichen antwortet die Betreiber-Route mit 503). Tokens und den Schlüssel für Claude nur in die verdeckten Abfragen (`Read-Host -AsSecureString`, README, Schritte 3 und 3b) und am Pi eintippen, nie direkt in eine Befehlszeile: PowerShell speichert Befehlszeilen in einer Verlaufsdatei. Jede Zeile mit `Read-Host` einzeln einfügen und mit der Eingabetaste abschicken, erst dann das Token eingeben. Sonst liest die Abfrage die nächste eingefügte Zeile als Token.
 - [ ] **Feste IPv4-Adresse:** `ipconfig`, Zeile „IPv4-Adresse“ des WLAN- oder LAN-Adapters, im Router als feste Adresse vergeben. Der Pi bekommt in Teil B die Adresse `http://<IPv4-Adresse>:3000`.
@@ -22,6 +22,7 @@ Stand 21.11.2026: **nicht unter Windows und nicht mit einem Pi getestet**; gesch
 - [ ] **Einwilligung** (Fenster 2, im Ordner des Repos, nach jedem Start des Servers; README, Schritt 3b): Betreiber-Token verdeckt eingeben, `PICASTAI_DEVICE_ID=prototype-001`, dann `node deploy\eltern-einwilligung.mjs`. Erwartet: `Einwilligung erteilt.` Danach Fenster 2 schließen.
 - [ ] **Neustartprobe:** in Fenster 1 Strg+C (fragt Windows „Batchvorgang abbrechen (J/N)?“: J), dann `npm start` erneut (die Einstellungen bleiben in diesem Fenster gesetzt). `/health` antwortet wieder, danach die Einwilligung erneut erteilen.
 - [ ] **Grenzen bekannt:** Zwischen Pi und Rechner läuft http, also unverschlüsselt im eigenen WLAN. Ohne Caddy ist im WLAN mehr erreichbar als nur die Geräte-Routen: die Eltern-Routen (`/v1/eltern/…`, nur mit Kopplungscode), die Betreiber-Routen (`/api/…`, nur mit Betreiber-Token) und die Entwicklungsseiten (`/`, `/hoerproben`; ohne Daten). Deshalb nur im eigenen, verschlüsselten WLAN und nur mit Erwachsenen. Aufräumen: README, Abschnitt „Später: der Pi im selben WLAN“, „Grenzen“.
+- [ ] **Nach dem Test:** `docker rm -f speaches` (die Modelle bleiben im Volume `hf-hub-cache`). Auf dem eigenen Rechner gibt es keine Frist für Protokolle; Docker hebt das Protokoll des Containers sonst auf, bis er gelöscht wird (Einschätzung: Grundeinstellung von Docker).
 
 ## A2. Gemieteter Server
 
@@ -31,6 +32,8 @@ Stand 21.11.2026: **nicht unter Windows und nicht mit einem Pi getestet**; gesch
 - [ ] `systemctl status kunibert-server` aktiv; Journal: „Feste Sprechtexte vorbereitet (7 von 7)“ (Sicherheitshinweis, „nicht verstanden“, Fehlerhinweis, Ersatzantwort, Pausensatz der Geschichte, Hinweis ohne Einwilligung, Satz im Schlafmodus). Ist der Sprachserver beim Start noch nicht bereit, versucht der Dienst es gut sechs Minuten lang wieder („neuer Versuch in … s“).
 - [ ] Von außen: `/health` 200, `/` 404, `/api/status` 404, HTTP leitet auf HTTPS, Zertifikat gültig.
 - [ ] Neustartprobe: Server neu starten, `/health` wieder 200.
+- [ ] Frist für Protokolle (vorläufig 14 Tage): `systemd-analyze cat-config systemd/journald.conf | grep -E '^(MaxRetentionSec|MaxFileSec)='` zeigt `14day` und `1day`; `sudo docker inspect --format '{{.HostConfig.LogConfig.Type}}' speaches` zeigt `journald` (`EINRICHTUNG.md`, Abschnitt „Betrieb“).
+- [ ] Gibt es `/etc/rsyslog.d`: `sudo rsyslogd -N1` ohne Fehler. Nach `sudo systemctl restart kunibert-server` zeigt `sudo tail -n 200 /var/log/syslog | grep -cE ' kunibert-server(\[[0-9]+\])?:'` die Zahl 0.
 
 ## B. Pi vorbereiten
 
@@ -46,6 +49,7 @@ Nebeneinander offen: am Pi `journalctl -u kunibert.service -f` (nach `sudo syste
 Vorher, nach jedem Neustart des Servers: Einwilligung für das Testgerät erteilen (eigener Rechner: Teil A1; gemieteter Server: `deploy/EINRICHTUNG.md`, Abschnitt 5, „Einwilligung für Tests mit Erwachsenen“). Hört man auf jede Taste nur „… müssen mich deine Eltern einmal einrichten …“, fehlt sie. Meist wurde der Server neu gestartet: Die Einwilligung liegt vorläufig nur im Arbeitsspeicher. Dann das Skript noch einmal aufrufen.
 
 1. [ ] **Frage:** Sprechtaste halten, „Warum ist der Himmel blau?“, loslassen. LED: Aufnahme (schnell), dann Verarbeitung (langsam), dann Wiedergabe; die Antwort ist verständlich, kindgerecht und unter ca. 80 Wörtern.
+   - [ ] Gemieteter Server, nach dieser ersten Frage: `sudo journalctl -t speaches -n 50 --no-pager` zeigt keine erkannten Sätze und keine Antworttexte (bisher nie geprüft, was der Sprachserver protokolliert).
 2. [ ] **Dauer:** Zeit von Loslassen bis erstes Wort notieren (Ziel: unter 20 s; über 60 s ist ein Problem). Welche Stufe die Zeit braucht, zeigen die Zeilen `Zeitmessung` im Server-Protokoll (Erklärung: [`docs/Zeitmessung.md`](../docs/Zeitmessung.md)): auf dem eigenen Rechner in Fenster 1, auf dem gemieteten Server mit `sudo journalctl -u kunibert-server -n 200 --no-pager | grep Zeitmessung`. Die Zeile je Anfrage mit notieren.
 3. [ ] **Geschichte in 5 Teilen:** Erzähltaste fünfmal nacheinander. Teil 1 bis 5 setzen sich fort, nach Teil 5 ein Abschluss, der sechste Druck beginnt eine neue Folge. Ab Teil 2 sollte die Wartezeit deutlich kürzer sein als bei Teil 1, wenn man jeden Teil zu Ende hört: Der Server bereitet den nächsten Teil vor (`vorbereitet_ms` mit einer Zahl und `sprachmodell_ms=-` in der Zeitmessung). Kommt Teil 2 genauso langsam, steht dort `vorbereitet_ms=-`: bitte melden.
 4. [ ] **Erzähltaste mit Wunsch:** „Erzähl mir etwas mit einem Einhorn“ per Sprechtaste, dann Erzähltaste. Danach, mitten in der Folge, per Sprechtaste eine Idee: „Kunibert soll den Drachen kitzeln.“ Der nächste Teil derselben Folge greift die Idee am Anfang auf (keine neue Folge, keine bloße Antwort).

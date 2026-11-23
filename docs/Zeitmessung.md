@@ -12,6 +12,8 @@ Je Anfrage an `/v1/device/question`, `/v1/device/kunibert-story`, `/v1/device/pa
 sudo journalctl -u kunibert-server -n 200 --no-pager | grep Zeitmessung
 ```
 
+Auf dem Server bleiben die Zeilen etwa 14 Tage im Journal (vorläufig; `deploy/EINRICHTUNG.md`, Abschnitt „Betrieb“). Am Pi gilt noch keine Frist (Punkt N1123-0037-b der Arbeitsliste), auf dem eigenen Rechner auch nicht.
+
 Beispiel:
 
 ```text

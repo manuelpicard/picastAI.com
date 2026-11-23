@@ -12,6 +12,9 @@ WorkingDirectory=/opt/kunibert/app
 EnvironmentFile=/etc/kunibert/kunibert.env
 # Die Anwendung liest keine .env-Datei selbst; alle Einstellungen kommen aus der Umgebung.
 ExecStart=/usr/bin/node --import tsx server.ts
+# Kennung der Zeilen im Journal (sonst „node“). deploy/setup-server.sh hält Zeilen mit dieser
+# Kennung aus /var/log/syslog heraus, damit nur die Frist des Journals gilt (14 Tage, vorläufig).
+SyslogIdentifier=kunibert-server
 Restart=on-failure
 RestartSec=3
 # Schreibbares Verzeichnis nur für Zwischenspeicher (tsx); Audio liegt nur im Arbeitsspeicher.
