@@ -6,7 +6,7 @@
 
 Es wurde nichts bestellt, nichts angefragt, kein Konto angelegt und kein Formular benutzt.
 
-So liest man das Dokument: „Einschätzung“ heißt: meine Bewertung, kein Satz aus einer Quelle. „Nicht belegt“ heißt: Ich habe es in keiner geöffneten Quelle gelesen. Die Quellen Q1 bis Q37 stehen vor „Nicht geprüft“, mit Link, Abrufdatum und einem kurzen Zitat. Im Text stehen keine Zitate. **Die Zitate stammen aus dem Auszug, den das Abrufwerkzeug lieferte, nicht aus dem Rohtext. Sie wurden nicht im Browser gegengelesen.** Vor einer Entscheidung die Stelle am Original lesen.
+So liest man das Dokument: „Einschätzung“ heißt: meine Bewertung, kein Satz aus einer Quelle. „Nicht belegt“ heißt: Ich habe es in keiner geöffneten Quelle gelesen. Die Quellen Q1 bis Q82 stehen vor „Nicht geprüft“, mit Link, Abrufdatum und einem kurzen Zitat. Im Text stehen keine Zitate. **Die Zitate stammen aus dem Auszug, den das Abrufwerkzeug lieferte, nicht aus dem Rohtext. Sie wurden nicht im Browser gegengelesen.** Vor einer Entscheidung die Stelle am Original lesen.
 
 ## Kurzfassung
 
@@ -14,7 +14,7 @@ So liest man das Dokument: „Einschätzung“ heißt: meine Bewertung, kein Sat
 
 **Antwort (Einschätzung):** Nichts davon verbietet das Produkt. Aber vier Dinge bestimmen Zeit und Kosten.
 
-1. **Der Prüfweg.** Kunibert ist sehr wahrscheinlich ein Spielzeug (für Kinder unter 14 Jahren, Art. 2 der Spielzeugverordnung (Q1)). Bis 31.7.2030 gilt noch die Spielzeug-Richtlinie. Wegen WLAN gilt zugleich die Funkanlagen-Richtlinie (RED) mit Cybersicherheit. Die Selbsterklärung des Herstellers (Modul A) reicht nur, wenn passende harmonisierte Normen ganz angewandt werden. Sonst prüft eine benannte Stelle. Für die Cybersicherheits-Normen EN 18031 gelten Einschränkungen: Es gibt keine Konformitätsvermutung, wenn der Nutzer kein Passwort setzen muss oder der Zugriff für Eltern nicht gesichert ist (Q2).
+1. **Der Prüfweg.** Kunibert ist sehr wahrscheinlich ein Spielzeug im Sinne von Art. 2 der Spielzeugverordnung (Kinder unter 14 Jahren) (Q1). Bis 31.7.2030 gilt noch die Spielzeug-Richtlinie. Wegen WLAN gilt zugleich die Funkanlagen-Richtlinie (RED) mit Cybersicherheit. Die Selbsterklärung des Herstellers (Modul A) reicht nur, wenn passende harmonisierte Normen ganz angewandt werden. Sonst prüft eine benannte Stelle. Für die Cybersicherheits-Normen EN 18031 gelten Einschränkungen: Es gibt keine Konformitätsvermutung, wenn der Nutzer kein Passwort setzen muss oder der Zugriff für Eltern nicht gesichert ist (Q2).
 2. **Der Stichtag 11.12.2027.** Kommt ein Gerät ab diesem Tag in Verkehr, gilt der Cyber Resilience Act (CRA) statt der RED-Cybersicherheit (Q3, Q4). Ein sprechendes, vernetztes Spielzeug steht dort in „Klasse I“ (Q5). Ohne passende Normen heißt das: benannte Stelle. Wann Kunibert erstmals verkauft wird, bestimmt also den Prüfweg.
 3. **KI-Verordnung, schon jetzt.** Art. 50 gilt seit 2.8.2026 (Q6). Für ein neues Gerät heißt das: Hinweis, dass man mit einer KI spricht (Abs. 1), und maschinenlesbare Kennzeichnung der künstlichen Stimme (Abs. 2). Eine Übergangsfrist gibt es nur für Systeme, die vor dem 2.8.2026 in Verkehr kamen (Q7). In `main` gibt es beides noch nicht (Suche im Quelltext, siehe Abschnitt 2). Als Hochrisiko-System gilt Kunibert wahrscheinlich nicht; die Pflichten dafür begännen frühestens am 2.8.2028.
 4. **Anmeldungen vor dem ersten Verkauf.** Stiftung ear (Gerät und Batterie) und Verpackungsregister LUCID. Das kann Wochen dauern. Mit eigener Marke ist der Betreiber in allen drei Bereichen „Hersteller“.
@@ -43,8 +43,8 @@ Quellen stehen in der letzten Spalte. Was die Frist für Kunibert bedeutet, steh
 | 28.12.2024 | USB-C-Pflicht für bestimmte Gerätearten; Spielzeug ist keine eigene Art | (Q10) |
 | 2.2.2025 | KI-Verordnung: Verbote (Art. 5) und KI-Kompetenz (Art. 4) | (Q11, Q7) |
 | 1.8.2025 | RED: Cybersicherheit (Art. 3 Abs. 3 Buchst. d, e, f) | (Q12) |
-| 12.9.2025 | Data Act (Grundsatz) | (Q13) |
-| 18.8.2025 | Batterieverordnung: Herstellerverantwortung und Symbol | (Q14) |
+| 18.8.2025 | Batterieverordnung: Herstellerverantwortung und Symbol | (Q13) |
+| 12.9.2025 | Data Act (Grundsatz) | (Q14) |
 | 7.10.2025 | Batterierecht-Durchführungsgesetz (BattDG) statt BattG | (Q15) |
 | 1.1.2026 | Spielzeugverordnung in Kraft (nur einzelne Artikel gelten; Geltung ab 1.8.2030) | (Q16) |
 | 2.8.2026 | KI-Verordnung: Transparenzpflichten (Art. 50) | (Q6) |
@@ -57,7 +57,7 @@ Quellen stehen in der letzten Spalte. Was die Frist für Kunibert bedeutet, steh
 | Ab | Vorgabe | Quelle |
 | --- | --- | --- |
 | 2.12.2026 | KI-Verordnung: Ende der Übergangsfrist für Art. 50 Abs. 2 (nur für Systeme, die vor dem 2.8.2026 in Verkehr kamen) | (Q7) |
-| 18.2.2027 | Batterie: Nutzer müssen den Akku entnehmen können (Art. 11); für Spielzeug eine Ausnahme bis 31.7.2030 | (Q14, Q21) |
+| 18.2.2027 | Batterie: Nutzer müssen den Akku entnehmen können (Art. 11); für Spielzeug eine Ausnahme bis 31.7.2030 | (Q13, Q21) |
 | 2.12.2027 | KI-Verordnung: Pflichten für Hochrisiko-Systeme nach Anhang III | (Q7) |
 | 11.12.2027 | CRA gilt voll; die RED-Cybersicherheit (Verordnung 2022/30) wird aufgehoben | (Q5, Q4) |
 | 2.8.2028 | KI-Verordnung: Pflichten für Hochrisiko-Systeme nach Anhang I (dort steht die Spielzeug-Richtlinie) | (Q7, Q22) |
@@ -148,9 +148,229 @@ Quellen stehen in der letzten Spalte. Was die Frist für Kunibert bedeutet, steh
 - Der Betreiber ist Anbieter des Gesamtsystems. Gegenüber Claude ist er „nachgelagerter Anbieter“.
 
 
+### 3. Funk, Cybersicherheit und vernetzte Produkte
+
+**Funkanlagen-Richtlinie (RED) und ihre Cybersicherheits-Regeln**
+
+- Die Pflichten nach Art. 3 Abs. 3 Buchst. d, e und f der RED gelten seit dem 1.8.2025. Geplant war der 1.8.2024. Die Verordnung (EU) 2023/2444 hat sie um ein Jahr verschoben (Q12).
+- Art. 1 der Delegierten Verordnung (EU) 2022/30 legt fest: Buchst. d gilt für jedes internetfähige Funkgerät. Buchst. e (Datenschutz) gilt für internetfähige Geräte, reine Kinderbetreuungsgeräte, Spielzeug (Richtlinie 2009/48/EG) und am Körper getragene Geräte, wenn sie personenbezogene Daten, Verkehrsdaten oder Standortdaten verarbeiten können. Buchst. f betrifft Geldübertragungen (Q38).
+- Neu: Die Delegierte Verordnung (EU) 2026/339 vom 16.2.2026 hebt die Verordnung 2022/30 mit Wirkung vom 11.12.2027 auf. Es soll keine Doppelregelung neben dem CRA geben (Q4). Die Kommission nennt als Veröffentlichung im Amtsblatt den 29.4.2026 (Q39). Für Geräte, die vom 1.8.2025 bis 10.12.2027 in Verkehr kommen, bleibt die Marktüberwachung unberührt (Erwägungsgrund 5) (Q4).
+- Funkgeräte, die ab dem 11.12.2027 in Verkehr kommen, unterliegen dem CRA und nicht mehr Art. 3 Abs. 3 Buchst. d bis f der RED. Früher in Verkehr gebrachte Produkte fallen nur bei einer wesentlichen Änderung unter den CRA (Art. 69 Abs. 2). Die Meldepflicht gilt trotzdem (Art. 69 Abs. 3) (Q3, Q5).
+
+**Normen EN 18031 und Prüfverfahren**
+
+- Der Beschluss (EU) 2025/138 (28.1.2025, Amtsblatt 30.1.2025) nennt EN 18031-1 (Buchst. d), EN 18031-2 (Buchst. e: Kinderbetreuung, Spielzeug, am Körper getragene Geräte) und EN 18031-3 (Buchst. f), jeweils in der Ausgabe 2024 und mit Einschränkungen. Bei allen drei Teilen gibt es keine Konformitätsvermutung, wenn Nutzer kein Passwort setzen müssen. Bei Teil 2 auch nicht, wenn die Zugriffskontrolle für Eltern oder Betreuer (Klauseln 6.1.3 bis 6.1.6) nicht gesichert ist (Q2). Spätere Beschlüsse (14.5., 13.8. und 9.12.2025) habe ich nicht geöffnet. Ob die Einschränkungen heute noch so gelten, ist nicht belegt.
+- RED Art. 17 Abs. 3: Wendet der Hersteller harmonisierte Normen an, darf er Anhang II (Modul A, Selbstbewertung), Anhang III oder Anhang IV wählen. Abs. 4: Werden Normen nicht oder nur teilweise angewandt, oder gibt es keine, bleiben nur Anhang III (Baumusterprüfung, Module B und C) oder Anhang IV (Modul H) (Q40, Q3). Beides bezieht eine benannte Stelle ein (Leitfaden, Abschn. 7.1).
+
+**Fertige Module (Raspberry Pi, ESP32-S3)**
+
+- Laut Leitfaden der Kommission (Abschn. 1.7.4.11 und 2.8 Buchst. b) sind Funkmodule selbst Funkanlagen. Frühere Bewertungen von Bauteilen darf man nutzen und muss sie in die technische Dokumentation aufnehmen. Sie reichen nicht unbedingt für das ganze Gerät. Der Hersteller bleibt für das ganze Produkt verantwortlich. Eine Sonderregel für „vorgeprüfte Module“ habe ich im gelesenen Teil nicht gefunden (Q3).
+- Espressif (Hersteller): Ein sicheres Modul hilft, ersetzt aber nicht die Prüfung des Endprodukts. Bei den Ausnahmen (Passwort frei wählbar; Eltern-Kontrolle bei Spielzeug) sei eine benannte Stelle nötig (Q41). Die Espressif-Seite zu Sicherheitszertifikaten listet keine EN-18031-Zertifikate für den ESP32-S3 (Q42).
+- Raspberry Pi (Hersteller): Die eigenen Computer seien bei den RED-Kernanforderungen konform. Kunden blieben für ihr Endprodukt verantwortlich. Der Pi 5 wird in dem Beitrag nicht genannt (Q43). Die Konformitätserklärung des Pi 5 war für mich nicht lesbar.
+
+**Cyber Resilience Act (CRA)**
+
+- Die Verordnung (EU) 2024/2847 ist seit 10.12.2024 in Kraft (Q39). Die Regeln zu benannten Stellen (Kapitel IV) gelten ab 11.6.2026, die Meldepflichten (Art. 14) ab 11.9.2026 und alles andere ab 11.12.2027 (Q5).
+- Gemeldet werden aktiv ausgenutzte Schwachstellen und schwere Vorfälle: Frühwarnung in 24 Stunden, Meldung in 72 Stunden, Abschlussbericht (Schwachstelle: 14 Tage nach der Abhilfe; Vorfall: 1 Monat). Der Weg ist die Meldeplattform der ENISA. Das gilt auch für Produkte, die schon verkauft sind (Q19).
+- Anhang III, Klasse I („wichtige Produkte“), nennt internetfähige Spielzeuge nach der Spielzeug-Richtlinie, die soziale Funktionen (zum Beispiel Sprechen oder Filmen) oder Ortung haben. Art. 32 Abs. 2 verlangt für Klasse I eine benannte Stelle (Module B und C oder H), wenn Normen nicht oder nur teilweise angewandt werden oder fehlen (Q5). Der Erwägungsgrund 15 der Spielzeugverordnung sagt Ähnliches über internetfähiges Spielzeug (Q1).
+- Der Digital Omnibus (Verfahren 2025/0360(COD), Vorschlag vom 19.11.2025) ändert unter anderem den Data Act. Der CRA steht nicht in der Liste. Der Stand lautet „Awaiting committee decision“; es gibt einen Ausschussentwurf vom 22.6.2026 und Änderungsanträge vom 27.7.2026. Beschlossen ist nichts (Q44). Der Stand der harmonisierten CRA-Normen ist nicht belegt.
+
+**Data Act**
+
+- Die Verordnung (EU) 2023/2854 ist seit 11.1.2024 in Kraft und gilt ab 12.9.2025 (Q14). Art. 3 Abs. 1 (das Produkt so bauen, dass Nutzer an die Nutzungsdaten kommen) gilt für Produkte, die nach dem 12.9.2026 in Verkehr kommen (Q20).
+- „Vernetztes Produkt“ ist ein Gegenstand, der Daten zu seiner Nutzung oder Umgebung erhebt (Definition nur gekürzt gelesen). Vor dem Vertrag trifft den Verkäufer eine Informationspflicht (Art. 3 Abs. 2; Inhalt nicht gelesen). Kleinst- und Kleinunternehmen sind unter Bedingungen ausgenommen (Art. 7 Abs. 1) (Q20). Die Kommissionsseite nennt als Beispiele Autos, Smart-TVs und Smartwatches (Q14). Ob ein Spielzeug gemeint ist, ist nicht belegt.
+
+**Ladegerät**
+
+- Die USB-C-Pflicht (Richtlinie (EU) 2022/2380) gilt seit 28.12.2024 für bestimmte Gerätearten (unter anderem tragbare Lautsprecher; Laptops ab 28.4.2026) mit Akku und Kabelladung. Spielzeug ist keine Art. Die Art richtet sich nach dem Hauptzweck, nicht nach der Zielgruppe Kinder (Q10, Q45). Ob ein sprechendes Spielzeug als „tragbarer Lautsprecher“ zählt, ist nicht belegt.
+
+**Für Kunibert (Einschätzung)**
+
+- Kunibert ist internetfähig. Ist es ein Spielzeug nach der Richtlinie 2009/48/EG, erfasst es auch Buchst. e. Dann gelten EN 18031-1 und EN 18031-2. Modul A geht nur, wenn beide samt den Einschränkungen voll erfüllt sind (vom Nutzer gesetztes Passwort, Zugriffskontrolle für Eltern). Sonst bleibt die benannte Stelle. Sie sollte als Reserve eingeplant werden.
+- Das Gerät meldet sich mit einem Geräte-Token am Server an (`PICASTAI_DEVICE_TOKEN`, `pi-client/README.md`), den der Betreiber einrichtet. Ob das zur Passwort-Regel der Einschränkungen passt, ist nicht geprüft (neuer Punkt).
+- Beim CRA ist ein sprechendes, vernetztes Spielzeug Klasse I. Ohne anwendbare CRA-Normen heißt das wohl eine benannte Stelle. Es zählt das Datum, an dem das einzelne Gerät in Verkehr kommt, vor oder ab dem 11.12.2027 (Leitfaden, Abschn. 10.9.4). Wie spätere Firmware-Änderungen an einem schon verkauften Gerät zu bewerten sind (wesentliche Änderung, Art. 69 Abs. 2), ist nicht geprüft.
+- Module sparen Funktests, ersetzen aber nicht die Bewertung des Endgeräts (Firmware, Passwort, Eltern-Zugriff). Der Prototyp mit Pi 5 wird nicht verkauft. Für das Seriengerät zählt das Zielboard (Punkt N1122-1941-b).
+- Data Act: Kunibert ist wohl ein „vernetztes Produkt“. Als Kleinst- oder Kleinunternehmen kann Art. 7 greifen. Die Bedingungen sind zu prüfen.
+- USB-C: Ein USB-C-Anschluss entspricht ohnehin der Regel. Ob sie für Kunibert gilt, ist nicht belegt.
+
+### 4. Datenschutz (DSGVO) und Sprachspielzeug
+
+**Kinder und Einwilligung**
+
+- Art. 8 DSGVO: Die Einwilligung eines Kindes gilt allein ab 16 Jahren. Darunter willigt der Träger der elterlichen Verantwortung ein. Die Länder dürfen die Grenze senken, aber nicht unter 13 (Q8). Deutschland hat die 16 nicht gesenkt (Stand der Quelle: 17.5.2023) (Q46). Für 6- bis 10-Jährige zählen daher überall die Eltern. Nicht belegt ist, ob Deutschland 2026 noch bei 16 liegt. Die DSK-Entschließung vom 20.11.2025 sagt nur, neun Staaten hätten 16 beibehalten, ohne Liste (Q47).
+- Art. 8 gilt nur, wenn ein Dienst der Informationsgesellschaft einem Kind direkt angeboten wird und die Verarbeitung auf einer Einwilligung beruht. Die Zustimmung der Eltern ist mit „angemessenen Anstrengungen“ zu prüfen. Die Tiefe richtet sich nach dem Risiko (EDSA-Leitlinien 05/2020 vom 4.5.2020, Abschn. 7.1) (Q48). Ob ein Sprach-Spielzeug ein „Dienst der Informationsgesellschaft“ ist, ist nicht belegt (die Richtlinie (EU) 2015/1535 habe ich nicht geöffnet).
+- Erwägungsgründe 38 und 58: Kinder brauchen besonderen Schutz. Informationen müssen so klar und einfach sein, dass ein Kind sie verstehen kann. Art. 12 Abs. 1 nennt Kinder ausdrücklich (Q49).
+- Art. 25 Abs. 2: Voreinstellungen erfassen nur nötige Daten. Art. 28 Abs. 1: nur Auftragsverarbeiter mit ausreichenden Garantien. Art. 35 Abs. 1 und 4: Folgenabschätzung bei hohem Risiko; die Aufsicht führt Listen (Q8).
+- Die Muss-Liste der DSK (nicht-öffentlicher Bereich, Version 1.1 vom 17.10.2018) hat keinen eigenen Eintrag für Kinder, Spielzeug oder Sprachassistenten. Am nächsten kommen Nr. 11 (KI steuert die Interaktion) und Nr. 13 (Auswertung von Audio-Aufnahmen) (Q50).
+
+**Sprachdaten**
+
+- Biometrische Daten sind Daten, die mit speziellen technischen Verfahren gewonnen werden und die eindeutige Identifizierung ermöglichen oder bestätigen (Art. 4 Nr. 14). Art. 9 Abs. 1 untersagt ihre Verarbeitung grundsätzlich (Q8, Q49).
+- EDSA-Leitlinien 02/2021 zu Sprachassistenten (Version 2.0 vom 7.7.2021): Stimmdaten gelten als biometrisch. Zur Identifizierung braucht es eine Ausnahme nach Art. 9. Laut Rn. 82 ist das die ausdrückliche Einwilligung. Rn. 91: Es gibt Assistenten, die gezielt für Kinder gebaut sind. Rn. 93: Bei Einwilligung gilt Art. 8, und Eltern sollen ausdrücklich zustimmen. Nicht registrierte Nutzer (Gäste): Daten nur für deren Anfrage (Rn. 29). Unbegrenzte Speicherung verstößt gegen die Speicherbegrenzung (Rn. 98). Nach der Anfrage löschen (Rn. 106). Fehlaufnahmen sofort löschen (Rn. 109). Die Auslösung ist auch per Tastendruck möglich (Rn. 17). Bei Diensten außerhalb des EWR sei Wachsamkeit nötig (Rn. 46) (Q51).
+
+**Drittland USA**
+
+- Das Gericht der EU hat am 3.9.2025 (T-553/23, Latombe) die Klage gegen den Beschluss (EU) 2023/1795 vom 10.7.2023 abgewiesen. Maßgeblich war der Zeitpunkt des Erlasses (Q52). Ein Rechtsmittel (C-703/25 P) wurde am 31.10.2025 eingelegt (Amtsblatt C/2025/6610 vom 22.12.2025) (Q53). Die nächste Überprüfung des Rahmens ist laut einer Studie des Parlaments (Februar 2026) für 2027 vorgesehen (Q54). Den Stand nach dem 22.12.2025 habe ich nicht belegt.
+- Der Anthropic-Vertrag zur Auftragsverarbeitung (Fassung vom 24.2.2025): Anthropic ist Auftragsverarbeiter. Die Übermittlung in Drittländer läuft über Standardvertragsklauseln (Module 2 und 3). Zum EU-US-Rahmen steht dort nichts (Q55). Ob Anthropic am EU-US-Rahmen teilnimmt, ist nicht belegt.
+
+**Deutschland: versteckte Aufnahmegeräte und smartes Spielzeug**
+
+- Der Fall der Puppe „My Friend Cayla“: Die Bundesnetzagentur hat sie am 17.2.2017 nach § 90 TKG (alte Fassung) verboten. Gegenstände mit verstecktem Mikrofon oder versteckter Kamera, die senden können, gefährden die Privatsphäre. Gegen Eltern waren keine Verfahren geplant (Q56).
+- Heute trägt § 90 TKG (Fassung 2021) den Titel „Frequenzplan“ (Q57). Das Verbot steht in **§ 8 TDDDG** („Missbrauch von Telekommunikationsanlagen“; Gesetz vom 23.6.2021, zuletzt geändert am 10.3.2026). Verboten sind Besitz, Herstellung, Bereitstellung und Einfuhr von Anlagen, die einen anderen Gegenstand vortäuschen und unbemerkt abhören oder aufnehmen. Als dazu bestimmt gilt eine Anlage, wenn ihre Abhör- oder Aufnahmefunktion nicht eindeutig erkennbar ist (Abs. 2) (Q58).
+- Die Bundesnetzagentur zu smartem Spielzeug (29.11.2024): Unbemerkte Aufnahmen sind verboten, auch in Kinderzimmern. Einen Paragraphen nennt der Text nicht (Q59).
+- § 25 TDDDG: Speichern in der Endeinrichtung oder Zugriff darauf nur mit Einwilligung. Ausnahme in Abs. 2 Nr. 2 für einen vom Nutzer ausdrücklich gewünschten digitalen Dienst (Q60). Der EDSA wendet Art. 5 Abs. 3 der ePrivacy-Richtlinie auf Sprachassistenten an und nimmt die Ausführung von Anfragen aus (Rn. 25, 29 und 71 der Leitlinien 02/2021) (Q51). Geräte an öffentlichen Netzen sind Endeinrichtungen. Code, der gespeicherte Daten an einen Server sendet, ist ein „Zugriff“ (Leitlinien 2/2023, Rn. 60) (Q61).
+
+**Weitere Hinweise 2025 und 2026**
+
+- DSK-Entschließung vom 20.11.2025: Forderungen an den Gesetzgeber, kein geltendes Recht. Kinder sollen in Folgenabschätzungen ausdrücklich genannt werden. Werbung mit Kinderdaten soll verboten werden. Spielzeug und Sprachassistenten kommen nicht vor (Q47).
+- Der EDSA hat im Arbeitsprogramm 2026–2027 (Meldung vom 12.2.2026) Leitlinien zu Kinderdaten angekündigt (Q62).
+- Der „Digital Omnibus“ der Kommission (Vorschlag vom 19.11.2025) würde laut Stellungnahme von EDSA und EDSB (Februar 2026) unter anderem den Begriff „personenbezogen“ und die Listen für Folgenabschätzungen ändern (Q63). Der Stand im November 2026 ist nicht belegt.
+- Eine Aufsichtsseite speziell zu KI-Sprachspielzeug habe ich nicht gefunden.
+
+**Für Kunibert (Einschätzung)**
+
+- Für 6- bis 10-Jährige sind die Eltern immer nötig. Der geplante Ablauf (Eltern koppeln und willigen ein) passt dazu. Vor dem ersten Test mit Kindern gehen wir zuerst die „Freigabe-Checkliste vor dem ersten Kind“ im Doc „Datenschutz-Folgenabschätzung“ durch. Bis dahin testen nur Erwachsene.
+- Eine Folgenabschätzung ist wahrscheinlich nötig: Kinder, ein KI-Sprachmodell und Audio. Die Muss-Liste nennt diese Fälle nicht wörtlich.
+- Ein Tastendruck statt eines Weckworts vermeidet Fehlaufnahmen (Leitlinien 02/2021, Rn. 17 und 109). Laut `firmware/esp32-s3/README.md` nimmt der Entwurf nur auf, solange die Sprechtaste gehalten wird (höchstens 15 s). Die Status-LED blinkt dabei schnell (`pi-client/README.md`, Abschnitt „Status-LED“; Firmware-Entwurf ebenso). Das spricht dafür, dass die Aufnahmesituation „eindeutig erkennbar“ ist (§ 8 TDDDG, Bundesnetzagentur). Ob das für die Seriengeräte reicht, ist eine Frage für die Rechtsprüfung.
+- Keine Sprechererkennung einbauen. Sonst wird die Stimme zu einem biometrischen Datum zur Identifizierung (Art. 9).
+- USA: Der Rahmen gilt, ein Rechtsmittel ist offen. Die Standardvertragsklauseln im Anthropic-Vertrag sind eine zweite Grundlage. Dass der Rahmen nur zertifizierte Firmen deckt, ist Allgemeinwissen und stammt nicht aus einer geöffneten Seite.
+- § 25 TDDDG gilt nach der Auslegung des EDSA wahrscheinlich auch für ein Gerät, das nur mit dem eigenen Server spricht. Die Ausnahme für den vom Nutzer ausdrücklich gewünschten Dienst dürfte die Kernfunktion decken, nicht aber Analyse oder Profile.
+- Auftragsverarbeitung: Mit Anthropic und mit den Sprachdiensten braucht es Verträge nach Art. 28. Den Vertragstext von Anthropic habe ich gelesen. Ob er für das Konto des Betreibers gilt und ob er schon abgeschlossen ist, weiß ich nicht.
+
+### 5. CE-Kennzeichnung und weitere Produktvorgaben
+
+**CE-Zeichen und Unterlagen**
+
+- Das CE-Zeichen muss sichtbar, lesbar und dauerhaft sein und vor dem Inverkehrbringen angebracht werden. Die Kommission nennt als Mindesthöhe 5 mm (Q64). Ob bei sehr kleinen Geräten davon abgewichen werden darf und ob dasselbe für Spielzeug gilt, habe ich nicht belegt.
+- Wo das Zeichen stehen muss: Bei Spielzeug auf dem Spielzeug, auf einem Etikett oder auf der Verpackung (Richtlinie 2009/48/EG, Art. 17) (Q27). Bei Funkanlagen auf dem Gerät oder dem Typenschild und auf der Verpackung (RED, Art. 20) (Q40).
+- RED (Art. 10 und 18): Technische Unterlagen und EU-Konformitätserklärung 10 Jahre aufbewahren. Typ-, Chargen- oder Seriennummer. Name und Postanschrift am Gerät, sonst auf Verpackung oder Beilage. Anleitung und Sicherheitsinformationen in einer Sprache, die Nutzer verstehen, mit Frequenzband und maximaler Sendeleistung. Eine Kopie oder die vereinfachte Konformitätserklärung (mit Internetadresse) liegt bei. Der Inhalt der Erklärung steht in Anhang VI (Q40).
+- Spielzeug-Richtlinie (Art. 4): Unterlagen und EG-Konformitätserklärung 10 Jahre aufbewahren. Typ-, Chargen-, Serien- oder Modellnummer sowie Name und Kontaktanschrift auf dem Spielzeug, sonst auf Verpackung oder Beilage. Anleitung und Sicherheitsinformationen in der Sprache des Mitgliedstaats. Bei Gefahr sofort die Behörden informieren (Q27).
+- Fällt ein Gerät unter mehrere Rechtsakte, die eine Konformitätserklärung verlangen, gibt es nur eine einzige Erklärung (RED, Art. 18 Abs. 3) (Q40). Ob dieser Satz auch die Spielzeug-Richtlinie einschließt, ist im gelesenen Text nicht belegt: Art. 15 der Richtlinie regelt es dort nicht.
+- Deutschland (2. ProdSV): Anleitung, Sicherheitsinformationen, Warnhinweise und EG-Konformitätserklärung auf Deutsch (Einzelheiten in Abschnitt 1) (Q24). Eine Pflicht zu Deutsch für Funkanlagen (Funkanlagengesetz) habe ich nicht belegt; die Seiten waren nicht lesbar.
+
+**Sicherheit und EMV bei Funkgeräten**
+
+- Die RED gilt seit dem 13.6.2016. Sie enthält die Sicherheit und die EMV: Art. 3 Abs. 1 Buchst. a übernimmt die Ziele der Niederspannungsrichtlinie (ohne Spannungsgrenze), Buchst. b die der EMV-Richtlinie. Art. 1 Abs. 4 nimmt Funkanlagen von der Niederspannungsrichtlinie aus (Q40). Die EMV-Richtlinie schließt in Art. 2 Abs. 2 Buchst. a Geräte aus, die unter die Richtlinie 1999/5/EG fielen (Q65). Einschätzung: An die Stelle der Richtlinie 1999/5/EG ist die RED getreten (Art. 50 der RED, nach meiner Lesart). Für Kunibert gelten also EMV- und Niederspannungsrichtlinie nicht als eigene Rechtsakte.
+- Normen für Funkanlagen (Grundfassung des Beschlusses 2022/2191): EN 300 328 V2.2.2 und EN 55035:2017. EN 301 489-17 V3.3.1 gilt seit dem 15.5.2025 (Kommissionstabelle, Herausgeber nicht genannt). EN 301 489-1 steht nur als Verweis in der Liste (Q66, Q67). Spätere Änderungen der Liste habe ich nicht gelesen. Die Normen für Spielzeug stehen in Abschnitt 1. Die Cybersicherheits-Normen stehen in Abschnitt 3.
+
+**RoHS (Schadstoffe in Elektrogeräten)**
+
+- Die Richtlinie 2011/65/EU zählt Spielzeug zur Kategorie 7 („Toys, leisure and sports equipment“). Anhang II begrenzt Blei, Quecksilber, sechswertiges Chrom, PBB, PBDE und vier Phthalate auf je 0,1 % und Cadmium auf 0,01 %. Pflichten: Konformitätserklärung, CE-Zeichen, Aufbewahrung 10 Jahre (Art. 7) (Q68). Den Stichtag für die Phthalate habe ich nicht belegt.
+
+**Allgemeine Produktsicherheit (GPSR)**
+
+- Die Verordnung (EU) 2023/988 gilt seit dem 13.12.2024 (Art. 52). Für Produkte, die schon das EU-Harmonisierungsrecht regelt, gelten nur Teile: Nicht anwendbar sind Kapitel III Abschnitt 1 (Herstellerpflichten), die Kapitel V und VII und die Kapitel IX bis XI (Art. 2 Abs. 1) (Q9). Einschätzung: Übrig bleiben Kapitel III Abschnitt 2 (Art. 19 bis 21) sowie die Kapitel IV, VI und VIII.
+- Art. 19: Das Online-Angebot nennt den Hersteller (Name oder Marke, Post- und E-Mail-Adresse), bei einem Hersteller außerhalb der EU die verantwortliche Person, dazu ein Bild, Typ und Kennung des Produkts sowie Warn- und Sicherheitshinweise in der Sprache, die der Mitgliedstaat vorgibt. Art. 20: Der Hersteller meldet Unfälle unverzüglich über das Safety Business Gateway. Art. 35 und 37: Bei einem Rückruf informiert er direkt und bietet kostenlose Abhilfe an (Q9). Ob die Meldung gefährlicher harmonisierter Produkte ebenfalls über das Safety Business Gateway läuft, habe ich nicht belegt.
+
+**Zuständiger Wirtschaftsakteur in der EU**
+
+- Die Marktüberwachungsverordnung (EU) 2019/1020 (Art. 4, seit 16.7.2021) gilt unter anderem für Spielzeug, RoHS, EMV, Niederspannung und RED. Das Produkt darf nur in Verkehr kommen, wenn ein in der EU ansässiger Wirtschaftsakteur dafür zuständig ist. Das kann ein Hersteller in der EU sein, ein Einführer, ein Bevollmächtigter mit schriftlichem Mandat oder ein Fulfilment-Dienstleister. Er hält die Konformitätserklärung bereit und arbeitet mit den Behörden zusammen. Sein Name und seine Anschrift stehen auf dem Produkt, der Verpackung oder der Beilage (Q69).
+
+**Kinderbezogene Anforderungen an die Elektronik**
+
+- Schall: Nach der Richtlinie darf Spielzeug das Gehör von Kindern nicht schädigen (Anhang II Teil I Nr. 10) (Q27). Die Verordnung koppelt die Höchstwerte an die unteren Auslösewerte der Richtlinie 2003/10/EG (Q1). Einschätzung: Für den Lautsprecher von Kunibert ist das eine Prüfgröße. Die Grenzwerte in dB habe ich nicht gelesen.
+- Batterien: Nach der Verordnung (Anhang II Teil IV Nr. 10) sind Batterien, die Kleinteile sind, nur mit Werkzeug zugänglich. Akkus dürfen stattdessen unzugänglich sein (Q1).
+
+**Omnibus IV (Entwurf)**
+
+- Das Verfahren 2025/0133(COD) ändert unter anderem die RED, die EMV-Richtlinie, die Niederspannungsrichtlinie und RoHS, nicht aber die Spielzeug-Richtlinie und nicht die GPSR. Der Vorschlag sieht vor: Konformitätserklärung nur elektronisch, Anleitung digital, Sicherheitsinformationen für Verbraucher weiter auf Papier oder am Produkt. Eine Einigung ist für den 26.6.2026 vermerkt, die Abstimmung im Plenum für den 23.11.2026. Der Verfahrensstand lautet „Awaiting Parliament's position in 1st reading“. Der Endtext ist nicht gelesen. Beschlossen ist nichts (Q70).
+
+**Für Kunibert (Einschätzung)**
+
+- Wegen WLAN gelten Spielzeugrecht, RED und RoHS zugleich. Eine einzige Konformitätserklärung kann die RED-Teile abdecken. Ob die Spielzeug-Richtlinie in dieselbe Erklärung passt, ist offen.
+- Das CE-Zeichen darf erst nach der Konformitätsbewertung aufgebracht werden. Vorher darf kein Gerät verkauft werden.
+- Verkauft der Betreiber online, braucht das Angebot die Angaben nach GPSR Art. 19 (Hersteller mit Postanschrift und E-Mail, Bild, Typ, Warn- und Sicherheitshinweise auf Deutsch). Für Spielzeug kommt der Warnhinweis vor dem Kauf dazu (Abschnitt 1). Das ist eine Aufgabe für den Shop-Text, nicht für den Code.
+- Ist der Betreiber in der EU ansässig (Annahme), kann er als Hersteller selbst der zuständige Wirtschaftsakteur sein. Lässt er im Ausland fertigen und liefert der Auftragsfertiger selbst an Endkunden, braucht es einen Einführer oder Bevollmächtigten in der EU.
+- Der Prototyp (Pi 5) wird nicht verkauft. Dieses Dokument gilt für das Serienprodukt. Ab wann die Weitergabe eines Geräts an Testpersonen schon als „Bereitstellung“ oder „Inverkehrbringen“ zählt, habe ich nicht geprüft (Definition nicht gelesen). Bis zur Rechtsprüfung testen nur Erwachsene. Vor dem ersten Kind gehen wir die „Freigabe-Checkliste vor dem ersten Kind“ im Doc „Datenschutz-Folgenabschätzung“ durch.
+- Kosten und Dauer der Prüfungen (Prüfhaus, benannte Stelle): Ich habe keine Zahlen gefunden. Das ist ein Punkt für Anfragen, die nur der Betreiber mit eigenem Okay stellen darf.
+
+### 6. Elektro-, Batterie- und Verpackungsrecht (Deutschland und EU)
+
+**Elektro- und Elektronikgerätegesetz (ElektroG)**
+
+- Registrierung bei der Stiftung ear vor dem ersten Verkauf, je Marke und Geräteart. Sie kostet Gebühren (Betrag nicht genannt) und dauert meist 2 bis 4 Wochen. Die WEEE-Registrierungsnummer gehört in Angebote und Rechnungen (Q71).
+- Pflichten: Das Symbol der durchgestrichenen Mülltonne und eine Herstellerangabe am Gerät. Bei Haushaltsgeräten eine insolvenzsichere Garantie. Die ear bestimmt nach der Marktmenge, wer Altgeräte abholt. Einmal im Jahr Mengenmeldung (laut Seite: Aufforderung im Februar, Abgabe bis Ende April) (Q72).
+- Der Begriff „Hersteller“ ist weit: Wer Auslandsware ohne Bevollmächtigten anbietet, wird selbst Hersteller. Marktplätze verlangen die Registrierungsnummer. Quartals- und Prüfgebühren nennt die Seite ohne Beträge (Stand 06/2023) (Q73).
+- § 8 ElektroG: Ein Hersteller ohne Sitz in Deutschland braucht genau einen Bevollmächtigten (schriftlich, auf Deutsch, mindestens 3 Monate). Wer aus Deutschland per Fernabsatz in einen anderen EU-Staat liefert, braucht dort einen Bevollmächtigten (Q74).
+- Gerätekategorien: 4 (Großgeräte, über 50 cm), 5 (Kleingeräte, bis 50 cm), 6 (kleine IT- und Telekommunikationsgeräte, bis 50 cm); 6 geht 5 vor. Spielzeug nennen die gelesenen Seiten bei keiner Kategorie (Q75). Aus dem Training, nicht belegt: Anhang III der WEEE-Richtlinie nennt Spielzeug bei den Kategorien 4 und 5.
+- Die Novelle des ElektroG: Der Entwurf (Drucksache 21/1506 vom 8.9.2025) sah das Inkrafttreten am 1.1.2026 vor. Online-Vertreiber sollen das Sammel-Symbol und die Hinweise auf der Produktseite zeigen (Übergang bis 30.6.2026), Mengenmeldungen kommen einmal im Jahr statt jeden Monat, Registrierung und Gebühren bleiben (Q76). Der Bundestag hat die Ausschussfassung (Drucksache 21/2635) angenommen (Q77). Den Endtext und das Datum des Inkrafttretens habe ich nicht gelesen.
+
+**Batterien: Verordnung (EU) 2023/1542 und BattDG**
+
+- Die Verordnung (konsolidiert am 13.8.2026) gilt seit 18.2.2024. Die Herstellerverantwortung (Kapitel VIII) und das Symbol der getrennten Sammlung gelten seit 18.8.2025. Die Kennzeichnung kommt ab 18.8.2026 oder 18 Monate nach dem zugehörigen Durchführungsrechtsakt, je nachdem, was später ist. Der QR-Code und Art. 11 (austauschbare Batterien) gelten ab 18.2.2027 (Q13).
+- „Hersteller“ ist auch, wer ein Gerät mit eingebauter Batterie in Verkehr bringt (Art. 3 Nr. 47). Registrierung je Mitgliedstaat (Art. 55). Bevollmächtigter bei Fernabsatz aus einem anderen Staat (Art. 56). Art. 11: Der Endnutzer muss die Batterie mit handelsüblichem Werkzeug entnehmen und ersetzen können. Die Anleitung steht online, Ersatzteile gibt es 5 Jahre (Wortlaut nur als Auszug gelesen). Ausnahmen nennt der Artikel selbst, zum Beispiel für Geräte, die Spritzwasser aushalten, für Medizingeräte und für Geräte mit Dauerstrom oder Datenerhalt. Sorgfaltspflichten (Art. 48) ab 18.8.2027; Unternehmen unter 40 Mio. EUR Umsatz sind ausgenommen (Art. 47) (Q13).
+- Neu für Spielzeug: Der Rechtsakt C(2026) 5031 der Kommission (14.7.2026) betrifft Art. 11 Abs. 2. Bei „electric toys“ mit wiederaufladbarer Batterie darf der Austausch bis zum 31.7.2030 auf Fachleute beschränkt sein, wenn das für die Sicherheit des Spielzeugs nötig ist. Er tritt am 20. Tag nach der Veröffentlichung in Kraft (Q21). Ein dänisches Portal nennt ihn als Delegierte Verordnung (EU) 2026/1770 und berichtet am 22.10.2026 von sechs neuen Ausnahmen bis zum 31.7.2030 (Q78). Das Datum der Veröffentlichung und des Inkrafttretens habe ich nicht belegt. Ob Kunibert als „electric toy“ im Sinne des Rechtsakts zählt, ist nicht geprüft.
+- BattDG (seit 7.10.2025, ersetzt das BattG): Registrierung vor der ersten Bereitstellung (§ 5; Marke, Batteriekategorie), auch wenn eine Organisation für Herstellerverantwortung beteiligt ist. Sie gilt nach 12 Wochen als erteilt. Beteiligung an einer solchen Organisation oder eine eigene Lösung (§ 7); jährliche Meldung der in Verkehr gebrachten Batterien; keine Ausnahme für eingebaute Batterien. Ohne Registrierung dürfen Händler nicht anbieten und Fulfilment-Dienstleister nicht versenden (§ 4). Im Fernabsatz stehen Hinweise auf der Website oder der Sendung (§ 24) (Q79).
+- Zuständig ist das Umweltbundesamt. Es hat die Stiftung ear mit den hoheitlichen Aufgaben beliehen. Die ear führt das Herstellerregister. Ausländische Hersteller brauchen einen Bevollmächtigten in Deutschland (Q15, Q80). Die Seite des Umweltbundesamts spricht von der Beteiligung „über“ eine Organisation, § 7 lässt auch eine eigene Lösung zu. Den Übergang (§§ 60 bis 64) habe ich nicht gelesen.
+
+**Verpackung: PPWR und VerpackDG**
+
+- Seit dem 12.8.2026 gelten die Verordnung (EU) 2025/40 (PPWR, in Kraft seit 11.2.2025) und das neue Verpackungsdurchführungsgesetz (VerpackDG), das das Verpackungsgesetz ablöst (Q17, Q18). Nach der Pressemitteilung gilt eine Zulassungspflicht für alle Hersteller; was das für einen kleinen Hersteller praktisch heißt, habe ich nicht belegt. Recyclingquoten ab 2028, Recyclingfähigkeit und Rezyklat ab 2030 (Zusammenfassung, nicht im Wortlaut gelesen) (Q18).
+- Verpackungsregister LUCID: Die Registrierung ist kostenlos (Q81). Dazu kommen ein Vertrag zur Systembeteiligung (vor dem ersten Inverkehrbringen) und die Meldung der Verpackungsmengen. Versandverpackungen (Karton, Klebeband, Füllmaterial) sind ohne Ausnahme beteiligungspflichtig. Wer Verpackung unter eigener Marke herstellen lässt, ist Hersteller. Ohne Sitz in Deutschland braucht es einen Bevollmächtigten. Marktplätze und Fulfilment-Dienstleister prüfen die Nachweise, sonst droht ein Verkaufsverbot (Q82). Ob diese Seiten schon auf das VerpackDG angepasst sind, habe ich nicht belegt.
+
+**Für Kunibert (Einschätzung)**
+
+- Mit eigener Marke ist der Betreiber in allen drei Bereichen „Hersteller“. Vor dem ersten Verkauf stehen drei Anmeldungen an: ear für das Gerät, ear (Umweltbundesamt) für die Batterie, LUCID mit dem Vertrag zur Systembeteiligung. Plane 2 bis 12 Wochen Wartezeit ein (2 bis 4 Wochen laut ear, bis zu 12 Wochen nach § 5 BattDG). Liefert der Auftragsfertiger selbst an Endkunden in Deutschland, braucht er Bevollmächtigte.
+- Der Kunibert-Prototyp passt unter 50 cm. Die Kategorie ist offen (5 oder 6, wobei 6 vorgeht). Das Werkzeug der ear zur Gerätezuordnung hilft dabei; ich habe es nicht geöffnet.
+- Ein fest eingebauter Akku widerspricht ab 18.2.2027 der Regel in Art. 11, wenn nicht die Ausnahme für Spielzeug greift. Sie gilt nur, wenn der Rechtsakt in Kraft ist, nur bis 31.7.2030 und nur mit einer dokumentierten Sicherheitsbegründung. Sonst muss der Akku entnehmbar sein. Das passt zur Spielzeug-Regel zu Batterien (Abschnitt 5). Das Gehäuse-Design hängt also an dieser Entscheidung.
+- Der Geräte-Karton ist vermutlich beteiligungspflichtig. Die Seite der ZSVR zu den Verpackungsarten habe ich nicht geöffnet.
+- Für den Zeitplan: Die drei Anmeldungen kosten Zeit, sind aber kein technisches Risiko. Der Autopilot legt keine Konten an und füllt keine Formulare aus. Dieser Lauf hat nichts angemeldet. Das macht der Betreiber selbst.
+
+## Checkliste vor dem ersten Verkauf (Einschätzung)
+
+Das ist meine Ordnung der Befunde, kein Satz aus einer Quelle. Sie ersetzt keine Rechtsprüfung. Vor jedem Test mit Kindern gilt zuerst die „Freigabe-Checkliste vor dem ersten Kind“ im Doc „Datenschutz-Folgenabschätzung“.
+
+| Schritt | Was | Zeitpunkt | Abschnitt, Punkt |
+| --- | --- | --- | --- |
+| 1. Einstufung | Bestätigen, ob Kunibert ein Spielzeug ist. | Vor der Konstruktionsfreigabe | 1, N1123-1153-g |
+| 2. Prüfweg | Modul A nur mit voll angewandten harmonisierten Normen, sonst benannte Stelle. Die Stelle als Reserve einplanen. | Vor dem Prüfauftrag | 1, 3, N1123-1153-d |
+| 3. Stichtag | Entscheiden, ob die erste Auslieferung vor oder ab dem 11.12.2027 liegt (RED oder CRA). | Entscheidung des Betreibers | 3 |
+| 4. Funk und Cybersicherheit | EN 18031-1 und -2 (oder CRA), Passwort-Regel, Zugang für Eltern, Board mit Funknachweis. | Vor dem Prüfauftrag | 3, N1123-1153-e, N1123-1153-f |
+| 5. KI-Verordnung | Hinweis, dass Kunibert eine KI ist (Art. 50 Abs. 1), und maschinenlesbare Kennzeichnung der Stimme (Abs. 2). Für neue Geräte schon jetzt fällig. | Vor dem ersten Verkauf; im Repo fehlt beides | 2, N1123-1153-a, N1123-1153-b |
+| 6. Datenschutz | Einwilligung der Eltern, Folgenabschätzung, keine Sprechererkennung, Aufnahme erkennbar, Verträge nach Art. 28, Drittland. | Vor dem ersten Kind (Freigabe-Checkliste) | 4, N1122-1808-c, N1123-1153-h |
+| 7. Akku | Entnehmbar, oder die Ausnahme für Spielzeug mit dokumentierter Sicherheitsbegründung. Nach der Spielzeug-Regel nur mit Werkzeug zugänglich. | Vor dem Gehäuse-Entwurf; Art. 11 gilt ab 18.2.2027 | 5, 6, N1123-1153-c |
+| 8. Unterlagen und Kennzeichnung | Technische Unterlagen (10 Jahre), eine EU-Konformitätserklärung, CE-Zeichen, Typnummer, Name und Anschrift, Anleitung und Sicherheitsinformationen auf Deutsch, Frequenzband und Sendeleistung, Warnhinweise, Symbole für Elektro- und Batterieabfall. | Vor dem Verkauf | 1, 5, 6 |
+| 9. Wirtschaftsakteur in der EU | Hersteller mit Sitz in der EU, sonst Einführer oder Bevollmächtigter. | Vor dem Verkauf | 5, 6 |
+| 10. Anmeldungen | ear (Gerät), ear (Batterie), LUCID mit Systembeteiligung. | 2 bis 12 Wochen vor dem ersten Verkauf | 6, N1123-1153-i |
+| 11. Angebot im Shop | Angaben nach GPSR Art. 19, Warnhinweis vor dem Kauf, WEEE-Nummer, Hinweise zur Batterie. | Beim Anlegen des Angebots | 5, 6, N1123-1153-i |
+
+## Folgerungen für Kunibert (neue Punkte in `docs/autopilot/backlog.md`)
+
+Jeder Punkt hat in der Arbeitsliste „Ziel“ und „Fertig, wenn“. Hier steht nur, was und warum.
+
+| Punkt | Rolle, Prio | Was | Warum |
+| --- | --- | --- | --- |
+| N1123-1153-a | Bauen, 2, nach H3 | KI-Hinweis zu Beginn einer Sitzung (ändert, was Kinder hören) | Art. 50 Abs. 1 gilt seit 2.8.2026; im Repo nur ein Kommentar (Abschnitt 2) |
+| N1123-1153-b | Bauen, 2, nach H3 | Kennzeichnung der künstlichen Stimme (ändert, was Kinder hören) | Art. 50 Abs. 2; keine Übergangsfrist für neue Geräte (Abschnitt 2) |
+| N1123-1153-c | Recherche, 3 | Akku-Bauweise: Ausnahme für Spielzeug bei Art. 11 belegen | Rechtsakt C(2026) 5031: Veröffentlichung und Inkrafttreten nicht belegt (Abschnitt 6) |
+| N1123-1153-d | Recherche, 3 | Normen-Stand: EN 18031, CRA, Spielzeugverordnung | Ob Modul A reicht, hängt an den Normen (Abschnitte 1 und 3) |
+| N1123-1153-e | Recherche, 3, nach -d | Gerät und Eltern-Zugang gegen die Einschränkungen der EN 18031 halten | Passwort-Regel und Eltern-Zugriff nehmen die Konformitätsvermutung (Abschnitt 3) |
+| N1123-1153-f | Recherche, 3 | CRA: Was Repo und Firmware bis 11.12.2027 liefern müssen | Klasse I, Meldepflichten, Updates (Abschnitt 3) |
+| N1123-1153-g | Recherche, 3 | Ist Kunibert ein Spielzeug? Einstufung mit Leitfäden belegen | „Spielwert“ ist nicht erklärt; davon hängt der ganze Prüfweg ab (Abschnitt 1) |
+| N1123-1153-h | Recherche, 3 | Auftragsverarbeiter und Drittland: Verzeichnis der Datenflüsse | Art. 28 und USA-Übermittlung; Vertrag mit Anthropic nur gelesen, nicht geprüft (Abschnitt 4) |
+| N1123-1153-i | Recherche, 4 | Checkliste: Anmeldungen und Pflichtangaben im Shop | ear, LUCID, GPSR Art. 19, Warnhinweise (Abschnitte 5 und 6) |
+| N1123-1153-j | Recherche, 3, wiederkehrend | Fristen aus H2 alle 4 Wochen neu prüfen | Viele Fristen sind in Bewegung (Omnibus-Verfahren, Rechtsmittel, Beschlüsse) |
+
+Bestehende Punkte, die ich ergänzt habe:
+
+- **H3** (KI-Hinweis und Kennzeichnung der Sprachausgabe): Prio von 3 auf 2, weil Art. 50 schon gilt. Dazu die offenen Fragen aus Abschnitt 2.
+- **N1122-1808-c** (Vorschläge für die Datenschutz-Folgenabschätzung): Vorschläge aus Abschnitt 4 (keine Sprechererkennung, erkennbare Aufnahme, Verträge, Drittland).
+- **N1122-1941-b** (Zielboard): Der Funk-Nachweis gehört zur Wahl des Boards (Abschnitt 3).
+
+## Rechtsrisiken, die neu oder größer geworden sind (Einschätzung)
+
+Ein Anwalt ist bewusst nicht beteiligt (Restrisiko). Diese Punkte würde ich dem Betreiber trotzdem nennen:
+
+- **KI-Hinweis und Stimmkennzeichnung fehlen im Repo.** Art. 50 gilt seit 2.8.2026. Ein Gerät, das ohne beides verkauft würde, wäre angreifbar. Die Höhe möglicher Bußgelder für Art. 50 habe ich nicht gelesen.
+- **Stimmdaten gelten nach dem EDSA als biometrisch**, sobald sie zur Identifizierung dienen. Wer nie Stimmen zuordnet, vermeidet Art. 9. Das ist eine Entwurfsregel, keine Rechtsfrage.
+- **Aufnahme muss erkennbar sein** (§ 8 TDDDG; Fall der Puppe Cayla). Taste und blinkende LED im Entwurf sprechen dafür. Das Seriengerät muss das beibehalten, auch beim Gehäuse und beim Mikrofon-Aus.
+- **Übermittlung in die USA.** Der Rahmen gilt, ein Rechtsmittel (C-703/25 P) ist offen. Der Vertrag mit Anthropic nennt Standardvertragsklauseln. Ob er für das Konto des Betreibers gilt, ist ungeprüft.
+- **Prüfweg und Kosten.** Eine benannte Stelle ist wahrscheinlich nötig (Spielzeug und CRA, wenn Normen fehlen). Kosten und Dauer sind unbekannt.
+- **Akku ab 18.2.2027.** Ein fest verbauter Akku braucht die Ausnahme für Spielzeug. Ihr Inkrafttreten ist nicht belegt.
+
 ## Quellen
 
-Alle Seiten wurden am 23.11.2026 durch Unteragenten abgerufen. Ein Zitat je Quelle, höchstens 15 Wörter. Die Zitate stammen aus dem Auszug des Abrufwerkzeugs.
+Alle Seiten wurden am 23.11.2026 durch Unteragenten (Claude Sonnet) über das Abrufwerkzeug gelesen. Ein Zitat je Quelle, höchstens 15 Wörter. Die Zitate stammen aus dem Auszug des Abrufwerkzeugs, nicht aus einem Gegenlesen am Original. „Art“ heißt: amtlich (Gesetzgeber, Kommission, Aufsicht, Behörde), Hersteller (Herstellerseite) oder sonstige Quelle (zum Beispiel Prüfhaus, Fachportal).
 
 | Nr. | Quelle | Art | Zitat |
 | --- | --- | --- | --- |
@@ -166,8 +386,8 @@ Alle Seiten wurden am 23.11.2026 durch Unteragenten abgerufen. Ein Zitat je Quel
 | Q10 | Europäische Kommission: ein gemeinsames Ladegerät, https://single-market-economy.ec.europa.eu/sectors/electrical-and-electronic-engineering-industries-eei/radio-equipment-directive-red/one-common-charging-solution-all_en | amtlich | „provides answers to the most frequently asked questions on the common charger“ |
 | Q11 | KI-Verordnung (EU) 2024/1689, konsolidierte Fassung vom 27.7.2026 (EUR-Lex), https://eur-lex.europa.eu/eli/reg/2024/1689/2026-07-27/eng/pdf | amtlich | „at the time of the first interaction or exposure“ |
 | Q12 | Verordnung (EU) 2023/2444 (Verschiebung der RED-Cybersicherheit), EUR-Lex, https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELEX:32023R2444 | amtlich | „It shall apply from 1 August 2025.“ |
-| Q13 | Europäische Kommission: Data Act, https://digital-strategy.ec.europa.eu/en/policies/data-act | amtlich | „entered into force on 11 January 2024“ |
-| Q14 | Batterieverordnung (EU) 2023/1542, konsolidiert am 13.8.2026 (EUR-Lex), https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELEX%3A02023R1542-20260813 | amtlich | „Article 11 shall apply from 18 February 2027“ |
+| Q13 | Batterieverordnung (EU) 2023/1542, konsolidiert am 13.8.2026 (EUR-Lex), https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELEX%3A02023R1542-20260813 | amtlich | „Article 11 shall apply from 18 February 2027“ |
+| Q14 | Europäische Kommission: Data Act, https://digital-strategy.ec.europa.eu/en/policies/data-act | amtlich | „entered into force on 11 January 2024“ |
 | Q15 | Umweltbundesamt: BattDG in Kraft getreten, https://www.umweltbundesamt.de/themen/battdg-in-kraft-getreten-uba-beleiht-erneut | amtlich | „Am 07.10.2025 trat das Batterierecht-Durchführungsgesetz“ |
 | Q16 | Europäische Kommission: Spielzeugsicherheit, https://single-market-economy.ec.europa.eu/sectors/toys/toy-safety_en | amtlich | „enters into force on 1 January 2026“ |
 | Q17 | Bundesumweltministerium: Europäische Verpackungsverordnung ab heute wirksam, https://www.bundesumweltministerium.de/pressemitteilung/europaeische-verpackungsverordnung-ab-heute-wirksam | amtlich | „löst das bisherige Verpackungsgesetz ab“ |
@@ -191,5 +411,97 @@ Alle Seiten wurden am 23.11.2026 durch Unteragenten abgerufen. Ein Zitat je Quel
 | Q35 | Kommission: Verhaltenskodex zu KI-erzeugten Inhalten, https://digital-strategy.ec.europa.eu/en/policies/code-practice-ai-generated-content | amtlich | „an adequate voluntary tool to demonstrate compliance“ |
 | Q36 | Leitlinien der Kommission zu den verbotenen Praktiken (C(2025) 5052), PDF, https://ai-act-service-desk.ec.europa.eu/sites/default/files/2026-01/guide-prohibited_en.pdf | amtlich | „not AI-enabled toys, games, learning applications or other digital applications in general“ |
 | Q37 | Kommission: Entwurf der Leitlinien zur Einstufung als Hochrisiko-KI (Seite), https://digital-strategy.ec.europa.eu/en/library/draft-commission-guidelines-classification-high-risk-ai-systems | amtlich | – (Die Seite war lesbar, die Entwürfe selbst waren gesperrt) |
+| Q38 | Delegierte Verordnung (EU) 2022/30 (RED, Cybersicherheit), EUR-Lex, PDF, https://eur-lex.europa.eu/legal-content/EN/TXT/PDF/?uri=CELEX%3A32022R0030 | amtlich | „(c) radio equipment covered by Directive 2009/48/EC;“ |
+| Q39 | Europäische Kommission: Funkanlagen-Richtlinie (RED), https://single-market-economy.ec.europa.eu/sectors/electrical-and-electronic-engineering-industries-eei/radio-equipment-directive-red_en?prefLang=de | amtlich | „The repeal will be effective as of 11 December 2027“ |
+| Q40 | Richtlinie 2014/53/EU (RED), EUR-Lex, https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELEX:32014L0053 | amtlich | „a single EU declaration of conformity shall be drawn up“ |
+| Q41 | Espressif: ESP32, RED DA und EN 18031 (Blog, 8.4.2025), https://developer.espressif.com/blog/2025/04/esp32-red-da-en18031-compliance-guide/ | sonstige Quelle (Hersteller) | „does not replace the need for end-product certification“ |
+| Q42 | Espressif: Sicherheitszertifizierungen (Dokumentation), https://docs.espressif.com/projects/esp-product-security/en/latest/security-certifications.html | sonstige Quelle (Hersteller) | – (Negativer Befund: Die Seite listet keine EN-18031-Zertifikate für den ESP32-S3) |
+| Q43 | Raspberry Pi: Beitrag zur RED (8.8.2025), https://www.raspberrypi.com/news/navigating-the-eus-new-radio-equipment-directive-how-raspberry-pi-provides-an-industrial-advantage/ | sonstige Quelle (Hersteller) | „they are ultimately responsible for the compliance of their final product“ |
+| Q44 | Europäisches Parlament (OEIL): Verfahren 2025/0360(COD), Digital Omnibus, https://oeil.europarl.europa.eu/oeil/en/procedure-file?reference=2025%2F0360%28COD%29 | amtlich | „Simplification of the digital legislative framework – Digital Omnibus (Omnibus VII)“ |
+| Q45 | Mitteilung der Kommission C/2024/2997 zum gemeinsamen Ladegerät (Kopie der rumänischen Behörde ANCOM), https://www.ancom.ro/uploads/actualizari/Ghidul%20pentru%20interpretarea%20Directivei%20common%20charger_en.pdf | amtlich | „not affected by the fact that the smartphone in question is intended only for children“ |
+| Q46 | Wissenschaftliche Dienste des Bundestages: Altersgrenzen nach Art. 8 DSGVO (17.5.2023), https://www.bundestag.de/resource/blob/959324/WD-10-019-23-pdf.pdf | amtlich | „gibt es in Deutschland bisher nicht“ |
+| Q47 | DSK-Entschließung „Datenschutz von Kindern“ (20.11.2025), https://datenschutzkonferenz-online.de/media/en/Entschliessung_Datenschutz-von-Kindern.pdf | amtlich | „bisher nur punktuell“ |
+| Q48 | EDSA-Leitlinien 05/2020 zur Einwilligung (deutsch), https://www.edpb.europa.eu/system/files/documents/files/file1/edpb_guidelines_202005_consent_de.pdf | amtlich | „das einem Kind direkt gemacht wird“ |
+| Q49 | DSGVO, deutsche Fassung, PDF (Erwägungsgründe 38, 51, 58), https://eur-lex.europa.eu/legal-content/DE/TXT/PDF/?uri=CELEX%3A32016R0679 | amtlich | „in einer dergestalt klaren und einfachen Sprache erfolgen, dass ein Kind sie verstehen kann“ |
+| Q50 | DSK: Muss-Liste für Datenschutz-Folgenabschätzungen, nicht-öffentlicher Bereich (17.10.2018), https://datenschutz-hamburg.de/fileadmin/user_upload/HmbBfDI/Datenschutz/Informationen/DSFA_Muss-Liste_fuer_den_nicht-oeffentlicher_Bereich_-_Stand_17.10.2018.pdf | amtlich | „Automatisierte Auswertung von Video- oder Audio-Aufnahmen“ |
+| Q51 | EDSA-Leitlinien 02/2021 zu virtuellen Sprachassistenten, Version 2.0 (7.7.2021), englisch, https://www.edpb.europa.eu/system/files/documents/2021-07/edpb_guidelines_202102_on_vva_v2.0_adopted_en.pdf | amtlich | „voice data is inherently biometric personal data“ (Datum und Rn. 82 laut deutscher Fassung (nicht korrekturgelesen): https://www.edpb.europa.eu/system/files/2022-02/edpb_guidelines_202102_on_vva_v2.0_adopted_de.pdf) |
+| Q52 | Gericht der EU: Pressemitteilung zu T-553/23 (3.9.2025), https://curia.europa.eu/site/upload/docs/application/pdf/2025-09/cp250106de.pdf | amtlich | „Das Gericht weist die Nichtigkeitsklage ab.“ |
+| Q53 | Amtsblatt C/2025/6610: Rechtsmittel C-703/25 P, https://eur-lex.europa.eu/eli/C/2025/6610/oj | amtlich | „annul Commission Implementing Decision (EU) 2023/1795“ |
+| Q54 | Studie des Forschungsdienstes des Europäischen Parlaments (EPRS_STU(2026)782657), https://www.europarl.europa.eu/RegData/etudes/STUD/2026/782657/EPRS_STU(2026)782657_EN.pdf | amtlich | „scheduled to be reviewed in 2027“ |
+| Q55 | Anthropic: Data Processing Addendum (Fassung vom 24.2.2025), https://www.anthropic.com/legal/data-processing-addendum | sonstige Quelle (Vertragstext des Anbieters) | „Customer is the controller and Anthropic is Customer’s processor.“ |
+| Q56 | Bundesnetzagentur: Pressemitteilung zur Puppe Cayla (17.2.2017), https://www.bundesnetzagentur.de/SharedDocs/Pressemitteilungen/EN/2017/17022017_cayla.html?nn=40442 | amtlich | „The Cayla doll has been banned in Germany.“ |
+| Q57 | § 90 TKG (Fassung 2021), gesetze-im-internet.de, https://www.gesetze-im-internet.de/tkg%5F2021/__90.html | amtlich | – (Die Vorschrift trägt jetzt den Titel „Frequenzplan“ (laut Auszug des Abrufwerkzeugs)) |
+| Q58 | § 8 TDDDG, gesetze-im-internet.de, https://www.gesetze-im-internet.de/ttdsg/__8.html | amtlich | „Abhör- oder Aufnahmefunktion … nicht eindeutig erkennbar ist“ |
+| Q59 | Bundesnetzagentur: Pressemitteilung zu Spionagegeräten und smartem Spielzeug (29.11.2024), https://www.bundesnetzagentur.de/SharedDocs/Pressemitteilungen/DE/2024/20241129_Spionagegeraete.html?nn=659670 | amtlich | „Die Aufnahmesituation muss für alle Beteiligten eindeutig erkennbar sein“ |
+| Q60 | TDDDG, Gesamtseite (Gesetz vom 23.6.2021; § 25), https://www.gesetze-im-internet.de/ttdsg/BJNR198210021.html | amtlich | „einen vom Nutzer ausdrücklich gewünschten digitalen Dienst“ |
+| Q61 | EDSA-Leitlinien 2/2023 zum Anwendungsbereich von Art. 5 Abs. 3 der ePrivacy-Richtlinie, https://www.edpb.europa.eu/system/files/2024-10/edpb_guidelines_202302_technical_scope_art_53_eprivacydirective_v2_en_0.pdf | amtlich | „would itself be considered a terminal equipment“ |
+| Q62 | EDSA: Arbeitsprogramm 2026–2027 (Meldung vom 12.2.2026), https://www.edpb.europa.eu/news/edpb-work-programme-2026-2027-easing-compliance-and-strengthening-cooperation-across-the_en | amtlich | „guidelines on children’s data“ |
+| Q63 | EDSA und EDSB: gemeinsame Stellungnahme zum Digital Omnibus (Februar 2026), https://www.edpb.europa.eu/system/files/2026-02/edpb_edps_jointopinion_202602_digitalomnibus_en.pdf | amtlich | „if the amendments are adopted“ |
+| Q64 | Europäische Kommission: CE-Kennzeichnung für Hersteller, https://single-market-economy.ec.europa.eu/single-market/goods/ce-marking/manufacturers_en | amtlich | „may not be smaller than 5 mm“ |
+| Q65 | EMV-Richtlinie 2014/30/EU (EUR-Lex), PDF, https://eur-lex.europa.eu/legal-content/EN/TXT/PDF/?uri=CELEX:32014L0030&from=CS | amtlich | „equipment covered by Directive 1999/5/EC;“ |
+| Q66 | Durchführungsbeschluss (EU) 2022/2191: harmonisierte Normen für Funkanlagen (EUR-Lex), https://eur-lex.europa.eu/eli/dec_impl/2022/2191/oj/eng | amtlich | „are hereby published in the Official Journal of the European Union.“ |
+| Q67 | Kommission: Tabelle der harmonisierten Normen zur EMV (Download), https://webgate.ec.europa.eu/circabc-ewpp/d/d/workspace/SpacesStore/8e7cd43d-baab-4450-8f0c-7c9785e75f2c/download | amtlich | „Harmonised Standard for ElectroMagnetic Compatibility“ |
+| Q68 | RoHS-Richtlinie 2011/65/EU, Fassung vom 1.1.2025 (EUR-Lex), https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELEX:02011L0065-20250101 | amtlich | „Toys, leisure and sports equipment.“ |
+| Q69 | Marktüberwachungsverordnung (EU) 2019/1020 (EUR-Lex), PDF, https://eur-lex.europa.eu/legal-content/EN/TXT/PDF/?uri=CELEX%3A32019R1020 | amtlich | „may be placed on the market only if there is an economic operator established“ |
+| Q70 | Europäisches Parlament (OEIL): Verfahren 2025/0133(COD), Omnibus IV, https://oeil.europarl.europa.eu/oeil/en/procedure-file/pdf?reference=2025%2F0133%28COD%29 | amtlich | „Awaiting Parliament's position in 1st reading“ |
+| Q71 | Stiftung ear: WEEE-Registrierung beantragen, https://www.stiftung-ear.de/anleitungen/weee-registrierung-beantragen/ | amtlich | „Erst wenn Sie Ihren Registrierungsbescheid haben, dürfen Sie Geräte in den Verkehr bringen.“ |
+| Q72 | Stiftung ear: Pflichten der Hersteller von Elektrogeräten, https://www.stiftung-ear.de/themenwelten/pflichten-hersteller/welche-pflichten-haben-hersteller-von-elektrogeraeten/ | amtlich | „insolvenzsichere Garantie“ |
+| Q73 | Stiftung ear: Hinweise für Marktplatzverkäufer (Stand 06/2023), PDF, https://www.stiftung-ear.de/fileadmin/redakteur/downloads/Marktplatzverkaeufer230615.pdf | amtlich | „sich zuvor bei der stiftung ear registrieren“ |
+| Q74 | § 8 ElektroG, gesetze-im-internet.de, https://www.gesetze-im-internet.de/elektrog_2015/__8.html | amtlich | „Die Beauftragung hat schriftlich und in deutscher Sprache zu erfolgen“ |
+| Q75 | Stiftung ear: Geräte-Arten und Kategorien, https://www.stiftung-ear.de/themenwelten/pflichten-hersteller/welche-geraetearten-gibt-es/ | amtlich | „ein Oberbegriff für bestimmte Elektrogeräte“ |
+| Q76 | Bundestag: Gesetzentwurf Drucksache 21/1506 (ElektroG-Novelle), PDF, https://dserver.bundestag.de/btd/21/015/2101506.pdf | amtlich | „Dieses Gesetz tritt am 1. Januar 2026 in Kraft.“ |
+| Q77 | Bundestag: Textarchiv zur ElektroG-Novelle, https://www.bundestag.de/dokumente/textarchiv/2025/kw45-de-elektrogeraetegesetz-1116802 | amtlich | „getrennt vom unsortierten Siedlungsabfall“ |
+| Q78 | Lovguiden (Dänemark): sechs neue Ausnahmen von der Austauschbarkeit (22.10.2026), https://www.lovguiden.dk/en/det-offentlige/eur-lex-eu-tidende/2026-10-22-seks-nye-undtagelser-fra-krav-om-udskiftelige-batterier-i-eu | sonstige Quelle | „until 31 July 2030“ |
+| Q79 | BattDG, gesetze-im-internet.de, https://www.gesetze-im-internet.de/battdg/BJNR0E90B0025.html | amtlich | „Bevor ein Hersteller Batterien im Geltungsbereich dieses Gesetzes erstmals auf dem Markt bereitstellt“ |
+| Q80 | Stiftung ear: Pressemitteilung zum BattDG (7.10.2025), PDF, https://www.stiftung-ear.de/fileadmin/redakteur/Pressemitteilungen/ear_PM_251007.pdf | amtlich | „Damit ist der nationale Rahmen für das Batterierecht nun komplett.“ |
+| Q81 | Zentrale Stelle Verpackungsregister: Registrierung, https://www.verpackungsregister.org/information-orientierung/themenpakete/registrierung | amtlich | „Für die Registrierung fallen keine Kosten an.“ |
+| Q82 | Zentrale Stelle Verpackungsregister: Versand und Onlinehandel, https://www.verpackungsregister.org/information-orientierung/themenpakete/versand-und-onlinehandel | amtlich | „Hinterlegen Sie Ihre Meldung zu den Verpackungsmengen rechtzeitig im Verpackungsregister LUCID.“ |
 
-(Abschnitte 3 bis 6, Folgerungen, „Nicht geprüft“ und „Nächste Schritte“ folgen im selben PR.)
+## Nicht geprüft
+
+**Grenzen der Methode**
+
+- Die Quellen wurden von Unteragenten über das Abrufwerkzeug gelesen. Es liefert Auszüge, nicht den Rohtext. Zitate, Zahlen und Fristen sind daher nicht am Original gegengelesen. Lange EUR-Lex-Texte (die Spielzeugverordnung hat rund 244.000 Zeichen) wurden in Teilen mehrfach mit verschiedenen Fragen abgerufen.
+- Gesperrt oder nicht lesbar waren: viele EUR-Lex-Adressen (Fehler `ROBOTS_UNREACHABLE` oder `PROVENANCE_REQUIRED`), die Mitteilung des Rates vom 29.6.2026, die Entwürfe der Leitlinien zur Hochrisiko-Einstufung (19.5.2026), die Konformitätserklärung des Raspberry Pi 5, die FAQ der Kommission zum Data Act (Fassung 1.4), InfoCuria (nur Metadaten), das Funkanlagengesetz bei gesetze-im-internet.de, Teile des ElektroG und die Seite der ear zur Kategorie 5. Ich habe keinen Umweg gesucht.
+- Die Normen selbst (EN 18031, EN 71, EN IEC 62115 und weitere) sind kostenpflichtig und nicht gelesen. Ich kenne nur Titel und Beschlüsse.
+- Die Aussagen über den Stand des Repos stammen aus einer Textsuche in `main` am 23.11.2026. Nichts davon wurde ausgeführt.
+
+**Spielzeug (Abschnitt 1)**
+
+- Leitlinie Nr. 16 der Kommission zu elektronischen Geräten (9.7.2012), der „Blue Guide“, der Inhalt des Beschlusses (EU) 2025/1785, Art. 19 Abs. 7 der Verordnung (Platz des Datenträgers). Welche Normen ab 1.8.2030 gelten. Ob und wann Deutschland die 2. ProdSV ändert. Andere Sprachfassungen der Verordnung.
+
+**KI-Verordnung (Abschnitt 2)**
+
+- Der Inhalt der Entwürfe der Hochrisiko-Leitlinien. Der Endtext des Verhaltenskodex (ob er Art. 50 Abs. 1 abdeckt, ist nicht belegt). Die Leitlinien zu den Verboten nur etwa zur Hälfte (rund 200.000 von 430.000 Zeichen). Ob die Spielzeugverordnung später in Anhang I aufgenommen wird. Die Bußgelder für Art. 50. Ein zweiter Digital Omnibus (Datenschutz).
+
+**Funk, Cybersicherheit, Data Act (Abschnitt 3)**
+
+- Spätere Beschlüsse zu EN 18031 (14.5., 13.8. und 9.12.2025): nicht geöffnet. Ob die Einschränkungen heute noch gelten, ist nicht belegt. Stand der harmonisierten CRA-Normen. Was der Digital Omnibus zu Data Act und CRA-Meldungen vorsieht (nur Verfahrensstand gelesen). Ob der Data Act ein Spielzeug erfasst. Ob EN-18031-Belege für den Pi 5 und den ESP32-S3 existieren. Was die RED zum 30.5.2026 geändert hat. Der Wortlaut von Art. 3 Abs. 2 des Data Act.
+
+**Datenschutz (Abschnitt 4)**
+
+- Stand des Rechtsmittels C-703/25 P nach dem 22.12.2025. Ob Anthropic am EU-US-Rahmen teilnimmt. Ob Deutschland 2026 noch bei 16 Jahren liegt. Ob ein Sprach-Spielzeug ein „Dienst der Informationsgesellschaft“ ist. Wann das TDDDG in Kraft trat. Stand des Digital Omnibus im November 2026. Eine Aufsichtsseite speziell zu KI-Sprachspielzeug habe ich nicht gefunden. Nicht geöffnet: Verbraucherzentralen, Orientierungshilfe der Aufsichtsbehörden zu digitalen Diensten.
+
+**CE und Produktrecht (Abschnitt 5)**
+
+- dB-Grenzwerte (EN 71-1), Regeln zu Knopfzellen, CE-Mindesthöhe speziell für Spielzeug, EN 62368-1, EN 62311, EN 55032 und EN IEC 63000, Stichtag der Phthalate nach RoHS, das Konformitätsverfahren der RED im Einzelnen, die Deutsch-Pflicht für Funkanlagen, der Endtext von Omnibus IV. Kosten und Dauer von Prüfungen: keine Zahlen gefunden.
+
+**Elektro, Batterie, Verpackung (Abschnitt 6)**
+
+- Der Endtext des ElektroG und seine Kategorie für Spielzeug. Amtsblatt-Datum und Inkrafttreten des Rechtsakts zur Austauschbarkeit bei Spielzeug (Delegierte Verordnung 2026/1770), die Leitlinien zu Art. 11, Art. 38 der Batterieverordnung. Der Übergang im BattDG (§§ 60 bis 64). Der Text des VerpackDG, die Folgen der „Zulassungspflicht“ für kleine Hersteller, der Zeitpunkt der LUCID-Registrierung, die Gebührenbeträge der ear.
+
+**Sonst**
+
+- Ab wann die Weitergabe eines Prototyps an Testpersonen als Inverkehrbringen zählt. Die Frage, wie die Pflichten für ein Gerät mit späterer Firmware-Änderung gelten (wesentliche Änderung nach CRA Art. 69). Alle Fristen können sich ändern; der Stand gilt nur für den 23.11.2026 (siehe N1123-1153-j).
+
+## Nächste Schritte
+
+| Wer | Was | Wo |
+| --- | --- | --- |
+| Betreiber | Entscheiden, ob die erste Auslieferung vor oder ab dem 11.12.2027 liegen soll. Davon hängt ab, ob die Cybersicherheit der RED (EN 18031) oder der CRA gilt (Kurzfassung, Punkt 2). | im Chat |
+| Betreiber | Vor dem ersten Test mit Kindern die „Freigabe-Checkliste vor dem ersten Kind“ im Doc „Datenschutz-Folgenabschätzung“ mit Claude durchgehen. Bis dahin testen nur Erwachsene. | im Chat |
+| Betreiber | Prüfen, ob der Vertrag zur Auftragsverarbeitung von Anthropic für sein Konto gilt, und seit wann. Datum notieren. Keinen Schlüssel in Repo oder Chat schreiben. | im Konto bei Anthropic, im Browser |
+| Betreiber | Entscheiden, ob „Keine Sprechererkennung, keine Stimmmerkmale speichern“ in die festen Regeln (`CLAUDE.md`) kommt (Abschnitt 4). | im Chat |
+| Betreiber | Anfragen an Prüfhäuser (Kosten, Dauer) und die Anmeldungen bei ear und LUCID macht er selbst oder gibt sie im Chat frei. Claude kann Entwürfe vorbereiten, schickt aber nichts ab. | im Chat; auf den Seiten der Anbieter |
+| Claude | Die Punkte N1123-1153-a bis -j abarbeiten, zuerst H3 (jetzt Prio 2), dann die Bauen-Punkte -a und -b. | Repo, `docs/autopilot/backlog.md` |
+| Claude (Lauf „Planen & Bericht“) | Ergebnis und die Rechtsrisiken oben in `claude/aufgaben.md` eintragen und, wo nötig, fürs Doc „Datenschutz-Folgenabschätzung“ vorschlagen. | Claude-Projekt |
