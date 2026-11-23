@@ -65,6 +65,21 @@ jobs:
           KUNIBERT_REQUIRE_REAL_AUDIO: "1"
         run: python -m unittest discover -s pi-client -p "test_*.py"
 
+  # Installer des Pi-Clients als root in einem frischen Debian 13 (wie Raspberry Pi OS „Trixie“):
+  # Dienstkonto, Ordner, kunibert.env (Werte, Rechte, Besitzer), Dienstdatei, zweiter Lauf, Token nie
+  # in der Ausgabe. systemctl ist im Test eine Attrappe, die Dienstdatei prüft systemd-analyze verify.
+  # Einzelheiten und Grenzen im Kopf von pi-client/install_raspberry_pi.test.sh.
+  pi-installer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    container: debian:trixie
+    steps:
+      - uses: actions/checkout@v7
+      - name: Installer im Container ausführen und prüfen
+        env:
+          KUNIBERT_INSTALLER_TEST: "1"
+        run: bash pi-client/install_raspberry_pi.test.sh
+
   # Gerätespeicher in Firestore gegen den lokalen Firestore-Emulator (siehe docs/Firestore-Emulator-Test.md).
   # Der Emulator wird nur hier installiert, nicht als Abhängigkeit in package.json/package-lock.json.
   # Er braucht Java. Es geht nichts an das echte Firestore: emulators:exec setzt FIRESTORE_EMULATOR_HOST.
