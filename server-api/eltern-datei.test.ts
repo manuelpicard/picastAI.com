@@ -74,7 +74,7 @@ test('Neustart: Einwilligung, Weg, Version, Schlafmodus, Ruhezeiten und Eltern-T
   const before = first.settings('prototype-001');
 
   const second = new ParentControls(c.now, new ParentStateFile(file, KEY));
-  assert.deepEqual(second.load(['prototype-001', 'anderes-geraet']), { geraete: 1, verworfen: 0, schreibfehler: null });
+  assert.deepEqual(second.load(['prototype-001', 'anderes-geraet']), { geraete: 1, verworfen: 0, behalten: 0, widerrufen: null, schreibfehler: null });
   assert.deepEqual(second.settings('prototype-001'), before);
   assert.deepEqual(before.einwilligung, {
     erteilt: true,
@@ -162,23 +162,54 @@ test('Beim Start: Einträge ohne angemeldetes Gerät löscht der Server aus der 
   first.updateSettings('weg-2', { schlafmodus: true });
 
   const second = new ParentControls(Date.now, new ParentStateFile(file, KEY));
-  assert.deepEqual(second.load(['bleibt']), { geraete: 1, verworfen: 2, schreibfehler: null });
+  assert.deepEqual(second.load(['bleibt']), { geraete: 1, verworfen: 2, behalten: 0, widerrufen: null, schreibfehler: null });
   const data = JSON.parse(fs.readFileSync(file, 'utf8')) as { geraete: Record<string, unknown> };
   assert.deepEqual(Object.keys(data.geraete), [pseudonymFor(KEY, 'bleibt')]);
 });
 
-test('Anderer Schlüssel: Kein Eintrag passt, keine Einwilligung (sicher, aber alle müssen neu einwilligen)', () => {
+test('Anderer Schlüssel: Kein Eintrag passt, keine Einwilligung; die Einträge bleiben, bis der Schlüssel wieder stimmt', () => {
   const file = tempFile();
   new ParentControls(Date.now, new ParentStateFile(file, KEY)).grantConsent('g1');
+  const before = fs.readFileSync(file, 'utf8');
   const other = new ParentControls(Date.now, new ParentStateFile(file, OTHER_KEY));
-  assert.deepEqual(other.load(['g1']), { geraete: 0, verworfen: 1, schreibfehler: null });
-  assert.equal(other.hasConsent('g1'), false);
+  assert.deepEqual(other.load(['g1']), { geraete: 0, verworfen: 0, behalten: 1, widerrufen: null, schreibfehler: null });
+  assert.equal(other.hasConsent('g1'), false, 'gilt nicht: sicher für das Kind');
+  assert.equal(fs.readFileSync(file, 'utf8'), before, 'Nachweis bleibt');
+  // Eine Änderung mit dem falschen Schlüssel schreibt den alten Eintrag unverändert mit.
+  other.setSleep('g1', true);
+  const data = JSON.parse(fs.readFileSync(file, 'utf8')) as { geraete: Record<string, { einwilligung: { erteilt: boolean } | null }> };
+  assert.equal(data.geraete[pseudonymFor(KEY, 'g1')].einwilligung?.erteilt, true);
+  assert.ok(data.geraete[pseudonymFor(OTHER_KEY, 'g1')]);
+  // Wieder mit dem richtigen Schlüssel: passt, der Eintrag des falschen Schlüssels fällt weg.
+  const right = new ParentControls(Date.now, new ParentStateFile(file, KEY));
+  assert.deepEqual(right.load(['g1']), { geraete: 1, verworfen: 1, behalten: 0, widerrufen: null, schreibfehler: null });
+  assert.equal(right.hasConsent('g1'), true);
+});
+
+test('Behaltener Eintrag: Neuer Stand desselben Geräts ersetzt ihn, „alles löschen“ löscht ihn', () => {
+  const file = tempFile();
+  new ParentControls(Date.now, new ParentStateFile(file, KEY)).grantConsent('spaet-angelegt');
+  const p = new ParentControls(Date.now, new ParentStateFile(file, KEY));
+  assert.equal(p.load([])?.behalten, 1, 'Gerät beim Start nicht angemeldet');
+  assert.equal(p.hasConsent('spaet-angelegt'), false, 'alter Stand gilt nicht');
+  p.setSleep('spaet-angelegt', true);
+  const data = JSON.parse(fs.readFileSync(file, 'utf8')) as { geraete: Record<string, { einwilligung: unknown; schlafmodus: boolean }> };
+  assert.deepEqual(data.geraete[pseudonymFor(KEY, 'spaet-angelegt')], { einwilligung: null, schlafmodus: true, ruhezeiten: null, elternTokens: [] });
+  p.forgetDevice('spaet-angelegt');
+  assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')), { format: 1, geraete: {} });
+
+  // Auch ohne neuen Stand: „alles löschen“ löscht den behaltenen Eintrag.
+  new ParentControls(Date.now, new ParentStateFile(file, KEY)).grantConsent('nur-alt');
+  const q = new ParentControls(Date.now, new ParentStateFile(file, KEY));
+  q.load([]);
+  q.forgetDevice('nur-alt');
+  assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')), { format: 1, geraete: {} });
 });
 
 test('Erster Start ohne Datei: leer, und die Datei wird angelegt', () => {
   const file = tempFile();
   const p = new ParentControls(Date.now, new ParentStateFile(file, KEY));
-  assert.deepEqual(p.load(['g1']), { geraete: 0, verworfen: 0, schreibfehler: null });
+  assert.deepEqual(p.load(['g1']), { geraete: 0, verworfen: 0, behalten: 0, widerrufen: null, schreibfehler: null });
   assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')), { format: 1, geraete: {} });
   assert.equal(new ParentControls().load(['g1']), null, 'ohne Datei nichts zu laden');
 });
@@ -198,6 +229,12 @@ test('Kaputte oder fremde Datei: Laden wirft, ohne den Inhalt zu nennen, und die
     JSON.stringify({ format: 1, geraete: { [pseudo]: { ...goodEntry, einwilligung: { erteilt: true, zeitpunkt: 'gestern', elterntextVersion: '0', weg: 'geraet' } } } }),
     JSON.stringify({ format: 1, geraete: { [pseudo]: { ...goodEntry, einwilligung: { erteilt: true, zeitpunkt: '2026-11-23T06:00:00.000Z', elterntextVersion: '0', weg: 'post' } } } }),
     JSON.stringify({ format: 1, geraete: { [pseudo]: { ...goodEntry, elternTokens: [{ sha256: secret, seit: '2026-11-23T06:00:00.000Z', weg: 'geraet' }] } } }),
+    // Zeitpunkte nur genau wie toISOString (sonst hinge das Ergebnis von der Zeitzone ab).
+    JSON.stringify({ format: 1, geraete: { [pseudo]: { ...goodEntry, einwilligung: { erteilt: true, zeitpunkt: '1', elterntextVersion: '0', weg: 'geraet' } } } }),
+    JSON.stringify({ format: 1, geraete: { [pseudo]: { ...goodEntry, einwilligung: { erteilt: true, zeitpunkt: '2026-11-23T06:00:00', elterntextVersion: '0', weg: 'geraet' } } } }),
+    // Höchstens fünf Eltern-Tokens; "server" gibt es nur bei der Einwilligung.
+    JSON.stringify({ format: 1, geraete: { [pseudo]: { ...goodEntry, elternTokens: Array.from({ length: 6 }, (_, i) => ({ sha256: String(i).repeat(64), seit: '2026-11-23T06:00:00.000Z', weg: 'geraet' })) } } }),
+    JSON.stringify({ format: 1, geraete: { [pseudo]: { ...goodEntry, elternTokens: [{ sha256: 'b'.repeat(64), seit: '2026-11-23T06:00:00.000Z', weg: 'server' }] } } }),
   ];
   for (const content of cases) {
     fs.writeFileSync(file, content);
@@ -209,8 +246,10 @@ test('Kaputte oder fremde Datei: Laden wirft, ohne den Inhalt zu nennen, und die
     );
     assert.equal(fs.readFileSync(file, 'utf8'), content, 'Nachweis bleibt unverändert');
   }
-  // Ein gültiger Eintrag geht durch.
+  // Gültige Einträge gehen durch, auch ein Widerruf durch den Server.
   assert.equal(parseParentStateFile(JSON.stringify({ format: 1, geraete: { [pseudo]: goodEntry } })).size, 1);
+  const byServer = { erteilt: false, zeitpunkt: '2026-11-23T06:00:00.000Z', elterntextVersion: '0', weg: 'server' };
+  assert.deepEqual(parseParentStateFile(JSON.stringify({ format: 1, geraete: { [pseudo]: { ...goodEntry, einwilligung: byServer } } })).get(pseudo)?.einwilligung, byServer);
 });
 
 test('Speicherfehler: Einwilligung und Kopplung gelten nicht, Widerruf und Löschen sofort; neuer Versuch beim Aufräumen', () => {
@@ -258,12 +297,108 @@ test('Speicherfehler: Einwilligung und Kopplung gelten nicht, Widerruf und Lösc
   assert.equal(reloaded.settings('geheim-geraet-1').einwilligung.zeitpunkt !== null, true);
 });
 
-test('Beim Start nicht beschreibbar: Laden klappt, Schreibfehler wird gemeldet', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'kunibert-eltern-'));
-  const file = path.join(dir, 'fehlt', 'eltern.json');
+/** Lässt jedes Schreiben scheitern, auch als root: Wo die Zwischendatei hin soll, liegt ein Ordner. */
+function blockWrites(file: string): () => void {
+  fs.mkdirSync(`${file}.neu`);
+  return () => fs.rmSync(`${file}.neu`, { recursive: true, force: true });
+}
+
+test('Beim Start nicht beschreibbar: Laden klappt, alle Einwilligungen ruhen, bis das Speichern wieder klappt', () => {
+  const file = tempFile();
+  new ParentControls(Date.now, new ParentStateFile(file, KEY)).grantConsent('g1');
+  const unblock = blockWrites(file);
   const p = new ParentControls(Date.now, new ParentStateFile(file, KEY));
-  assert.deepEqual(p.load(['g1']), { geraete: 0, verworfen: 0, schreibfehler: 'ENOENT' });
+  assert.deepEqual(p.load(['g1']), { geraete: 1, verworfen: 0, behalten: 0, widerrufen: null, schreibfehler: 'ERR_FS_EISDIR' });
   assert.equal(p.counts.ungespeichert, true);
+  assert.equal(p.hasConsent('g1'), false, 'ruht: ein Widerruf ließe sich jetzt nicht speichern');
+  assert.equal(p.blockReason('g1', true), 'einwilligung');
+  const run = captureWarnings(() => p.grantConsent('g2'));
+  assert.ok(run.error instanceof ParentStateWriteError && !run.error.inEffect, 'neue Einwilligung: 503');
+  unblock();
+  p.purge();
+  assert.equal(p.counts.ungespeichert, false);
+  assert.equal(p.hasConsent('g1'), true, 'nach dem gelungenen Speichern gilt sie wieder');
+
+  // Ordner fehlt ganz: auch das ist „nicht beschreibbar“.
+  const missing = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'kunibert-eltern-')), 'fehlt', 'eltern.json');
+  assert.equal(new ParentControls(Date.now, new ParentStateFile(missing, KEY)).load(['g1'])?.schreibfehler, 'ENOENT');
+});
+
+test('Neustart nach einem Widerruf, der sich nicht speichern ließ: alle Einwilligungen gelten als widerrufen', () => {
+  const file = tempFile();
+  const c = clock();
+  const first = new ParentControls(c.now, new ParentStateFile(file, KEY));
+  first.grantConsent('g1', 'geraet');
+  first.grantConsent('g2', 'betreiber');
+  first.updateSettings('g2', { ruhezeiten: { von: '19:00', bis: '07:00' } });
+  const unblock = blockWrites(file);
+  const run = captureWarnings(() => first.revokeConsent('g1', 'geraet'));
+  assert.ok(run.error instanceof ParentStateWriteError && run.error.inEffect);
+  assert.ok(fs.existsSync(`${file}.offen`), 'Markierung angelegt');
+  assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).geraete[pseudonymFor(KEY, 'g1')].einwilligung.erteilt, true, 'Datei noch alt');
+
+  // Absturz (kein Speichern beim Beenden), danach geht das Schreiben wieder.
+  unblock();
+  c.advance(60_000);
+  const second = new ParentControls(c.now, new ParentStateFile(file, KEY));
+  assert.deepEqual(second.load(['g1', 'g2']), { geraete: 2, verworfen: 0, behalten: 0, widerrufen: 2, schreibfehler: null });
+  assert.equal(second.hasConsent('g1'), false);
+  assert.equal(second.hasConsent('g2'), false, 'welcher Widerruf fehlte, weiß der Server nicht: alle');
+  assert.deepEqual(second.settings('g2').einwilligung, {
+    erteilt: false,
+    zeitpunkt: new Date(c.now()).toISOString(),
+    elterntextVersion: ELTERNTEXT_VERSION,
+    weg: 'server',
+  });
+  assert.deepEqual(second.settings('g2').ruhezeiten, { von: '19:00', bis: '07:00' }, 'Einstellungen bleiben');
+  assert.ok(!fs.existsSync(`${file}.offen`), 'Markierung nach dem Speichern weg');
+  const third = new ParentControls(c.now, new ParentStateFile(file, KEY));
+  assert.equal(third.load(['g1', 'g2'])?.widerrufen, null, 'nur einmal');
+  assert.equal(third.hasConsent('g2'), false, 'Widerruf steht in der Datei');
+});
+
+test('Beim Beenden: flush speichert, was offen ist; dann bleibt es beim einen Widerruf', () => {
+  const file = tempFile();
+  const p = new ParentControls(Date.now, new ParentStateFile(file, KEY));
+  p.grantConsent('g1');
+  p.grantConsent('g2');
+  const unblock = blockWrites(file);
+  captureWarnings(() => p.revokeConsent('g1'));
+  assert.equal(p.counts.ungespeichert, true);
+  unblock();
+  p.flush();
+  assert.equal(p.counts.ungespeichert, false);
+  assert.ok(!fs.existsSync(`${file}.offen`));
+  const again = new ParentControls(Date.now, new ParentStateFile(file, KEY));
+  assert.equal(again.load(['g1', 'g2'])?.widerrufen, null);
+  assert.equal(again.hasConsent('g1'), false);
+  assert.equal(again.hasConsent('g2'), true);
+  new ParentControls().flush(); // ohne Datei: nichts zu tun, wirft nicht
+});
+
+test('Kopplung bei Speicherfehler: verdrängte Tokens kommen zurück, der Code bleibt gültig', () => {
+  const file = tempFile();
+  const c = clock();
+  const p = new ParentControls(c.now, new ParentStateFile(file, KEY));
+  const tokens: string[] = [];
+  for (let i = 0; i < MAX_PARENT_TOKENS_PER_DEVICE; i++) {
+    c.advance(1000);
+    const r = p.redeemPairingCode(p.createPairingCode('g1').code);
+    assert.ok(r);
+    tokens.push(r.token);
+  }
+  const before = fs.readFileSync(file, 'utf8');
+  const { code } = p.createPairingCode('g1');
+  const unblock = blockWrites(file);
+  const run = captureWarnings(() => p.redeemPairingCode(code));
+  assert.ok(run.error instanceof ParentStateWriteError && !run.error.inEffect);
+  for (const token of tokens) assert.equal(p.deviceForToken(token), 'g1', 'altes Token gilt weiter');
+  assert.equal(p.counts.elternTokens, MAX_PARENT_TOKENS_PER_DEVICE);
+  assert.equal(fs.readFileSync(file, 'utf8'), before, 'Datei unverändert');
+  assert.ok(!fs.existsSync(`${file}.offen`), 'keine Markierung: die Kopplung gilt nicht');
+  unblock();
+  assert.ok(p.redeemPairingCode(code), 'Code noch gültig');
+  assert.equal(p.deviceForToken(tokens[0]), null, 'jetzt fällt das älteste heraus');
 });
 
 test('Höchstens fünf Eltern-Tokens auch in der Datei', () => {

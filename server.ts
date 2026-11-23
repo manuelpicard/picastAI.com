@@ -962,7 +962,7 @@ app.post('/v1/device/pairing-code', requireDevice, startTurnTimer, async (req: R
 });
 
 const PARENT_COOKIE = 'kb_eltern';
-/** Vorläufig: Das Eltern-Cookie gilt 180 Tage (solange der Server nicht neu startet, siehe eltern.ts). */
+/** Vorläufig: Das Eltern-Cookie gilt 180 Tage (ohne Datei der Eltern-Steuerung nur bis zum nächsten Neustart, siehe eltern.ts). */
 const PARENT_COOKIE_MAX_AGE_SECONDS = 180 * 24 * 60 * 60;
 
 function readCookie(req: Request, name: string): string | null {
@@ -1260,8 +1260,22 @@ async function startServer() {
   if (loaded) {
     // Nur Zahlen, keine Geräte-IDs, keine Pseudonyme, kein Pfad.
     console.log(`Eltern-Steuerung aus der Datei geladen (${loaded.geraete} Geräte, ${loaded.verworfen} ohne angemeldetes Gerät gelöscht).`);
+    if (loaded.behalten > 0) {
+      console.warn(`⚠️ Eltern-Steuerung: Kein Eintrag der Datei passt zu einem angemeldeten Gerät (${loaded.behalten} Einträge). KUNIBERT_ELTERN_SCHLUESSEL oder Geräte-ID geändert? Die Einträge bleiben in der Datei, gelten aber nicht.`);
+    }
+    if (loaded.widerrufen !== null) {
+      console.warn(`⚠️ Eltern-Steuerung: Beim letzten Lauf ließ sich eine Änderung nicht speichern. Deshalb gelten alle Einwilligungen als widerrufen (${loaded.widerrufen}); die Eltern müssen neu einwilligen.`);
+    }
     if (loaded.schreibfehler) {
-      console.warn(`⚠️ Eltern-Steuerung: Die Datei ist nicht beschreibbar (${loaded.schreibfehler}). Einwilligungen und Kopplungen antworten mit 503, bis das behoben ist.`);
+      console.warn(`⚠️ Eltern-Steuerung: Die Datei ist nicht beschreibbar (${loaded.schreibfehler}). Bis das behoben ist, ruhen alle Einwilligungen (das Gerät sagt nur den festen Hinweis), und Einwilligungen und Kopplungen antworten mit 503.`);
+    }
+    // Beim Beenden noch speichern, was offen ist (zum Beispiel ein Widerruf, dessen Speichern fehlschlug
+    // und der seitdem auf den nächsten Versuch wartet). Danach endet der Prozess wie ohne diese Zeilen.
+    for (const signal of ['SIGTERM', 'SIGINT'] as const) {
+      process.once(signal, () => {
+        parents.flush();
+        process.kill(process.pid, signal);
+      });
     }
   }
 

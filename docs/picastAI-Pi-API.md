@@ -163,18 +163,21 @@ Seit 23.11.2026 (Punkt E2 der Arbeitsliste). Mit `KUNIBERT_ELTERN_DATEI` (Pfad, 
 In der Datei steht je Gerät genau das, und nur das:
 
 - ein Pseudonym statt der Geräte-ID: HMAC-SHA-256 der Geräte-ID mit dem Schlüssel aus `KUNIBERT_ELTERN_SCHLUESSEL`. Ein einfacher Hash ließe sich bei frei gewählten Kennungen wie `prototype-001` leicht zurückrechnen. Der Schlüssel steht nur in der Umgebung des Servers, nie im Code und nie in der Datei;
-- die Einwilligung: erteilt oder widerrufen, Zeitpunkt der letzten Änderung, Version des Elterntexts, Weg (`geraet` oder `betreiber`). Kein Verlauf: Ein Widerruf ersetzt die Erteilung;
+- die Einwilligung: erteilt oder widerrufen, Zeitpunkt der letzten Änderung, Version des Elterntexts, Weg (`geraet`, `betreiber` oder `server`, siehe unten). Kein Verlauf: Ein Widerruf ersetzt die Erteilung;
 - Schlafmodus und Ruhezeiten;
 - je gekoppeltem Handy der SHA-256-Hash des Eltern-Tokens, Zeitpunkt und Weg der Kopplung (höchstens 5).
 
 Nicht in der Datei: Namen, E-Mail-Adressen, Aufnahmen, erkannte Sätze, Antworttexte, Geschichten, Kopplungscodes, IP-Adressen, Tokens im Klartext. Einschätzung (keine Rechtsberatung): Auch das Pseudonym bleibt ein Personenbezug; wer den Schlüssel hat, kann es einer Geräte-ID zuordnen.
 
-Gelöscht wird ein Eintrag auch in der Datei mit `DELETE /v1/eltern/daten` und wenn der Betreiber das Gerät sperrt (`POST /api/devices/:id/revoke`). Beim Start übernimmt der Server nur Einträge, deren Pseudonym zu einem angemeldeten, nicht gesperrten Gerät passt; die übrigen löscht er aus der Datei (das Protokoll nennt nur ihre Anzahl). Wer den Schlüssel ändert, verliert deshalb alle Einwilligungen und Kopplungen: Die Eltern müssen neu koppeln und einwilligen.
+Wie lange: Ein Eintrag bleibt, bis die Eltern alles löschen (`DELETE /v1/eltern/daten`), der Betreiber das Gerät sperrt (`POST /api/devices/:id/revoke`) oder das Gerät beim Start nicht mehr angemeldet ist. Auch ein Widerruf bleibt so lange stehen. Eltern-Tokens laufen am Server noch nicht ab (Punkt N1122-1751-b); ein Handy fällt erst heraus, wenn ein sechstes gekoppelt wird. Backups des Servers enthalten die Datei; für sie gelten diese Regeln nicht. Eine beiseitegelegte kaputte Datei (`deploy/EINRICHTUNG.md`, „Betrieb“) löscht nur der Betreiber.
+
+Beim Start übernimmt der Server nur Einträge, deren Pseudonym zu einem angemeldeten, nicht gesperrten Gerät passt; die übrigen löscht er aus der Datei (das Protokoll nennt nur ihre Anzahl). Passt gar kein Eintrag, ist wohl der Schlüssel oder die Geräte-ID falsch eingetragen: Dann bleiben alle Einträge als Nachweis in der Datei, gelten aber nicht, und der Server warnt beim Start. Mit einem neuen Schlüssel gelten deshalb alle Einwilligungen und Kopplungen nicht mehr: Die Eltern müssen neu koppeln und einwilligen.
 
 Geschrieben wird die ganze Datei auf einmal (Rechte 600, erst eine neue Datei, dann umbenennen). Ist sie da, aber nicht lesbar oder ungültig, startet der Server nicht (fail-closed): Sonst gingen Widerrufe und Ruhezeiten verloren, und das nächste Speichern überschriebe den Nachweis. Die Meldung nennt nur einen Fehlercode, nie den Inhalt. Lässt sich eine Änderung nicht speichern, antwortet die Eltern-Route mit `503 {"error":"parent_store_unavailable","wirksam":true|false}`:
 
 - `wirksam: false` bei `PUT /v1/eltern/einwilligung` und `POST /v1/eltern/koppeln`: Einwilligung und Kopplung gelten nur, wenn sie gespeichert sind; der Kopplungscode bleibt gültig.
-- `wirksam: true` bei Widerruf, Einstellungen und „alles löschen“: Die Änderung gilt sofort, bis zum nächsten Neustart. Der Server versucht das Speichern alle fünf Minuten erneut. Startet er vorher neu, gilt wieder der alte Stand aus der Datei; deshalb die Anfrage wiederholen.
+- `wirksam: true` bei Widerruf, Einstellungen und „alles löschen“: Die Änderung gilt sofort. Der Server versucht das Speichern alle fünf Minuten erneut und noch einmal beim Beenden (SIGTERM, SIGINT). Damit ein Neustart vorher sie nicht still zurücknimmt, legt er neben die Datei eine leere Markierung (`…/eltern.json.offen`). Liegt sie beim Start da, gelten alle Einwilligungen als widerrufen (`weg: "server"`), weil der Server nicht mehr weiß, welche Änderung fehlte; die Eltern müssen neu einwilligen. Beim Sperren durch den Betreiber gilt dasselbe; die Antwort zeigt den Fehler nicht, das Protokoll schon.
+- Ist die Datei schon beim Start nicht beschreibbar, ruhen alle Einwilligungen, bis das Speichern wieder klappt: Das Gerät sagt nur den festen Hinweis. Sonst könnte in dieser Zeit ein Widerruf verloren gehen. Lässt sich weder die Datei schreiben noch die Markierung anlegen und stürzt der Server ab, bevor das Speichern wieder klappt, gilt nach dem nächsten Start der alte Stand (Restrisiko, Punkt N1123-0637-b).
 
 ## Fehlerantworten
 

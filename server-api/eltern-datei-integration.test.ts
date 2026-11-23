@@ -127,13 +127,18 @@ describe('Eltern-Steuerung in einer Datei: Neustart des echten Servers (Punkt E2
     }
   }
 
-  async function stop(): Promise<void> {
+  /** Beenden wie systemd (SIGTERM, der Server speichert vorher, was offen ist) oder Absturz (SIGKILL). */
+  async function stop(signal: 'SIGTERM' | 'SIGKILL' = 'SIGTERM'): Promise<void> {
     if (!child || child.exitCode !== null) return;
     const exited = new Promise((resolve) => child!.once('exit', resolve));
-    child.kill('SIGTERM');
+    child.kill(signal);
     await exited;
     child = null;
   }
+
+  /** Lässt jedes Schreiben der Datei scheitern (auch als root): Wo die Zwischendatei hin soll, liegt ein Ordner. */
+  const blockWrites = () => fs.mkdirSync(`${file}.neu`);
+  const unblockWrites = () => fs.rmSync(`${file}.neu`, { recursive: true, force: true });
 
   async function turn(): Promise<{ kind: string; fixed?: string }> {
     const form = new FormData();
@@ -222,6 +227,67 @@ describe('Eltern-Steuerung in einer Datei: Neustart des echten Servers (Punkt E2
     await stop();
 
     for (const secret of [DEVICE_ID, token, KEY, pseudonym]) assert.ok(!output.includes(secret), 'Kennung oder Schlüssel im Protokoll');
+  });
+
+  it('Speicherfehler über HTTP: 503 mit „wirksam“, Widerruf gilt sofort und übersteht auch einen Absturz', async () => {
+    await start();
+    const cookie = await pair(base, ADMIN_TOKEN, DEVICE_ID);
+    assert.equal((await eltern(cookie, 'PUT', 'einwilligung', {})).status, 200);
+    assert.notEqual((await turn()).kind, 'hinweis');
+
+    blockWrites();
+    const logFrom = output.length;
+    const revoke = await eltern(cookie, 'DELETE', 'einwilligung');
+    assert.equal(revoke.status, 503);
+    assert.deepEqual(await revoke.json(), { error: 'parent_store_unavailable', wirksam: true });
+    assert.equal((await turn()).fixed, 'einwilligung', 'Widerruf gilt sofort');
+    assert.ok(fs.existsSync(`${file}.offen`), 'Markierung „nicht gespeichert“');
+    const grant = await eltern(cookie, 'PUT', 'einwilligung', {});
+    assert.equal(grant.status, 503);
+    assert.deepEqual(await grant.json(), { error: 'parent_store_unavailable', wirksam: false });
+    assert.equal((await turn()).fixed, 'einwilligung', 'Einwilligung ohne Speichern gilt nicht');
+    const sleep = await eltern(cookie, 'PUT', 'einstellungen', { schlafmodus: true });
+    assert.equal(sleep.status, 503);
+    assert.equal(((await (await eltern(cookie, 'GET', 'status')).json()) as { schlafmodus: boolean }).schlafmodus, true, 'Schlafmodus gilt sofort');
+    const status = (await (await fetch(`${base}/api/status`, { headers: admin })).json()) as { eltern: { ungespeichert: boolean } };
+    assert.equal(status.eltern.ungespeichert, true);
+    const log = output.slice(logFrom);
+    assert.match(log, /Eltern-Steuerung: Speichern fehlgeschlagen \(ERR_FS_EISDIR\)\. Die Änderung gilt bis zum nächsten Neustart/);
+    assert.match(log, /Eltern-Steuerung: Speichern fehlgeschlagen \(ERR_FS_EISDIR\)\. Die Änderung gilt nicht\./);
+    assert.ok(!log.includes(DEVICE_ID) && !log.includes(dir), 'Geräte-ID oder Pfad im Protokoll');
+
+    // Absturz, die Datei bleibt unbeschreibbar: Beim Start gelten alle Einwilligungen als widerrufen, und sie ruhen.
+    await stop('SIGKILL');
+    await start();
+    assert.match(output, /⚠️ Eltern-Steuerung: Beim letzten Lauf ließ sich eine Änderung nicht speichern\. Deshalb gelten alle Einwilligungen als widerrufen \(1\)/);
+    assert.match(output, /⚠️ Eltern-Steuerung: Die Datei ist nicht beschreibbar \(ERR_FS_EISDIR\)\. Bis das behoben ist, ruhen alle Einwilligungen/);
+    assert.equal((await turn()).fixed, 'einwilligung');
+
+    // Wieder beschreibbar, normales Beenden: Der Server speichert vorher, die Markierung ist weg.
+    unblockWrites();
+    await stop();
+    assert.ok(!fs.existsSync(`${file}.offen`), 'Markierung nach dem Speichern beim Beenden weg');
+    await start();
+    assert.equal((await turn()).fixed, 'einwilligung');
+    const after = (await (await eltern(cookie, 'GET', 'status')).json()) as { einwilligung: { erteilt: boolean; weg: string } };
+    assert.deepEqual([after.einwilligung.erteilt, after.einwilligung.weg], [false, 'server'], 'vom Server widerrufen');
+
+    // „Alles löschen“ bei Speicherfehler: gilt sofort, das Cookie wird gelöscht; beim Beenden gespeichert.
+    blockWrites();
+    const wipe = await eltern(cookie, 'DELETE', 'daten');
+    assert.equal(wipe.status, 503);
+    assert.deepEqual(await wipe.json(), { error: 'parent_store_unavailable', wirksam: true });
+    assert.match(wipe.headers.get('set-cookie') || '', /kb_eltern=;.*Max-Age=0/);
+    assert.equal((await eltern(cookie, 'GET', 'status')).status, 401, 'Eltern-Token sofort ungültig');
+    unblockWrites();
+    await stop();
+    await start();
+    assert.equal((await eltern(cookie, 'GET', 'status')).status, 401, 'Löschen übersteht den Neustart');
+    assert.deepEqual(stored(), { format: 1, geraete: {} });
+    await stop();
+
+    const token = cookie.split('=')[1];
+    for (const secret of [DEVICE_ID, token, KEY, pseudonymFor(KEY, DEVICE_ID), dir]) assert.ok(!output.includes(secret), 'Kennung, Schlüssel oder Pfad im Protokoll');
   });
 
   it('Kaputte Datei: Der Server startet nicht, nennt den Inhalt nicht und lässt die Datei, wie sie ist', async () => {

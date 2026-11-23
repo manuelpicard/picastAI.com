@@ -28,13 +28,22 @@ export const ELTERN_DATEI_FORMAT = 1;
 
 /** Auf welchem Weg der Kopplungscode kam: vom Gerät gesprochen oder über die Betreiber-Route. */
 export type ConsentPath = 'geraet' | 'betreiber';
+/**
+ * Wer die Einwilligung zuletzt geändert hat: Eltern mit einem Handy, dessen Kopplungscode vom Gerät
+ * oder über die Betreiber-Route kam, oder der Server selbst ("server": Beim Start lag eine Markierung
+ * da, dass sich eine Änderung nicht speichern ließ; dann gelten alle Einwilligungen als widerrufen).
+ */
+export type ConsentChangePath = ConsentPath | 'server';
+
+/** Höchstens so viele Eltern-Tokens je Gerät; das älteste fällt heraus. */
+export const MAX_PARENT_TOKENS_PER_DEVICE = 5;
 
 export interface StoredConsent {
   erteilt: boolean;
   /** Zeitpunkt der letzten Änderung (Erteilung oder Widerruf), ISO 8601 in UTC. */
   zeitpunkt: string;
   elterntextVersion: string;
-  weg: ConsentPath;
+  weg: ConsentChangePath;
 }
 
 export interface StoredParentToken {
@@ -79,8 +88,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+/** Nur genau die Form von Date.toISOString() (UTC mit Z), damit nichts von der Zeitzone abhängt. */
+const ISO_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+
 function isIsoTime(value: unknown): value is string {
-  return typeof value === 'string' && value.length <= 40 && Number.isFinite(Date.parse(value));
+  return typeof value === 'string' && ISO_RE.test(value) && Number.isFinite(Date.parse(value));
 }
 
 function isPath(value: unknown): value is ConsentPath {
@@ -94,7 +106,7 @@ function parseEntry(value: unknown): StoredParentEntry | null {
   if (einwilligung !== null) {
     if (!isRecord(einwilligung)) return null;
     const { erteilt, zeitpunkt, elterntextVersion, weg } = einwilligung;
-    if (typeof erteilt !== 'boolean' || !isIsoTime(zeitpunkt) || !isPath(weg)) return null;
+    if (typeof erteilt !== 'boolean' || !isIsoTime(zeitpunkt) || !(isPath(weg) || weg === 'server')) return null;
     if (typeof elterntextVersion !== 'string' || !TEXT_VERSION_RE.test(elterntextVersion)) return null;
     consent = { erteilt, zeitpunkt, elterntextVersion, weg };
   }
@@ -106,7 +118,7 @@ function parseEntry(value: unknown): StoredParentEntry | null {
     if (typeof von !== 'string' || typeof bis !== 'string' || !TIME_RE.test(von) || !TIME_RE.test(bis)) return null;
     quiet = { von, bis };
   }
-  if (!Array.isArray(elternTokens) || elternTokens.length > 20) return null;
+  if (!Array.isArray(elternTokens) || elternTokens.length > MAX_PARENT_TOKENS_PER_DEVICE) return null;
   const tokens: StoredParentToken[] = [];
   for (const t of elternTokens) {
     if (!isRecord(t)) return null;
@@ -163,6 +175,39 @@ export class ParentStateFile {
 
   public pseudonym(deviceId: string): string {
     return pseudonymFor(this.key, deviceId);
+  }
+
+  /**
+   * Markierung „eine Änderung ist nicht gespeichert“: eine leere Datei neben der Datei der
+   * Eltern-Steuerung. Sie braucht keinen Platz für Inhalt und klappt deshalb oft auch, wenn das
+   * Schreiben scheitert (zum Beispiel bei voller Platte). Liegt sie beim Start da, gelten alle
+   * Einwilligungen als widerrufen: Ein Widerruf, der nicht in die Datei kam, darf nicht verloren gehen.
+   */
+  public get markerPath(): string {
+    return `${this.filePath}.offen`;
+  }
+
+  public hasMarker(): boolean {
+    return fs.existsSync(this.markerPath);
+  }
+
+  /** Legt die Markierung an (nur ein Versuch). true, wenn sie jetzt da ist. */
+  public setMarker(): boolean {
+    try {
+      fs.writeFileSync(this.markerPath, '', { mode: 0o600 });
+      return true;
+    } catch {
+      return this.hasMarker();
+    }
+  }
+
+  /** Entfernt die Markierung nach einem gelungenen Speichern (nur ein Versuch). */
+  public clearMarker(): void {
+    try {
+      fs.rmSync(this.markerPath, { force: true });
+    } catch {
+      // Bleibt sie liegen, gelten beim nächsten Start alle Einwilligungen als widerrufen (sicher).
+    }
   }
 
   /** Liest die Datei. Fehlt sie, gibt es noch nichts (erster Start). Sonst wirft jeder Fehler. */
