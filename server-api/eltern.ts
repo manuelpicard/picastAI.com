@@ -95,7 +95,8 @@ export class ParentStateNoMatchError extends Error {
   constructor(public readonly count: number) {
     super(
       `Eltern-Steuerung: Kein Eintrag der Datei passt zu einem angemeldeten Gerät (${count} Einträge). ` +
-        'KUNIBERT_ELTERN_SCHLUESSEL oder Geräte-ID falsch eingetragen? Der Server startet nicht, damit weder Nachweis noch Widerruf verloren gehen. ' +
+        'KUNIBERT_ELTERN_SCHLUESSEL oder Geräte-ID falsch eingetragen, oder Geräte aus /api/devices ohne PICASTAI_DEVICE_STORE=firestore (nach einem Neustart weg)? ' +
+        'Der Server startet nicht, damit weder Nachweis noch Widerruf verloren gehen. ' +
         'Wenn Absicht (neuer Schlüssel, Gerät ersetzt): die Datei beiseitelegen und neu starten; dann müssen alle Eltern neu koppeln und einwilligen.'
     );
     this.name = 'ParentStateNoMatchError';
