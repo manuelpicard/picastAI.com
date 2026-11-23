@@ -232,6 +232,6 @@ Auf dem Pi (siehe [`pi-client/README.md`](../pi-client/README.md)) `PICASTAI_API
 
   - Eigener Wert: `/etc/systemd/journald.conf.d/60-eigene-frist.conf` mit `[Journal]` und zum Beispiel `MaxRetentionSec=30day` anlegen, dann `sudo systemctl restart systemd-journald`. Diese Datei wird nach der des Skripts gelesen und gilt. Das Skript fasst sie nicht an; seine eigene Datei setzt es bei jedem Lauf wieder auf 14 Tage.
   - Prüfen: `systemd-analyze cat-config systemd/journald.conf | grep -E '^(MaxRetentionSec|MaxFileSec)='` zeigt `14day` und `1day`. `sudo docker inspect --format '{{.HostConfig.LogConfig.Type}}' speaches` zeigt `journald`. `sudo journalctl --disk-usage` zeigt, wie viel das Journal belegt.
-  - Offen: Was der Sprachserver selbst protokolliert (Stufe, ob erkannte Sätze dabei sind), ist nicht geprüft. Beim ersten Test `sudo journalctl -t speaches -n 50 --no-pager` ansehen (Checkliste, Teil A2).
+  - Offen: Was der Sprachserver selbst protokolliert (Stufe, ob erkannte Sätze dabei sind), ist nicht geprüft. Nach der ersten Frage im Test `sudo journalctl -t speaches -n 50 --no-pager` ansehen (Checkliste, Teil C, Schritt 1).
   - Backups oder Snapshots des Servers (zum Beispiel bei Hetzner) enthalten auch das Journal. Für sie gilt die Frist nicht.
   - Am Pi gilt diese Frist noch nicht (Punkt N1123-0037-b der Arbeitsliste). Auf dem eigenen Rechner gibt es keine Frist (Checkliste, Teil A1).

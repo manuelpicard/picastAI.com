@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Richtet den Kunibert-Server auf einem frischen Debian 12 / Ubuntu 24.04 ein.
 # Macht die Schritte 5, 6 und 8 aus deploy/EINRICHTUNG.md ("Nach der Bestellung")
-# und bereitet Schritt 7 vor. Mehrfach ausführbar: Vorhandenes bleibt, wie es ist.
+# und bereitet Schritt 7 vor. Mehrfach ausführbar: Vorhandenes bleibt, wie es ist. Ausnahme: die
+# eigene Datei für die Frist der Protokolle setzt es jedes Mal neu (eigene Werte: EINRICHTUNG.md, Betrieb).
 #
 #   sudo bash setup-server.sh --hostname kunibert.example
 #
@@ -358,7 +359,7 @@ summary() {
   fi
   note "Danach von deinem Rechner: deploy/smoke-test.sh (EINRICHTUNG.md, Abschnitt 7)."
   note "Zeiten je Anfrage: sudo journalctl -u kunibert-server -n 200 --no-pager | grep Zeitmessung"
-  note "Protokolle bleiben etwa $JOURNAL_RETENTION_TEXT (vorläufig). Prüfen: systemd-analyze cat-config systemd/journald.conf | grep -E '^(MaxRetentionSec|MaxFileSec)='"
+  note "Protokolle bleiben etwa $JOURNAL_RETENTION_TEXT (vorläufig), wenn kein eigener Wert gesetzt ist. Prüfen: systemd-analyze cat-config systemd/journald.conf | grep -E '^(MaxRetentionSec|MaxFileSec)='"
   if [[ -n "${SPEACHES_LOG_DRIVER+x}" ]]; then speaches_log_hint "$SPEACHES_LOG_DRIVER" || true; fi
 }
 

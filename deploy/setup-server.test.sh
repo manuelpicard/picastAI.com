@@ -72,6 +72,7 @@ yes "Journal: Frist 14 Tage"                grep -qx 'MaxRetentionSec=14day' "$t
 yes "Journal: jeden Tag eine neue Datei"    grep -qx 'MaxFileSec=1day' "$tmp/journald.conf"
 eq  "Journal: nur diese zwei Werte"         "$(grep -c '^[A-Za-z]' "$tmp/journald.conf")" 2
 eq  "Journal: Datei in journald.conf.d"     "$(dirname "$JOURNALD_DROPIN")" /etc/systemd/journald.conf.d
+eq  "Journal: Text passt zum Wert"          "$JOURNAL_RETENTION_TEXT" "${JOURNAL_RETENTION%day} Tage"
 write_rsyslog_filter "$tmp/rsyslog.conf"
 yes "rsyslog: Server, Sprachserver, Caddy heraus" grep -qxF "if \$programname == 'kunibert-server' or \$programname == 'speaches' or \$programname == 'caddy' then stop" "$tmp/rsyslog.conf"
 yes "rsyslog: Regel vor 50-default.conf"    [ "$(basename "$RSYSLOG_FILTER")" \< 50-default.conf ]
@@ -101,6 +102,7 @@ fehler=$( (install_if_changed "$tmp/quelle" "$tmp/gibt-es-nicht/ziel") 2>&1 )
 yes "Kopieren: Fehler bricht ab"            grep -q '^FEHLER: Datei ließ sich nicht schreiben' <<<"$fehler"
 
 # Der Schritt selbst, mit umgelenkten Pfaden und einer Attrappe für systemctl.
+vorher=$fails
 (
   JOURNALD_DROPIN="$tmp/sys/journald.conf.d/50-kunibert-frist.conf"
   RSYSLOG_FILTER="$tmp/sys/rsyslog.d/10-kunibert.conf"
@@ -122,11 +124,14 @@ yes "Kopieren: Fehler bricht ab"            grep -q '^FEHLER: Datei ließ sich n
   setup_log_retention >/dev/null
   yes "Schritt: Regel angelegt"             grep -q 'then stop$' "$RSYSLOG_FILTER"
   eq  "Schritt: rsyslog läuft, Neustart"    "$(cat "$aufrufe")" "restart rsyslog"
+  : > "$aufrufe"
+  setup_log_retention >/dev/null
+  eq  "Schritt: Regel da, kein Neustart"    "$(cat "$aufrufe")" ""
   : > "$aufrufe"; rm "$RSYSLOG_FILTER"; rsyslog_aktiv=3
   setup_log_retention >/dev/null
   yes "Schritt: Regel auch ohne laufendes rsyslog" test -s "$RSYSLOG_FILTER"
   eq  "Schritt: rsyslog aus, kein Neustart" "$(cat "$aufrufe")" ""
-  [[ $fails -eq 0 ]]
+  [[ $fails -eq $vorher ]]
 ) || fails=$((fails + 1))
 
 # Aufruf ohne Hostname bricht ab, bevor etwas geändert wird.
