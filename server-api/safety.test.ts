@@ -494,6 +494,58 @@ const MUST_TRIGGER = [
   'Ich tue mir mit Absicht weh',
   'Ich mache mir absichtlich weh',
   'Ich schneide mich mit Absicht',
+  // Vorab-Prüfung von PR #110 (24.11.2026): weitere Abwandlungen derselben Befunde.
+  'Ich krieg einfach keine Luft',
+  'Ich kann wirklich nicht atmen',
+  'Ich krieg überhaupt keine Luft',
+  'Ich krieg grad keine Luft',
+  'Ich bekomme sehr schlecht Luft',
+  'Mama kriegt einfach keine Luft',
+  'Ich kann plötzlich ganz schlecht atmen',
+  'Ich kann auf einmal nicht gut atmen',
+  'Ich krieg zu wenig Luft',
+  'Ich hab mich vor Lachen verschluckt und jetzt kann ich ganz schlecht atmen',
+  'Ich hab mich verschluckt und krieg keine Luft mehr',
+  'Ich hab mich verschluckt und kann nicht mehr atmen',
+  'Ich hab ein Bonbon verschluckt und krieg keine Luft',
+  'Hat er gestern versucht, mich zu töten?',
+  'Ich kann Mama und Papa nicht finden',
+  'Ich kann meine Mama und meinen Papa nicht finden',
+  'Ich kann Mama im Supermarkt nicht finden',
+  'Ich kann meinen Papa im Kaufhaus nicht finden',
+  'Der böse Mann will mich töten',
+  'Der alte Mann will mich töten',
+  'Er hat mich versucht umzubringen',
+  'Der Mann wollte mich erwürgen',
+  'Papa will Mama töten',
+  'Er hat versucht, meine Mama umzubringen',
+  'Papa schlägt meine kleine Schwester',
+  'Papa haut meinen kleinen Bruder',
+  'Papa schlägt das Baby',
+  'Papa schlägt sie',
+  'Papa hat meine Geschwister geschlagen',
+  'Papa hat die Kinder geschlagen',
+  'Papa hat Mama geboxt',
+  'Papa hat Mama geschubst',
+  'Ein komischer Mann hat mich angesprochen',
+  'Ein Mann hat gefragt, ob ich in sein Auto einsteige',
+  'Ein Mann hat gefragt, ob ich mit ihm in sein Auto steige',
+  'Ein Mann hat mir zehn Euro gegeben',
+  'Ein Mann hat mir 10 Euro gegeben',
+  'Ein Mann hat mir ein Eis gekauft',
+  'Ein Mann fotografiert mich immer',
+  'Ich finde das eklig, wenn er mich anfasst',
+  'Ich hasse das, wenn er mich anfasst',
+  'Ich find\'s eklig, wenn er mich anfasst',
+  'Es ist eklig, wenn er mich anfasst',
+  'Ich hab Angst, wenn er mich anfasst',
+  'Ich sage nein, aber er hört nicht auf',
+  'Er zieht mich aus, auch wenn ich nein sage',
+  'Ich mag es nicht, wenn er mich an der Scheide anfasst',
+  'Ich schneide mir absichtlich in den Arm',
+  'Ich schneide mir mit Absicht in den Finger',
+  'Ich will mir absichtlich wehtun',
+  'Ich krieg schon wieder keine Luft',
 ];
 
 // Alltägliche Sätze, die NICHT anschlagen dürfen (Fehlalarme sind für Kinder
@@ -865,6 +917,32 @@ const MUST_NOT_TRIGGER = [
   'Ich hab gesagt, hör auf zu singen, und er hat aufgehört',
   'Ich schneide mir extra die Haare',
   'Ich mache mir extra einen Kakao',
+  // Vorab-Prüfung von PR #110 (24.11.2026): Gegenproben.
+  'Ich krieg einfach keine Lust mehr',
+  'Ich kann wirklich gut atmen',
+  'Der Reifen hat zu wenig Luft',
+  'Ich lach so doll und krieg keine Luft vor Lachen',
+  'Ich hab mich verschluckt und krieg wieder gut Luft',
+  'Gestern hat der Drache versucht, uns zu töten',
+  'Hat der Drache versucht, uns umzubringen?',
+  'Und dann hat die Hexe versucht, uns zu töten',
+  'Ich kann Oma im Buch nicht finden',
+  'Der Schneemann will mich töten',
+  'Der Drache hat uns versucht umzubringen',
+  'Papa schlägt die Eier auf',
+  'Papa hat die Kinder zur Schule gebracht',
+  'Opa hat mir zehn Euro geschenkt',
+  'Papa filmt mich',
+  'Ein netter Mann hat Mama angesprochen',
+  'Ich finde das schön, wenn Mama mich streichelt',
+  'Ich sage nein, und er hört sofort auf',
+  'Mama zieht mich an, auch wenn ich nein sage',
+  'Ich hab Angst, wenn der Arzt mich anfasst',
+  'Ich schneide mir extra ein Stück Kuchen ab',
+  'Ich will mir die Haare schneiden',
+  'Ich tu mir nicht absichtlich weh',
+  'Ich will mir nicht wehtun',
+  'Ich will mir beim Klettern nicht wehtun',
 ];
 
 // Bekannte Grenze: Die Weiche ist eine Reihe von Mustern und bleibt unvollständig.
@@ -957,8 +1035,9 @@ test('Bekannte Fehlalarme der Schablonen aus der Prüfung von PR #71 schlagen wi
 });
 
 // Prüfung von PR #98 nach dem Merge (23.11.2026), bewusst hingenommen: Lieber ein Fehlalarm als eine Lücke.
-// Die ersten fünf schlagen schon seit PR #98 an (Befunde 10 und 11), die übrigen seit den breiteren Schablonen.
-// Fragen 21 und 22 in docs/Sicherheitsweiche-Pruefung.md, Abschnitt 11.
+// Die ersten fünf schlagen schon seit PR #98 an (Befunde 10 und 11), die übrigen seit den breiteren Schablonen
+// (die letzten neun seit der Vorab-Prüfung von PR #110). Fragen 21 und 22 in docs/Sicherheitsweiche-Pruefung.md
+// (Abschnitt 10), Einzelheiten in Abschnitt 11.
 test('Bekannte Fehlalarme aus der Prüfung von PR #98 schlagen wirklich an (bewusst hingenommen)', () => {
   for (const sentence of [
     'Warum kann ich nicht atmen, wenn ich mir die Nase zuhalte?',
@@ -971,6 +1050,15 @@ test('Bekannte Fehlalarme aus der Prüfung von PR #98 schlagen wirklich an (bewu
     'Die Frau vom Kindergarten hat mich fotografiert',
     'Ich hab gesagt, hör auf zu singen, aber er hört nicht auf',
     'Ich kann Papa nicht finden, er hat sich so gut versteckt',
+    'Er hat ihn in die Flucht geschlagen',
+    'Er hat ihn ins Tor getreten',
+    'Mama hat sie steif geschlagen',
+    'Papa hat Mama erzählt, wie Kunibert den Drachen geschlagen hat',
+    'Die Frau im Eisladen hat mir ein Eis gegeben',
+    'Er hat ihn beim Fußball getreten',
+    'Er hat ihn auf dem Schulhof geschubst',
+    'Der Mann im Laden fotografiert mich',
+    'Ich kann halt nicht atmen unter Wasser',
   ]) {
     assert.equal(screen(sentence), true, sentence);
   }
