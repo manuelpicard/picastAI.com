@@ -8,6 +8,8 @@ import {
 } from './google-speech.js';
 import { DEFAULT_POCKET_VOICE, isValidPauseMs, isValidPocketUrl, isValidPocketVoice, isValidTempo } from './pocket-speech.js';
 import { normalizePublicBaseUrl, parseTrustProxy, type TrustProxySetting } from './http-utils.js';
+import { isValidParentKey } from './eltern-datei.js';
+import path from 'path';
 
 export type TtsProviderName = 'openai-compatible' | 'google' | 'pocket';
 
@@ -103,6 +105,13 @@ export interface KunibertConfig {
   testTranscript: boolean;
   /** Ohne Einwilligung der Eltern keine Spracherkennung und kein Sprachmodell, siehe isConsentRequired. */
   requireConsent: boolean;
+  /**
+   * Eltern-Steuerung dauerhaft (Punkt E2, server-api/eltern-datei.ts): Datei (KUNIBERT_ELTERN_DATEI) und
+   * Schlüssel für die Pseudonyme (KUNIBERT_ELTERN_SCHLUESSEL, nur wenn gültig; nie ausgeben). Fehlt eins
+   * von beiden, liegt die Eltern-Steuerung nur im Arbeitsspeicher, siehe parentStateWarnings.
+   */
+  parentStateFile: string | null;
+  parentStateKey: string | null;
 
   // Geräteliste: 'memory' (flüchtig, Standard) oder 'firestore' (dauerhaft)
   deviceStore: 'memory' | 'firestore';
@@ -140,6 +149,45 @@ export function isConsentRequired(
 ): boolean {
   if (env.NODE_ENV === 'production') return true;
   return env.KUNIBERT_EINWILLIGUNG_PRUEFEN?.trim() !== '0';
+}
+
+/**
+ * Datei und Schlüssel der Eltern-Steuerung (Punkt E2). Dauerhaft nur mit beiden; einen zu kurzen
+ * Schlüssel nimmt der Server nicht (es gibt keinen Standardwert und keinen Zufallswert je Start:
+ * sonst passten die Pseudonyme nach einem Neustart nicht mehr, und die Einwilligungen wären weg).
+ */
+export function parentStateSettings(
+  env: { KUNIBERT_ELTERN_DATEI?: string; KUNIBERT_ELTERN_SCHLUESSEL?: string } = process.env
+): { file: string | null; key: string | null } {
+  const file = env.KUNIBERT_ELTERN_DATEI?.trim() || '';
+  const key = env.KUNIBERT_ELTERN_SCHLUESSEL?.trim() || '';
+  if (!file || !isValidParentKey(key)) return { file: null, key: null };
+  return { file: path.resolve(file), key };
+}
+
+/**
+ * Warnungen beim Start zur Eltern-Steuerung. Im Betrieb ohne Datei oder Schlüssel startet der Server
+ * (vorläufig entschieden am 23.11.2026, 06:50): Ohne Speicher gehen nach einem Neustart nur die
+ * Einwilligungen verloren, und das Gerät sagt dann nur den festen Hinweis. Das schützt die Kinder;
+ * ein Server, der nicht startet, schützte niemanden zusätzlich. Die Warnung ist dafür deutlich.
+ */
+export function parentStateWarnings(
+  env: { NODE_ENV?: string; KUNIBERT_ELTERN_DATEI?: string; KUNIBERT_ELTERN_SCHLUESSEL?: string } = process.env
+): string[] {
+  const warnings: string[] = [];
+  const file = env.KUNIBERT_ELTERN_DATEI?.trim() || '';
+  const key = env.KUNIBERT_ELTERN_SCHLUESSEL?.trim() || '';
+  if (key && !isValidParentKey(key)) {
+    warnings.push('Eltern-Steuerung: KUNIBERT_ELTERN_SCHLUESSEL ist zu kurz oder enthält Leer- oder Sonderzeichen (mindestens 32 Zeichen, zum Beispiel openssl rand -hex 32) und wird nicht verwendet.');
+  }
+  if (!parentStateSettings(env).file && (env.NODE_ENV === 'production' || file || key)) {
+    warnings.push(
+      'Eltern-Steuerung nur im Arbeitsspeicher: Nach einem Neustart sind Einwilligung, Schlafmodus, Ruhezeiten und Kopplungen weg; ' +
+        'das Gerät sagt dann nur den festen Hinweis, bis die Eltern neu koppeln und einwilligen, und es gibt keinen Nachweis der Einwilligung. ' +
+        'KUNIBERT_ELTERN_DATEI und KUNIBERT_ELTERN_SCHLUESSEL setzen (deploy/EINRICHTUNG.md). Vor dem ersten Kind nötig.'
+    );
+  }
+  return warnings;
 }
 
 /** Hinweise beim Start: Testschalter, die im Betrieb mit Kindern aus sein müssen. */
@@ -366,6 +414,8 @@ export function loadConfig(): KunibertConfig {
     diagnosticText: isDiagnosticTextEnabled(),
     testTranscript: isTestTranscriptEnabled(),
     requireConsent: isConsentRequired(),
+    parentStateFile: parentStateSettings().file,
+    parentStateKey: parentStateSettings().key,
     deviceStore: process.env.PICASTAI_DEVICE_STORE?.trim() === 'firestore' ? 'firestore' : 'memory',
   };
 }
@@ -404,6 +454,8 @@ export function getSafeConfigSummary(config: KunibertConfig) {
     diagnosticText: config.diagnosticText,
     testTranscript: config.testTranscript,
     requireConsent: config.requireConsent,
+    // Nur ob, nie der Pfad oder der Schlüssel.
+    elternDauerhaft: Boolean(config.parentStateFile && config.parentStateKey),
     deviceStore: config.deviceStore,
   };
 }

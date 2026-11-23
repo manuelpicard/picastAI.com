@@ -239,6 +239,14 @@ describe('picastAI-API (echter Server)', () => {
     if (fake) await new Promise<void>((resolve) => fake.server.close(() => resolve()));
   });
 
+  it('Betrieb ohne Datei der Eltern-Steuerung: laute Warnung beim Start, Status sagt „nicht dauerhaft“ (E2)', async () => {
+    assert.match(output, /⚠️ Eltern-Steuerung nur im Arbeitsspeicher: .*Vor dem ersten Kind nötig\./);
+    const res = await fetch(`${base}/api/status`, { headers: { Authorization: `Bearer ${ADMIN_TOKEN}` } });
+    const body = (await res.json()) as { eltern: { dauerhaft: boolean }; config: { elternDauerhaft: boolean } };
+    assert.equal(body.eltern.dauerhaft, false);
+    assert.equal(body.config.elternDauerhaft, false);
+  });
+
   it('Health ist öffentlich, die Antwort verrät das Framework nicht', async () => {
     const res = await fetch(`${base}/health`);
     assert.equal(res.status, 200);
@@ -1055,9 +1063,12 @@ describe('picastAI-API (echter Server)', () => {
     assert.equal(code.status, 404);
     const noAdmin = await fetch(`${base}/api/devices/${ENV_DEVICE_ID}/kopplungscode`, { method: 'POST' });
     assert.equal(noAdmin.status, 401);
-    const status = (await adminStatus()) as unknown as { eltern: Record<string, number> };
-    assert.deepEqual(Object.keys(status.eltern).sort(), ['codes', 'elternTokens', 'geraete'], 'nur Zahlen');
-    assert.ok(Object.values(status.eltern).every((n) => Number.isInteger(n)));
+    const status = (await adminStatus()) as unknown as { eltern: Record<string, number | boolean> };
+    assert.deepEqual(Object.keys(status.eltern).sort(), ['codes', 'dauerhaft', 'elternTokens', 'geraete', 'ungespeichert'], 'nur Zahlen und ja/nein');
+    const { dauerhaft, ungespeichert, ...counts } = status.eltern;
+    assert.ok(Object.values(counts).every((n) => Number.isInteger(n)));
+    assert.equal(typeof dauerhaft, 'boolean');
+    assert.equal(typeof ungespeichert, 'boolean');
   });
 
   // Muss der letzte Test dieses Servers sein: Danach sind Kopplungen von dieser Adresse 10 Minuten gesperrt.

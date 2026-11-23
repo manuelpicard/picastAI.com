@@ -78,15 +78,16 @@ Es gibt keinen eigenen Produktionsstart ohne `tsx`: der Dienst startet `node --i
 
 ```bash
 sudo install -o root -g root -m 600 deploy/kunibert.env.example /etc/kunibert/kunibert.env
-sudo openssl rand -hex 32     # zweimal ausführen: einmal Admin-Token, einmal Geräte-Token
+sudo openssl rand -hex 32     # dreimal ausführen: Admin-Token, Geräte-Token, Schlüssel der Eltern-Steuerung
 sudoedit /etc/kunibert/kunibert.env
 ```
 
-Mindestens setzen: `PICASTAI_PUBLIC_BASE_URL`, `PICASTAI_ADMIN_TOKEN`, `PICASTAI_DEVICE_TOKEN`, `ANTHROPIC_API_KEY` und nach Abschnitt 4 `PICASTAI_STT_MODEL`, `PICASTAI_TTS_MODEL`, `PICASTAI_TTS_VOICE`. Werte nicht in die Shell-Historie tippen. Wichtige Punkte:
+Mindestens setzen: `PICASTAI_PUBLIC_BASE_URL`, `PICASTAI_ADMIN_TOKEN`, `PICASTAI_DEVICE_TOKEN`, `KUNIBERT_ELTERN_SCHLUESSEL`, `ANTHROPIC_API_KEY` und nach Abschnitt 4 `PICASTAI_STT_MODEL`, `PICASTAI_TTS_MODEL`, `PICASTAI_TTS_VOICE`. Werte nicht in die Shell-Historie tippen. Wichtige Punkte:
 
 - `NODE_ENV=production` ist Pflicht. Ohne sind Entwicklungsgeräte mit **bekannten Tokens** aktiv.
 - `PICASTAI_PUBLIC_BASE_URL` bestimmt die `audio_url`. Der Pi lehnt eine Adresse mit anderem Schema oder Host ab. Gleiche Schreibweise wie auf dem Pi (`PICASTAI_API_BASE_URL`).
 - Ein Gerät aus `PICASTAI_DEVICE_ID`/`PICASTAI_DEVICE_TOKEN` überlebt Neustarts. Über `/api/devices` angelegte Geräte nur mit `PICASTAI_DEVICE_STORE=firestore`.
+- Eltern-Steuerung dauerhaft (seit 23.11.2026, Punkt E2): `KUNIBERT_ELTERN_DATEI=/var/lib/kunibert/eltern.json` und `KUNIBERT_ELTERN_SCHLUESSEL` (mindestens 32 Zeichen, `openssl rand -hex 32`). Dann überstehen Einwilligung, Schlafmodus, Ruhezeiten und die Kopplung der Eltern-Handys einen Neustart. Die Datei muss unter `/var/lib/kunibert` liegen: Nur dort darf der Dienst schreiben (`StateDirectory=kunibert` mit `ProtectSystem=strict` in `deploy/kunibert-server.service`). Den Schlüssel nicht ändern und nicht verlieren: Sonst passen die Pseudonyme nicht mehr, und der Server startet nicht, bis der alte Schlüssel wieder eingetragen oder die Datei beiseitegelegt ist (dann müssen alle Eltern neu koppeln und einwilligen). Fehlt eins von beiden, startet der Server mit der Warnung `Eltern-Steuerung nur im Arbeitsspeicher`. Was in der Datei steht: `docs/picastAI-Pi-API.md`, Abschnitt „Dauerhaft: Datei der Eltern-Steuerung“. `setup-server.sh` setzt beides, wenn es fehlt.
 
 ## 4. Sprachserver (Speaches)
 
@@ -137,9 +138,9 @@ sudo systemctl status kunibert-server --no-pager
 curl -fsS http://127.0.0.1:3000/health
 ```
 
-Erwartet: `{"status":"ok", ...}`. Im Journal steht beim Start `Feste Sprechtexte vorbereitet (7 von 7)`; bei `0 von 7` ist der Sprachserver nicht erreichbar oder Modell bzw. Stimme sind nicht heruntergeladen (Abschnitt 4). Eine Warnung zu `http` oder zu einem ausgeschlossenen Anbieter zeigt, dass eine Sprachdienst-Adresse nicht passt. Fehlersuche: `sudo journalctl -u kunibert-server -n 100 --no-pager`. Eine Warnung zu `NODE_ENV` darf **nicht** erscheinen.
+Erwartet: `{"status":"ok", ...}`. Im Journal steht beim Start `Eltern-Steuerung aus der Datei geladen (…)` und `Feste Sprechtexte vorbereitet (7 von 7)`; bei `0 von 7` ist der Sprachserver nicht erreichbar oder Modell bzw. Stimme sind nicht heruntergeladen (Abschnitt 4). Eine Warnung zu `http` oder zu einem ausgeschlossenen Anbieter zeigt, dass eine Sprachdienst-Adresse nicht passt. Fehlersuche: `sudo journalctl -u kunibert-server -n 100 --no-pager`. Eine Warnung zu `NODE_ENV` und die Warnung `Eltern-Steuerung nur im Arbeitsspeicher` dürfen **nicht** erscheinen.
 
-**Einwilligung für Tests mit Erwachsenen.** Ohne Einwilligung der Eltern antwortet Kunibert nur mit dem festen Hinweis „… müssen mich deine Eltern einmal einrichten …“ (`docs/picastAI-Pi-API.md`, Abschnitt „Eltern“). Solange das Gerät den Kopplungscode noch nicht selbst spricht, erteilt der Betreiber sie für das Testgerät, auf dem Server und nach jedem Neustart des Dienstes (sie liegt vorläufig nur im Arbeitsspeicher):
+**Einwilligung für Tests mit Erwachsenen.** Ohne Einwilligung der Eltern antwortet Kunibert nur mit dem festen Hinweis „… müssen mich deine Eltern einmal einrichten …“ (`docs/picastAI-Pi-API.md`, Abschnitt „Eltern“). Solange das Gerät den Kopplungscode noch nicht selbst spricht, erteilt der Betreiber sie für das Testgerät auf dem Server. Mit der Datei der Eltern-Steuerung (Abschnitt 3) reicht das einmal; ohne sie nach jedem Neustart des Dienstes:
 
 ```bash
 sudo node --env-file=/etc/kunibert/kunibert.env /opt/kunibert/app/deploy/eltern-einwilligung.mjs
@@ -211,7 +212,13 @@ Auf dem Pi (siehe [`pi-client/README.md`](../pi-client/README.md)) `PICASTAI_API
 
 - **Update:** neuen Stand holen (`git pull`), `npm ci`, `npm run build`, `sudo systemctl restart kunibert-server`, Abnahme wiederholen. Hat sich `deploy/kunibert-server.service` geändert (zum Beispiel `SyslogIdentifier=` seit 23.11.2026), die Datei wie in Abschnitt 5 neu installieren und `sudo systemctl daemon-reload` vor dem Neustart. Einfacher: `setup-server.sh` noch einmal starten. Ein Neustart verwirft laufende Folgen und nicht abgeholtes Audio (nur im Arbeitsspeicher).
 - **Gerät sperren:** bei Umgebungs-Gerät Token in der env-Datei ändern und neu starten; bei Geräten aus der Admin-API `POST /api/devices/<id>/revoke` von lokal.
-- **Schlüssel tauschen:** env-Datei ändern, Dienst neu starten, alten Schlüssel beim Anbieter widerrufen.
+- **Schlüssel tauschen:** env-Datei ändern, Dienst neu starten, alten Schlüssel beim Anbieter widerrufen. Ausnahme `KUNIBERT_ELTERN_SCHLUESSEL`: Mit einem neuen Schlüssel startet der Server nicht, bis die Datei der Eltern-Steuerung beiseitegelegt ist; dann müssen alle Eltern neu koppeln und einwilligen (Abschnitt 3).
+- **Eltern-Steuerung** (`/var/lib/kunibert/eltern.json`, Rechte 600): Beim Start steht im Journal nur die Anzahl der Geräte und der gelöschten Einträge. Was die Meldungen heißen:
+  - Der Dienst startet nicht, `Die Datei der Eltern-Steuerung (KUNIBERT_ELTERN_DATEI) ist nicht lesbar oder ungültig`: Die Datei ist beschädigt oder hat falsche Rechte. Sie bleibt unverändert liegen (Nachweis der Einwilligungen). Zum Weitermachen erst die Rechte prüfen (`sudo stat -c '%a %U' /var/lib/kunibert/eltern.json`: `600 kunibert`), sonst die Datei beiseitelegen, zum Beispiel `sudo mv /var/lib/kunibert/eltern.json /var/lib/kunibert/eltern.json.kaputt`; danach müssen alle Eltern neu koppeln und einwilligen. Die beiseitegelegte Datei löschen, wenn sie nicht mehr gebraucht wird.
+  - `Die Datei ist nicht beschreibbar`: Bis Rechte oder Platz wieder stimmen, ruhen alle Einwilligungen (das Gerät sagt nur den festen Hinweis), und Einwilligungen und Kopplungen antworten mit 503. Danach klappt es spätestens nach fünf Minuten von selbst.
+  - `Speichern fehlgeschlagen` während des Betriebs: Die Änderung der Eltern gilt, steht aber noch nicht in der Datei. `GET /api/status` zeigt dann `eltern.ungespeichert: true`. Platz oder Rechte beheben und warten, bis dort `eltern.ungespeichert: false` steht (spätestens fünf Minuten); erst dann stoppen oder neu starten. Startet der Server vorher neu, gelten alle Einwilligungen als widerrufen (Meldung `Beim letzten Lauf ließ sich eine Änderung nicht speichern`), außer auch die Markierung `eltern.json.offen` ließ sich nicht anlegen (Restrisiko, `docs/picastAI-Pi-API.md`).
+  - Der Dienst startet nicht, `Kein Eintrag der Datei passt zu einem angemeldeten Gerät`: `KUNIBERT_ELTERN_SCHLUESSEL` oder `PICASTAI_DEVICE_ID` stimmen nicht mehr, oder nur Geräte aus `/api/devices` hatten Stand und sind nach dem Neustart weg (ohne `PICASTAI_DEVICE_STORE=firestore`, Abschnitt 3). Einen geänderten Wert wieder zurückstellen und neu starten. War der Wechsel Absicht (neuer Schlüssel, Gerät ersetzt), die Datei beiseitelegen wie oben; danach müssen alle Eltern neu koppeln und einwilligen.
+  - Backups des Servers enthalten die Datei.
 - **Logs:** Das Journal enthält Fehlermeldungen und die Zeilen `Zeitmessung`, aber keine Aufnahmen und keine Antworttexte (`KUNIBERT_DIAGNOSTIC_TEXT` wirkt in Produktion nicht).
 - **Frist für Protokolle** (vorläufig, 23.11.2026, 01:10, Punkt E1; Einschätzung, keine Rechtsberatung): 14 Tage für alles im Journal dieses Servers, also Kunibert-Dienst, Sprachserver, Caddy und System. Grund: Die Zeilen zeigen, wann ein Gerät benutzt wurde. Für die Auswertung eines Tests reichen 14 Tage. Für die Fehlersuche nach einem Vorfall ist das kurz; wer mehr braucht, legt eine eigene Datei an (unten, „Eigener Wert“).
   - `setup-server.sh` legt `/etc/systemd/journald.conf.d/50-kunibert-frist.conf` an: `MaxRetentionSec=14day` und `MaxFileSec=1day`. journald löscht nur ganze Dateien. Weil jeden Tag eine neue Datei beginnt, weicht die Frist höchstens etwa einen Tag ab (nach der Beschreibung von `journald.conf`; auf einem Server nicht geprüft).

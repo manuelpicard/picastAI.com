@@ -409,7 +409,7 @@ $env:ANTHROPIC_API_KEY = [Net.NetworkCredential]::new('', (Read-Host -AsSecureSt
 npm start
 ```
 
-`PICASTAI_AUDIO_STREAM=1` schaltet den Ton-Strom ein: Schreibt Claude gerade einen Teil der Geschichte, liefert der Server ihn Absatz für Absatz, und der Pi spielt den ersten Absatz, während der Rest noch entsteht (`docs/picastAI-Pi-API.md`, „Ton-Strom“). Fragen, feste Texte und vorbereitete Teile kommen auch dann als ganze Datei. Erwartet im Fenster: `läuft auf http://0.0.0.0:3000`, kein „Hinweis: NODE_ENV ist nicht "production"“, keine Zeile mit ⚠️ und nach einigen Sekunden `Feste Sprechtexte vorbereitet (7 von 7)`. Steht dort „neuer Versuch in … s“, erreicht der Server die Stimme nicht (Schritt 1b prüfen). Die Zeilen mit `Read-Host` einzeln einfügen (siehe „Probelauf am Rechner“).
+`PICASTAI_AUDIO_STREAM=1` schaltet den Ton-Strom ein: Schreibt Claude gerade einen Teil der Geschichte, liefert der Server ihn Absatz für Absatz, und der Pi spielt den ersten Absatz, während der Rest noch entsteht (`docs/picastAI-Pi-API.md`, „Ton-Strom“). Fragen, feste Texte und vorbereitete Teile kommen auch dann als ganze Datei. Erwartet im Fenster: `läuft auf http://0.0.0.0:3000`, kein „Hinweis: NODE_ENV ist nicht "production"“, keine Zeile mit ⚠️ außer „Eltern-Steuerung nur im Arbeitsspeicher …“ (hier erwartet, siehe Schritt 3b) und nach einigen Sekunden `Feste Sprechtexte vorbereitet (7 von 7)`. Steht dort „neuer Versuch in … s“, erreicht der Server die Stimme nicht (Schritt 1b prüfen). Die Zeilen mit `Read-Host` einzeln einfügen (siehe „Probelauf am Rechner“).
 
 **3b. Einwilligung (PowerShell-Fenster 2, im Ordner des Repos, nach jedem Start des Servers):** Mit `NODE_ENV=production` antwortet Kunibert erst, wenn die Eltern eingewilligt haben. Solange der Pi den Kopplungscode noch nicht selbst spricht, erteilst du sie für den Test mit Erwachsenen so:
 
@@ -419,7 +419,7 @@ $env:PICASTAI_DEVICE_ID = "prototype-001"
 node deploy\eltern-einwilligung.mjs
 ```
 
-Erwartet: `Einwilligung erteilt.` Sie liegt nur im Arbeitsspeicher des Servers und ist nach einem Neustart weg. Danach dieses Fenster schließen.
+Erwartet: `Einwilligung erteilt.` Auf dem eigenen Rechner liegt sie nur im Arbeitsspeicher des Servers und ist nach einem Neustart weg. Auf dem gemieteten Server übersteht sie den Neustart (Datei der Eltern-Steuerung, `deploy/EINRICHTUNG.md`, Abschnitt 3). Danach dieses Fenster schließen.
 
 Ohne `PICASTAI_PUBLIC_BASE_URL` baut der Server die `audio_url` aus der Adresse, die der Pi aufruft; das passt im Heimnetz. Der Sprachserver bleibt auf `127.0.0.1:8000`, er ist nur für deinen Rechner da.
 
@@ -532,7 +532,7 @@ bash pi-client/test_alsa_audio.sh \
 - Audio-URLs müssen denselben Origin (Schema, Host und Port) wie die API verwenden; der Host wird ohne Beachtung der Groß-/Kleinschreibung verglichen, ein fehlender Port gilt als Standardport (80/443), Zugangsdaten in der URL werden abgelehnt, HTTP-Downgrades ebenfalls. HTTP-Redirects werden nicht verfolgt.
 - HTTP 400, 401, 413, 415 und 429 werden nicht automatisch wiederholt.
 - Temporäre Netzwerk- und Serverfehler werden begrenzt wiederholt.
-- Ohne Einwilligung der Eltern, im Schlafmodus und in den Ruhezeiten antwortet der Server nur mit einem festen Satz (siehe [`docs/picastAI-Pi-API.md`](../docs/picastAI-Pi-API.md)). Mit `NODE_ENV=production` vorher einwilligen (`deploy/eltern-einwilligung.mjs`), nach jedem Neustart des Servers erneut. Im Probelauf am Rechner geht es auch ohne: `KUNIBERT_EINWILLIGUNG_PRUEFEN=0` am Server.
+- Ohne Einwilligung der Eltern, im Schlafmodus und in den Ruhezeiten antwortet der Server nur mit einem festen Satz (siehe [`docs/picastAI-Pi-API.md`](../docs/picastAI-Pi-API.md)). Mit `NODE_ENV=production` vorher einwilligen (`deploy/eltern-einwilligung.mjs`); ohne Datei der Eltern-Steuerung (`KUNIBERT_ELTERN_DATEI`, `KUNIBERT_ELTERN_SCHLUESSEL`) nach jedem Neustart des Servers erneut. Im Probelauf am Rechner geht es auch ohne: `KUNIBERT_EINWILLIGUNG_PRUEFEN=0` am Server.
 - Die Kopplung per Tastendruck (beide Tasten 5 s halten, Kunibert spricht den Code) ist im Client noch nicht umgesetzt (Punkt D1).
 - Bei Server-/Audiofehlern bleibt der Client nicht in einer Endlosschleife, sondern wechselt kurz nach `ERROR` zurück nach `READY`.
 - Ohne echte STT-Integration liefert `/v1/device/question` bei einer Aufnahme derzeit die sichere Fallback-Antwort des Backends.

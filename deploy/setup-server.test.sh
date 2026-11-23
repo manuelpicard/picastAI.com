@@ -134,6 +134,21 @@ vorher=$fails
   [[ $fails -eq $vorher ]]
 ) || fails=$((fails + 1))
 
+# Eltern-Steuerung (Punkt E2): Datei im StateDirectory des Dienstes (nur dort darf er schreiben),
+# gleicher Pfad in Vorlage und Skript, Schlüssel in der Vorlage leer (kein Standardwert im Code).
+state_dir=$(sed -n 's/^StateDirectory=//p' "$here/kunibert-server.service")
+eq  "Eltern-Datei im StateDirectory"        "$(dirname "$ELTERN_DATEI")" "/var/lib/$state_dir"
+eq  "Eltern-Datei: Vorlage wie Skript"      "$(env_get "$here/kunibert.env.example" KUNIBERT_ELTERN_DATEI)" "$ELTERN_DATEI"
+yes "Eltern-Schlüssel steht leer in der Vorlage" grep -qx 'KUNIBERT_ELTERN_SCHLUESSEL=' "$here/kunibert.env.example"
+eq  "Zustand nur für den Dienst lesbar"     "$(sed -n 's/^StateDirectoryMode=//p' "$here/kunibert-server.service")" 0700
+write_env_body=$(sed -n '/^write_env() {/,/^}/p' "$here/setup-server.sh")
+# shellcheck disable=SC2016
+yes "Skript erzeugt den Schlüssel nur, wenn er fehlt" grep -qF 'env_set_if_empty "$ENV_FILE" KUNIBERT_ELTERN_SCHLUESSEL "$(openssl rand -hex 32)"' <<<"$write_env_body"
+cp "$here/kunibert.env.example" "$f"
+yes "Schlüssel wird gesetzt, wenn leer"     env_set_if_empty "$f" KUNIBERT_ELTERN_SCHLUESSEL erster-schluessel
+no  "Schlüssel bleibt, wenn gesetzt"        env_set_if_empty "$f" KUNIBERT_ELTERN_SCHLUESSEL zweiter-schluessel
+eq  "Schlüssel unverändert"                 "$(env_get "$f" KUNIBERT_ELTERN_SCHLUESSEL)" erster-schluessel
+
 # Aufruf ohne Hostname bricht ab, bevor etwas geändert wird.
 no  "ohne --hostname: Abbruch"     quiet bash "$here/setup-server.sh"
 no  "ungültiger Hostname: Abbruch" quiet bash "$here/setup-server.sh" --hostname 'x;y'
