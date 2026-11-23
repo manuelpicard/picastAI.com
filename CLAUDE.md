@@ -35,6 +35,8 @@ python3 -m unittest discover -s pi-client -p "test_*.py"   # mit sounddevice und
 bash deploy/setup-server.test.sh
 shellcheck -S warning deploy/*.sh pi-client/*.sh docs/autopilot/*.sh
 python3 -m unittest discover -s docs/autopilot -p "test_*.py"   # Werkzeuge des Wochen-Autopiloten
+# Pi-Installer als root in einem Wegwerf-Container (ändert sonst das System; CI: Job pi-installer; pruefen.sh nur mit laufendem Docker):
+docker run --rm -e KUNIBERT_INSTALLER_TEST=1 -v "$PWD":/src:ro debian:trixie bash /src/pi-client/install_raspberry_pi.test.sh
 # Firmware-Logik auf dem Rechner (der ESP-IDF-Build läuft nur in der CI):
 cd firmware/esp32-s3 && cc -std=c11 -Wall -Wextra -Werror -pedantic -fsanitize=address,undefined -I main \
   -o /tmp/kb_logic test/test_logic.c main/kb_state.c main/kb_wav.c main/kb_url.c main/kb_settings_rules.c && /tmp/kb_logic

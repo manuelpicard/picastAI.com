@@ -39,7 +39,7 @@ Stand 21.11.2026: **nicht unter Windows und nicht mit einem Pi getestet**; gesch
 ## B. Pi vorbereiten
 
 - [ ] USB-Mikrofon und USB-Lautsprecher (Pi 5) mit `pi-client/test_alsa_audio.sh` einzeln geprüft; bei zwei USB-Geräten `KUNIBERT_INPUT_DEVICE`/`KUNIBERT_OUTPUT_DEVICE` gesetzt (siehe `pi-client/README.md`, „Erster Aufbau“).
-- [ ] `/etc/kunibert/kunibert.env` auf dem Pi: richtige URL, Geräte-ID, Token (Modus 600).
+- [ ] `/etc/kunibert/kunibert.env` auf dem Pi: richtige URL, Geräte-ID, Token. Ohne das Token ansehen: `sudo grep -v '^PICASTAI_DEVICE_TOKEN=' /etc/kunibert/kunibert.env`. Rechte wie vom Installer: `sudo stat -c '%a %U %G' /etc/kunibert/kunibert.env` zeigt `640 root kunibert` (nur root und das Dienstkonto lesen das Token; `pi-client/README.md`, „Wer das Token lesen darf“).
 - [ ] `python pi-client/kunibert_client.py --once health` gibt `OK`.
 - [ ] Mikrofon-Aus-Schalter trennt das Mikrofon **elektrisch** (separat geprüft, nicht nur GPIO 22).
 

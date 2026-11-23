@@ -239,10 +239,10 @@ export const ArchitectureViewer: React.FC = () => {
           <span className="text-[10px] font-mono text-stone-500">Idempotenter Installer</span>
         </div>
         <pre className="font-mono text-[11px] bg-stone-900 text-stone-300 p-2.5 rounded-lg border border-stone-800 overflow-x-auto select-all">
-sudo bash pi-client/install_raspberry_pi.sh --api-url https://dein-host.example --device-id prototype-001 --api-token 'TOKEN_AUS_DASHBOARD'
+sudo bash pi-client/install_raspberry_pi.sh --api-url https://dein-host.example --device-id prototype-001
         </pre>
         <p className="text-[11px] text-stone-500">
-          Richtet Python 3, venv, Audio-Einstellungen, Systembenutzer und <code className="text-stone-400">/etc/systemd/system/kunibert.service</code> ein (Anleitung: pi-client/README.md).
+          Fragt das Geräte-Token verdeckt ab und richtet Python 3, venv, Audio-Einstellungen, Systembenutzer und <code className="text-stone-400">/etc/systemd/system/kunibert.service</code> ein (Anleitung: pi-client/README.md).
         </p>
       </div>
     </div>
