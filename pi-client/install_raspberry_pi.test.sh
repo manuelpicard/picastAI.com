@@ -3,8 +3,8 @@
 # Führt den Installer als root in einer frischen Debian-Umgebung aus und prüft: Dienstkonto,
 # Ordner, kunibert.env (Werte, Rechte, Besitzer), Dienstdatei (auch mit systemd-analyze verify),
 # Zeitgrenze 140 s, zweiten Lauf, Lauf ohne Token, Änderungen von Hand, wer das Token lesen darf,
-# den Health-Aufruf aus pi-client/README.md („Manuell starten“) und dass das Token nie in einer
-# Ausgabe steht.
+# den Health-Aufruf aus pi-client/README.md („Manuell starten“), die verdeckte Abfrage an einem
+# Pseudo-Terminal und dass das Token nie in einer Ausgabe oder einer anderen Datei steht.
 #
 # Der Test ÄNDERT DAS SYSTEM (Pakete, Nutzer, /etc, /opt, /var/lib). Nur in einem Wegwerf-Container:
 #   docker run --rm -e KUNIBERT_INSTALLER_TEST=1 -v "$PWD":/src:ro debian:trixie \
@@ -12,12 +12,16 @@
 # In der CI: Job „pi-installer“ in .github/workflows/tests.yml (Debian 13 wie Raspberry Pi OS „Trixie“).
 #
 # Nicht prüfbar im Container: Audio, Taster, LED, GPIO-Gruppe, Gruppen des Standardnutzers am Pi,
-# systemd als PID 1 (systemctl ist hier eine Attrappe; ob systemd kunibert.env beim Start als root
-# liest, zeigt erst der echte Pi).
+# systemd als PID 1 (systemctl ist hier eine Attrappe, nur „enable“ läuft echt; ob systemd
+# kunibert.env beim Start als root liest, zeigt erst der echte Pi).
 set -uo pipefail
 
 [[ "${KUNIBERT_INSTALLER_TEST:-}" == "1" ]] || {
   echo "Nur in einem Wegwerf-Container mit KUNIBERT_INSTALLER_TEST=1 (siehe Kopf der Datei)." >&2
+  exit 2
+}
+[[ -f /.dockerenv || -f /run/.containerenv || "${GITHUB_ACTIONS:-}" == "true" ]] || {
+  echo "Kein Container erkannt (/.dockerenv, /run/.containerenv oder GitHub Actions). Abbruch." >&2
   exit 2
 }
 [[ "${EUID}" -eq 0 ]] || { echo "Braucht root (wie der Installer)." >&2; exit 2; }
@@ -37,11 +41,15 @@ has() { if grep -qF -- "$3" "$2"; then ok "$1"; else bad "$1: '$3' fehlt"; fi; }
 hasnt() { if grep -qF -- "$3" "$2"; then bad "$1: '$3' steht drin"; else ok "$1"; fi; }
 perm() { stat -c '%a %U %G' "$1" 2>/dev/null || echo fehlt; }
 val() { grep -E "^$1=" "$env_file" | tail -n 1 | cut -d= -f2-; }
-# Ausgabe zeigen, das Token durch <TOKEN> ersetzt.
-show() { sed -e "s/${token}/<TOKEN>/g" -e "s/${token2}/<TOKEN2>/g" "$1" | tail -n 40; }
+# Ausgabe zeigen, die Test-Tokens durch <TOKEN> ersetzt.
+show() {
+  local t args=()
+  for t in "${tokens[@]}"; do args+=(-e "s/${t}/<TOKEN>/g"); done
+  sed "${args[@]}" "$1" | tail -n 40
+}
 # Prüft, dass keines der Test-Tokens in der Datei steht. Nennt das Token selbst nie.
 no_token() {
-  if grep -qF -e "$token" -e "$token2" -- "$2"; then bad "$1: Token steht in der Ausgabe"; else ok "$1"; fi
+  if grep -qF "${tokens[@]/#/-e}" -- "$2"; then bad "$1: Token steht in der Ausgabe"; else ok "$1"; fi
 }
 token_is() {
   if [[ "$(val PICASTAI_DEVICE_TOKEN)" == "\"$2\"" ]]; then ok "$1"; else bad "$1: Token in kunibert.env ist ein anderes"; fi
@@ -51,6 +59,27 @@ run() {
   local out="$1"; shift
   bash "$installer" "$@" < /dev/null > "$out" 2>&1
   rc=$?
+}
+# Wie run, aber an einem Pseudo-Terminal (verdeckte Abfrage). $2: Eingabezeile oder KEINE. Die
+# Eingabe geht erst raus, wenn die Abfrage zu sehen ist; sonst zeigte das Terminal sie an, bevor
+# read -s das Echo abschaltet.
+run_tty() {
+  local out="$1" input="$2" cmd pid fifo="$work/tty-eingabe"; shift 2
+  rm -f "$fifo" "$out"
+  mkfifo "$fifo"
+  printf -v cmd '%q ' bash "$installer" "$@"
+  timeout 180 script -qfec "$cmd" "$out" < "$fifo" > /dev/null 2>&1 &
+  pid=$!
+  exec 3> "$fifo"
+  if [[ "$input" != KEINE ]]; then
+    for _ in $(seq 1 1200); do grep -q 'Gerätetoken' "$out" 2>/dev/null && break; sleep 0.1; done
+    sleep 1
+    printf '%s\n' "$input" >&3
+  fi
+  wait "$pid"
+  rc=$?
+  exec 3>&-
+  rm -f "$fifo"
 }
 snapshot() {
   stat -c '%n %a %U %G' /etc/kunibert "$env_file" "$svc"
@@ -70,6 +99,8 @@ mkdir -p /usr/local/sbin
 cat > /usr/local/sbin/systemctl <<'EOF'
 #!/bin/sh
 printf '%s\n' "$*" >> /tmp/systemctl-aufrufe.log
+# „enable“ geht auch ohne laufendes systemd: Das echte Programm legt nur den Link an.
+if [ "$1" = enable ]; then exec /usr/bin/systemctl "$@"; fi
 EOF
 chmod 0755 /usr/local/sbin/systemctl
 hash -r
@@ -78,6 +109,9 @@ rm -f /tmp/systemctl-aufrufe.log
 
 token="testtoken-$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
 token2="testtoken2-$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
+token3="testtoken3-$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
+token4="testtoken4-$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
+tokens=("$token" "$token2" "$token3" "$token4")
 printf '%s\n' "$token" > "$work/token"
 printf '  %s  \r\n' "$token2" > "$work/token2"
 chmod 0600 "$work/token" "$work/token2"
@@ -144,6 +178,8 @@ else
 fi
 has "systemctl daemon-reload" /tmp/systemctl-aufrufe.log "daemon-reload"
 has "systemctl enable" /tmp/systemctl-aufrufe.log "enable kunibert.service"
+eq "Dienst aktiviert (Link in multi-user.target.wants)" "$(readlink /etc/systemd/system/multi-user.target.wants/kunibert.service)" "$svc"
+no_token "Dienstdatei enthält kein Token" "$svc"
 if grep -Eq '(^| )(re)?start( |$)' /tmp/systemctl-aufrufe.log; then bad "Dienst wurde gestartet"; else ok "Dienst nur aktiviert, nicht gestartet"; fi
 
 echo "== Wer das Token lesen darf"
@@ -225,17 +261,37 @@ eq "Lauf 4: jeder Schlüssel genau einmal" "$(grep -E '^[A-Z_]+=' "$env_file" | 
 eq "Lauf 4: Rechte bleiben" "$(perm "$env_file")" "640 root kunibert"
 snapshot > "$work/stand4.txt"
 run "$work/lauf4b.txt" --non-interactive
+eq "Lauf 4b: Rückgabe 0" "$rc" 0
+has "Lauf 4b: nennt behaltene Werte (nur Namen)" "$work/lauf4b.txt" "behalten: "
+no_token "Lauf 4b: Token nicht in der Ausgabe" "$work/lauf4b.txt"
 if snapshot | cmp -s - "$work/stand4.txt"; then ok "Lauf 4b ändert nichts (auch mit ergänzten Zeilen)"; else bad "Lauf 4b hat etwas geändert: $(snapshot | diff "$work/stand4.txt" - | tail -n 6)"; fi
 
-echo "== Lauf 5: ältere Installation (Gruppe audio, fehlende Zeile)"
+echo "== Lauf 5: ältere oder von Hand verdorbene Datei"
 chgrp audio /etc/kunibert "$env_file"
 sed -i '/^KUNIBERT_CONNECT_RETRY=/d' "$env_file"
+sed -i 's/^KUNIBERT_PIPELINE_TIMEOUT=.*/KUNIBERT_PIPELINE_TIMEOUT=60/' "$env_file"
+sed -i 's/^PICASTAI_DEVICE_TOKEN=/  PICASTAI_DEVICE_TOKEN=/' "$env_file"   # eingerückt
+sed -i 's/$/\r/' "$env_file"                                              # Windows-Zeilenenden
 run "$work/lauf5.txt" --non-interactive
 eq "Lauf 5: Rückgabe 0" "$rc" 0
+no_token "Lauf 5: Token nicht in der Ausgabe" "$work/lauf5.txt"
 eq "Lauf 5: Ordner angeglichen" "$(perm /etc/kunibert)" "750 root kunibert"
 eq "Lauf 5: Datei angeglichen" "$(perm "$env_file")" "640 root kunibert"
 eq "Lauf 5: fehlende Zeile mit Standardwert ergänzt" "$(val KUNIBERT_CONNECT_RETRY)" 10
-token_is "Lauf 5: Token bleibt" "$token"
+eq "Lauf 5: Zeitkette wieder 140 s" "$(val KUNIBERT_PIPELINE_TIMEOUT)" 140
+has "Lauf 5: warnt wegen der Zeitkette" "$work/lauf5.txt" "KUNIBERT_PIPELINE_TIMEOUT stand in"
+eq "Lauf 5: keine Windows-Zeilenenden mehr" "$(grep -c $'\r' "$env_file")" 0
+token_is "Lauf 5: eingerücktes Token erkannt und behalten" "$token"
+hasnt "Lauf 5: keine Warnung zum Token" "$work/lauf5.txt" "Kein API-Token gesetzt"
+eq "Lauf 5: jeder Schlüssel genau einmal" "$(grep -E '^[A-Z_]+=' "$env_file" | cut -d= -f1 | sort | uniq -d)" ""
+eq "Lauf 5: von Hand ergänzte Zeile bleibt" "$(val KUNIBERT_AUDIO_STREAM)" 1
+
+echo "== Gruppe kunibert mit einem fremden Konto"
+useradd --no-create-home --groups kunibert fremd
+run "$work/lauf5b.txt" --non-interactive
+eq "Lauf 5b: Rückgabe 0" "$rc" 0
+has "Lauf 5b: warnt vor weiteren Mitgliedern" "$work/lauf5b.txt" "weitere Konten (fremd)"
+userdel fremd
 
 echo "== Token nie auf der Befehlszeile"
 snapshot > "$work/stand5.txt"
@@ -249,23 +305,74 @@ no_token "--api-token=…: Token nicht in der Ausgabe" "$work/lauf6b.txt"
 run "$work/lauf6c.txt" --non-interactive "--api-tokn=$token2"
 if [[ "$rc" -ne 0 ]]; then ok "vertippte Option wird abgelehnt"; else bad "vertippte Option wurde angenommen"; fi
 no_token "vertippte Option: Wert nicht in der Ausgabe" "$work/lauf6c.txt"
+run "$work/lauf6d.txt" --non-interactive --api-token-file "$token2"
+if [[ "$rc" -ne 0 ]]; then ok "Token statt Dateiname wird abgelehnt"; else bad "Token statt Dateiname wurde angenommen"; fi
+no_token "Token statt Dateiname: Token nicht in der Ausgabe" "$work/lauf6d.txt"
+run "$work/lauf6e.txt" --non-interactive "$token2"
+if [[ "$rc" -ne 0 ]]; then ok "Token als loses Argument wird abgelehnt"; else bad "Token als loses Argument wurde angenommen"; fi
+no_token "Token als loses Argument: Token nicht in der Ausgabe" "$work/lauf6e.txt"
+run "$work/lauf6f.txt" --non-interactive --api-token-file ""
+if [[ "$rc" -ne 0 ]]; then ok "leerer Dateiname wird abgelehnt"; else bad "leerer Dateiname wurde angenommen"; fi
+has "leerer Dateiname: Meldung" "$work/lauf6f.txt" "leerer Dateiname"
+printf 'Bearer %s\n' "$token2" > "$work/token-bearer"
+run "$work/lauf6g.txt" --non-interactive --api-token-file "$work/token-bearer"
+if [[ "$rc" -ne 0 ]]; then ok "Token mit Leerzeichen (Bearer …) wird abgelehnt"; else bad "Token mit Leerzeichen wurde angenommen"; fi
+no_token "Token mit Leerzeichen: Token nicht in der Ausgabe" "$work/lauf6g.txt"
 if snapshot | cmp -s - "$work/stand5.txt"; then ok "abgelehnte Aufrufe ändern nichts"; else bad "abgelehnter Aufruf hat etwas geändert"; fi
 
-echo "== Neues Token aus Datei (mit Leerzeichen und Windows-Zeilenende)"
+echo "== Neues Token aus Datei (mit Leerzeichen und Windows-Zeilenende, für andere lesbar)"
+chmod 0644 "$work/token2"
 run "$work/lauf7.txt" --non-interactive --api-token-file "$work/token2"
 eq "Lauf 7: Rückgabe 0" "$rc" 0
 token_is "Lauf 7: neues Token gespeichert (bereinigt)" "$token2"
 no_token "Lauf 7: Token nicht in der Ausgabe" "$work/lauf7.txt"
+has "Lauf 7: warnt, dass andere die Token-Datei lesen können" "$work/lauf7.txt" "Die Token-Datei können auch andere lesen"
 : > "$work/leer"
 run "$work/lauf7b.txt" --non-interactive --api-token-file "$work/leer"
 if [[ "$rc" -ne 0 ]]; then ok "leere Token-Datei wird abgelehnt"; else bad "leere Token-Datei wurde angenommen"; fi
 token_is "leere Token-Datei: Token bleibt" "$token2"
+snapshot > "$work/stand7.txt"
 run "$work/lauf7c.txt" --non-interactive --ask-token
 if [[ "$rc" -ne 0 ]]; then ok "--ask-token ohne Terminal wird abgelehnt"; else bad "--ask-token ohne Terminal wurde angenommen"; fi
+has "--ask-token ohne Terminal: Meldung" "$work/lauf7c.txt" "--ask-token braucht eine Eingabe am Terminal"
+if snapshot | cmp -s - "$work/stand7.txt"; then ok "--ask-token ohne Terminal ändert nichts"; else bad "--ask-token ohne Terminal hat etwas geändert"; fi
 run "$work/lauf8.txt" --dry-run --non-interactive
 eq "Probelauf: Rückgabe 0" "$rc" 0
 has "Probelauf: nennt den Zustand des Tokens" "$work/lauf8.txt" "Token: bisheriges bleibt"
+has "Probelauf: zeigt, dass die Adresse bleibt" "$work/lauf8.txt" "API: bleibt wie in kunibert.env"
 no_token "Probelauf: Token nicht in der Ausgabe" "$work/lauf8.txt"
+
+echo "== Verdeckte Abfrage am Terminal"
+sed -i 's/^PICASTAI_DEVICE_TOKEN=.*/PICASTAI_DEVICE_TOKEN=""/' "$env_file"
+run_tty "$work/tty1.txt" "$token3"
+eq "Abfrage: Rückgabe 0" "$rc" 0
+has "Abfrage erscheint ohne gespeichertes Token" "$work/tty1.txt" "picastAI-Gerätetoken (Eingabe wird nicht angezeigt)"
+token_is "Abfrage: eingegebenes Token gespeichert" "$token3"
+no_token "Abfrage: Token nicht am Bildschirm" "$work/tty1.txt"
+run_tty "$work/tty2.txt" KEINE
+eq "zweiter Lauf am Terminal: Rückgabe 0 (fragt nicht, wartet nicht)" "$rc" 0
+hasnt "zweiter Lauf am Terminal: keine Abfrage" "$work/tty2.txt" "Gerätetoken"
+token_is "zweiter Lauf am Terminal: Token bleibt" "$token3"
+run_tty "$work/tty3.txt" "" --ask-token
+eq "--ask-token, leere Eingabe: Rückgabe 0" "$rc" 0
+has "--ask-token: Abfrage nennt leer lassen" "$work/tty3.txt" "leer lassen = bisheriges behalten"
+token_is "--ask-token, leere Eingabe: Token bleibt" "$token3"
+run_tty "$work/tty4.txt" "$token4" --ask-token
+eq "--ask-token, neues Token: Rückgabe 0" "$rc" 0
+token_is "--ask-token: neues Token gespeichert" "$token4"
+no_token "--ask-token: Token nicht am Bildschirm" "$work/tty4.txt"
+
+echo "== Token in keiner anderen Datei"
+leaks="$(grep -rlsF "${tokens[@]/#/-e}" /etc /opt /var/lib /tmp /root 2>/dev/null | grep -v -e "^$work/" -e "^${env_file}\$")"
+eq "Token nur in kunibert.env (gesucht in /etc, /opt, /var/lib, /tmp, /root)" "$leaks" ""
+
+echo "== Neuinstallation ohne Token"
+rm -f "$env_file"
+run "$work/lauf9.txt" --non-interactive
+eq "ohne Token: Rückgabe 0" "$rc" 0
+has "ohne Token: Warnung" "$work/lauf9.txt" "Kein API-Token gesetzt"
+eq "ohne Token: leeres Token in kunibert.env" "$(val PICASTAI_DEVICE_TOKEN)" '""'
+eq "ohne Token: Rechte" "$(perm "$env_file")" "640 root kunibert"
 
 echo
 if (( fails > 0 )); then

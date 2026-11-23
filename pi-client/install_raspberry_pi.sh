@@ -34,6 +34,12 @@ NON_INTERACTIVE="0"
 # Schlüssel in kunibert.env, deren Wert beim Aufruf angegeben wurde. Alle anderen Werte übernimmt
 # ein neuer Lauf aus der vorhandenen Datei (siehe merge_config).
 declare -A GIVEN=()
+# Werte, die der Installer immer selbst setzt, auch wenn kunibert.env etwas anderes enthält:
+# die Zeitkette (Server 120 s, Caddy 130 s, Gerät 140 s) und die Ordner, die zur Dienstdatei passen
+# müssen (ReadWritePaths). Alle anderen Werte darf man mit sudoedit dauerhaft ändern.
+FORCED_KEYS=(KUNIBERT_PIPELINE_TIMEOUT KUNIBERT_CACHE_DIR KUNIBERT_ANNOUNCEMENTS_DIR)
+# Zeichen, die in einem Geräte-Token vorkommen dürfen (hex, Base64, Base64url).
+TOKEN_PATTERN='^[A-Za-z0-9._~+/=:-]+$'
 TMP_FILES=()
 trap 'rm -f -- "${TMP_FILES[@]}"' EXIT
 
@@ -48,28 +54,35 @@ trim() { local v="$1"; v="${v#"${v%%[![:space:]]*}"}"; v="${v%"${v##*[![:space:]
 existing_token_set() {
   [[ -f "$CONFIG_FILE" ]] || return 1
   local line value
-  line="$(grep -E '^PICASTAI_DEVICE_TOKEN=' "$CONFIG_FILE" | tail -n 1)" || return 1
-  value="${line#PICASTAI_DEVICE_TOKEN=}"
+  line="$(grep -E '^[[:space:]]*PICASTAI_DEVICE_TOKEN=' "$CONFIG_FILE" | tail -n 1)" || return 1
+  value="${line#*PICASTAI_DEVICE_TOKEN=}"
   value="${value//\"/}"; value="${value//\'/}"; value="${value//[[:space:]]/}"
   [[ -n "$value" ]]
 }
 # Führt die neue Vorlage ($1) mit der vorhandenen kunibert.env ($2) zusammen und schreibt das
 # Ergebnis auf stdout. Werte, die beim Aufruf nicht angegeben wurden, bleiben wie in der
-# vorhandenen Datei (auch das Token und Änderungen mit sudoedit). Schlüssel, die nur in der
-# vorhandenen Datei stehen (von Hand ergänzt), kommen ans Ende. Kommentare kommen aus der Vorlage.
+# vorhandenen Datei (auch das Token und Änderungen mit sudoedit); Ausnahme: FORCED_KEYS.
+# Schlüssel, die nur in der vorhandenen Datei stehen (von Hand ergänzt), kommen ans Ende.
+# Kommentare kommen aus der Vorlage. Windows-Zeilenenden und Einrückung vor einem Schlüssel
+# fallen weg. Namen behaltener Schlüssel, die von der Vorlage abweichen, schreibt awk nach $3,
+# Namen fester Schlüssel, die zurückgesetzt werden, nach $4 (nur Namen, nie Werte).
 merge_config() {
-  local given=" " key
+  local given=" " forced=" " key
   for key in "${!GIVEN[@]}"; do given+="$key "; done
-  awk -v oldfile="$2" -v given="$given" '
+  for key in "${FORCED_KEYS[@]}"; do forced+="$key "; done
+  awk -v oldfile="$2" -v given="$given" -v forced="$forced" -v keptfile="$3" -v resetfile="$4" '
     function is_key(l) { return l ~ /^[A-Za-z_][A-Za-z0-9_]*=/ }
     function key_of(l) { return substr(l, 1, index(l, "=") - 1) }
     BEGIN {
       while ((getline line < oldfile) > 0) {
-        if (is_key(line)) {
-          k = key_of(line)
+        sub(/\r$/, "", line)
+        stripped = line
+        sub(/^[[:space:]]+/, "", stripped)
+        if (is_key(stripped)) {
+          k = key_of(stripped)
           if (!(k in old)) order[++n] = k
-          old[k] = line
-        } else if (line !~ /^[[:space:]]*(#|$)/) {
+          old[k] = stripped
+        } else if (stripped !~ /^(#|$)/) {
           other[++m] = line
         }
       }
@@ -79,7 +92,15 @@ merge_config() {
       if (is_key($0)) {
         k = key_of($0)
         seen[k] = 1
-        if ((k in old) && index(given, " " k " ") == 0) { print old[k]; next }
+        if (k in old) {
+          if (index(forced, " " k " ") > 0) {
+            if (old[k] != $0) print k > resetfile
+          } else if (index(given, " " k " ") == 0) {
+            if (old[k] != $0) print k > keptfile
+            print old[k]
+            next
+          }
+        }
       }
       print
     }
@@ -140,8 +161,10 @@ Zweiter Lauf:
   Werte, die beim Aufruf fehlen, übernimmt der Installer aus der vorhandenen
   /etc/kunibert/kunibert.env: Adresse, Geräte-ID, Token, Name, Abtastrate,
   Mikrofon, Lautsprecher und von Hand (sudoedit) geänderte oder ergänzte Zeilen.
-  Mit denselben Angaben ändert ein zweiter Lauf an Datei, Dienst, Rechten und
-  Besitzern nichts.
+  Kommentare übernimmt er nicht. Immer neu setzt er KUNIBERT_PIPELINE_TIMEOUT
+  (Zeitkette), KUNIBERT_CACHE_DIR und KUNIBERT_ANNOUNCEMENTS_DIR (passen zur
+  Dienstdatei). Mit denselben Angaben ändert ein zweiter Lauf an Datei, Dienst,
+  Rechten und Besitzern nichts.
 
 Rechte:
   /etc/kunibert (0750) und kunibert.env (0640) gehören root, Gruppe kunibert.
@@ -162,7 +185,10 @@ while [[ $# -gt 0 ]]; do
     --device-id) [[ $# -ge 2 ]] || die "--device-id benötigt einen Wert"; DEVICE_ID="$2"; GIVEN[PICASTAI_DEVICE_ID]=1; shift 2 ;;
     # Den Wert nie ausgeben: Er wäre das Token.
     --api-token|--api-token=*) die "--api-token gibt es nicht mehr: Das Token stünde sonst in der Prozessliste und im Shell-Verlauf. Ohne Option fragt der Installer verdeckt nach dem Token; für Skripte: --api-token-file DATEI." ;;
-    --api-token-file) [[ $# -ge 2 ]] || die "--api-token-file benötigt einen Wert"; TOKEN_FILE="$2"; shift 2 ;;
+    --api-token-file)
+      [[ $# -ge 2 ]] || die "--api-token-file benötigt einen Wert"
+      [[ -n "$2" ]] || die "--api-token-file: leerer Dateiname (leere Variable beim Aufruf?)."
+      TOKEN_FILE="$2"; shift 2 ;;
     --ask-token) ASK_TOKEN="1"; shift ;;
     --device-name) [[ $# -ge 2 ]] || die "--device-name benötigt einen Wert"; DEVICE_NAME="$2"; GIVEN[PICASTAI_DEVICE_NAME]=1; shift 2 ;;
     --audio-card) [[ $# -ge 2 ]] || die "--audio-card benötigt einen Wert"; AUDIO_CARD="$2"; shift 2 ;;
@@ -173,7 +199,9 @@ while [[ $# -gt 0 ]]; do
     --dry-run) DRY_RUN="1"; shift ;;
     -h|--help) usage; exit 0 ;;
     # Nur der Teil vor „=“: Ein vertippter Name mit Wert könnte ein Token enthalten.
-    *) die "Unbekannte Option: ${1%%=*}" ;;
+    -*) die "Unbekannte Option: ${1%%=*}" ;;
+    # Ein Wert ohne Option ist oft ein Token an der falschen Stelle: nie ausgeben.
+    *) die "Unerwartetes Argument (Wert nicht angezeigt). Das Token gibt es nur über die verdeckte Abfrage oder --api-token-file." ;;
   esac
 done
 
@@ -197,7 +225,14 @@ CLIENT_FEEDBACK="${SOURCE_DIR}/pi-client/rueckmeldung.py"
 
 # Token: aus --api-token-file, sonst verdeckte Abfrage, sonst das bisherige aus kunibert.env.
 if [[ -n "$TOKEN_FILE" ]]; then
-  [[ -r "$TOKEN_FILE" && ! -d "$TOKEN_FILE" ]] || die "Token-Datei nicht lesbar: $TOKEN_FILE"
+  if [[ ! -r "$TOKEN_FILE" || -d "$TOKEN_FILE" ]]; then
+    # Kein Pfad: vielleicht das Token selbst an der Stelle des Dateinamens. Dann nicht ausgeben.
+    if [[ "$TOKEN_FILE" == */* || -e "$TOKEN_FILE" ]]; then die "Token-Datei nicht lesbar: $TOKEN_FILE"; fi
+    die "Token-Datei nicht gefunden (Wert nicht angezeigt, kein Pfad; Token statt Dateiname angegeben?)."
+  fi
+  if [[ -f "$TOKEN_FILE" ]] && (( 8#$(stat -c %a "$TOKEN_FILE") & 8#077 )); then
+    warn "Die Token-Datei können auch andere lesen. Nach der Installation löschen: sudo rm $TOKEN_FILE"
+  fi
   IFS= read -r DEVICE_TOKEN < "$TOKEN_FILE" || true
   DEVICE_TOKEN="$(trim "$DEVICE_TOKEN")"
   [[ -n "$DEVICE_TOKEN" ]] || die "Token-Datei ist leer: $TOKEN_FILE"
@@ -211,7 +246,10 @@ if [[ -z "$DEVICE_TOKEN" && "$DRY_RUN" != "1" ]] && [[ "$ASK_TOKEN" == "1" || "$
     if [[ "$OLD_TOKEN" == "1" ]]; then
       TOKEN_PROMPT="Neues picastAI-Gerätetoken (Eingabe wird nicht angezeigt; leer lassen = bisheriges behalten): "
     fi
-    IFS= read -r -s -p "$TOKEN_PROMPT" DEVICE_TOKEN
+    if ! IFS= read -r -s -p "$TOKEN_PROMPT" DEVICE_TOKEN; then
+      printf '\n'
+      die "Token-Abfrage abgebrochen. Nichts geändert."
+    fi
     printf '\n'
     DEVICE_TOKEN="$(trim "$DEVICE_TOKEN")"
     TOKEN_STATE="neu (verdeckt eingegeben)"
@@ -220,6 +258,9 @@ if [[ -z "$DEVICE_TOKEN" && "$DRY_RUN" != "1" ]] && [[ "$ASK_TOKEN" == "1" || "$
   fi
 fi
 [[ "$DEVICE_TOKEN" != *$'\n'* ]] || die "Werte für die Konfiguration dürfen keinen Zeilenumbruch enthalten."
+if [[ -n "$DEVICE_TOKEN" && ! "$DEVICE_TOKEN" =~ $TOKEN_PATTERN ]]; then
+  die "Das Token enthält Zeichen, die in einem Geräte-Token nicht vorkommen (zum Beispiel Leerzeichen, Anführungszeichen oder das Wort Bearer). Wert nicht angezeigt."
+fi
 if [[ -n "$DEVICE_TOKEN" ]]; then
   GIVEN[PICASTAI_DEVICE_TOKEN]=1
 elif [[ "$OLD_TOKEN" == "1" ]]; then
@@ -233,11 +274,20 @@ fi
 if ! [[ "$SAMPLE_RATE" =~ ^[0-9]+$ ]] || (( SAMPLE_RATE < 8000 || SAMPLE_RATE > 96000 )); then
   die "Ungültige Abtastrate: $SAMPLE_RATE"
 fi
+# Wert für den Probelauf: Fehlt die Angabe und steht der Schlüssel schon in kunibert.env, bleibt er.
+shown() {
+  if [[ -z "${GIVEN[$1]:-}" && -f "$CONFIG_FILE" ]] && grep -qE "^[[:space:]]*$1=" "$CONFIG_FILE"; then
+    printf 'bleibt wie in kunibert.env'
+  else
+    printf '%s' "$2"
+  fi
+}
 if [[ "$DRY_RUN" == "1" ]]; then
   log "Dry-Run: keine Änderungen werden vorgenommen."
   printf 'Quelle: %s\nZiel: %s\nAPI: %s\nGerät: %s\nToken: %s\nALSA-Karte: %s\nMikrofon: %s\nLautsprecher: %s\n' \
-    "$SOURCE_DIR" "$INSTALL_DIR" "$API_BASE_URL" "$DEVICE_ID" "${TOKEN_STATE:-fehlt}" "${AUDIO_CARD:-automatisch}" \
-    "${CAPTURE_DEVICE:-Standard}" "${PLAYBACK_DEVICE:-Standard}"
+    "$SOURCE_DIR" "$INSTALL_DIR" "$(shown PICASTAI_API_BASE_URL "$API_BASE_URL")" "$(shown PICASTAI_DEVICE_ID "$DEVICE_ID")" \
+    "${TOKEN_STATE:-fehlt}" "${AUDIO_CARD:-automatisch}" \
+    "$(shown KUNIBERT_INPUT_DEVICE "${CAPTURE_DEVICE:-Standard}")" "$(shown KUNIBERT_OUTPUT_DEVICE "${PLAYBACK_DEVICE:-Standard}")"
   if [[ -f "$CONFIG_FILE" ]]; then
     printf 'Vorhandene Konfiguration: %s (Werte, die beim Aufruf fehlen, bleiben)\n' "$CONFIG_FILE"
   fi
@@ -281,6 +331,12 @@ fi
 # Ältere Installationen: Dienstkonto ohne eigene Gruppe.
 if ! id -nG "$APP_USER" | tr ' ' '\n' | grep -qx "$CONFIG_GROUP"; then
   usermod -a -G "$CONFIG_GROUP" "$APP_USER"
+fi
+CONFIG_GID="$(getent group "$CONFIG_GROUP" | cut -d: -f3)"
+OTHER_MEMBERS="$({ getent group "$CONFIG_GROUP" | cut -d: -f4 | tr ',' '\n'
+  awk -F: -v g="$CONFIG_GID" '$4 == g { print $1 }' /etc/passwd; } | grep -vx -e "$APP_USER" -e '' | sort -u | paste -sd, -)" || true
+if [[ -n "$OTHER_MEMBERS" ]]; then
+  warn "In der Gruppe $CONFIG_GROUP sind außer $APP_USER weitere Konten ($OTHER_MEMBERS). Sie können das Token in $CONFIG_FILE lesen."
 fi
 usermod -a -G "$APP_GROUP" "$APP_USER" 2>/dev/null || true
 # GPIO-Zugriff (Pi 5: /dev/gpiochip*) läuft über die Gruppe gpio, sofern es sie gibt.
@@ -342,7 +398,9 @@ log "Schreibe geschützte Konfiguration …"
 # Das Token liegt nie in einer Datei, die andere lesen können.
 NEW_CONFIG="$(mktemp "${CONFIG_DIR}/.kunibert.env.vorlage.XXXXXX")"
 MERGED_CONFIG="$(mktemp "${CONFIG_DIR}/.kunibert.env.neu.XXXXXX")"
-TMP_FILES+=("$NEW_CONFIG" "$MERGED_CONFIG")
+KEPT_KEYS="$(mktemp)"
+RESET_KEYS="$(mktemp)"
+TMP_FILES+=("$NEW_CONFIG" "$MERGED_CONFIG" "$KEPT_KEYS" "$RESET_KEYS")
 cat > "$NEW_CONFIG" <<EOF
 # /etc/kunibert/kunibert.env – vom Installer erzeugt; Secrets nicht committen.
 # Ein neuer Lauf des Installers behält die Werte hier, außer er bekommt sie beim Aufruf neu.
@@ -373,7 +431,13 @@ KUNIBERT_INPUT_DEVICE=$(env_quote "$CAPTURE_DEVICE")
 KUNIBERT_OUTPUT_DEVICE=$(env_quote "$PLAYBACK_DEVICE")
 EOF
 if [[ -f "$CONFIG_FILE" ]]; then
-  merge_config "$NEW_CONFIG" "$CONFIG_FILE" > "$MERGED_CONFIG"
+  merge_config "$NEW_CONFIG" "$CONFIG_FILE" "$KEPT_KEYS" "$RESET_KEYS" > "$MERGED_CONFIG"
+  if [[ -s "$KEPT_KEYS" ]]; then
+    log "Aus $CONFIG_FILE behalten: $(paste -sd, "$KEPT_KEYS" | sed 's/,/, /g')"
+  fi
+  while IFS= read -r key; do
+    warn "$key stand in $CONFIG_FILE anders. Der Installer setzt wieder den festen Wert $(grep -E "^${key}=" "$NEW_CONFIG" | cut -d= -f2-) (siehe pi-client/README.md, Abschnitt Ein zweiter Lauf)."
+  done < "$RESET_KEYS"
 else
   cat "$NEW_CONFIG" > "$MERGED_CONFIG"
 fi
@@ -384,7 +448,7 @@ else
   chmod 0640 "$MERGED_CONFIG"
   mv -f -- "$MERGED_CONFIG" "$CONFIG_FILE"
 fi
-rm -f -- "$NEW_CONFIG" "$MERGED_CONFIG"
+rm -f -- "$NEW_CONFIG" "$MERGED_CONFIG" "$KEPT_KEYS" "$RESET_KEYS"
 # Auch eine vorhandene Datei angleichen (ältere Fassungen: Gruppe audio).
 chown root:"$CONFIG_GROUP" "$CONFIG_FILE"
 chmod 0640 "$CONFIG_FILE"
