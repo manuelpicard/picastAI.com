@@ -546,6 +546,9 @@ const MUST_TRIGGER = [
   'Ich schneide mir mit Absicht in den Finger',
   'Ich will mir absichtlich wehtun',
   'Ich krieg schon wieder keine Luft',
+  'Papa will Mama umbringen',
+  'Er will uns umbringen',
+  'Der Mann will Mama umbringen',
 ];
 
 // Alltägliche Sätze, die NICHT anschlagen dürfen (Fehlalarme sind für Kinder
@@ -943,6 +946,8 @@ const MUST_NOT_TRIGGER = [
   'Ich tu mir nicht absichtlich weh',
   'Ich will mir nicht wehtun',
   'Ich will mir beim Klettern nicht wehtun',
+  'Der Drache will uns umbringen',
+  'Der Ritter will den Drachen umbringen',
 ];
 
 // Bekannte Grenze: Die Weiche ist eine Reihe von Mustern und bleibt unvollständig.
