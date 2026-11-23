@@ -67,6 +67,7 @@ const pairRes = await call('/v1/eltern/koppeln', {
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({ code }),
 });
+if (pairRes.status === 429) fail(`Koppeln: zu viele falsche Codes von dieser Adresse oder insgesamt. In ${pairRes.headers.get('retry-after') || 'ein paar'} Sekunden noch einmal versuchen.`);
 if (pairRes.status !== 200) fail(`Koppeln: HTTP ${pairRes.status}.`);
 const cookie = (pairRes.headers.get('set-cookie') || '').match(/kb_eltern=([^;]+)/);
 if (!cookie) fail('Koppeln: Der Server hat kein Eltern-Cookie gesetzt.');

@@ -142,6 +142,9 @@ eq  "Eltern-Datei: Vorlage wie Skript"      "$(env_get "$here/kunibert.env.examp
 yes "Eltern-Schlüssel steht leer in der Vorlage" grep -qx 'KUNIBERT_ELTERN_SCHLUESSEL=' "$here/kunibert.env.example"
 eq  "Zustand nur für den Dienst lesbar"     "$(sed -n 's/^StateDirectoryMode=//p' "$here/kunibert-server.service")" 0700
 write_env_body=$(sed -n '/^write_env() {/,/^}/p' "$here/setup-server.sh")
+eq  "Vorlage: Proxy auf demselben Rechner"  "$(env_get "$here/kunibert.env.example" PICASTAI_TRUST_PROXY)" loopback
+# shellcheck disable=SC2016
+yes "Skript setzt den Proxy nur, wenn leer"  grep -qF 'env_set_if_empty "$ENV_FILE" PICASTAI_TRUST_PROXY loopback' <<<"$write_env_body"
 # shellcheck disable=SC2016
 yes "Skript erzeugt den Schlüssel nur, wenn er fehlt" grep -qF 'env_set_if_empty "$ENV_FILE" KUNIBERT_ELTERN_SCHLUESSEL "$(openssl rand -hex 32)"' <<<"$write_env_body"
 cp "$here/kunibert.env.example" "$f"

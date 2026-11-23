@@ -816,10 +816,10 @@ describe('picastAI-API (echter Server)', () => {
     return { id, token: ((await res.json()) as { token: string }).token };
   }
 
-  const elternJson = (cookie: string | null, method: string, route: string, body: unknown = {}) =>
+  const elternJson = (cookie: string | null, method: string, route: string, body: unknown = {}, headers: Record<string, string> = {}) =>
     fetch(`${base}/v1/eltern/${route}`, {
       method,
-      headers: { ...(cookie ? { Cookie: cookie } : {}), 'Content-Type': 'application/json' },
+      headers: { ...(cookie ? { Cookie: cookie } : {}), 'Content-Type': 'application/json', ...headers },
       body: method === 'GET' ? undefined : JSON.stringify(body),
     });
 
@@ -887,7 +887,13 @@ describe('picastAI-API (echter Server)', () => {
     const code = spoken.split(':')[1].split('.')[0].split(',').map((w) => String(words.indexOf(w.trim()))).join('');
     assert.match(code, /^\d{6}$/);
 
-    const pairRes = await elternJson(null, 'POST', 'koppeln', { code });
+    // Das Gerät hat einen Code gesprochen: Sein Netz darf auch über der Grenze für alle koppeln (nur gezählt).
+    const guardCounts = ((await adminStatus()) as unknown as { kopplungsschutz: Record<string, number> }).kopplungsschutz;
+    assert.deepEqual(Object.keys(guardCounts).sort(), ['absender', 'fehlversucheInsgesamt', 'geraeteNetze'], 'nur Zahlen');
+    assert.ok(guardCounts.geraeteNetze >= 1, JSON.stringify(guardCounts));
+
+    // Wie hinter Caddy (X-Forwarded-Proto: https): Cookie mit Secure.
+    const pairRes = await elternJson(null, 'POST', 'koppeln', { code }, { 'X-Forwarded-Proto': 'https' });
     assert.equal(pairRes.status, 200);
     const setCookie = pairRes.headers.get('set-cookie') || '';
     assert.match(setCookie, /^kb_eltern=[A-Za-z0-9_-]{40,}; /);
@@ -907,6 +913,35 @@ describe('picastAI-API (echter Server)', () => {
     assert.ok(!log.includes(token), 'Eltern-Token im Protokoll');
     assert.ok(!log.includes(device.id), 'Geräte-ID im Protokoll');
     assert.match(log, /Zeitmessung id=\w+ modus=kopplung status=200 /, 'Zeitmessung der Kopplung (nur Zahlen)');
+  });
+
+  it('Eltern-Cookie im Betrieb von diesem Rechner (wie Caddy ohne X-Forwarded-Proto): auch ohne Kopf mit Secure', async () => {
+    // Ohne Secure nur bei http direkt von einem anderen Rechner (Test im eigenen WLAN): server-api/http-utils.test.ts.
+    const device = await registerBareDevice();
+    const codeRes = await fetch(`${base}/api/devices/${device.id}/kopplungscode`, { method: 'POST', headers: { Authorization: `Bearer ${ADMIN_TOKEN}` } });
+    const { code } = (await codeRes.json()) as { code: string };
+    const pairRes = await elternJson(null, 'POST', 'koppeln', { code });
+    assert.equal(pairRes.status, 200);
+    const setCookie = pairRes.headers.get('set-cookie') || '';
+    for (const flag of ['HttpOnly', 'SameSite=Strict', 'Path=/v1/eltern']) assert.ok(setCookie.includes(flag), `${flag} fehlt: ${setCookie}`);
+    assert.match(setCookie, /; Secure$/);
+    // Auch beim Löschen.
+    const deleted = await elternJson(setCookie.split(';')[0], 'DELETE', 'daten');
+    assert.equal(deleted.status, 200);
+    assert.match(deleted.headers.get('set-cookie') || '', /^kb_eltern=; .*Max-Age=0.*; Secure$/);
+  });
+
+  it('Proxy ohne PICASTAI_TRUST_PROXY: einmal ein Hinweis beim Betreiber, ohne Adresse', async () => {
+    const logBefore = output.length;
+    for (let i = 0; i < 2; i++) {
+      const res = await fetch(`${base}/health`, { headers: { 'X-Forwarded-For': '203.0.113.211' } });
+      assert.equal(res.status, 200);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const hints = output.match(/PICASTAI_TRUST_PROXY ist nicht gesetzt/g) || [];
+    assert.equal(hints.length, 1, 'genau ein Hinweis');
+    assert.ok(output.slice(logBefore).includes('PICASTAI_TRUST_PROXY=loopback'));
+    assert.ok(!output.includes('203.0.113.211'), 'keine Adresse im Protokoll');
   });
 
   it('Eltern-Routen: Einwilligung, Schlafmodus, Ruhezeiten, neue Geschichte, Widerruf, alles löschen', async () => {
@@ -1071,18 +1106,34 @@ describe('picastAI-API (echter Server)', () => {
     assert.equal(typeof ungespeichert, 'boolean');
   });
 
-  // Muss der letzte Test dieses Servers sein: Danach sind Kopplungen von dieser Adresse 10 Minuten gesperrt.
-  it('Raten von Kopplungscodes: nach 10 Fehlversuchen 429, auch für einen gültigen Code', async () => {
+  // Muss der letzte Test dieses Servers sein: Danach wartet diese Adresse bei jedem Fehlversuch länger.
+  it('Raten von Kopplungscodes: ab dem 3. Fehlversuch 429 mit Wartezeit, auch für einen gültigen Code; danach geht es weiter', async () => {
+    // Den richtigen Code vorher holen: Zwischen dem 3. Fehlversuch und dem Versuch mit dem richtigen Code
+    // liegen so nur Anfragen ohne Wartezeit (die Wartezeit ist 2 s).
+    const codeRes = await fetch(`${base}/api/devices/${ENV_DEVICE_ID}/kopplungscode`, { method: 'POST', headers: { Authorization: `Bearer ${ADMIN_TOKEN}` } });
+    const { code } = (await codeRes.json()) as { code: string };
+    // Ohne PICASTAI_TRUST_PROXY zählt X-Forwarded-For nicht: Ein neuer Kopf je Versuch hilft beim Raten nicht.
+    const wrong = code === '100000' ? '100001' : '100000';
     const statuses: number[] = [];
-    for (let i = 0; i < 11; i++) statuses.push((await elternJson(null, 'POST', 'koppeln', { code: String(100000 + i) })).status);
-    // Fehlversuche aus den Tests oben zählen mit: also höchstens 10 mal 400, dann 429.
+    for (let i = 0; i < 4; i++) {
+      const res = await elternJson(null, 'POST', 'koppeln', { code: wrong }, { 'X-Forwarded-For': `198.51.100.${i + 1}` });
+      statuses.push(res.status);
+      if (res.status === 429) break;
+    }
+    // Fehlversuche aus den Tests oben zählen mit (dort einer): höchstens 3 mal 400, dann 429.
     const firstBlocked = statuses.indexOf(429);
-    assert.ok(firstBlocked > 0 && firstBlocked <= 10, statuses.join(','));
-    assert.ok(statuses.slice(0, firstBlocked).every((s) => s === 400));
-    assert.ok(statuses.slice(firstBlocked).every((s) => s === 429));
-    const code = await fetch(`${base}/api/devices/${ENV_DEVICE_ID}/kopplungscode`, { method: 'POST', headers: { Authorization: `Bearer ${ADMIN_TOKEN}` } });
-    const valid = await elternJson(null, 'POST', 'koppeln', { code: ((await code.json()) as { code: string }).code });
-    assert.equal(valid.status, 429);
+    assert.ok(firstBlocked >= 1 && firstBlocked <= 3, statuses.join(','));
+    assert.ok(statuses.slice(0, firstBlocked).every((s) => s === 400), statuses.join(','));
+    const blocked = await elternJson(null, 'POST', 'koppeln', { code });
+    assert.equal(blocked.status, 429, 'während der Wartezeit prüft der Server keinen Code');
+    const retryAfter = Number(blocked.headers.get('retry-after'));
+    assert.ok(Number.isInteger(retryAfter) && retryAfter >= 1 && retryAfter <= 2, `Retry-After: ${retryAfter}`);
+    assert.deepEqual(await blocked.json(), { error: 'rate_limited', warten_sekunden: retryAfter, grund: 'absender' });
+
+    // Keine harte Sperre: Nach der Wartezeit gilt der richtige Code.
+    await new Promise((resolve) => setTimeout(resolve, retryAfter * 1000 + 50));
+    const valid = await elternJson(null, 'POST', 'koppeln', { code });
+    assert.equal(valid.status, 200, await valid.clone().text());
   });
 });
 
@@ -1114,6 +1165,8 @@ describe('picastAI-API im Betrieb ohne Testschalter', () => {
       PICASTAI_TTS_VOICE: 'test-voice',
       // Wirkt im Betrieb nicht: Die Einwilligung wird trotzdem geprüft (siehe unten).
       KUNIBERT_EINWILLIGUNG_PRUEFEN: '0',
+      // Wie hinter Caddy auf demselben Rechner (deploy/kunibert.env.example).
+      PICASTAI_TRUST_PROXY: 'loopback',
     };
     if (process.env.HOME) env.HOME = process.env.HOME;
     if (process.env.TMPDIR) env.TMPDIR = process.env.TMPDIR;
@@ -1182,6 +1235,85 @@ describe('picastAI-API im Betrieb ohne Testschalter', () => {
     });
     assert.equal(res.status, 400);
     assert.equal(((await res.json()) as { error: string }).error, 'audio_required');
+  });
+
+  const koppeln = (code: string, sender: string) =>
+    fetch(`${base}/v1/eltern/koppeln`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Forwarded-For': sender, 'X-Forwarded-Proto': 'https' },
+      body: JSON.stringify({ code }),
+    });
+  const operatorCode = async (deviceId: string) => {
+    const res = await fetch(`${base}/api/devices/${deviceId}/kopplungscode`, { method: 'POST', headers: { Authorization: `Bearer ${ADMIN_TOKEN}` } });
+    assert.equal(res.status, 200);
+    return ((await res.json()) as { code: string }).code;
+  };
+  const otherCode = (code: string) => (code === '200000' ? '200001' : '200000');
+
+  it('hinter Caddy (PICASTAI_TRUST_PROXY=loopback): Wer falsch rät, sperrt andere Eltern nicht aus', async () => {
+    // Den richtigen Code vorher holen, damit der Rater ihn noch in seiner Wartezeit (2 s) versucht.
+    const code = await operatorCode(ENV_DEVICE_ID);
+    const statuses: number[] = [];
+    for (let i = 0; i < 3; i++) statuses.push((await koppeln(otherCode(code), '203.0.113.50')).status);
+    assert.deepEqual(statuses, [400, 400, 400]);
+    assert.equal((await koppeln(code, '203.0.113.50')).status, 429, 'der Rater wartet');
+    const other = await koppeln(code, '198.51.100.60');
+    assert.equal(other.status, 200, 'andere Eltern koppeln sofort');
+    assert.match(other.headers.get('set-cookie') || '', /; Secure$/, 'über HTTPS laut Caddy: Secure');
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    assert.ok(!output.includes('PICASTAI_TRUST_PROXY ist nicht gesetzt'), 'mit der Einstellung kein Hinweis');
+    assert.ok(!output.includes('203.0.113.50') && !output.includes('198.51.100.60'), 'keine Adressen im Protokoll');
+  });
+
+  // Muss der letzte Test dieses Servers sein: Danach ist die Grenze für alle 10 Minuten erreicht.
+  it('über der Grenze von 200 Fehlversuchen: Fremde warten, Eltern im Netz des Geräts lösen nur dessen Code ein', async () => {
+    const add = await fetch(`${base}/api/devices`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${ADMIN_TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deviceId: 'zweites-geraet', name: 'zweites-geraet' }),
+    });
+    assert.equal(add.status, 200, await add.clone().text());
+    const secondCode = await operatorCode('zweites-geraet');
+    // Angreifer-Netze mit je zwei Fehlversuchen (noch ohne eigene Wartezeit), bis die Grenze für alle
+    // erreicht ist (die Fehlversuche aus dem Test oben zählen mit).
+    let failures = 0;
+    for (let i = 0; failures < 200; i++) {
+      for (let k = 0; k < 2 && failures < 200; k++) {
+        assert.equal((await koppeln(otherCode(secondCode), `2001:db8:${i.toString(16)}::1`)).status, 400);
+        failures = ((await (await fetch(`${base}/api/status`, { headers: { Authorization: `Bearer ${ADMIN_TOKEN}` } })).json()) as {
+          kopplungsschutz: { fehlversucheInsgesamt: number };
+        }).kopplungsschutz.fehlversucheInsgesamt;
+      }
+    }
+    const stranger = await koppeln(secondCode, '192.0.2.99');
+    assert.equal(stranger.status, 429);
+    assert.equal(((await stranger.json()) as { grund: string }).grund, 'insgesamt');
+
+    // Das Gerät holt aus dem Heimnetz einen Code und spricht ihn (wie oben, Ziffern als Wörter).
+    const spokenBefore = fake.state.speechInputs.length;
+    const pairing = await fetch(`${base}/v1/device/pairing-code`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${ENV_DEVICE_TOKEN}`, 'X-Device-ID': ENV_DEVICE_ID, 'X-Forwarded-For': '198.51.100.10' },
+    });
+    assert.equal(pairing.status, 200, await pairing.clone().text());
+    const spoken = fake.state.speechInputs.slice(spokenBefore).find((text) => text.startsWith('Hier ist der Code'));
+    assert.ok(spoken, 'Code wurde nicht gesprochen');
+    const words = ['null', 'eins', 'zwei', 'drei', 'vier', 'fünf', 'sechs', 'sieben', 'acht', 'neun'];
+    const homeCode = spoken.split(':')[1].split('.')[0].split(',').map((w) => String(words.indexOf(w.trim()))).join('');
+    assert.match(homeCode, /^\d{6}$/);
+
+    // Aus dem Heimnetz: der Code eines fremden Geräts zählt wie ein falscher, der eigene geht.
+    assert.equal((await koppeln(secondCode, '198.51.100.10')).status, 400, 'fremder Code über der Grenze');
+    assert.equal((await koppeln(homeCode, '192.0.2.99')).status, 429, 'Fremde warten weiter');
+    const home = await koppeln(homeCode, '198.51.100.10');
+    assert.equal(home.status, 200, await home.clone().text());
+    const status = (await (await fetch(`${base}/api/status`, { headers: { Authorization: `Bearer ${ADMIN_TOKEN}` } })).json()) as {
+      kopplungsschutz: { absender: number; fehlversucheInsgesamt: number; geraeteNetze: number };
+    };
+    assert.equal(status.kopplungsschutz.fehlversucheInsgesamt, 200);
+    assert.equal(status.kopplungsschutz.geraeteNetze, 1);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    assert.ok(!output.includes('198.51.100.10') && !output.includes('2001:db8:'), 'keine Adressen im Protokoll');
   });
 });
 

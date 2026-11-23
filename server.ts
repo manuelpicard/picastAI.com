@@ -14,11 +14,12 @@ import { MAX_HEARD_SECONDS, StopPoints, TURN_ID_PATTERN, speechParagraphs, type 
 import { AudioError, decodeWavHeader, generateMelodyWav, isPcmFormat, isSilentPcm16 } from './server-api/audio.js';
 import { CONSENT_MISSING_DE, ParentControls, ParentStateWriteError, SLEEPING_DE, isValidTime, pairingCodeSpeech, type BlockReason, type ConsentPath } from './server-api/eltern.js';
 import { ParentStateFile } from './server-api/eltern-datei.js';
+import { PairingGuard, isLoopbackAddress } from './server-api/kopplungsschutz.js';
 import { config, getSafeConfigSummary, llmConfigWarnings, parentStateWarnings, testSwitchWarnings, ttsProviderWarnings, voiceConfigWarnings } from './server-api/config.js';
 import { isAdminTokenConfigured, verifyAdminAuthorization } from './server-api/admin-auth.js';
 import { VoicePipeline, VoiceProviderError } from './server-api/voice.js';
 import { FirestoreDeviceStore } from './server-api/firestore-service.js';
-import { buildAudioUrl } from './server-api/http-utils.js';
+import { buildAudioUrl, parentCookieSecure } from './server-api/http-utils.js';
 import { ERROR_RESPONSE_DE, SAFETY_RESPONSE_DE, UNCLEAR_RESPONSE_DE } from './server-api/safety.js';
 import { budgetTimeoutMs, MIN_TTS_MS, NO_TIMER, TurnTimer, type StageTimer } from './server-api/timing.js';
 
@@ -33,6 +34,23 @@ const HOST = config.host;
 // erkennt der Server https nur, wenn PICASTAI_TRUST_PROXY gesetzt ist.
 app.disable('x-powered-by');
 if (config.trustProxy) app.set('trust proxy', config.trustProxy);
+// Hinter Caddy auf demselben Rechner ohne PICASTAI_TRUST_PROXY sieht jede Anfrage aus, als käme sie
+// von 127.0.0.1: Dann teilen sich alle Eltern die Wartezeit beim Koppeln (server-api/kopplungsschutz.ts).
+// Einmal warnen, ohne Adresse.
+if (!config.trustProxy) {
+  let proxyWarningShown = false;
+  app.use((req: Request, _res: Response, next: NextFunction) => {
+    if (!proxyWarningShown && req.headers['x-forwarded-for'] && isLoopbackAddress(req.socket.remoteAddress)) {
+      proxyWarningShown = true;
+      console.warn(
+        '⚠️ Anfragen kommen über einen Proxy auf diesem Rechner, aber PICASTAI_TRUST_PROXY ist nicht gesetzt. ' +
+          'Dann zählen falsche Kopplungscodes für alle Eltern zusammen. Für Caddy auf demselben Rechner: ' +
+          'PICASTAI_TRUST_PROXY=loopback (deploy/EINRICHTUNG.md).'
+      );
+    }
+    next();
+  });
+}
 
 // Geräteliste: flüchtig im RAM (Standard) oder dauerhaft in Firestore
 // (PICASTAI_DEVICE_STORE=firestore). Rate-Limit, Audio und Story-State bleiben flüchtig.
@@ -99,16 +117,16 @@ const parents = new ParentControls(
   Date.now,
   config.parentStateFile && config.parentStateKey ? new ParentStateFile(config.parentStateFile, config.parentStateKey) : null
 );
-// Falsche Kopplungscodes (Schutz vor Raten): höchstens 10 je Absender und 200 insgesamt in 10 Minuten.
-const pairingFailures = new RateLimiter(10, 600);
-const pairingFailuresTotal = new RateLimiter(200, 600);
+// Falsche Kopplungscodes (Schutz vor Raten): wachsende Wartezeit je Absender, höchstens 200 insgesamt
+// in 10 Minuten; Eltern im Netz eines Geräts, das gerade einen Code gesprochen hat, dürfen immer
+// (Einzelheiten in server-api/kopplungsschutz.ts).
+const pairingGuard = new PairingGuard();
 // Alle fünf Minuten aufräumen, auch bei Geräten, die sich nie wieder melden: abgelaufene Stände der
 // Geschichte samt ihrer Vorbereitung, abgelaufene Vorbereitungen, Audio und Ton-Ströme.
 startPurging({ states: deviceStoryStates, prefetcher, audio: store, streams, stops }, [
-  // Abgelaufene Kopplungscodes und alte Fehlversuche beim Koppeln (nur Zähler je Absender).
+  // Abgelaufene Kopplungscodes und alte Fehlversuche beim Koppeln (nur Pseudonyme der Absender).
   () => parents.purge(),
-  () => pairingFailures.purge(),
-  () => pairingFailuresTotal.purge(),
+  () => pairingGuard.purge(),
   () => stopReports.purge(),
 ]);
 // Ein frisch erzeugter Teil braucht Claude und die Sprachausgabe. So viel Zeit bleibt mindestens
@@ -936,6 +954,8 @@ app.post('/v1/device/pairing-code', requireDevice, startTurnTimer, async (req: R
   }
   try {
     const { code, expiresInSeconds } = parents.createPairingCode(deviceId, 'geraet');
+    // Eltern im selben Netz wie das Gerät können diesen Code einlösen, auch wenn gerade viele raten.
+    pairingGuard.noteDeviceNetwork(req.ip, deviceId, expiresInSeconds * 1000);
     const speech = pairingCodeSpeech(code);
     let wav = generateMelodyWav([523.25, 659.25], [0.3, 0.4], config.audioSampleRate);
     if (voice.ttsConfigured) {
@@ -975,8 +995,14 @@ function readCookie(req: Request, name: string): string | null {
 }
 
 function parentCookie(req: Request, value: string, maxAgeSeconds: number): string {
-  // Secure im Betrieb immer (hinter Caddy mit TLS); sonst nur, wenn die Anfrage über https kam.
-  const secure = process.env.NODE_ENV === 'production' || req.secure;
+  // Secure über HTTPS und im Betrieb hinter einem Proxy auf diesem Rechner (Caddy); ohne nur bei http
+  // direkt aus dem eigenen WLAN, sonst behält der Browser das Cookie nicht (server-api/http-utils.ts).
+  const secure = parentCookieSecure({
+    secure: req.secure,
+    forwardedProto: req.headers['x-forwarded-proto'],
+    remoteAddress: req.socket.remoteAddress,
+    production: process.env.NODE_ENV === 'production',
+  });
   return [
     `${PARENT_COOKIE}=${value}`,
     'Path=/v1/eltern',
@@ -1022,10 +1048,18 @@ function parentStoreFailed(res: Response, err: unknown): Response {
 
 // POST /v1/eltern/koppeln {code}: Code einlösen, Eltern-Token als Cookie setzen.
 app.post('/v1/eltern/koppeln', requireJson, (req: Request, res: Response): any => {
-  // Nur Fehlversuche zählen. Wer zu oft falsch rät, wartet bis zu 10 Minuten.
-  const sender = req.ip || 'unbekannt';
-  if (pairingFailures.getStatus(sender).remaining === 0 || pairingFailuresTotal.getStatus('alle').remaining === 0) {
-    return res.status(429).json({ error: 'rate_limited' });
+  // Nur Fehlversuche zählen. Wer zu oft falsch rät, wartet (wachsend, höchstens 10 Minuten). Während
+  // der Wartezeit prüft der Server den Code gar nicht, auch einen richtigen nicht.
+  const verdict = pairingGuard.check(req.ip);
+  if (!verdict.allowed) {
+    res.set('Retry-After', String(verdict.retryAfterSeconds));
+    return res.status(429).json({ error: 'rate_limited', warten_sekunden: verdict.retryAfterSeconds, grund: verdict.grund });
+  }
+  // Über der Grenze für alle nur der Code eines Geräts aus dem eigenen Netz. Ein anderer zählt wie ein
+  // falscher und bleibt gültig: Die Antwort verrät nicht, dass es ihn gibt.
+  if (verdict.onlyDevices && !verdict.onlyDevices.includes(parents.pairingCodeDevice(req.body?.code) ?? '')) {
+    pairingGuard.recordFailure(req.ip);
+    return res.status(400).json({ error: 'invalid_code' });
   }
   let redeemed: { deviceId: string; token: string } | null;
   try {
@@ -1034,8 +1068,7 @@ app.post('/v1/eltern/koppeln', requireJson, (req: Request, res: Response): any =
     return parentStoreFailed(res, err);
   }
   if (!redeemed || !registry.isActive(redeemed.deviceId)) {
-    pairingFailures.allow(sender);
-    pairingFailuresTotal.allow('alle');
+    pairingGuard.recordFailure(req.ip);
     return res.status(400).json({ error: 'invalid_code' });
   }
   res.set('Set-Cookie', parentCookie(req, redeemed.token, PARENT_COOKIE_MAX_AGE_SECONDS));
@@ -1195,6 +1228,8 @@ app.get('/api/status', requireAdminAuth, (req: Request, res: Response) => {
     storyPrefetches: prefetcher.size,
     storyStops: stops.count,
     eltern: parents.counts,
+    // Schutz vor dem Raten von Kopplungscodes: nur Zahlen, keine Adressen.
+    kopplungsschutz: pairingGuard.counts,
     llm: brain.llmName,
     config: getSafeConfigSummary(config),
   });

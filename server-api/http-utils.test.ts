@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildAudioUrl, normalizePublicBaseUrl, parseTrustProxy } from './http-utils.js';
+import { buildAudioUrl, normalizePublicBaseUrl, parentCookieSecure, parseTrustProxy } from './http-utils.js';
 
 test('parseTrustProxy: Standard ist aus', () => {
   assert.equal(parseTrustProxy(undefined), false);
@@ -78,4 +78,24 @@ test('buildAudioUrl: Turn-ID wird URL-kodiert, Präfix ist überschreibbar', () 
     buildAudioUrl({ publicBaseUrl: 'https://a.example', protocol: 'https', host: 'a.example' }, 'a/b c', '/v1/turn'),
     'https://a.example/v1/turn/a%2Fb%20c'
   );
+});
+
+test('parentCookieSecure: Secure über HTTPS und im Betrieb hinter einem Proxy auf diesem Rechner', () => {
+  const base = { secure: false, forwardedProto: undefined as string | string[] | undefined, remoteAddress: '192.168.1.30', production: true };
+  // Test im eigenen WLAN: http direkt vom Handy, auch im Betrieb ohne Secure.
+  assert.equal(parentCookieSecure(base), false);
+  assert.equal(parentCookieSecure({ ...base, production: false }), false);
+  // Über HTTPS immer: direkt oder laut Proxy, auch in einer Liste oder als Feld mehrerer Köpfe.
+  assert.equal(parentCookieSecure({ ...base, secure: true }), true);
+  assert.equal(parentCookieSecure({ ...base, forwardedProto: 'https' }), true);
+  assert.equal(parentCookieSecure({ ...base, forwardedProto: ' HTTPS ' }), true);
+  assert.equal(parentCookieSecure({ ...base, forwardedProto: 'http, https' }), true);
+  assert.equal(parentCookieSecure({ ...base, forwardedProto: ['http', 'https'], production: false }), true);
+  assert.equal(parentCookieSecure({ ...base, forwardedProto: 'http' }), false);
+  // Im Betrieb von diesem Rechner (Caddy, auch ohne X-Forwarded-Proto): Secure.
+  for (const local of ['127.0.0.1', '::1', '::ffff:127.0.0.1']) {
+    assert.equal(parentCookieSecure({ ...base, remoteAddress: local }), true, local);
+    assert.equal(parentCookieSecure({ ...base, remoteAddress: local, production: false }), false, `${local} ohne Betrieb`);
+  }
+  assert.equal(parentCookieSecure({ ...base, remoteAddress: undefined }), false);
 });
