@@ -22,6 +22,7 @@ Stand 21.11.2026: **nicht unter Windows und nicht mit einem Pi getestet**; gesch
 - [ ] **Einwilligung** (Fenster 2, im Ordner des Repos, nach jedem Start des Servers; README, Schritt 3b): Betreiber-Token verdeckt eingeben, `PICASTAI_DEVICE_ID=prototype-001`, dann `node deploy\eltern-einwilligung.mjs`. Erwartet: `Einwilligung erteilt.` Danach Fenster 2 schließen.
 - [ ] **Neustartprobe:** in Fenster 1 Strg+C (fragt Windows „Batchvorgang abbrechen (J/N)?“: J), dann `npm start` erneut (die Einstellungen bleiben in diesem Fenster gesetzt). `/health` antwortet wieder, danach die Einwilligung erneut erteilen.
 - [ ] **Grenzen bekannt:** Zwischen Pi und Rechner läuft http, also unverschlüsselt im eigenen WLAN. Ohne Caddy ist im WLAN mehr erreichbar als nur die Geräte-Routen: die Eltern-Routen (`/v1/eltern/…`, nur mit Kopplungscode), die Betreiber-Routen (`/api/…`, nur mit Betreiber-Token) und die Entwicklungsseiten (`/`, `/hoerproben`; ohne Daten). Deshalb nur im eigenen, verschlüsselten WLAN und nur mit Erwachsenen. Aufräumen: README, Abschnitt „Später: der Pi im selben WLAN“, „Grenzen“.
+- [ ] **Nach dem Test:** `docker rm -f speaches` (die Modelle bleiben im Volume `hf-hub-cache`). Auf dem eigenen Rechner gibt es keine Frist für Protokolle; Docker hebt das Protokoll des Containers sonst auf, bis er gelöscht wird (Einschätzung: Grundeinstellung von Docker).
 
 ## A2. Gemieteter Server
 
@@ -31,7 +32,9 @@ Stand 21.11.2026: **nicht unter Windows und nicht mit einem Pi getestet**; gesch
 - [ ] `systemctl status kunibert-server` aktiv; Journal: „Feste Sprechtexte vorbereitet (7 von 7)“ (Sicherheitshinweis, „nicht verstanden“, Fehlerhinweis, Ersatzantwort, Pausensatz der Geschichte, Hinweis ohne Einwilligung, Satz im Schlafmodus). Ist der Sprachserver beim Start noch nicht bereit, versucht der Dienst es gut sechs Minuten lang wieder („neuer Versuch in … s“).
 - [ ] Von außen: `/health` 200, `/` 404, `/api/status` 404, HTTP leitet auf HTTPS, Zertifikat gültig.
 - [ ] Neustartprobe: Server neu starten, `/health` wieder 200.
-- [ ] Frist für Protokolle (vorläufig 14 Tage): `systemd-analyze cat-config systemd/journald.conf | grep -E 'MaxRetentionSec|MaxFileSec'` zeigt `14day` und `1day`; `sudo docker inspect --format '{{.HostConfig.LogConfig.Type}}' speaches` zeigt `journald` (`EINRICHTUNG.md`, Abschnitt „Betrieb“).
+- [ ] Frist für Protokolle (vorläufig 14 Tage): `systemd-analyze cat-config systemd/journald.conf | grep -E '^(MaxRetentionSec|MaxFileSec)='` zeigt `14day` und `1day`; `sudo docker inspect --format '{{.HostConfig.LogConfig.Type}}' speaches` zeigt `journald` (`EINRICHTUNG.md`, Abschnitt „Betrieb“).
+- [ ] Gibt es `/etc/rsyslog.d`: `sudo rsyslogd -N1` ohne Fehler. Nach `sudo systemctl restart kunibert-server` zeigt `sudo tail -n 200 /var/log/syslog | grep -cE ' kunibert-server(\[[0-9]+\])?:'` die Zahl 0.
+- [ ] Protokoll des Sprachservers angesehen: `sudo journalctl -t speaches -n 50 --no-pager` zeigt keine erkannten Sätze und keine Antworttexte (bisher nie geprüft).
 
 ## B. Pi vorbereiten
 

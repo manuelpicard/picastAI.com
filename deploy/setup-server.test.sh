@@ -8,6 +8,7 @@ source "$here/setup-server.sh"
 set +e
 
 fails=0
+quiet() { "$@" >/dev/null 2>&1; }
 ok()   { printf 'ok   %s\n' "$1"; }
 bad()  { printf 'FAIL %s\n' "$1"; fails=$((fails + 1)); }
 eq()   { if [[ "$2" == "$3" ]]; then ok "$1"; else bad "$1: erwartet '$3', war '$2'"; fi; }
@@ -72,13 +73,21 @@ yes "Journal: jeden Tag eine neue Datei"    grep -qx 'MaxFileSec=1day' "$tmp/jou
 eq  "Journal: nur diese zwei Werte"         "$(grep -c '^[A-Za-z]' "$tmp/journald.conf")" 2
 eq  "Journal: Datei in journald.conf.d"     "$(dirname "$JOURNALD_DROPIN")" /etc/systemd/journald.conf.d
 write_rsyslog_filter "$tmp/rsyslog.conf"
-yes "rsyslog: Server und Sprachserver heraus" grep -qxF "if \$programname == 'kunibert-server' or \$programname == 'speaches' then stop" "$tmp/rsyslog.conf"
+yes "rsyslog: Server, Sprachserver, Caddy heraus" grep -qxF "if \$programname == 'kunibert-server' or \$programname == 'speaches' or \$programname == 'caddy' then stop" "$tmp/rsyslog.conf"
 yes "rsyslog: Regel vor 50-default.conf"    [ "$(basename "$RSYSLOG_FILTER")" \< 50-default.conf ]
 eq  "Kennung im Dienst passt zur Regel"     "$(sed -n 's/^SyslogIdentifier=//p' "$here/kunibert-server.service")" "$SERVER_LOG_ID"
 eq  "Sprachserver: Journal und Kennung"     "${SPEACHES_LOG_OPTS[*]}" "--log-driver journald --log-opt tag=speaches"
+docker_run=$(sed -n '/docker run --detach --name speaches/,/SPEACHES_IMAGE"/p' "$here/setup-server.sh")
 # shellcheck disable=SC2016
-yes "docker run nutzt diese Optionen"       grep -qF '"${SPEACHES_LOG_OPTS[@]}"' "$here/setup-server.sh"
-yes "Einrichtung setzt die Frist"           grep -qx '  setup_log_retention' "$here/setup-server.sh"
+yes "docker run nutzt diese Optionen"       grep -qF '"${SPEACHES_LOG_OPTS[@]}"' <<<"$docker_run"
+main_body=$(sed -n '/^main() {/,/^}/p' "$here/setup-server.sh")
+eq  "Frist vor den Paketen"                 "$(grep -oE '^  (setup_log_retention|install_packages)' <<<"$main_body" | head -n 1 | tr -d ' ')" setup_log_retention
+
+yes "Hinweis: Container im Journal, still"  speaches_log_hint journald
+eq  "Hinweis: kein Text bei journald"       "$(speaches_log_hint journald)" ""
+no  "Hinweis: json-file meldet"             quiet speaches_log_hint json-file
+yes "Hinweis: nennt den Treiber"            grep -q "nach 'json-file'" <<<"$(speaches_log_hint json-file)"
+yes "Hinweis: leer heißt unbekannt"         grep -q "nach 'unbekannt'" <<<"$(speaches_log_hint '')"
 
 printf 'a\n' > "$tmp/quelle"
 yes "Kopieren: neue Datei"                  install_if_changed "$tmp/quelle" "$tmp/ziel"
@@ -88,9 +97,39 @@ no  "Kopieren: gleicher Inhalt, nichts tun" install_if_changed "$tmp/quelle" "$t
 printf 'b\n' > "$tmp/quelle"
 yes "Kopieren: geänderter Inhalt"           install_if_changed "$tmp/quelle" "$tmp/ziel"
 eq  "Kopieren: neuer Inhalt"                "$(cat "$tmp/ziel")" b
+fehler=$( (install_if_changed "$tmp/quelle" "$tmp/gibt-es-nicht/ziel") 2>&1 )
+yes "Kopieren: Fehler bricht ab"            grep -q '^FEHLER: Datei ließ sich nicht schreiben' <<<"$fehler"
+
+# Der Schritt selbst, mit umgelenkten Pfaden und einer Attrappe für systemctl.
+(
+  JOURNALD_DROPIN="$tmp/sys/journald.conf.d/50-kunibert-frist.conf"
+  RSYSLOG_FILTER="$tmp/sys/rsyslog.d/10-kunibert.conf"
+  rsyslog_aktiv=0
+  aufrufe="$tmp/systemctl.log"   # eigener Name: setup_log_retention hat ein lokales tmp
+  systemctl() {
+    if [[ "$1" == is-active ]]; then return "$rsyslog_aktiv"; fi
+    printf '%s\n' "$*" >> "$aufrufe"
+  }
+  : > "$aufrufe"
+  setup_log_retention >/dev/null
+  eq  "Schritt: Journal-Datei angelegt"     "$(cat "$JOURNALD_DROPIN")" "$(write_journald_retention /dev/stdout)"
+  eq  "Schritt: journald neu gestartet"     "$(cat "$aufrufe")" "restart systemd-journald"
+  no  "Schritt: ohne rsyslog keine Regel"   test -e "$RSYSLOG_FILTER"
+  : > "$aufrufe"
+  setup_log_retention >/dev/null
+  eq  "Schritt: zweiter Lauf startet nichts" "$(cat "$aufrufe")" ""
+  mkdir -p "$(dirname "$RSYSLOG_FILTER")"
+  setup_log_retention >/dev/null
+  yes "Schritt: Regel angelegt"             grep -q 'then stop$' "$RSYSLOG_FILTER"
+  eq  "Schritt: rsyslog läuft, Neustart"    "$(cat "$aufrufe")" "restart rsyslog"
+  : > "$aufrufe"; rm "$RSYSLOG_FILTER"; rsyslog_aktiv=3
+  setup_log_retention >/dev/null
+  yes "Schritt: Regel auch ohne laufendes rsyslog" test -s "$RSYSLOG_FILTER"
+  eq  "Schritt: rsyslog aus, kein Neustart" "$(cat "$aufrufe")" ""
+  [[ $fails -eq 0 ]]
+) || fails=$((fails + 1))
 
 # Aufruf ohne Hostname bricht ab, bevor etwas geändert wird.
-quiet() { "$@" >/dev/null 2>&1; }
 no  "ohne --hostname: Abbruch"     quiet bash "$here/setup-server.sh"
 no  "ungültiger Hostname: Abbruch" quiet bash "$here/setup-server.sh" --hostname 'x;y'
 no  "unbekannte Option: Abbruch"   quiet bash "$here/setup-server.sh" --hostname a.example --gibt-es-nicht
