@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { TEXT_VERSION_RE } from './eltern-datei.js';
 import {
+  ELTERNTEXT_VERSION,
   MAX_PARENT_TOKENS_PER_DEVICE,
   PAIRING_CODE_TTL_SECONDS,
   ParentControls,
@@ -87,9 +89,39 @@ test('Einwilligung: ohne Einwilligung gesperrt, erteilen und widerrufen', () => 
   assert.equal(p.blockReason('g1', true), null);
   assert.equal(p.settings('g1').einwilligung.erteilt, true);
   assert.equal(p.settings('g1').einwilligung.zeitpunkt, new Date(c.now()).toISOString());
-  p.revokeConsent('g1');
+  assert.equal(p.settings('g1').einwilligung.elterntextVersion, ELTERNTEXT_VERSION);
+  assert.equal(p.settings('g1').einwilligung.weg, 'geraet');
+  c.advance(60_000);
+  p.revokeConsent('g1', 'betreiber');
   assert.equal(p.blockReason('g1', true), 'einwilligung');
-  assert.deepEqual(p.settings('g1').einwilligung, { erteilt: false, zeitpunkt: null });
+  // Der Widerruf bleibt als letzter Stand stehen: Zeitpunkt des Widerrufs, Version, Weg.
+  assert.deepEqual(p.settings('g1').einwilligung, {
+    erteilt: false,
+    zeitpunkt: new Date(c.now()).toISOString(),
+    elterntextVersion: ELTERNTEXT_VERSION,
+    weg: 'betreiber',
+  });
+});
+
+test('Einwilligung: nie entschieden heißt alles null; ein Widerruf ohne Einwilligung legt nichts an', () => {
+  const p = new ParentControls();
+  p.revokeConsent('g1');
+  assert.deepEqual(p.settings('g1').einwilligung, { erteilt: false, zeitpunkt: null, elterntextVersion: null, weg: null });
+  assert.equal(p.counts.geraete, 0);
+});
+
+test('Kopplung merkt sich den Weg des Codes (Gerät oder Betreiber-Route)', () => {
+  const p = new ParentControls();
+  const fromDevice = p.redeemPairingCode(p.createPairingCode('g1').code);
+  const fromOperator = p.redeemPairingCode(p.createPairingCode('g2', 'betreiber').code);
+  assert.ok(fromDevice && fromOperator);
+  assert.deepEqual(p.sessionForToken(fromDevice.token), { deviceId: 'g1', weg: 'geraet' });
+  assert.deepEqual(p.sessionForToken(fromOperator.token), { deviceId: 'g2', weg: 'betreiber' });
+  assert.equal(p.sessionForToken('kurz'), null);
+});
+
+test('Version des Elterntexts passt zum Format der Datei', () => {
+  assert.match(ELTERNTEXT_VERSION, TEXT_VERSION_RE);
 });
 
 test('Schlafmodus sperrt, fehlende Einwilligung geht vor', () => {
@@ -151,7 +183,11 @@ test('forgetDevice löscht alles zum Gerät, andere Geräte bleiben', () => {
   p.forgetDevice('g1');
   assert.equal(p.deviceForToken(t1.token), null);
   assert.equal(p.redeemPairingCode(pending), null);
-  assert.deepEqual(p.settings('g1'), { einwilligung: { erteilt: false, zeitpunkt: null }, schlafmodus: false, ruhezeiten: null });
+  assert.deepEqual(p.settings('g1'), {
+    einwilligung: { erteilt: false, zeitpunkt: null, elterntextVersion: null, weg: null },
+    schlafmodus: false,
+    ruhezeiten: null,
+  });
   assert.equal(p.deviceForToken(t2.token), 'g2');
   assert.equal(p.hasConsent('g2'), true);
 });

@@ -9,6 +9,8 @@ import {
   llmConfigWarnings,
   loadConfig,
   normalizeServiceUrl,
+  parentStateSettings,
+  parentStateWarnings,
   resolveTtsProvider,
   testSwitchWarnings,
   ttsProviderWarnings,
@@ -221,4 +223,43 @@ test('Einwilligungs-Prüfung: standardmäßig an, nur außerhalb des Betriebs mi
   assert.equal(isConsentRequired({ KUNIBERT_EINWILLIGUNG_PRUEFEN: 'nein' }), true, 'nur genau 0 schaltet ab');
   assert.equal(isConsentRequired({ KUNIBERT_EINWILLIGUNG_PRUEFEN: 'false' }), true);
   assert.equal(isConsentRequired({ NODE_ENV: 'production', KUNIBERT_EINWILLIGUNG_PRUEFEN: '0' }), true, 'im Betrieb nicht abschaltbar');
+});
+
+test('Eltern-Steuerung dauerhaft nur mit Datei und gültigem Schlüssel (Punkt E2)', () => {
+  const key = 'k'.repeat(32);
+  assert.deepEqual(parentStateSettings({}), { file: null, key: null });
+  assert.deepEqual(parentStateSettings({ KUNIBERT_ELTERN_DATEI: '/var/lib/kunibert/eltern.json' }), { file: null, key: null });
+  assert.deepEqual(parentStateSettings({ KUNIBERT_ELTERN_SCHLUESSEL: key }), { file: null, key: null });
+  assert.deepEqual(
+    parentStateSettings({ KUNIBERT_ELTERN_DATEI: ' /var/lib/kunibert/eltern.json ', KUNIBERT_ELTERN_SCHLUESSEL: ` ${key} ` }),
+    { file: '/var/lib/kunibert/eltern.json', key }
+  );
+  assert.deepEqual(
+    parentStateSettings({ KUNIBERT_ELTERN_DATEI: '/var/lib/kunibert/eltern.json', KUNIBERT_ELTERN_SCHLUESSEL: 'k'.repeat(31) }),
+    { file: null, key: null },
+    'zu kurzer Schlüssel: nicht dauerhaft, kein Standardwert'
+  );
+});
+
+test('Warnung zur Eltern-Steuerung: im Betrieb ohne Datei laut, nie mit dem Schlüssel', () => {
+  const key = 'geheim-'.repeat(6);
+  const memoryOnly = /Eltern-Steuerung nur im Arbeitsspeicher/;
+  const prod = parentStateWarnings({ NODE_ENV: 'production' });
+  assert.equal(prod.length, 1);
+  assert.match(prod[0], memoryOnly);
+  assert.match(prod[0], /Vor dem ersten Kind/);
+  assert.deepEqual(parentStateWarnings({ NODE_ENV: 'production', KUNIBERT_ELTERN_DATEI: '/var/lib/kunibert/eltern.json', KUNIBERT_ELTERN_SCHLUESSEL: key }), []);
+  assert.deepEqual(parentStateWarnings({ NODE_ENV: 'development' }), [], 'Probelauf am Rechner ohne Datei: still');
+  assert.match(parentStateWarnings({ KUNIBERT_ELTERN_DATEI: '/tmp/eltern.json' })[0], memoryOnly, 'nur eins von beiden gesetzt');
+  const short = parentStateWarnings({ NODE_ENV: 'production', KUNIBERT_ELTERN_DATEI: '/tmp/eltern.json', KUNIBERT_ELTERN_SCHLUESSEL: 'kurz-aber-geheim' });
+  assert.equal(short.length, 2);
+  assert.match(short[0], /zu kurz/);
+  for (const warning of [...prod, ...short]) assert.ok(!warning.includes('kurz-aber-geheim') && !warning.includes(key), 'Schlüssel in der Warnung');
+});
+
+test('getSafeConfigSummary: Eltern-Steuerung nur als ja oder nein, ohne Pfad und Schlüssel', () => {
+  const summary = getSafeConfigSummary({ ...loadConfig(), parentStateFile: '/var/lib/kunibert/eltern.json', parentStateKey: 'geheim-'.repeat(6) });
+  assert.equal(summary.elternDauerhaft, true);
+  const text = JSON.stringify(summary);
+  assert.ok(!text.includes('geheim-geheim') && !text.includes('/var/lib/kunibert/eltern.json'));
 });

@@ -12,8 +12,9 @@ import { STORY_STATE_TTL_MS, StoryStateStore, startPurging } from './server-api/
 import { PARAGRAPH_PAUSE_MS, PcmStream, StreamingSpeaker, StreamRegistry, streamingWavHeader } from './server-api/audio-stream.js';
 import { MAX_HEARD_SECONDS, StopPoints, TURN_ID_PATTERN, speechParagraphs, type SpokenPart, type StopOutcome } from './server-api/stopp.js';
 import { AudioError, decodeWavHeader, generateMelodyWav, isPcmFormat, isSilentPcm16 } from './server-api/audio.js';
-import { CONSENT_MISSING_DE, ParentControls, SLEEPING_DE, isValidTime, pairingCodeSpeech, type BlockReason } from './server-api/eltern.js';
-import { config, getSafeConfigSummary, llmConfigWarnings, testSwitchWarnings, ttsProviderWarnings, voiceConfigWarnings } from './server-api/config.js';
+import { CONSENT_MISSING_DE, ParentControls, ParentStateWriteError, SLEEPING_DE, isValidTime, pairingCodeSpeech, type BlockReason, type ConsentPath } from './server-api/eltern.js';
+import { ParentStateFile } from './server-api/eltern-datei.js';
+import { config, getSafeConfigSummary, llmConfigWarnings, parentStateWarnings, testSwitchWarnings, ttsProviderWarnings, voiceConfigWarnings } from './server-api/config.js';
 import { isAdminTokenConfigured, verifyAdminAuthorization } from './server-api/admin-auth.js';
 import { VoicePipeline, VoiceProviderError } from './server-api/voice.js';
 import { FirestoreDeviceStore } from './server-api/firestore-service.js';
@@ -91,9 +92,13 @@ const prefetcher = new StoryPrefetcher(
   },
   { ttlMs: 30 * 60 * 1000, nextEpisodeTtlMs: STORY_STATE_TTL_MS, enabled: config.storyPrefetch }
 );
-// Eltern-Steuerung (server-api/eltern.ts): Kopplung, Einwilligung, Schlafmodus, Ruhezeiten. Vorläufig
-// nur im Arbeitsspeicher: Nach einem Neustart des Servers müssen die Eltern neu koppeln und einwilligen.
-const parents = new ParentControls();
+// Eltern-Steuerung (server-api/eltern.ts): Kopplung, Einwilligung, Schlafmodus, Ruhezeiten. Mit
+// KUNIBERT_ELTERN_DATEI und KUNIBERT_ELTERN_SCHLUESSEL übersteht sie einen Neustart (Punkt E2,
+// server-api/eltern-datei.ts, je Gerät nur ein Pseudonym); ohne die beiden nur im Arbeitsspeicher.
+const parents = new ParentControls(
+  Date.now,
+  config.parentStateFile && config.parentStateKey ? new ParentStateFile(config.parentStateFile, config.parentStateKey) : null
+);
 // Falsche Kopplungscodes (Schutz vor Raten): höchstens 10 je Absender und 200 insgesamt in 10 Minuten.
 const pairingFailures = new RateLimiter(10, 600);
 const pairingFailuresTotal = new RateLimiter(200, 600);
@@ -930,7 +935,7 @@ app.post('/v1/device/pairing-code', requireDevice, startTurnTimer, async (req: R
     return res.status(429).json({ error: 'rate_limited' });
   }
   try {
-    const { code, expiresInSeconds } = parents.createPairingCode(deviceId);
+    const { code, expiresInSeconds } = parents.createPairingCode(deviceId, 'geraet');
     const speech = pairingCodeSpeech(code);
     let wav = generateMelodyWav([523.25, 659.25], [0.3, 0.4], config.audioSampleRate);
     if (voice.ttsConfigured) {
@@ -992,15 +997,27 @@ function requireJson(req: Request, res: Response, next: NextFunction): void {
 }
 
 function requireParent(req: Request, res: Response, next: NextFunction): void {
-  const deviceId = parents.deviceForToken(readCookie(req, PARENT_COOKIE));
+  const session = parents.sessionForToken(readCookie(req, PARENT_COOKIE));
   // Ein gesperrtes Gerät hat keine Eltern-Steuerung mehr.
-  if (!deviceId || !registry.isActive(deviceId)) {
+  if (!session || !registry.isActive(session.deviceId)) {
     res.status(401).json({ error: 'unauthorized' });
     return;
   }
   res.set('Cache-Control', 'no-store');
-  res.locals.parentDeviceId = deviceId;
+  res.locals.parentDeviceId = session.deviceId;
+  // Woher der Kopplungscode dieses Eltern-Tokens kam (Gerät oder Betreiber-Route); steht bei der Einwilligung.
+  res.locals.parentWeg = session.weg;
   next();
+}
+
+/**
+ * Die Eltern-Steuerung ließ sich nicht dauerhaft speichern (Datei, Punkt E2): 503. `wirksam` sagt, ob
+ * die Änderung trotzdem gilt (bis zum nächsten Neustart; der Server versucht das Speichern alle fünf
+ * Minuten erneut). Einwilligung und Kopplung gelten nie ohne Speichern.
+ */
+function parentStoreFailed(res: Response, err: unknown): Response {
+  if (!(err instanceof ParentStateWriteError)) throw err;
+  return res.status(503).json({ error: 'parent_store_unavailable', wirksam: err.inEffect });
 }
 
 // POST /v1/eltern/koppeln {code}: Code einlösen, Eltern-Token als Cookie setzen.
@@ -1010,7 +1027,12 @@ app.post('/v1/eltern/koppeln', requireJson, (req: Request, res: Response): any =
   if (pairingFailures.getStatus(sender).remaining === 0 || pairingFailuresTotal.getStatus('alle').remaining === 0) {
     return res.status(429).json({ error: 'rate_limited' });
   }
-  const redeemed = parents.redeemPairingCode(req.body?.code);
+  let redeemed: { deviceId: string; token: string } | null;
+  try {
+    redeemed = parents.redeemPairingCode(req.body?.code);
+  } catch (err) {
+    return parentStoreFailed(res, err);
+  }
   if (!redeemed || !registry.isActive(redeemed.deviceId)) {
     pairingFailures.allow(sender);
     pairingFailuresTotal.allow('alle');
@@ -1026,20 +1048,31 @@ app.get('/v1/eltern/status', requireParent, (_req: Request, res: Response) => {
   res.json(parents.settings(res.locals.parentDeviceId as string));
 });
 
-// PUT /v1/eltern/einwilligung: Einwilligung erteilen.
-app.put('/v1/eltern/einwilligung', requireJson, requireParent, (_req: Request, res: Response) => {
+// PUT /v1/eltern/einwilligung: Einwilligung erteilen. Mit Datei gilt sie erst, wenn sie gespeichert ist.
+app.put('/v1/eltern/einwilligung', requireJson, requireParent, (_req: Request, res: Response): any => {
   const deviceId = res.locals.parentDeviceId as string;
-  parents.grantConsent(deviceId);
-  res.json(parents.settings(deviceId));
+  try {
+    parents.grantConsent(deviceId, res.locals.parentWeg as ConsentPath);
+  } catch (err) {
+    return parentStoreFailed(res, err);
+  }
+  return res.json(parents.settings(deviceId));
 });
 
 // DELETE /v1/eltern/einwilligung: Einwilligung widerrufen. Stand der Geschichte, Vorbereitung und
-// wartendes Audio werden gelöscht; laufende Anfragen antworten nur noch mit dem festen Satz.
-app.delete('/v1/eltern/einwilligung', requireParent, (_req: Request, res: Response) => {
+// wartendes Audio werden gelöscht; laufende Anfragen antworten nur noch mit dem festen Satz. Der
+// Widerruf gilt sofort, auch wenn das Speichern in der Datei fehlschlägt.
+app.delete('/v1/eltern/einwilligung', requireParent, (_req: Request, res: Response): any => {
   const deviceId = res.locals.parentDeviceId as string;
-  parents.revokeConsent(deviceId);
+  let failure: unknown = null;
+  try {
+    parents.revokeConsent(deviceId, res.locals.parentWeg as ConsentPath);
+  } catch (err) {
+    failure = err;
+  }
   forgetDeviceStory(deviceId);
-  res.json(parents.settings(deviceId));
+  if (failure) return parentStoreFailed(res, failure);
+  return res.json(parents.settings(deviceId));
 });
 
 // PUT /v1/eltern/einstellungen {schlafmodus?: boolean, ruhezeiten?: {von, bis} | null}
@@ -1060,8 +1093,14 @@ app.put('/v1/eltern/einstellungen', requireJson, requireParent, (req: Request, r
   ) {
     return res.status(400).json({ error: 'invalid_settings' });
   }
-  if ('schlafmodus' in body) parents.setSleep(deviceId, body.schlafmodus);
-  if ('ruhezeiten' in body) parents.setQuietHours(deviceId, body.ruhezeiten ? { von: body.ruhezeiten.von, bis: body.ruhezeiten.bis } : null);
+  try {
+    parents.updateSettings(deviceId, {
+      ...('schlafmodus' in body ? { schlafmodus: body.schlafmodus } : {}),
+      ...('ruhezeiten' in body ? { ruhezeiten: body.ruhezeiten ? { von: body.ruhezeiten.von, bis: body.ruhezeiten.bis } : null } : {}),
+    });
+  } catch (err) {
+    return parentStoreFailed(res, err);
+  }
   return res.json(parents.settings(deviceId));
 });
 
@@ -1078,12 +1117,17 @@ app.post('/v1/eltern/geschichte-neu', requireJson, requireParent, (_req: Request
 // DELETE /v1/eltern/daten: alles löschen, was der Server zum Gerät für die Eltern hält:
 // Einwilligung, Einstellungen, Eltern-Tokens (auch auf anderen Handys), Geschichte, wartendes Audio.
 // Die Geräte-Anmeldung selbst bleibt (die verwaltet der Betreiber).
-app.delete('/v1/eltern/daten', requireParent, (req: Request, res: Response) => {
+// Mit Datei auch dort (gilt sofort, auch wenn das Speichern fehlschlägt).
+app.delete('/v1/eltern/daten', requireParent, (req: Request, res: Response): any => {
   const deviceId = res.locals.parentDeviceId as string;
-  parents.forgetDevice(deviceId);
   forgetDeviceStory(deviceId);
   res.set('Set-Cookie', parentCookie(req, '', 0));
-  res.json({ geloescht: true });
+  try {
+    parents.forgetDevice(deviceId);
+  } catch (err) {
+    return parentStoreFailed(res, err);
+  }
+  return res.json({ geloescht: true });
 });
 
 // ------------------------------------------------------------
@@ -1117,7 +1161,12 @@ app.post('/api/devices/:id/revoke', requireAdminAuth, async (req: Request, res: 
   // sofort, noch bevor Firestore den Widerruf speichert (N1120-1610-b).
   const { success, persisted } = await registry.revokeAndPersist(deviceId, () => {
     forgetDeviceStory(deviceId);
-    parents.forgetDevice(deviceId);
+    try {
+      parents.forgetDevice(deviceId);
+    } catch (err) {
+      // Im Speicher ist alles vergessen; die Datei holt der Server beim Aufräumen nach (schon gemeldet).
+      if (!(err instanceof ParentStateWriteError)) throw err;
+    }
   });
   return res.json({ success, persisted });
 });
@@ -1127,7 +1176,7 @@ app.post('/api/devices/:id/revoke', requireAdminAuth, async (req: Request, res: 
 app.post('/api/devices/:id/kopplungscode', requireAdminAuth, (req: Request, res: Response): any => {
   const deviceId = String(req.params.id);
   if (!registry.isActive(deviceId)) return res.status(404).json({ error: 'not_found' });
-  const { code, expiresInSeconds } = parents.createPairingCode(deviceId);
+  const { code, expiresInSeconds } = parents.createPairingCode(deviceId, 'betreiber');
   res.set('Cache-Control', 'no-store');
   return res.json({ code, expires_in: expiresInSeconds });
 });
@@ -1203,6 +1252,19 @@ async function startServer() {
     console.log(`Geräteliste aus Firestore geladen (${count} Einträge).`);
   }
 
+  // Eltern-Steuerung aus der Datei (Punkt E2), erst nach der Geräteliste: Übernommen wird nur, was zu
+  // einem angemeldeten, nicht gesperrten Gerät gehört. Fail-closed: Ist die Datei da, aber nicht lesbar
+  // oder ungültig, startet der Server nicht. Sonst gingen Widerrufe und Ruhezeiten verloren, und das
+  // nächste Speichern überschriebe den Nachweis der Einwilligungen.
+  const loaded = parents.load(registry.list().filter((d) => !d.revoked).map((d) => d.deviceId));
+  if (loaded) {
+    // Nur Zahlen, keine Geräte-IDs, keine Pseudonyme, kein Pfad.
+    console.log(`Eltern-Steuerung aus der Datei geladen (${loaded.geraete} Geräte, ${loaded.verworfen} ohne angemeldetes Gerät gelöscht).`);
+    if (loaded.schreibfehler) {
+      console.warn(`⚠️ Eltern-Steuerung: Die Datei ist nicht beschreibbar (${loaded.schreibfehler}). Einwilligungen und Kopplungen antworten mit 503, bis das behoben ist.`);
+    }
+  }
+
   if (!isProd) {
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
@@ -1220,7 +1282,7 @@ async function startServer() {
 
   app.listen(PORT, HOST, () => {
     console.log(`🏰 Ritter Kunibert Server läuft auf http://${HOST}:${PORT}`);
-    for (const warning of [...llmConfigWarnings(), ...ttsProviderWarnings(), ...voiceConfigWarnings(config), ...testSwitchWarnings()]) console.warn(`⚠️ ${warning}`);
+    for (const warning of [...llmConfigWarnings(), ...ttsProviderWarnings(), ...voiceConfigWarnings(config), ...testSwitchWarnings(), ...parentStateWarnings()]) console.warn(`⚠️ ${warning}`);
     // Feste Sprechtexte vorab synthetisieren (Produktion), damit der Sicherheitshinweis
     // schon beim ersten Kind ohne Wartezeit und ohne Anbieter-Anfrage gesprochen wird.
     // Mit neuen Versuchen, falls der Sprachserver nach einem Neustart noch nicht bereit ist.

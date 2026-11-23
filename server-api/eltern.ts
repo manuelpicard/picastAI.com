@@ -1,18 +1,31 @@
 import crypto from 'crypto';
+import type { ConsentPath, ParentStateFile, StoredParentEntry } from './eltern-datei.js';
+
+export type { ConsentPath } from './eltern-datei.js';
 
 /**
  * Eltern-Steuerung je Gerät (Server-Teil der Eltern-App, „PR A“).
  *
  * - Kopplung: Das Gerät fordert einen sechsstelligen Code an und spricht ihn. Die Eltern geben
  *   ihn ein und bekommen ein Eltern-Token (im Cookie). Der Server speichert nur den SHA-256-Hash.
- * - Einwilligung: erteilt oder nicht. Gespeichert wird nur der aktuelle Stand mit Zeitpunkt,
- *   kein Verlauf.
+ * - Einwilligung: erteilt oder widerrufen. Gespeichert wird nur der letzte Stand mit Zeitpunkt,
+ *   Version des Elterntexts und Weg der Kopplung, kein Verlauf.
  * - Schlafmodus und Ruhezeiten: In dieser Zeit antwortet Kunibert nur mit einem festen Satz.
  *
- * Vorläufig liegt alles nur im Arbeitsspeicher. Nach einem Neustart des Servers müssen die
- * Eltern neu koppeln und neu einwilligen. Es gibt keinen Verlauf, keine Mitschriften und keine
- * Statistik je Kind.
+ * Dauerhaft (seit 23.11.2026, Punkt E2): Mit KUNIBERT_ELTERN_DATEI und KUNIBERT_ELTERN_SCHLUESSEL
+ * übersteht all das einen Neustart (server-api/eltern-datei.ts; je Gerät nur ein Pseudonym). Nur die
+ * Kopplungscodes (10 Minuten gültig) bleiben im Arbeitsspeicher. Ohne die beiden Werte liegt alles
+ * nur im Arbeitsspeicher: Nach einem Neustart müssen die Eltern neu koppeln und neu einwilligen.
+ * Es gibt keinen Verlauf, keine Mitschriften und keine Statistik je Kind.
  */
+
+/**
+ * Version des Elterntexts, der zur Einwilligung gehört; sie steht bei jeder Einwilligung mit in der
+ * Datei. "0": Es gibt noch keinen Elterntext (Punkt I3), es testen nur Erwachsene. Ändert sich der
+ * Text (Seite /eltern, Punkt D2), steigt die Version. Vorläufig zählt eine Einwilligung unabhängig
+ * von ihrer Version (offen: neu einwilligen lassen bei einem neuen Text).
+ */
+export const ELTERNTEXT_VERSION = '0';
 
 /** Gültigkeit eines Kopplungscodes. */
 export const PAIRING_CODE_TTL_SECONDS = 10 * 60;
@@ -29,7 +42,8 @@ export interface QuietHours {
 }
 
 export interface ParentSettings {
-  einwilligung: { erteilt: boolean; zeitpunkt: string | null };
+  /** Letzter Stand: `zeitpunkt` ist der Zeitpunkt der Erteilung oder des Widerrufs; alles null, wenn nie entschieden. */
+  einwilligung: { erteilt: boolean; zeitpunkt: string | null; elterntextVersion: string | null; weg: ConsentPath | null };
   schlafmodus: boolean;
   ruhezeiten: QuietHours | null;
 }
@@ -37,8 +51,15 @@ export interface ParentSettings {
 /** Warum ein Gerät gerade nicht antworten darf. */
 export type BlockReason = 'einwilligung' | 'schlaf' | null;
 
+interface ConsentRecord {
+  erteilt: boolean;
+  atMs: number;
+  elterntextVersion: string;
+  weg: ConsentPath;
+}
+
 interface DeviceControls {
-  consentAt: number | null;
+  consent: ConsentRecord | null;
   sleep: boolean;
   quietHours: QuietHours | null;
 }
@@ -46,11 +67,30 @@ interface DeviceControls {
 interface PairingCode {
   deviceId: string;
   expiresMs: number;
+  weg: ConsentPath;
 }
 
 interface ParentToken {
   deviceId: string;
   createdMs: number;
+  weg: ConsentPath;
+}
+
+/** Eine Änderung ließ sich nicht dauerhaft speichern. Die Meldung enthält keine Geräte-ID. */
+export class ParentStateWriteError extends Error {
+  constructor(
+    public readonly code: string,
+    /** Gilt die Änderung trotzdem (bis zum nächsten Neustart)? Einwilligung und Kopplung nie. */
+    public readonly inEffect: boolean
+  ) {
+    super(`Eltern-Steuerung: Speichern fehlgeschlagen (${code}).`);
+    this.name = 'ParentStateWriteError';
+  }
+}
+
+function fileErrorCode(err: unknown): string {
+  const code = (err as { code?: unknown } | null)?.code;
+  return typeof code === 'string' && /^[A-Z][A-Z0-9_]{0,31}$/.test(code) ? code : 'unbekannt';
 }
 
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -90,12 +130,128 @@ export class ParentControls {
   private controls = new Map<string, DeviceControls>();
   private codes = new Map<string, PairingCode>();
   private tokens = new Map<string, ParentToken>();
+  /** Eine Änderung steht noch nicht in der Datei (Speichern schlug fehl); `purge` versucht es erneut. */
+  private dirty = false;
 
-  constructor(private now: () => number = Date.now) {}
+  constructor(
+    private now: () => number = Date.now,
+    /** Dauerhafte Ablage (KUNIBERT_ELTERN_DATEI); null = nur Arbeitsspeicher. */
+    private readonly file: ParentStateFile | null = null
+  ) {}
 
-  /** Löscht abgelaufene Kopplungscodes (der Server ruft das auch regelmäßig auf). */
+  /** Übersteht die Eltern-Steuerung einen Neustart? */
+  public get persistent(): boolean {
+    return this.file !== null;
+  }
+
+  /**
+   * Lädt den gespeicherten Stand beim Start, bevor der Server Anfragen annimmt. Übernommen werden nur
+   * Einträge, deren Pseudonym zu einem angemeldeten Gerät passt; die übrigen löscht der Server aus der
+   * Datei (zum Beispiel Geräte, die nach dem Neustart nicht mehr angemeldet sind). Eine kaputte Datei
+   * wirft `ParentStateFileError`: Dann startet der Server nicht.
+   */
+  public load(deviceIds: Iterable<string>): { geraete: number; verworfen: number; schreibfehler: string | null } | null {
+    if (!this.file) return null;
+    const stored = this.file.read();
+    let adopted = 0;
+    for (const deviceId of new Set(deviceIds)) {
+      const pseudonym = this.file.pseudonym(deviceId);
+      const entry = stored.get(pseudonym);
+      if (!entry) continue;
+      stored.delete(pseudonym);
+      this.adopt(deviceId, entry);
+      adopted++;
+    }
+    // Gleich einmal schreiben: Das löscht Einträge ohne Gerät und zeigt beim Start, ob die Datei
+    // beschreibbar ist. Ist sie es nicht, startet der Server trotzdem (der Server meldet es laut);
+    // Einwilligungen und Kopplungen antworten dann mit 503, bis es behoben ist.
+    let writeError: string | null = null;
+    try {
+      this.file.write(this.snapshot(this.file));
+      this.dirty = false;
+    } catch (err) {
+      writeError = fileErrorCode(err);
+      this.dirty = true;
+    }
+    return { geraete: adopted, verworfen: stored.size, schreibfehler: writeError };
+  }
+
+  private adopt(deviceId: string, entry: StoredParentEntry): void {
+    const consent = entry.einwilligung;
+    this.controls.set(deviceId, {
+      consent: consent
+        ? { erteilt: consent.erteilt, atMs: Date.parse(consent.zeitpunkt), elterntextVersion: consent.elterntextVersion, weg: consent.weg }
+        : null,
+      sleep: entry.schlafmodus,
+      quietHours: entry.ruhezeiten ? { ...entry.ruhezeiten } : null,
+    });
+    for (const t of entry.elternTokens) {
+      this.tokens.set(t.sha256, { deviceId, createdMs: Date.parse(t.seit), weg: t.weg });
+    }
+  }
+
+  /** Der ganze Stand für die Datei: je Gerät das Pseudonym, ohne Geräte-ID; leere Einträge fallen weg. */
+  private snapshot(file: ParentStateFile): Map<string, StoredParentEntry> {
+    const entries = new Map<string, StoredParentEntry>();
+    const entryFor = (deviceId: string): StoredParentEntry => {
+      const pseudonym = file.pseudonym(deviceId);
+      let entry = entries.get(pseudonym);
+      if (!entry) {
+        entry = { einwilligung: null, schlafmodus: false, ruhezeiten: null, elternTokens: [] };
+        entries.set(pseudonym, entry);
+      }
+      return entry;
+    };
+    for (const [deviceId, c] of this.controls) {
+      if (!c.consent && !c.sleep && !c.quietHours) continue;
+      const entry = entryFor(deviceId);
+      entry.einwilligung = c.consent
+        ? { erteilt: c.consent.erteilt, zeitpunkt: new Date(c.consent.atMs).toISOString(), elterntextVersion: c.consent.elterntextVersion, weg: c.consent.weg }
+        : null;
+      entry.schlafmodus = c.sleep;
+      entry.ruhezeiten = c.quietHours ? { ...c.quietHours } : null;
+    }
+    for (const [sha256, t] of this.tokens) {
+      entryFor(t.deviceId).elternTokens.push({ sha256, seit: new Date(t.createdMs).toISOString(), weg: t.weg });
+    }
+    for (const entry of entries.values()) entry.elternTokens.sort((a, b) => a.seit.localeCompare(b.seit) || a.sha256.localeCompare(b.sha256));
+    return entries;
+  }
+
+  /**
+   * Schreibt den Stand in die Datei. Schlägt das fehl, bleibt die Änderung bei `inEffect` im Speicher
+   * (Widerruf, Löschen, Einstellungen: bis zum nächsten Neustart, neuer Versuch alle fünf Minuten).
+   * Sonst nimmt `undo` sie zurück (Einwilligung und Kopplung gelten nur, wenn sie gespeichert sind).
+   */
+  private save(inEffect: boolean, undo?: () => void): void {
+    if (!this.file) return;
+    try {
+      this.file.write(this.snapshot(this.file));
+      this.dirty = false;
+    } catch (err) {
+      const code = fileErrorCode(err);
+      if (inEffect) this.dirty = true;
+      else undo?.();
+      // Ohne Geräte-ID, ohne Pfad und ohne Fehlertext.
+      console.warn(
+        inEffect
+          ? `Eltern-Steuerung: Speichern fehlgeschlagen (${code}). Die Änderung gilt bis zum nächsten Neustart; neuer Versuch in fünf Minuten.`
+          : `Eltern-Steuerung: Speichern fehlgeschlagen (${code}). Die Änderung gilt nicht.`
+      );
+      throw new ParentStateWriteError(code, inEffect);
+    }
+  }
+
+  /** Löscht abgelaufene Kopplungscodes und speichert, was noch nicht in der Datei steht (der Server ruft das regelmäßig auf). */
   public purge(): void {
     this.purgeCodes();
+    if (this.dirty) {
+      try {
+        this.save(true);
+      } catch {
+        // Schon gemeldet; nächster Versuch beim nächsten Aufräumen.
+      }
+    }
   }
 
   private purgeCodes(): void {
@@ -108,14 +264,18 @@ export class ParentControls {
   private controlsFor(deviceId: string): DeviceControls {
     let entry = this.controls.get(deviceId);
     if (!entry) {
-      entry = { consentAt: null, sleep: false, quietHours: null };
+      entry = { consent: null, sleep: false, quietHours: null };
       this.controls.set(deviceId, entry);
     }
     return entry;
   }
 
-  /** Neuer Kopplungscode für das Gerät. Ein älterer Code desselben Geräts verfällt. */
-  public createPairingCode(deviceId: string): { code: string; expiresInSeconds: number } {
+  /**
+   * Neuer Kopplungscode für das Gerät. Ein älterer Code desselben Geräts verfällt. `weg`: Spricht das
+   * Gerät den Code ("geraet") oder bekommt ihn der Betreiber als Text ("betreiber")? Das steht später
+   * bei der Einwilligung, die mit dieser Kopplung erteilt wird.
+   */
+  public createPairingCode(deviceId: string, weg: ConsentPath = 'geraet'): { code: string; expiresInSeconds: number } {
     this.purgeCodes();
     for (const [code, entry] of this.codes.entries()) {
       if (entry.deviceId === deviceId) this.codes.delete(code);
@@ -124,13 +284,14 @@ export class ParentControls {
     do {
       code = crypto.randomInt(0, 1_000_000).toString().padStart(6, '0');
     } while (this.codes.has(code));
-    this.codes.set(code, { deviceId, expiresMs: this.now() + PAIRING_CODE_TTL_SECONDS * 1000 });
+    this.codes.set(code, { deviceId, expiresMs: this.now() + PAIRING_CODE_TTL_SECONDS * 1000, weg });
     return { code, expiresInSeconds: PAIRING_CODE_TTL_SECONDS };
   }
 
   /**
    * Löst einen Kopplungscode ein (nur einmal). Liefert das Eltern-Token im Klartext genau
-   * einmal zurück; gespeichert wird nur sein Hash.
+   * einmal zurück; gespeichert wird nur sein Hash. Lässt sich die Kopplung nicht speichern, wirft
+   * es `ParentStateWriteError`; dann gilt die Kopplung nicht, und der Code bleibt gültig.
    */
   public redeemPairingCode(code: unknown): { deviceId: string; token: string } | null {
     this.purgeCodes();
@@ -142,57 +303,108 @@ export class ParentControls {
     const own = Array.from(this.tokens.entries())
       .filter(([, t]) => t.deviceId === entry.deviceId)
       .sort((a, b) => a[1].createdMs - b[1].createdMs);
+    const evicted: Array<[string, ParentToken]> = [];
     while (own.length >= MAX_PARENT_TOKENS_PER_DEVICE) {
       const oldest = own.shift();
-      if (oldest) this.tokens.delete(oldest[0]);
+      if (oldest) {
+        this.tokens.delete(oldest[0]);
+        evicted.push(oldest);
+      }
     }
 
     const token = crypto.randomBytes(32).toString('base64url');
-    this.tokens.set(hashToken(token), { deviceId: entry.deviceId, createdMs: this.now() });
+    const hash = hashToken(token);
+    this.tokens.set(hash, { deviceId: entry.deviceId, createdMs: this.now(), weg: entry.weg });
+    this.save(false, () => {
+      this.tokens.delete(hash);
+      for (const [h, t] of evicted) this.tokens.set(h, t);
+      this.codes.set(code, entry);
+    });
     return { deviceId: entry.deviceId, token };
+  }
+
+  /** Gerät und Weg der Kopplung zu einem Eltern-Token, oder null. */
+  public sessionForToken(token: unknown): { deviceId: string; weg: ConsentPath } | null {
+    if (typeof token !== 'string' || token.length < 20 || token.length > 200) return null;
+    const entry = this.tokens.get(hashToken(token));
+    return entry ? { deviceId: entry.deviceId, weg: entry.weg } : null;
   }
 
   /** Gerät zu einem Eltern-Token oder null. */
   public deviceForToken(token: unknown): string | null {
-    if (typeof token !== 'string' || token.length < 20 || token.length > 200) return null;
-    return this.tokens.get(hashToken(token))?.deviceId ?? null;
+    return this.sessionForToken(token)?.deviceId ?? null;
   }
 
   public settings(deviceId: string): ParentSettings {
     const c = this.controls.get(deviceId);
+    const consent = c?.consent ?? null;
     return {
       einwilligung: {
-        erteilt: Boolean(c?.consentAt),
-        zeitpunkt: c?.consentAt ? new Date(c.consentAt).toISOString() : null,
+        erteilt: Boolean(consent?.erteilt),
+        zeitpunkt: consent ? new Date(consent.atMs).toISOString() : null,
+        elterntextVersion: consent?.elterntextVersion ?? null,
+        weg: consent?.weg ?? null,
       },
       schlafmodus: Boolean(c?.sleep),
       ruhezeiten: c?.quietHours ? { ...c.quietHours } : null,
     };
   }
 
-  public grantConsent(deviceId: string): void {
-    this.controlsFor(deviceId).consentAt = this.now();
+  private consentRecord(erteilt: boolean, weg: ConsentPath): ConsentRecord {
+    return { erteilt, atMs: this.now(), elterntextVersion: ELTERNTEXT_VERSION, weg };
   }
 
-  public revokeConsent(deviceId: string): void {
+  /**
+   * Einwilligung erteilen. `weg`: woher der Kopplungscode des Eltern-Tokens kam. Mit Datei gilt sie erst,
+   * wenn sie gespeichert ist; sonst wirft es `ParentStateWriteError`, und es bleibt beim alten Stand.
+   */
+  public grantConsent(deviceId: string, weg: ConsentPath = 'geraet'): void {
+    const c = this.controlsFor(deviceId);
+    const previous = c.consent;
+    c.consent = this.consentRecord(true, weg);
+    this.save(false, () => {
+      c.consent = previous;
+    });
+  }
+
+  /**
+   * Einwilligung widerrufen. Gilt sofort, auch wenn das Speichern fehlschlägt (dann wirft es
+   * `ParentStateWriteError` mit `inEffect`). Ohne erteilte Einwilligung bleibt der Stand, wie er ist
+   * (ein zweiter Widerruf versucht nur, was noch nicht gespeichert ist, erneut zu speichern).
+   */
+  public revokeConsent(deviceId: string, weg: ConsentPath = 'geraet'): void {
     const c = this.controls.get(deviceId);
-    if (c) c.consentAt = null;
+    if (c?.consent?.erteilt) c.consent = this.consentRecord(false, weg);
+    else if (!this.dirty) return;
+    this.save(true);
   }
 
   public hasConsent(deviceId: string): boolean {
-    return Boolean(this.controls.get(deviceId)?.consentAt);
+    return Boolean(this.controls.get(deviceId)?.consent?.erteilt);
   }
 
   public setSleep(deviceId: string, sleep: boolean): void {
-    this.controlsFor(deviceId).sleep = sleep;
+    this.updateSettings(deviceId, { schlafmodus: sleep });
   }
 
   /** Setzt die Ruhezeiten (null: keine). Wirft bei ungültiger Uhrzeit. */
   public setQuietHours(deviceId: string, quiet: QuietHours | null): void {
-    if (quiet !== null && (!isValidTime(quiet.von) || !isValidTime(quiet.bis))) {
+    this.updateSettings(deviceId, { ruhezeiten: quiet });
+  }
+
+  /**
+   * Schlafmodus und Ruhezeiten zusammen ändern (ein Speichervorgang). Wirft bei ungültiger Uhrzeit,
+   * ohne etwas zu ändern. Schlägt das Speichern fehl, gilt die Änderung bis zum nächsten Neustart.
+   */
+  public updateSettings(deviceId: string, change: { schlafmodus?: boolean; ruhezeiten?: QuietHours | null }): void {
+    const quiet = change.ruhezeiten;
+    if (quiet !== undefined && quiet !== null && (!isValidTime(quiet.von) || !isValidTime(quiet.bis))) {
       throw new Error('invalid_quiet_hours');
     }
-    this.controlsFor(deviceId).quietHours = quiet ? { von: quiet.von, bis: quiet.bis } : null;
+    const c = this.controlsFor(deviceId);
+    if (change.schlafmodus !== undefined) c.sleep = change.schlafmodus;
+    if (quiet !== undefined) c.quietHours = quiet ? { von: quiet.von, bis: quiet.bis } : null;
+    this.save(true);
   }
 
   /**
@@ -206,21 +418,29 @@ export class ParentControls {
     return null;
   }
 
-  /** Vergisst alles zu einem Gerät: Einwilligung, Einstellungen, Codes und Eltern-Tokens. */
+  /**
+   * Vergisst alles zu einem Gerät: Einwilligung, Einstellungen, Codes und Eltern-Tokens, auch in der
+   * Datei. Gilt sofort, auch wenn das Speichern fehlschlägt (dann `ParentStateWriteError` mit `inEffect`).
+   */
   public forgetDevice(deviceId: string): void {
-    this.controls.delete(deviceId);
+    const known = this.controls.delete(deviceId);
     for (const [code, entry] of this.codes.entries()) {
       if (entry.deviceId === deviceId) this.codes.delete(code);
     }
+    let hadTokens = false;
     for (const [hash, entry] of this.tokens.entries()) {
-      if (entry.deviceId === deviceId) this.tokens.delete(hash);
+      if (entry.deviceId === deviceId) {
+        this.tokens.delete(hash);
+        hadTokens = true;
+      }
     }
+    if (known || hadTokens || this.dirty) this.save(true);
   }
 
-  /** Nur Zahlen, für /api/status. */
-  public get counts(): { geraete: number; codes: number; elternTokens: number } {
+  /** Nur Zahlen, für /api/status; `dauerhaft`: Übersteht die Eltern-Steuerung einen Neustart? */
+  public get counts(): { geraete: number; codes: number; elternTokens: number; dauerhaft: boolean; ungespeichert: boolean } {
     this.purgeCodes();
-    return { geraete: this.controls.size, codes: this.codes.size, elternTokens: this.tokens.size };
+    return { geraete: this.controls.size, codes: this.codes.size, elternTokens: this.tokens.size, dauerhaft: this.persistent, ungespeichert: this.dirty };
   }
 }
 
