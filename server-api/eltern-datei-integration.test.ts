@@ -15,8 +15,8 @@ import path from 'node:path';
 import { after, before, describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { encodeWav } from './audio.js';
-import { pseudonymFor } from './eltern-datei.js';
-import { ELTERNTEXT_VERSION, localMinutes } from './eltern.js';
+import { ParentStateFile, pseudonymFor } from './eltern-datei.js';
+import { ELTERNTEXT_VERSION, ParentControls, localMinutes } from './eltern.js';
 import { pair } from './eltern-testhilfe.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -83,7 +83,7 @@ describe('Eltern-Steuerung in einer Datei: Neustart des echten Servers (Punkt E2
   const admin = { Authorization: `Bearer ${ADMIN_TOKEN}` };
   const device = { Authorization: `Bearer ${DEVICE_TOKEN}`, 'X-Device-ID': DEVICE_ID };
 
-  function spawnKunibert(port: number): ChildProcess {
+  function spawnKunibert(port: number, key = KEY): ChildProcess {
     const env: Record<string, string> = {
       PATH: process.env.PATH || '',
       NODE_ENV: 'production',
@@ -99,7 +99,7 @@ describe('Eltern-Steuerung in einer Datei: Neustart des echten Servers (Punkt E2
       PICASTAI_TTS_MODEL: 'test-tts',
       PICASTAI_TTS_VOICE: 'test-voice',
       KUNIBERT_ELTERN_DATEI: file,
-      KUNIBERT_ELTERN_SCHLUESSEL: KEY,
+      KUNIBERT_ELTERN_SCHLUESSEL: key,
     };
     for (const name of ['HOME', 'TMPDIR', 'TEMP', 'TMP', 'SYSTEMROOT']) {
       if (process.env[name]) env[name] = process.env[name] as string;
@@ -288,6 +288,22 @@ describe('Eltern-Steuerung in einer Datei: Neustart des echten Servers (Punkt E2
 
     const token = cookie.split('=')[1];
     for (const secret of [DEVICE_ID, token, KEY, pseudonymFor(KEY, DEVICE_ID), dir]) assert.ok(!output.includes(secret), 'Kennung, Schlüssel oder Pfad im Protokoll');
+  });
+
+  it('Anderer Schlüssel: Der Server startet nicht, die Datei bleibt; mit dem richtigen Schlüssel gilt alles wieder', async () => {
+    new ParentControls(Date.now, new ParentStateFile(file, KEY)).grantConsent(DEVICE_ID, 'betreiber');
+    const before = fs.readFileSync(file, 'utf8');
+    output = '';
+    child = spawnKunibert(await freePort(), 'anderer-schluessel-eltern-datei-9876543210fedcba');
+    const code = await new Promise<number | null>((resolve) => child!.once('exit', resolve));
+    child = null;
+    assert.notEqual(code, 0);
+    assert.match(output, /Eltern-Steuerung: Kein Eintrag der Datei passt zu einem angemeldeten Gerät \(1 Einträge\)/);
+    assert.ok(!output.includes(DEVICE_ID) && !output.includes(dir), 'Geräte-ID oder Pfad im Protokoll');
+    assert.equal(fs.readFileSync(file, 'utf8'), before, 'Nachweis bleibt unverändert');
+    await start();
+    assert.notEqual((await turn()).kind, 'hinweis', 'mit dem richtigen Schlüssel gilt die Einwilligung');
+    await stop();
   });
 
   it('Kaputte Datei: Der Server startet nicht, nennt den Inhalt nicht und lässt die Datei, wie sie ist', async () => {

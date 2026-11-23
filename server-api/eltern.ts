@@ -63,8 +63,6 @@ export interface ParentStateLoad {
   geraete: number;
   /** Gelöschte Einträge ohne angemeldetes Gerät. */
   verworfen: number;
-  /** Einträge, die zu keinem Gerät passten und trotzdem bleiben (es passte gar keiner: falscher Schlüssel?). */
-  behalten: number;
   /** Einwilligungen, die als widerrufen gelten, weil die Markierung „nicht gespeichert“ da war; sonst null. */
   widerrufen: number | null;
   /** Fehlercode, wenn die Datei beim Start nicht beschreibbar war; dann ruhen alle Einwilligungen. */
@@ -87,6 +85,21 @@ interface ParentToken {
   deviceId: string;
   createdMs: number;
   weg: ConsentPath;
+}
+
+/**
+ * Beim Start passt kein Eintrag der Datei zu einem angemeldeten Gerät (falscher Schlüssel oder falsche
+ * Geräte-ID?). Der Server startet nicht und lässt die Datei, wie sie ist. Die Meldung nennt nur die Anzahl.
+ */
+export class ParentStateNoMatchError extends Error {
+  constructor(public readonly count: number) {
+    super(
+      `Eltern-Steuerung: Kein Eintrag der Datei passt zu einem angemeldeten Gerät (${count} Einträge). ` +
+        'KUNIBERT_ELTERN_SCHLUESSEL oder Geräte-ID falsch eingetragen? Der Server startet nicht, damit weder Nachweis noch Widerruf verloren gehen. ' +
+        'Wenn Absicht (neuer Schlüssel, Gerät ersetzt): die Datei beiseitelegen und neu starten; dann müssen alle Eltern neu koppeln und einwilligen.'
+    );
+    this.name = 'ParentStateNoMatchError';
+  }
 }
 
 /** Eine Änderung ließ sich nicht dauerhaft speichern. Die Meldung enthält keine Geräte-ID. */
@@ -150,8 +163,6 @@ export class ParentControls {
    * klappt. Sonst ginge ein Widerruf, den der Server nicht speichern kann, beim nächsten Neustart verloren.
    */
   private suspended = false;
-  /** Einträge der Datei ohne passendes Gerät, die bleiben (nur wenn beim Start gar keiner passte). */
-  private orphans = new Map<string, StoredParentEntry>();
 
   constructor(
     private now: () => number = Date.now,
@@ -168,8 +179,10 @@ export class ParentControls {
    * Lädt den gespeicherten Stand beim Start, bevor der Server Anfragen annimmt. Eine kaputte Datei wirft
    * `ParentStateFileError`: Dann startet der Server nicht. Übernommen werden Einträge, deren Pseudonym zu
    * einem angemeldeten Gerät passt. Die übrigen löscht der Server aus der Datei (zum Beispiel Geräte, die
-   * nach dem Neustart nicht mehr angemeldet sind), außer es passt gar keiner: Dann ist wohl der Schlüssel
-   * oder die Geräte-ID falsch eingetragen, und die Einträge bleiben als Nachweis (sie gelten aber nicht).
+   * nach dem Neustart nicht mehr angemeldet sind). Passt gar keiner, ist wohl der Schlüssel oder die
+   * Geräte-ID falsch eingetragen: Dann wirft es `ParentStateNoMatchError`, der Server startet nicht, und
+   * die Datei bleibt unverändert (Nachweis). Einträge zu behalten und später wieder gelten zu lassen, wäre
+   * gefährlich: Ein Widerruf in der Zwischenzeit träfe sie nicht.
    * Liegt die Markierung „nicht gespeichert“ da, gelten alle Einwilligungen als widerrufen.
    */
   public load(deviceIds: Iterable<string>): ParentStateLoad | null {
@@ -185,8 +198,7 @@ export class ParentControls {
       this.adopt(deviceId, entry);
       adopted++;
     }
-    const kept = adopted === 0 ? stored.size : 0;
-    if (kept > 0) this.orphans = stored;
+    if (adopted === 0 && stored.size > 0) throw new ParentStateNoMatchError(stored.size);
 
     let revoked: number | null = null;
     if (unsaved) {
@@ -197,11 +209,6 @@ export class ParentControls {
       for (const c of this.controls.values()) {
         if (!c.consent?.erteilt) continue;
         c.consent = { erteilt: false, atMs, elterntextVersion: ELTERNTEXT_VERSION, weg: 'server' };
-        revoked++;
-      }
-      for (const entry of this.orphans.values()) {
-        if (!entry.einwilligung?.erteilt) continue;
-        entry.einwilligung = { erteilt: false, zeitpunkt: new Date(atMs).toISOString(), elterntextVersion: ELTERNTEXT_VERSION, weg: 'server' };
         revoked++;
       }
     }
@@ -219,7 +226,7 @@ export class ParentControls {
       this.dirty = true;
       this.suspended = true;
     }
-    return { geraete: adopted, verworfen: adopted === 0 ? 0 : stored.size, behalten: kept, widerrufen: revoked, schreibfehler: writeError };
+    return { geraete: adopted, verworfen: stored.size, widerrufen: revoked, schreibfehler: writeError };
   }
 
   private adopt(deviceId: string, entry: StoredParentEntry): void {
@@ -261,19 +268,7 @@ export class ParentControls {
       entryFor(t.deviceId).elternTokens.push({ sha256, seit: new Date(t.createdMs).toISOString(), weg: t.weg });
     }
     for (const entry of entries.values()) entry.elternTokens.sort((a, b) => a.seit.localeCompare(b.seit) || a.sha256.localeCompare(b.sha256));
-    // Behaltene Einträge ohne Gerät unverändert dazu (siehe load).
-    for (const [pseudonym, entry] of this.orphans) {
-      if (!entries.has(pseudonym)) entries.set(pseudonym, entry);
-    }
     return entries;
-  }
-
-  /**
-   * Bekommt ein Gerät neuen Stand, gilt nur noch dieser: Ein behaltener Eintrag mit demselben Pseudonym
-   * fällt weg (zum Beispiel ein Gerät, das nach dem Neustart neu angelegt wurde). true, wenn einer wegfiel.
-   */
-  private claim(deviceId: string): boolean {
-    return Boolean(this.file && this.orphans.size > 0 && this.orphans.delete(this.file.pseudonym(deviceId)));
   }
 
   /**
@@ -330,7 +325,6 @@ export class ParentControls {
   }
 
   private controlsFor(deviceId: string): DeviceControls {
-    this.claim(deviceId);
     let entry = this.controls.get(deviceId);
     if (!entry) {
       entry = { consent: null, sleep: false, quietHours: null };
@@ -381,7 +375,6 @@ export class ParentControls {
       }
     }
 
-    this.claim(entry.deviceId);
     const token = crypto.randomBytes(32).toString('base64url');
     const hash = hashToken(token);
     this.tokens.set(hash, { deviceId: entry.deviceId, createdMs: this.now(), weg: entry.weg });
@@ -410,7 +403,8 @@ export class ParentControls {
     const consent = c?.consent ?? null;
     return {
       einwilligung: {
-        erteilt: Boolean(consent?.erteilt),
+        // Gilt sie gerade? Solange alle Einwilligungen ruhen (Datei beim Start nicht beschreibbar), nicht.
+        erteilt: Boolean(consent?.erteilt) && !this.suspended,
         zeitpunkt: consent ? new Date(consent.atMs).toISOString() : null,
         elterntextVersion: consent?.elterntextVersion ?? null,
         weg: consent?.weg ?? null,
@@ -495,7 +489,6 @@ export class ParentControls {
    */
   public forgetDevice(deviceId: string): void {
     const known = this.controls.delete(deviceId);
-    const claimed = this.claim(deviceId);
     for (const [code, entry] of this.codes.entries()) {
       if (entry.deviceId === deviceId) this.codes.delete(code);
     }
@@ -506,7 +499,7 @@ export class ParentControls {
         hadTokens = true;
       }
     }
-    if (known || claimed || hadTokens || this.dirty) this.save(true);
+    if (known || hadTokens || this.dirty) this.save(true);
   }
 
   /** Nur Zahlen, für /api/status; `dauerhaft`: Übersteht die Eltern-Steuerung einen Neustart? `ungespeichert`: Wartet eine Änderung auf das Speichern? */

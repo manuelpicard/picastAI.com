@@ -1254,15 +1254,12 @@ async function startServer() {
 
   // Eltern-Steuerung aus der Datei (Punkt E2), erst nach der Geräteliste: Übernommen wird nur, was zu
   // einem angemeldeten, nicht gesperrten Gerät gehört. Fail-closed: Ist die Datei da, aber nicht lesbar
-  // oder ungültig, startet der Server nicht. Sonst gingen Widerrufe und Ruhezeiten verloren, und das
-  // nächste Speichern überschriebe den Nachweis der Einwilligungen.
+  // oder ungültig, oder passt gar kein Eintrag (falscher Schlüssel?), startet der Server nicht. Sonst
+  // gingen Widerrufe und Ruhezeiten verloren, und das nächste Speichern überschriebe den Nachweis.
   const loaded = parents.load(registry.list().filter((d) => !d.revoked).map((d) => d.deviceId));
   if (loaded) {
     // Nur Zahlen, keine Geräte-IDs, keine Pseudonyme, kein Pfad.
     console.log(`Eltern-Steuerung aus der Datei geladen (${loaded.geraete} Geräte, ${loaded.verworfen} ohne angemeldetes Gerät gelöscht).`);
-    if (loaded.behalten > 0) {
-      console.warn(`⚠️ Eltern-Steuerung: Kein Eintrag der Datei passt zu einem angemeldeten Gerät (${loaded.behalten} Einträge). KUNIBERT_ELTERN_SCHLUESSEL oder Geräte-ID geändert? Die Einträge bleiben in der Datei, gelten aber nicht.`);
-    }
     if (loaded.widerrufen !== null) {
       console.warn(`⚠️ Eltern-Steuerung: Beim letzten Lauf ließ sich eine Änderung nicht speichern. Deshalb gelten alle Einwilligungen als widerrufen (${loaded.widerrufen}); die Eltern müssen neu einwilligen.`);
     }

@@ -272,7 +272,7 @@ write_env() {
   if env_set_if_empty "$ENV_FILE" PICASTAI_ADMIN_TOKEN "$(openssl rand -hex 32)"; then note "Admin-Token erzeugt (steht nur in der Datei)"; fi
   if env_set_if_empty "$ENV_FILE" PICASTAI_DEVICE_TOKEN "$(openssl rand -hex 32)"; then note "Geräte-Token erzeugt (steht nur in der Datei)"; fi
   # Eltern-Steuerung dauerhaft (Punkt E2). Einen vorhandenen Schlüssel nie überschreiben: Mit einem
-  # neuen Schlüssel gelten alle Einwilligungen und Kopplungen nicht mehr.
+  # neuen Schlüssel passt kein Eintrag der Datei mehr, und der Server startet nicht.
   env_set_if_empty "$ENV_FILE" KUNIBERT_ELTERN_DATEI "$ELTERN_DATEI" || true
   if env_set_if_empty "$ENV_FILE" KUNIBERT_ELTERN_SCHLUESSEL "$(openssl rand -hex 32)"; then note "Schlüssel der Eltern-Steuerung erzeugt (steht nur in der Datei)"; fi
   chmod 600 "$ENV_FILE"; chown root:root "$ENV_FILE"
