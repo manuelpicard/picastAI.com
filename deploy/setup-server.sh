@@ -32,6 +32,17 @@ DEPLOY_KEY=/root/.ssh/kunibert_deploy
 SPEACHES_IMAGE=ghcr.io/speaches-ai/speaches:0.8.3-cpu
 SPEACHES_URL=http://127.0.0.1:8000
 
+# Frist für Protokolle (vorläufig 14 Tage, Punkt E1 der Arbeitsliste; Einschätzung, keine
+# Rechtsberatung). Sie gilt für das ganze Journal dieses Servers. Damit sie auch für den
+# Sprachserver gilt, schreibt sein Container ins Journal statt in eine eigene Docker-Datei.
+# Ist rsyslog installiert, bleiben Server und Sprachserver aus /var/log/syslog heraus.
+JOURNAL_RETENTION=14day
+JOURNALD_DROPIN=/etc/systemd/journald.conf.d/50-kunibert-frist.conf
+RSYSLOG_FILTER=/etc/rsyslog.d/10-kunibert.conf
+SERVER_LOG_ID=kunibert-server          # wie SyslogIdentifier= in deploy/kunibert-server.service
+SPEACHES_LOG_ID=speaches
+SPEACHES_LOG_OPTS=(--log-driver journald --log-opt "tag=$SPEACHES_LOG_ID")
+
 HOSTNAME_ARG=""
 GIT_REF=main
 STT_MODEL=Systran/faster-whisper-small
@@ -106,6 +117,31 @@ render_caddyfile() { # Vorlage Hostname
   sed "s/kunibert\.example/$2/g" "$1"
 }
 
+# Frist für das Journal. journald löscht nur ganze Dateien; mit MaxFileSec=1day beginnt
+# jeden Tag eine neue Datei, so weicht die Frist höchstens etwa einen Tag ab.
+write_journald_retention() { # Datei
+  printf '%s\n' \
+    '# Ritter Kunibert (deploy/setup-server.sh): Frist für alle Einträge im Journal dieses Servers.' \
+    '# Vorläufig 14 Tage (Punkt E1). journald löscht nur ganze Dateien, deshalb jeden Tag eine neue.' \
+    '[Journal]' \
+    "MaxRetentionSec=$JOURNAL_RETENTION" \
+    'MaxFileSec=1day' > "$1"
+}
+
+# Regel für rsyslog: Zeilen von Server und Sprachserver nicht zusätzlich in /var/log/syslog
+# (dort gelten die Fristen von logrotate, nicht die des Journals).
+write_rsyslog_filter() { # Datei
+  printf '%s\n' \
+    '# Ritter Kunibert (deploy/setup-server.sh): Server und Sprachserver nur ins Journal, dort gilt die Frist.' \
+    "if \$programname == '$SERVER_LOG_ID' or \$programname == '$SPEACHES_LOG_ID' then stop" > "$1"
+}
+
+# Kopiert eine Datei nur, wenn sich der Inhalt ändert. Rückgabe 0 = geändert, 1 = war schon gleich.
+install_if_changed() { # Quelle Ziel
+  if [[ -f "$2" ]] && cmp -s "$1" "$2"; then return 1; fi
+  install -m 644 "$1" "$2"
+}
+
 # --- Schritte -----------------------------------------------------------------
 
 install_packages() {
@@ -149,6 +185,28 @@ create_user_and_dirs() {
   id kunibert >/dev/null 2>&1 || useradd --system --home-dir /var/lib/kunibert --shell /usr/sbin/nologin kunibert
   install -d -o root -g root -m 755 /opt/kunibert
   install -d -o root -g root -m 700 /etc/kunibert
+}
+
+setup_log_retention() {
+  say "Frist für Protokolle: $JOURNAL_RETENTION (vorläufig)"
+  local tmp
+  tmp=$(mktemp)
+  install -d -m 755 "$(dirname "$JOURNALD_DROPIN")"
+  write_journald_retention "$tmp"
+  if install_if_changed "$tmp" "$JOURNALD_DROPIN"; then
+    systemctl restart systemd-journald
+    note "journald: Frist gesetzt ($JOURNALD_DROPIN)"
+  else
+    note "journald: Frist war schon gesetzt"
+  fi
+  if [[ -d "$(dirname "$RSYSLOG_FILTER")" ]]; then
+    write_rsyslog_filter "$tmp"
+    if install_if_changed "$tmp" "$RSYSLOG_FILTER"; then
+      if systemctl is-active --quiet rsyslog; then systemctl restart rsyslog; fi
+      note "rsyslog: Server und Sprachserver nicht in /var/log/syslog ($RSYSLOG_FILTER)"
+    fi
+  fi
+  rm -f "$tmp"
 }
 
 fetch_code() {
@@ -207,9 +265,17 @@ setup_speaches() {
     docker run --detach --name speaches --restart unless-stopped \
       --publish 127.0.0.1:8000:8000 \
       --volume hf-hub-cache:/home/ubuntu/.cache/huggingface/hub \
+      "${SPEACHES_LOG_OPTS[@]}" \
       "$SPEACHES_IMAGE" >/dev/null
   else
     docker start speaches >/dev/null
+  fi
+  # Ein älterer Container schreibt sein Protokoll vielleicht noch in eine Docker-Datei; dort gilt die Frist nicht.
+  local log_driver
+  log_driver=$(docker inspect --format '{{.HostConfig.LogConfig.Type}}' speaches 2>/dev/null || true)
+  if [[ "$log_driver" != journald ]]; then
+    note "Achtung: Der Container speaches schreibt sein Protokoll nach '${log_driver:-unbekannt}', nicht ins Journal; die Frist gilt dort nicht."
+    note "Einmal neu anlegen: sudo docker rm -f speaches, dann dieses Skript noch einmal (die Modelle bleiben im Volume hf-hub-cache)."
   fi
   note "warte auf den Sprachserver"
   local i
@@ -283,6 +349,7 @@ summary() {
   fi
   note "Danach von deinem Rechner: deploy/smoke-test.sh (EINRICHTUNG.md, Abschnitt 7)."
   note "Zeiten je Anfrage: sudo journalctl -u kunibert-server -n 200 --no-pager | grep Zeitmessung"
+  note "Protokolle bleiben etwa $JOURNAL_RETENTION (vorläufig). Prüfen: systemd-analyze cat-config systemd/journald.conf | grep -E 'MaxRetentionSec|MaxFileSec'"
 }
 
 main() {
@@ -307,6 +374,7 @@ main() {
 
   install_packages
   create_user_and_dirs
+  setup_log_retention
   fetch_code
   write_env
   if [[ "$SKIP_SPEACHES" == 0 ]]; then setup_speaches; fi

@@ -71,6 +71,7 @@ Hat eine Anfrage Claude aufgerufen, hängt die Zeile fünf Felder an:
 - Vorbereitete Teile (`prefetch.ts`) bekommen eine eigene Zeile mit `modus=vorbereitung`.
 - Endet eine Folge, steht eine Zeile `Folge fertig: teile=5 kosten_usd=0.081234` im Protokoll: Summe aller Teile dieser Folge, auch der vorbereiteten. Fragen zwischendurch zählen nicht zur Folge.
 - Nie im Protokoll: Text der Geschichte, Äußerung des Kindes, Geräte-ID, Schlüssel.
+- Frist: Auf dem Server bleiben die Zeilen etwa 14 Tage im Journal (vorläufig; `deploy/EINRICHTUNG.md`, Abschnitt „Betrieb“). Am Pi gilt noch keine Frist (Punkt N1123-0037-b der Arbeitsliste).
 
 ## Pi
 

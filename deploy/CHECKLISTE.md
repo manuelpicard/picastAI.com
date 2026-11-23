@@ -31,6 +31,7 @@ Stand 21.11.2026: **nicht unter Windows und nicht mit einem Pi getestet**; gesch
 - [ ] `systemctl status kunibert-server` aktiv; Journal: „Feste Sprechtexte vorbereitet (7 von 7)“ (Sicherheitshinweis, „nicht verstanden“, Fehlerhinweis, Ersatzantwort, Pausensatz der Geschichte, Hinweis ohne Einwilligung, Satz im Schlafmodus). Ist der Sprachserver beim Start noch nicht bereit, versucht der Dienst es gut sechs Minuten lang wieder („neuer Versuch in … s“).
 - [ ] Von außen: `/health` 200, `/` 404, `/api/status` 404, HTTP leitet auf HTTPS, Zertifikat gültig.
 - [ ] Neustartprobe: Server neu starten, `/health` wieder 200.
+- [ ] Frist für Protokolle (vorläufig 14 Tage): `systemd-analyze cat-config systemd/journald.conf | grep -E 'MaxRetentionSec|MaxFileSec'` zeigt `14day` und `1day`; `sudo docker inspect --format '{{.HostConfig.LogConfig.Type}}' speaches` zeigt `journald` (`EINRICHTUNG.md`, Abschnitt „Betrieb“).
 
 ## B. Pi vorbereiten
 

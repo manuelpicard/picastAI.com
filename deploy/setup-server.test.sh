@@ -64,6 +64,31 @@ write_auto_upgrades "$tmp/20auto-upgrades"
 yes "Automatische Updates: Paketlisten täglich"   grep -qx 'APT::Periodic::Update-Package-Lists "1";' "$tmp/20auto-upgrades"
 yes "Automatische Updates: Sicherheitsupdates an" grep -qx 'APT::Periodic::Unattended-Upgrade "1";' "$tmp/20auto-upgrades"
 
+# Frist für Protokolle (Punkt E1, vorläufig 14 Tage).
+write_journald_retention "$tmp/journald.conf"
+yes "Journal: Abschnitt [Journal]"          grep -qx '\[Journal\]' "$tmp/journald.conf"
+yes "Journal: Frist 14 Tage"                grep -qx 'MaxRetentionSec=14day' "$tmp/journald.conf"
+yes "Journal: jeden Tag eine neue Datei"    grep -qx 'MaxFileSec=1day' "$tmp/journald.conf"
+eq  "Journal: nur diese zwei Werte"         "$(grep -c '^[A-Za-z]' "$tmp/journald.conf")" 2
+eq  "Journal: Datei in journald.conf.d"     "$(dirname "$JOURNALD_DROPIN")" /etc/systemd/journald.conf.d
+write_rsyslog_filter "$tmp/rsyslog.conf"
+yes "rsyslog: Server und Sprachserver heraus" grep -qxF "if \$programname == 'kunibert-server' or \$programname == 'speaches' then stop" "$tmp/rsyslog.conf"
+yes "rsyslog: Regel vor 50-default.conf"    [ "$(basename "$RSYSLOG_FILTER")" \< 50-default.conf ]
+eq  "Kennung im Dienst passt zur Regel"     "$(sed -n 's/^SyslogIdentifier=//p' "$here/kunibert-server.service")" "$SERVER_LOG_ID"
+eq  "Sprachserver: Journal und Kennung"     "${SPEACHES_LOG_OPTS[*]}" "--log-driver journald --log-opt tag=speaches"
+# shellcheck disable=SC2016
+yes "docker run nutzt diese Optionen"       grep -qF '"${SPEACHES_LOG_OPTS[@]}"' "$here/setup-server.sh"
+yes "Einrichtung setzt die Frist"           grep -qx '  setup_log_retention' "$here/setup-server.sh"
+
+printf 'a\n' > "$tmp/quelle"
+yes "Kopieren: neue Datei"                  install_if_changed "$tmp/quelle" "$tmp/ziel"
+eq  "Kopieren: Inhalt"                      "$(cat "$tmp/ziel")" a
+eq  "Kopieren: Rechte 644"                  "$(stat -c %a "$tmp/ziel")" 644
+no  "Kopieren: gleicher Inhalt, nichts tun" install_if_changed "$tmp/quelle" "$tmp/ziel"
+printf 'b\n' > "$tmp/quelle"
+yes "Kopieren: geänderter Inhalt"           install_if_changed "$tmp/quelle" "$tmp/ziel"
+eq  "Kopieren: neuer Inhalt"                "$(cat "$tmp/ziel")" b
+
 # Aufruf ohne Hostname bricht ab, bevor etwas geändert wird.
 quiet() { "$@" >/dev/null 2>&1; }
 no  "ohne --hostname: Abbruch"     quiet bash "$here/setup-server.sh"
