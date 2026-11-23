@@ -17,7 +17,7 @@ Es wurde nichts bestellt, nichts angefragt, kein Konto angelegt und kein Formula
 
 **ESP32-S3-BOX-3**
 
-- **Nur bei Völkner lieferbar** (60,99 €, Lieferzeit 1 bis 2 Tage).
+- **Lieferbar nur bei Völkner** (60,99 €, Lieferzeit 1 bis 2 Tage) und bei Schukat (nur für Gewerbe, siehe unten).
 - BerryBase: BOX-3 (69,90 €) und BOX-3B (59,90 €) nicht lieferbar.
 - Schukat hat 96 Stück, liefert laut Seite aber nicht an Privatkunden.
 - Botland (Polen): Status unklar, 87,90 € (nur aus den Meta-Angaben der Seite).
@@ -42,7 +42,7 @@ Es wurde nichts bestellt, nichts angefragt, kein Konto angelegt und kein Formula
 - Die Händlerseiten hat jeweils ein Abruf-Agent (Unteragent mit Webzugriff) geladen und wörtlich berichtet. Ich habe die Rohseiten nicht selbst gesehen, nur diese Berichte. Preise, Status und Zahlen stehen so in den Berichten.
 - **Einordnung** (lieferbar, nicht lieferbar, unklar) ist meine Zuordnung nach dem Seitentext. Wo die Seite keinen Status nennt oder sich widerspricht, steht „unklar“.
 - **Meta** heißt: Der Wert stand nur in den Meta-Angaben der Seite, nicht im sichtbaren Text.
-- **Produktblock** heißt: Nur der Anfang der Seite lag wörtlich vor, mit Name, Preis und Status. Steht „x von y Zeichen“ dabei, waren es die ersten x Zeichen; darin stand bei Q18 und Q19 auch die Beschreibung mit der Ausstattung. Der Rest kam als automatische Zusammenfassung. Eine solche Zusammenfassung hat sich bei Welectron nachweislich geirrt (sie meldete, das Produkt sei nicht gelistet, der wörtliche Block zeigte es). Deshalb gelten hier nur wörtlich gelesene Teile. Die Spalte „Gelesen“ bei den Quellen sagt, wie viel wörtlich vorlag.
+- **Produktblock** heißt: Nur der Anfang der Seite lag wörtlich vor, mit Name, Preis und Status. Steht „x von y Zeichen“ dabei, waren es die ersten x Zeichen. Der Rest kam als automatische Zusammenfassung. Eine solche Zusammenfassung hat sich bei Welectron nachweislich geirrt (sie meldete, das Produkt sei nicht gelistet, der wörtliche Block zeigte es). Deshalb gelten hier nur wörtlich gelesene Teile. Die Spalte „Gelesen“ bei den Quellen sagt, wie viel wörtlich vorlag.
 - Bei mehreren Angaben zum selben Artikel zählt die eigene Produktseite des Händlers. Empfehlungsleisten auf anderen Seiten stehen nur bei den Widersprüchen.
 - **Kurz erklärt** (allgemeines Wissen, nicht aus den Quellen): Ein Codec ist ein Chip, der Ton zwischen analog und digital wandelt. I2S ist eine Schnittstelle für digitalen Ton. Flash ist der Speicher für das Programm, PSRAM zusätzlicher Arbeitsspeicher. Ein MEMS-Mikrofon ist ein winziges Chip-Mikrofon. Eine Staffel ist ein Mengenrabatt. Netto heißt ohne MwSt. KW 01/2027 ist die erste Kalenderwoche 2027. Ω (Ohm) und W (Watt) beschreiben Widerstand und Leistung eines Lautsprechers.
 
@@ -100,7 +100,7 @@ Diese Werte stammen aus Notizen früherer Läufe im Claude-Projekt (nicht im Rep
 | Pi 5, 8 GB (189,00 €) | lieferbar, 1 bis 3 Tage | lieferbar | lieferbar, höchstens 2 je Bestellung | lieferbar, höchstens 2 je Bestellung |
 | ESP32-S3-BOX-3 (69,90 €) | keine Angabe in den Notizen | nicht lieferbar | nicht lieferbar (nur aus der Suchliste gelesen) | nicht lieferbar |
 
-- Der 4-GB-Pi war bei BerryBase an allen vier Stichtagen (8., 11., 13. und 22.11.2026) nicht lieferbar. Der Preis blieb gleich. Dazwischen wurde nicht geprüft.
+- Der 4-GB-Pi war bei BerryBase an allen vier Stichtagen (8., 11., 13. und 22.11.2026) nicht lieferbar. Der Preis blieb gleich. Ob er dazwischen lieferbar war, ist hier nicht belegt.
 - Am 8.11. standen außerdem Rasppishop (4 GB, 123,90 €, ausverkauft, höchstens 1 Stück je Bestellung) und Soldered (4 GB, 108,95 €, die Seite widersprach sich) in den Notizen. Heute wurden beide nicht gelesen (Rasppishop ließ sich nicht laden). Geizhals und Galaxus (8.11.) ebenfalls nicht.
 - Der Betreiber hatte am 9.11.2026 entschieden zu warten, bis der Pi 5 bei BerryBase wieder erhältlich wird. Der 8-GB-Pi war damals schon lieferbar (Notizen im Claude-Projekt).
 
@@ -126,9 +126,9 @@ Keine Rechtsberatung. Es sind nur Aussagen von Händlerseiten, keine Bewertung.
 
 ## Einschätzung
 
-1. **Pi 5.** Heute ist nur der 8-GB-Pi sicher zu bekommen. Das Gerät nimmt nach `CLAUDE.md` nur auf und spielt ab; der erste Aufbau in `pi-client/README.md` ist mit 4 GB beschrieben. Ob 4 GB reichen, ist nicht gemessen. Der 8-GB-Pi würde dieselbe Rolle spielen und kostet etwa 65 bis 73 € mehr als der nicht lieferbare 4-GB-Pi (eigene Rechnung, BerryBase, Welectron und buyzero; bei Pollin 19,05 €). Der Betreiber hatte am 9.11.2026 entschieden zu warten, bis der Pi 5 bei BerryBase wieder erhältlich wird. Ob er dabei bleibt oder 8 GB nimmt, entscheidet der Betreiber. Jeder einzelne Kauf braucht seine Bestätigung im Chat.
+1. **Pi 5.** Von 4 und 8 GB ist heute nur der 8-GB-Pi sicher zu bekommen. Das Gerät nimmt nach `CLAUDE.md` nur auf und spielt ab; der erste Aufbau in `pi-client/README.md` ist mit 4 GB beschrieben. Ob 4 GB reichen, ist nicht gemessen. Der 8-GB-Pi würde dieselbe Rolle spielen und kostet etwa 65 bis 73 € mehr als der nirgends sicher lieferbare 4-GB-Pi (eigene Rechnung, BerryBase, Welectron und buyzero; bei Pollin 19,05 €). Der Betreiber hatte am 9.11.2026 entschieden zu warten, bis der Pi 5 bei BerryBase wieder erhältlich wird. Ob er dabei bleibt oder 8 GB nimmt, entscheidet der Betreiber. Jeder einzelne Kauf braucht seine Bestätigung im Chat.
 2. **Händler für den 8-GB-Pi.** BerryBase und Welectron verlangen beide 189,00 €. Welectron nennt freien Versand in Deutschland. Ab welchem Betrag BerryBase frei versendet, ist offen: Die Abrufberichte nannten 200 € und an einer Stelle 150 €, keine der Quellen Q1 bis Q3 belegt es. Farnell zeigt nur den Nettopreis (155,11 €, brutto etwa 184,58 €, eigene Rechnung). Ob Farnell an Privatkunden liefert und was der Versand kostet, steht auf der gelesenen Seite nicht.
-3. **BOX-3.** Völkner ist das einzige lieferbare Angebot ohne den Hinweis „nur für Gewerbe“ (60,99 €). Ob Völkner an Privatkunden liefert, ist nicht geprüft. BerryBase hat BOX-3 und BOX-3B nicht lieferbar. Schukat verkauft nur an Gewerbe.
+3. **BOX-3.** Völkner ist das einzige lieferbare Angebot ohne den Hinweis, dass nur an Gewerbe geliefert wird (60,99 €). Ob Völkner an Privatkunden liefert, ist nicht geprüft. BerryBase hat BOX-3 und BOX-3B nicht lieferbar. Schukat verkauft nur an Gewerbe.
 4. **Alternativen.** Nur der EchoS3R ist lieferbar. Ob er für Sprechtaste, Erzähltaste und LED taugt, ist nicht geprüft. CoreS3, CoreS3 SE und Waveshare-Board sind nirgends sicher lieferbar; CoreS3 und Waveshare-Board haben laut den Seiten zwei Mikrofone.
 5. **Wie sicher sind die Zahlen?** Sie sind nur so gut wie die Seiten. Die Seiten widersprechen sich zum Teil, nennen kein Datum und zeigen den Bestand oft nur in Worten. Darum wurde jede Aussage nur aus der eigenen Produktseite des Händlers genommen. Vor einem Kauf im Browser prüfen.
 
@@ -174,6 +174,7 @@ Alle Seiten abgerufen am 22.11.2026 (zwischen 19:01 und 19:26 Uhr). Ein Zitat je
 - Pi 5 mit 1, 2 und 16 GB: bei keinem Händler gesucht. Bei Farnell auch 4 GB nicht.
 - Die zweite Welectron-Seite für den 8-GB-Pi (`https://www.welectron.com/Raspberry-Pi-5-8-GB-RAM_1`): Der Abruf wurde nicht freigegeben.
 - Nur als Zusammenfassung gelesen und deshalb nicht verwendet: die Pollin-Kategorieseite für Raspberry Pi (darin ein JOY-IT-Angebot mit 8 GB, Art unklar), die Höchstmenge von 50 Stück bei Welectron, der Rest der BerryBase-Seiten von CoreS3 und Atom EchoS3R (Empfehlungsleisten, Bewertungen) sowie der Rest der Seiten von Pollin und Welectron.
+- Bei Q18 und Q19 (Produktblock) ist nicht festgehalten, ob Ausstattung und Sicherheitshinweise im wörtlichen Anfang standen. Nach „So wurde gelesen“ wurden nur wörtliche Teile verwendet; nachprüfen lässt es sich hier nicht.
 - Die BerryBase-Liste der M5Stack-Boards wurde nur auf Seite 1 von 3 gelesen. Die Einzelseiten von CoreS3 und Atom EchoS3R wurden direkt gelesen.
 - **Die Rohseiten habe ich nicht selbst gesehen.** Ob die Berichte der Abruf-Agenten sie richtig wiedergeben, wurde nicht unabhängig geprüft.
 - Firmensitze: auf den Seiten gesehen bei buyzero (Leipzig), Farnell (Poing), Schukat (Monheim am Rhein), Eckstein (Clausthal-Zellerfeld) und Botland (Polen). Bei BerryBase, Welectron, Pollin und Völkner nicht geprüft.
