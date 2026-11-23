@@ -510,9 +510,7 @@ const PATTERNS_REVIEW: RegExp[] = [
   // V6 Atemnot, Verschlucken, blau, Hundebiss mit zusammengesetztem Wort
   new RegExp(`${L}${NOT_AFTER_LAUGH}ich (habe|hab|bekomme|bekomm|kriege|krieg) ${ADV}(keine|kaum|schwer|nur schwer|nicht genug|nicht richtig|schlecht)( noch)? luft${NOT_BEFORE_LAUGH}( mehr)?${R}`),
   new RegExp(`${L}${NOT_AFTER_LAUGH}ich kann ${ADV}(nicht|nicht mehr|gar nicht|kaum|nur schwer|ganz schwer|schwer|nicht mehr richtig|nicht mehr gut|nicht richtig) (noch |mehr |richtig )?atmen${NOT_BEFORE_LAUGH}${R}`),
-  new RegExp(`${L}(${WHO}|das baby|${POSS}baby) (kriegt|bekommt|hat) ${ADV}(schlecht|schwer|nicht genug|nicht richtig)( noch)? luft${R}`),
-  // „hat keine Luft“ bewusst nur mit „kriegt“ und „bekommt“: „Er hat keine Luft mehr“ sagt ein Kind auch über einen Ball.
-  new RegExp(`${L}(${WHO}|das baby|${POSS}baby) (kriegt|bekommt) ${ADV}(keine|kaum)( noch)? luft${R}`),
+  new RegExp(`${L}(${WHO}|das baby|${POSS}baby) (kriegt|bekommt|hat) ${ADV}(keine|kaum|schlecht|schwer|nicht genug|nicht richtig)( noch)? luft${R}`),
   new RegExp(`${L}(${WHO}|das baby|${POSS}baby) kann ${ADV}(kaum|nicht|nicht mehr|gar nicht|nicht richtig|nicht gut|schlecht) (noch |mehr )?atmen${R}`),
   new RegExp(`${L}${SMALL_PERSON} (habe|hab|hat) (was|etwas|irgendwas|irgendetwas|${WORD} magneten|magneten|münzen|knöpfe) (${WORD} )?(verschluckt|in die nase gesteckt|ins ohr gesteckt)${R}`),
   new RegExp(`${L}(das baby|${SMALL_PERSON}|${WHO}) (ist|wird) (ganz |so |total )?(blau|lila)(?= *$| (und|aber|weil|im|an)${R})`),
