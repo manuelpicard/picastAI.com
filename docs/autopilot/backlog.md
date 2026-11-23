@@ -573,3 +573,13 @@ Angelegt am 17.11.2026, 20:15, von Claude (Chat). Gepflegt von den Läufen des W
 - Rolle: Recherche · Prio: 3 · Status: offen (wiederkehrend: alle 4 Wochen neu prüfen; zuletzt 23.11.2026, PR #105; nächste Prüfung ab 21.12.2026) · Bezug: H2
 - Ziel: Viele Fristen in `docs/recherche/vorgaben-serienprodukt.md` sind in Bewegung: Spielzeugverordnung, Digital Omnibus zur KI-Verordnung (Art. 50, Hochrisiko-Leitlinien), CRA und das Ende der RED-Cybersicherheit am 11.12.2027, Beschlüsse zu EN 18031, die Ausnahme für Spielzeug bei der Batterieverordnung (Art. 11), Digital Omnibus zur DSGVO, Omnibus IV, das Rechtsmittel C-703/25 P zum EU-US-Rahmen, die ElektroG-Novelle. Nur die Quellen aus der Quellentabelle der Datei neu öffnen. Änderungen in die Datei eintragen und das Datum oben neu setzen. Neue Folgen als neue Punkte.
 - Fertig, wenn: Datei aktualisiert, oder im PR-Bericht „keine Änderung“; jede Änderung mit Quelle und Abrufdatum.
+
+### N1123-1337-a · Echtes Caddy vor dem Server: Adressen und HTTPS beim Koppeln prüfen
+- Rolle: Prüfen · Prio: 2 · Status: offen · Nach D2 (Teil 2 von 3) · Bezug: D2 Teil 1 (PR #106, unabhängige Prüfung: „nicht gegen echtes Caddy getestet“), E4
+- Ziel: Der Schutz vor dem Raten (`server-api/kopplungsschutz.ts`) und `Secure` am Eltern-Cookie verlassen sich auf die Köpfe, die Caddy setzt (`X-Forwarded-For`, `X-Forwarded-Proto`), und auf `PICASTAI_TRUST_PROXY=loopback`. Geprüft ist das bisher nur mit nachgebauten Köpfen in `server-api/api.test.ts`. Ein Test (CI-Job oder Skript in `deploy/dryrun/`) startet Caddy mit `deploy/Caddyfile` (lokales Zertifikat, `tls internal`) vor dem Server.
+- Fertig, wenn: belegt ist, dass der Server die Adresse des Absenders sieht, ein vom Absender gefälschtes `X-Forwarded-For` nicht zählt, das Cookie `Secure` hat und ohne `PICASTAI_TRUST_PROXY` der Hinweis im Journal kommt; Ergebnis mit Caddy-Version in `deploy/EINRICHTUNG.md`.
+
+### N1123-1337-b · Grenze für alle beim Koppeln erreicht: Hinweis im Journal
+- Rolle: Bauen · Prio: 3 · Status: offen · Bezug: D2 Teil 1 (PR #106)
+- Ziel: Erreichen die Fehlversuche beim Koppeln die Grenze von 200 in 10 Minuten (`server-api/kopplungsschutz.ts`), rät vermutlich jemand. Der Betreiber erfährt das heute nur über `GET /api/status` (`kopplungsschutz.fehlversucheInsgesamt`). Eine Zeile im Journal, höchstens einmal je 10 Minuten, nur mit Zahlen (keine Adressen, keine Pseudonyme, keine Codes, keine Geräte-IDs).
+- Fertig, wenn: Zeile und Test (sie kommt, kommt nur einmal je Fenster und enthält nichts außer Zahlen); `docs/picastAI-Pi-API.md` nennt sie.
