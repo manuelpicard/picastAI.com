@@ -221,7 +221,8 @@ export function screenOutput(text: string, kind: 'story' | 'answer'): boolean {
 }
 
 export function normalize(text: string): string {
-  const norm = (text || '').normalize('NFC').toLowerCase();
+  // „€“ als Wort lesen, sonst bleibt von „10 €“ nur „10“ (Prüfung von PR #110, 24.11.2026, Befund 4)
+  const norm = (text || '').normalize('NFC').toLowerCase().replace(/€+/g, ' euro ');
   const cleaned = norm.replace(/[^\wäöüß ]+/gi, ' ');
   return cleaned.replace(/\s+/g, ' ').trim() + ' ';
 }
@@ -484,6 +485,27 @@ const NOT_BEFORE_LAUGH = `(?!( mehr)? vor (lauter )?lachen${R})`;
 const STRANGER = `(der|die|ein|eine|dieser|diese) (${WORD} )?(mann|frau|typ|fremde|fremder)`;
 const GIFT = '(gummibärchen|lolli|lollis|lutscher|kaugummi|bonbon|bonbons|schokoriegel|süßigkeiten|schokolade|süßes|geld|eis|ein eis|geschenke|ein geschenk|spielzeug|ein handy|handy|euro|([0-9]+ )?euro)';
 const KILL_TRY = `(versucht|versuchte|versuchen|probiert) (${WORD} )?(mich|uns|${ART}${PERSON_WIDE}) (${WORD} ){0,2}(zu töten|umzubringen|zu erwürgen|tot zu machen|totzumachen)`;
+// Für V13 (Prüfung von PR #110 nach dem Merge, 24.11.2026). Nur in neuen Schablonen; ältere bleiben, wie sie sind.
+const PERP = `(${POSS}${PARENTS}|er|sie|die|der|${POSS}(stiefvater|stiefmutter|stiefpapa|stiefmama|onkel|tante|opa|oma|opi|omi|großvater|großmutter|nachbar|nachbarin|babysitter|babysitterin|lehrer|lehrerin|trainer|trainerin|erzieher|erzieherin|freund)|(mamas|mamis|papas|papis|muttis|vatis|omas|opas) (neuer |neue )?(freund|freundin|mann|frau)|(der|ein|dieser) (${WORD} )?(mann|typ))`;
+const VICTIM = `(sie|ihn|das baby|unser baby|${ART}(kleine |kleinen |kleiner |große |großen |großer )?(${PERSON_WIDE}|baby|geschwister|kinder|brüder|schwestern)|(sein|seine|seinen|ihr|ihre|ihren) (frau|freundin|mann|freund|sohn|tochter|kinder|kind|baby))`;
+// Wörter zwischen Verb und Opfer („Er schlägt immer meine Mama“)
+const VADV = '((gerade|grad|grade|immer|immer wieder|oft|manchmal|dauernd|ständig|wieder|schon wieder|jetzt|auch|einfach|ganz|richtig|total|voll|echt|nachts|abends|heute|gestern) ){0,2}';
+const SMALL_VICTIM = `(mich|das baby|unser baby|${ART}(kleine |kleinen |kleiner )?(baby|bruder|schwester|geschwister))`;
+const KILL_TRY_WIDE = `(versucht|versuchte|versuchen|probiert) (${WORD} )?(mich|uns|das baby|${ART}${PERSON_WIDE}) (${WORD} ){0,4}(zu töten|umzubringen|zu erwürgen|zu würgen|zu erdrosseln|tot zu machen|totzumachen|zu ersticken|zu vergiften|zu ertränken|zu erschlagen|zu erstechen|abzustechen|zu erschießen)`;
+// Nach „um“ keine Uhrzeit, kein Artikel, keine Bitte („bringt mich um acht zur Schule“, „um den Schlaf“, „um Hilfe“)
+const UM_NOT_TIME = `(?! (${NUM}|elf|zwölf|[0-9]+|halb|viertel|punkt|kurz|etwa|ungefähr|circa|den|die|das|dem|der|des|ein|eine|einen|einem|einer|mein|meine|meinen|meinem|dein|deine|deinen|sein|seine|seinen|seinem|ihr|ihre|ihren|ihrem|unser|unsere|unseren|unserem|zu|mitternacht|mittag|(hilfe|erlaubnis|verzeihung|entschuldigung|rat|geld|etwas|was) (${WORD} )?(bitten|fragen|gebeten|gefragt|rufen|gerufen|betteln))${R})`;
+const BREATH_NEG = '(nicht|kaum|nicht mehr|nicht richtig|nicht mehr richtig|ganz komisch|so komisch|komisch)';
+const LUFT_NEG = '(nicht mehr so richtig|nicht mehr richtig|nicht mehr genügend|nicht mehr genug|nicht mehr gut|nicht mehr so gut|nicht so richtig|nicht genügend|nicht so gut|nicht gut|nicht mehr)';
+const FILL_LOST = '(einfach|nur|noch|lieber|jetzt|gleich|endlich|auch|bald|schon|mal|halt|echt|wirklich|so|ganz|gar|überhaupt|grad|grade|gerade|irgendwie)';
+const TOUCH_SUBJ = `(er|sie|der|die|${POSS}${PERSON_WIDE}|(der|die|ein|eine|dieser|diese) (${WORD} )?(mann|frau|typ|fremde|fremder|junge))`;
+const TOUCH_VERB = '(anfasst|anfassen|an fasst|küsst|streichelt|berührt|auszieht)';
+const RELATIVE = `(oma|opa|omi|opi|großmutter|großvater|${PARENTS})`;
+const PLACE =
+  `(im|in der|in dem|am|auf dem|auf der|beim|bei der|an der|vor dem|vor der) (${WORD} )?` +
+  '(supermarkt|laden|kaufhaus|geschäft|einkaufszentrum|zug|bus|bahnhof|schwimmbad|zoo|park|wald|spielplatz|strand|markt|' +
+  'weihnachtsmarkt|jahrmarkt|rummel|kirmes|freizeitpark|flughafen|krankenhaus|stadt|menge|gedränge|straße|parkplatz|parkhaus|' +
+  'kino|museum|schule|kindergarten|kita|fest|festival|konzert|stadion|ubahn|u bahn|s bahn|straßenbahn|haltestelle|bushaltestelle|' +
+  'see|meer|hafen|garten|feld|[a-zäöüß]*(bad|park|platz|markt|halle|zentrum|hof))';
 
 const PATTERNS_REVIEW: RegExp[] = [
   // V12 Vorab-Prüfung von PR #110 (24.11.2026): Gewalt gegen Mutter, Geschwister und Baby im Präsens, gegen „die Kinder“
@@ -560,6 +582,41 @@ const PATTERNS_REVIEW: RegExp[] = [
   // Sich selbst verletzen im Präsens, mit denselben Ausnahmen wie im Perfekt (Befund 7)
   new RegExp(`^(?=.*${L}(mit absicht|absichtlich|extra)${R}).*${L}ich ((tu|tue|mache|mach) mir ((?!(haare|nägel|fingernägel|fußnägel|pony|bart|brot|apfel|papier|nicht|nie)${R})${WORD} ){0,4}weh|(schneide|schneid|ritze|ritz|verletze|verletz|kratze|kratz|verbrenne|verbrenn) mich|(schneide|schneid|ritze|ritz) mir (${WORD} ){0,2}(in|auf) (den|die|das|meinen|meine|mein) (arm|arme|bein|beine|finger|hand|handgelenk|haut|bauch|oberschenkel))${R}`),
   new RegExp(`${L}ich (will|möchte|muss) mir ((?!(nicht|nie)${R})${WORD} ){0,2}(wehtun|weh tun)${R}`),
+  // V13 Prüfung von PR #110 nach dem Merge (24.11.2026): naheliegende Abwandlungen neben V11 und V12, die keine
+  // Ansage auslösten. Beispiele in beiden Listen von safety.test.ts und in docs/Sicherheitsweiche-Pruefung.md, Abschnitt 12.
+  // Atemnot: „Das Baby atmet gar nicht“, „Mama liegt da und atmet gar nicht mehr“, „Ich krieg nicht mehr richtig Luft“ (Befund 1)
+  new RegExp(`${L}(${WHO}|das baby|${POSS}baby) (atmet|atmen) ${ADV}${BREATH_NEG}( mehr)?${R}`),
+  new RegExp(`${L}(${WHO}|das baby|${POSS}baby)( ${WORD}){0,6} (und|aber|da|dann|jetzt) (jetzt |dann |da |auch )?atmet ${ADV}${BREATH_NEG}( mehr)?${R}`),
+  new RegExp(`${L}${NOT_AFTER_LAUGH}(ich (habe|hab|bekomme|bekomm|kriege|krieg)|(krieg|kriege|bekomm|bekomme|habe|hab) ich|(${WHO}|das baby|${POSS}baby) (kriegt|bekommt|hat)) ${ADV}${LUFT_NEG}( noch)? luft${NOT_BEFORE_LAUGH}( mehr)?${R}`),
+  new RegExp(`^(?=.*${L}(ich|${WHO}|das baby|${POSS}baby)${R}).*${L}${NOT_AFTER_LAUGH}(und|aber) (jetzt |dann |da )?(krieg|kriege|kriegt|bekomm|bekomme|bekommt) ${ADV}${LUFT_NEG}( noch)? luft${NOT_BEFORE_LAUGH}( mehr)?${R}`),
+  new RegExp(`${L}${NOT_AFTER_LAUGH}(ich kann|kann ich|(${WHO}|das baby|${POSS}baby) kann) ${ADV}(keine|kaum|nicht|nicht mehr|nicht richtig|nicht mehr richtig|schlecht|nur schwer|schwer)( noch| mehr)? luft (holen|kriegen|bekommen|reinkriegen|rein kriegen)${NOT_BEFORE_LAUGH}${R}`),
+  new RegExp(`${L}(${WHO}|das baby|${POSS}baby) ((hat|hatte) ${ADV}aufgehört|(hört|hörte) ${ADV}auf) zu atmen${R}`),
+  // Gewalt durch weitere Personen im Präsens und Perfekt („Er schlägt meine Mama“, „Mamas Freund hat sie geschlagen“),
+  // Schütteln („Papa hat das Baby geschüttelt“) (Befund 2). Nicht: Eier aufschlagen, „in die Flucht“, „zum Ritter“, Sahne steif
+  // schlagen, Hand schütteln, wachschütteln.
+  new RegExp(`${L}${PERP} (schlägt|schlagen|haut|hauen|tritt|treten|würgt|würgen|verprügelt|verprügeln|verhaut|verhauen|boxt|schubst|ohrfeigt) ${VADV}${VICTIM}${R}(?! (auf|vor|nach)( *$| (und|aber|weil|wenn|dann)${R})| (in die flucht|zum ritter|zur ritterin|steif|schaumig)${R})`),
+  new RegExp(`${L}${PERP} (hat|hatte|haben|hatten) (${WORD} )?${VICTIM} (${WORD} ){0,8}(?<!flucht )(geschlagen|gehauen|gehaut|gehaun|getreten|gewürgt|verprügelt|verhauen|geohrfeigt|geboxt|geschubst)${R}`),
+  new RegExp(`^(?!.*${L}(hand|hände|händchen|kopf|köpfe|wach)${R}).*${L}${PERP} ((hat|hatte|haben|hatten) (${WORD} )?${SMALL_VICTIM} (${WORD} ){0,3}(geschüttelt|durchgeschüttelt)|(schüttelt|schütteln) ${SMALL_VICTIM})${R}`),
+  // Drohung gegen andere („er bringt Mama um“), „haben versucht“, „zu ersticken“ (Befund 3)
+  new RegExp(`${L}(${POSS}${PERSON_WIDE}|er|sie|der|die|jemand) (bringt|bringen|würde|will|wird) (mich|uns|${ART}${PERSON_WIDE}|das baby|unser baby|sie|ihn) (${WORD} )?um${R}${UM_NOT_TIME}`),
+  new RegExp(`${L}(dass|wenn|sonst|weil|ob) (er|sie|jemand|${POSS}${PERSON_WIDE}|der mann|die frau|der typ) (${ART}${PERSON_WIDE}|das baby|unser baby|sie|ihn) (${WORD} )?(tötet|töten will|töten wird|töten wollte|umbringt|umbringen will|umbringen wird|totmacht|tot macht|erwürgt|erstickt)${R}`),
+  new RegExp(`${L}${SUBJ} ((hat|hatte|haben|hatten) (${WORD} ){0,2})?${KILL_TRY_WIDE}${R}`),
+  new RegExp(`${L}(hat|hatte|haben|hatten) (er|sie|jemand|einer|man|${ART}${PERSON_WIDE}|(der|die|ein|eine|dieser|diese) (${WORD} )?(mann|frau|typ|junge|fremde|fremder)) (${WORD} ){0,2}${KILL_TRY_WIDE}${R}`),
+  // Fremde: „ob ich mit ihm komme“, „ob ich in sein Auto einsteigen will“ (Befund 4; „10 €“ liest normalize als „10 euro“)
+  new RegExp(`${L}(mann|frau|typ|fremder|fremde|fremden|unbekannter|unbekannte)( ${WORD}){0,8} (ob|dass|wenn) ich (mit ihm|mit ihr|mit zu ihm|mit zu ihr) (nach hause |heim |zu sich |zu sich nach hause )?(komme|gehe|fahre|mitkomme|mitgehe|mitfahre)${R}`),
+  new RegExp(`${L}(mann|frau|typ|fremder|fremde|fremden|unbekannter|unbekannte)( ${WORD}){0,8} (ob|dass|wenn) ich (mit ihm |mit ihr |zu ihm |zu ihr )?(in sein|in ihr|in das|in ein|ins) auto (steigen|einsteigen|kommen|mitkommen|mitfahren) (will|möchte|soll|muss|würde|kann|darf|mag)${R}`),
+  // Ungewollte Berührung: „Ich mag das gar nicht, wenn …“, „Ich finde es nicht schön, wenn …“ (Befund 5)
+  new RegExp(`${L}ich (mag|will|möchte) (es |das )?${ADV}nicht( mehr)? (dass|wenn) ${TOUCH_SUBJ} mich (${WORD} ){0,3}${TOUCH_VERB}${R}`),
+  new RegExp(`${L}(das|es) gefällt mir ${ADV}nicht( mehr)? (dass|wenn) ${TOUCH_SUBJ} mich (${WORD} ){0,3}${TOUCH_VERB}${R}`),
+  new RegExp(`${L}(ich (finde|find|finds) (es |das |s )?|(es|das) ist )${ADV}nicht (so |sehr |besonders )?(schön|gut|toll|okay|ok|lustig|angenehm) (dass|wenn) ${TOUCH_SUBJ} mich (${WORD} ){0,3}${TOUCH_VERB}${R}`),
+  // Verloren: „Mama ist weg, ich kann sie nicht finden“, mehr Orte („auf dem Spielplatz“) (Befund 6)
+  new RegExp(`^(?=.*${L}${RELATIVE}${R}).*${L}ich kann (sie|ihn|die beiden|euch) (${FILL_LOST} ){0,2}(nicht|nirgends|nirgendwo) (mehr )?finden${R}`),
+  new RegExp(`${L}ich kann (${FILL_LOST} ){0,2}(${POSS}|(die|den|unsere|unseren|unser) )${RELATIVE}( und ${POSS}(oma|opa|omi|opi|${PARENTS}))? ${PLACE} (${FILL_LOST} ){0,2}(nicht|nirgends|nirgendwo) (mehr )?finden${R}`),
+  new RegExp(`${L}(finde|find|sehe|seh) (${POSS}|(die|den|unsere|unseren|unser) )${RELATIVE} ${PLACE} (nicht( mehr| wieder)?|nirgends|nirgendwo)(?= *$| ${CONTINUATION}${R})`),
+  // Sich selbst verletzen: „Ich beiße mich absichtlich“, „Ich schneide mir absichtlich den Arm auf“ (Befund 7)
+  new RegExp(`^(?=.*${L}(mit absicht|absichtlich|extra)${R}).*${L}ich (beiße|beiß|beisse|beiss|kneife|kneif|zwicke|zwick) mich${R}(?! (nicht|nie)${R})`),
+  new RegExp(`^(?=.*${L}(mit absicht|absichtlich|extra)${R}).*${L}ich (schneide|schneid|ritze|ritz|kratze|kratz|reiße|reiß|beiße|beiß) mir (${WORD} ){0,2}(den|die|das|meinen|meine|mein) (arm|arme|bein|beine|finger|hand|handgelenk|haut|bauch|oberschenkel|knie|lippe|lippen) (auf|kaputt|blutig)${R}`),
+  new RegExp(`^(?=.*${L}(mit absicht|absichtlich|extra)${R}).*${L}(ich (habe|hab)|(habe|hab) ich) mir (${WORD} ){0,3}(den|die|das|meinen|meine|mein) (arm|arme|bein|beine|finger|hand|handgelenk|haut|bauch|oberschenkel|knie|lippe|lippen) (${WORD} )?(aufgeschnitten|aufgeritzt|aufgekratzt|aufgebissen|kaputt gekratzt|blutig gekratzt|blutig gebissen)${R}`),
 ];
 
 const ALL_PATTERNS: RegExp[] = [...PATTERNS, ...PATTERNS_EXTRA, ...PATTERNS_2026_11, ...PATTERNS_2026_11_B, ...PATTERNS_2026_11_C, ...PATTERNS_2026_11_D, ...PATTERNS_REVIEW];
