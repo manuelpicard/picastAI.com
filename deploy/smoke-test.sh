@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Prüfskript für den echten Server (nach der Einrichtung, von deinem Rechner aus).
-# Prüft von außen: /health, TLS-Zertifikat, HTTP->HTTPS, gesperrte Routen, falscher Token (401),
-# zu große Datei (413). Es ruft weder Spracherkennung noch Sprachmodell auf und kostet nichts.
+# Prüft von außen: /health, TLS-Zertifikat, HTTP->HTTPS, gesperrte Routen, Eltern-Seite und
+# Eltern-Routen ohne Anmeldung (401), falscher Token (401), zu große Datei (413). Es ruft weder
+# Spracherkennung noch Sprachmodell auf und kostet nichts. Es rät keinen Kopplungscode.
 #
 # Zugangsdaten nur aus der Umgebung, nie im Skript oder im Repo:
 #   PICASTAI_API_BASE_URL   https://kunibert.example   (Pflicht, ohne Pfad)
@@ -104,7 +105,25 @@ status "GET /api/status (Admin-Route nicht erreichbar)" 404 "$BASE/api/status"
 status "GET /api/devices (Admin-Route nicht erreichbar)" 404 "$BASE/api/devices"
 status "POST /v1/turn (Route der Weboberfläche nicht erreichbar)" 404 "$BASE/v1/turn" -X POST
 
-# 5. Anmeldung: falscher oder fehlender Token -> 401 --------------------------
+# 5. Eltern-Seite und Eltern-Routen (Punkt D2) ---------------------------------
+# Caddy reicht /eltern und /v1/eltern/* durch. Ohne Anmeldung gibt es nur 401. Kein Versuch zählt
+# beim Schutz vor dem Raten: Ohne JSON lehnt der Server vor der Prüfung des Codes ab (415).
+if status "GET /eltern (Eltern-Seite)" 200 "$BASE/eltern"; then
+  grep -q 'Seite für Eltern' "$WORK/body" 2>/dev/null && ok "/eltern ist die Eltern-Seite" || bad "/eltern liefert nicht die Eltern-Seite"
+  grep -qi "^content-security-policy: default-src 'none'" "$WORK/headers" && ok "/eltern hat eine strenge CSP" || bad "/eltern: Content-Security-Policy fehlt oder ist nicht streng"
+  grep -qi '^x-frame-options: DENY' "$WORK/headers" && ok "/eltern lässt sich nicht einbetten" || bad "/eltern: X-Frame-Options DENY fehlt"
+fi
+status "GET /eltern/x (nur die Seite selbst ist erreichbar)" 404 "$BASE/eltern/x"
+status "GET /v1/eltern/status ohne Anmeldung" 401 "$BASE/v1/eltern/status"
+status "GET /v1/eltern/status mit falschem Cookie" 401 -H "Cookie: kb_eltern=falsch-$$-$(date +%s)" "$BASE/v1/eltern/status"
+status "POST /v1/eltern/koppeln ohne JSON (Route erreichbar, kein Rateversuch)" 415 -X POST \
+  -H 'Content-Type: text/plain' --data 'x' "$BASE/v1/eltern/koppeln"
+# 20 KB: über der Grenze von Caddy für Eltern-Anfragen (16 KB). Schon Caddy lehnt ab.
+head -c 20480 /dev/zero | tr '\0' 'x' > "$WORK/eltern-gross.txt"
+status "POST /v1/eltern/koppeln mit 20 KB (Grenze von Caddy)" 413 -X POST \
+  -H 'Content-Type: text/plain' --data-binary @"$WORK/eltern-gross.txt" "$BASE/v1/eltern/koppeln"
+
+# 6. Anmeldung: falscher oder fehlender Token -> 401 --------------------------
 # Das Gerät wird vor dem Hochladen geprüft: unbekannte Absender erreichen weder Spracherkennung noch Sprachmodell.
 WRONG="falscher-token-$$-$(date +%s)"
 status "POST /v1/device/question ohne Anmeldung" 401 -X POST "$BASE/v1/device/question"
@@ -113,7 +132,7 @@ status "POST /v1/device/question mit falschem Token" 401 -X POST \
 status "GET /v1/device/audio/x mit falschem Token" 401 \
   -H "Authorization: Bearer $WRONG" -H "X-Device-ID: ${DEVICE_ID:-prototype-001}" "$BASE/v1/device/audio/x"
 
-# 6. Mit echtem Token: Anmeldung klappt, zu große Datei -> 413 ----------------
+# 7. Mit echtem Token: Anmeldung klappt, zu große Datei -> 413 ----------------
 if [ -z "$DEVICE_ID" ] || [ -z "$DEVICE_TOKEN" ]; then
   skip "Prüfungen mit Gerätetoken (PICASTAI_DEVICE_ID und PICASTAI_DEVICE_TOKEN nicht gesetzt)"
 else

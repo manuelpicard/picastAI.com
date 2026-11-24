@@ -12,8 +12,9 @@ import { STORY_STATE_TTL_MS, StoryStateStore, startPurging } from './server-api/
 import { PARAGRAPH_PAUSE_MS, PcmStream, StreamingSpeaker, StreamRegistry, streamingWavHeader } from './server-api/audio-stream.js';
 import { MAX_HEARD_SECONDS, StopPoints, TURN_ID_PATTERN, speechParagraphs, type SpokenPart, type StopOutcome } from './server-api/stopp.js';
 import { AudioError, decodeWavHeader, generateMelodyWav, isPcmFormat, isSilentPcm16 } from './server-api/audio.js';
-import { CONSENT_MISSING_DE, ParentControls, ParentStateWriteError, SLEEPING_DE, isValidTime, pairingCodeSpeech, type BlockReason, type ConsentPath } from './server-api/eltern.js';
+import { CONSENT_MISSING_DE, ELTERNTEXT_VERSION, ParentControls, ParentStateWriteError, SLEEPING_DE, isValidTime, pairingCodeSpeech, type BlockReason, type ConsentPath } from './server-api/eltern.js';
 import { ParentStateFile } from './server-api/eltern-datei.js';
+import { loadParentPage } from './server-api/eltern-seite.js';
 import { PairingGuard, isLoopbackAddress } from './server-api/kopplungsschutz.js';
 import { config, getSafeConfigSummary, llmConfigWarnings, parentStateWarnings, testSwitchWarnings, ttsProviderWarnings, voiceConfigWarnings } from './server-api/config.js';
 import { isAdminTokenConfigured, verifyAdminAuthorization } from './server-api/admin-auth.js';
@@ -1045,6 +1046,15 @@ function parentStoreFailed(res: Response, err: unknown): Response {
   if (!(err instanceof ParentStateWriteError)) throw err;
   return res.status(503).json({ error: 'parent_store_unavailable', wirksam: err.inEffect });
 }
+
+// GET /eltern: die Eltern-Seite (Punkt D2, server-api/eltern-seite.html). Eine Datei ohne fremde Dienste
+// und ohne externe Schriften; sie ruft nur /v1/eltern/* auf. Gelesen beim Start: Fehlt sie, startet der
+// Server nicht. Vor Vite und dist registriert, damit /eltern nie die Weboberfläche liefert.
+const parentPage = loadParentPage(ELTERNTEXT_VERSION);
+app.get('/eltern', (_req: Request, res: Response) => {
+  res.set(parentPage.headers);
+  res.send(parentPage.html);
+});
 
 // POST /v1/eltern/koppeln {code}: Code einlösen, Eltern-Token als Cookie setzen.
 app.post('/v1/eltern/koppeln', requireJson, (req: Request, res: Response): any => {
