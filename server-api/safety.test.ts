@@ -596,6 +596,27 @@ const MUST_TRIGGER = [
   'Ich beiß mich extra in den Arm',
   'Ich schneide mir absichtlich den Arm auf',
   'Ich hab mir absichtlich den Arm aufgekratzt',
+  // Unabhängige Prüfung von PR #115 vor dem Merge (25.11.2026): weitere Abwandlungen derselben Befunde.
+  'Er bringt Mama um, hilf mir',
+  'Papa hat gesagt, er bringt Mama um. Was soll ich machen?',
+  'Er bringt mich um, Hilfe',
+  'Papa hat gesagt, dass er Mama umbringt',
+  'Ich kann keine Luft holen',
+  'Das Baby hat aufgehört zu atmen',
+  'Opa hört auf zu atmen',
+  'Ich kriege nicht mehr so richtig Luft',
+  'Ich bekomme nicht mehr genügend Luft',
+  'Er schlägt grad meine Mama',
+  'Mein Stiefvater schlägt immer meine Mama',
+  'Der schlägt meine Mama',
+  'Er schlägt seine Frau',
+  'Er hat versucht, mich mit einem Kissen zu ersticken',
+  'Er hat versucht, mich zu würgen',
+  'Ein Mann hat gefragt, ob ich mit ihm nach Hause komme',
+  'Das gefällt mir gar nicht, wenn er mich anfasst',
+  'Mama ist weg, ich kann sie gar nicht finden',
+  'Ich kann meine Mama im Freibad nicht finden',
+  'Ich hab mir mit Absicht den Arm aufgeschnitten',
 ];
 
 // Alltägliche Sätze, die NICHT anschlagen dürfen (Fehlalarme sind für Kinder
@@ -1028,6 +1049,17 @@ const MUST_NOT_TRIGGER = [
   'Ich beiße mich nicht absichtlich',
   'Ich schneide mir extra das Brötchen auf',
   'Ich hab mir extra die Haare geschnitten',
+  // Unabhängige Prüfung von PR #115 vor dem Merge (25.11.2026): Gegenproben.
+  'Ich hab mir extra das Brötchen aufgeschnitten',
+  'Er schlägt ihn zum Ritter',
+  'Er schlägt sie steif',
+  'Papa wird Oma um Hilfe bitten',
+  'Mama will Papa um Rat fragen',
+  'Papa bringt mich um sieben zur Schule',
+  'Mama bringt uns um halb acht in den Kindergarten',
+  'Er will mich um den Finger wickeln',
+  'Ich kann unter Wasser keine Luft holen',
+  'Ich kann Oma im Puppenhaus nicht finden',
 ];
 
 // Bekannte Grenze: Die Weiche ist eine Reihe von Mustern und bleibt unvollständig.
@@ -1150,7 +1182,8 @@ test('Bekannte Fehlalarme aus der Prüfung von PR #98 schlagen wirklich an (bewu
 });
 
 // Prüfung von PR #110 nach dem Merge (24.11.2026), bewusst hingenommen: Lieber ein Fehlalarm als eine Lücke.
-// Die ersten drei schlagen schon seit PR #110 an (Befund 8), die übrigen seit den Schablonen V13.
+// Die ersten drei schlagen schon seit PR #110 an (Befund 8), die übrigen seit den Schablonen V13 (die letzten drei
+// seit der unabhängigen Prüfung von PR #115).
 // Fragen 21 und 22 in docs/Sicherheitsweiche-Pruefung.md (Abschnitt 10), Einzelheiten in Abschnitt 12.
 test('Bekannte Fehlalarme aus der Prüfung von PR #110 schlagen wirklich an (bewusst hingenommen)', () => {
   for (const sentence of [
@@ -1160,6 +1193,9 @@ test('Bekannte Fehlalarme aus der Prüfung von PR #110 schlagen wirklich an (bew
     'Opa schubst meine Schwester auf der Schaukel an',
     'Die haben ihn beim Fußball geschlagen',
     'Oma hat mir eine Puppe geschenkt, aber ich kann sie nicht finden',
+    'Mama hat gesagt, ich soll meine Jacke holen, aber ich kann sie nicht finden',
+    'Er schlägt ihn mit dem Schwert',
+    'Die Prinzessin hat Angst, dass er sie tötet',
   ]) {
     assert.equal(screen(sentence), true, sentence);
   }
