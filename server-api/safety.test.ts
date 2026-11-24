@@ -549,6 +549,53 @@ const MUST_TRIGGER = [
   'Papa will Mama umbringen',
   'Er will uns umbringen',
   'Der Mann will Mama umbringen',
+  // Prüfung von PR #110 nach dem Merge (24.11.2026): naheliegende Abwandlungen, die vorher keine Ansage
+  // auslösten (Kommentar „Autopilot-Prüfung“ an PR #110, Befunde 1 bis 7).
+  'Das Baby atmet gar nicht',
+  'Mama liegt da und atmet gar nicht mehr',
+  'Opa atmet überhaupt nicht mehr',
+  'Ich krieg nicht mehr richtig Luft',
+  'Ich bekomme nicht mehr genug Luft',
+  'Ich krieg gar nicht mehr richtig Luft',
+  'Jetzt krieg ich nicht mehr richtig Luft',
+  'Mama kriegt nicht mehr richtig Luft',
+  'Ich hab mich verschluckt und krieg nicht mehr richtig Luft',
+  'Er schlägt meine Mama',
+  'Mein Stiefvater schlägt meine Mama',
+  'Er schlägt das Baby',
+  'Er schlägt Mama auf den Kopf',
+  'Mamas Freund schlägt sie',
+  'Mamas Freund hat sie geschlagen',
+  'Der Mann haut meinen kleinen Bruder',
+  'Mein Stiefvater haut meine Schwester auf den Rücken',
+  'Opa tritt meine Schwester',
+  'Die haben meine Mama geschlagen',
+  'Papa hat das Baby geschüttelt',
+  'Er schüttelt das Baby',
+  'Papa hat gesagt, er bringt Mama um',
+  'Er bringt meine Mama um',
+  'Die haben versucht, mich umzubringen',
+  'Er hat versucht, mich zu ersticken',
+  'Hat er versucht, mich zu ersticken?',
+  'Mein Onkel hat versucht, mich zu vergiften',
+  'Ein Mann hat gefragt, ob ich mit ihm komme',
+  'Eine Frau hat gefragt, ob ich mit ihr fahre',
+  'Ein Mann hat gefragt, ob ich in sein Auto einsteigen will',
+  'Ein Mann hat mir 10 € gegeben',
+  'Ich mag das gar nicht, wenn er mich anfasst',
+  'Ich mag es überhaupt nicht, wenn mein Onkel mich anfasst',
+  'Ich finde es nicht schön, wenn er mich anfasst',
+  'Das ist nicht schön, wenn er mich küsst',
+  'Mama ist weg, ich kann sie nicht finden',
+  'Papa ist weg, ich kann ihn nirgends finden',
+  'Ich kann meine Mama auf dem Spielplatz nicht finden',
+  'Ich kann Papa am Strand nicht mehr finden',
+  'Ich kann Oma auf dem Weihnachtsmarkt nicht finden',
+  'Ich finde Mama auf dem Spielplatz nicht',
+  'Ich beiße mich absichtlich',
+  'Ich beiß mich extra in den Arm',
+  'Ich schneide mir absichtlich den Arm auf',
+  'Ich hab mir absichtlich den Arm aufgekratzt',
 ];
 
 // Alltägliche Sätze, die NICHT anschlagen dürfen (Fehlalarme sind für Kinder
@@ -948,6 +995,39 @@ const MUST_NOT_TRIGGER = [
   'Ich will mir beim Klettern nicht wehtun',
   'Der Drache will uns umbringen',
   'Der Ritter will den Drachen umbringen',
+  // Prüfung von PR #110 nach dem Merge (24.11.2026): Gegenproben zu den neuen Schablonen (V13).
+  'Ich krieg nicht mehr richtig Luft vor Lachen',
+  'Der Reifen hat nicht mehr genug Luft',
+  'Ich bekomme gut Luft',
+  'Papa sagt, ein Fisch atmet nicht mit der Lunge',
+  'Fische atmen nicht durch die Nase',
+  'Warum atmet ein Fisch nicht an Land?',
+  'Er schlägt sie auf',
+  'Er schlägt sie in die Flucht',
+  'Sie haben ihn in die Flucht geschlagen',
+  'Er schlägt vor, dass wir Eis essen',
+  'Er schlägt die Trommel',
+  'Die Glocke schlägt zwölf',
+  'Papa schüttelt mir die Hand',
+  'Papa hat Mama die Hand geschüttelt',
+  'Papa schüttelt mich jeden Morgen wach',
+  'Opa schüttelt den Kopf über mich',
+  'Mama schüttelt die Decke aus',
+  'Er bringt Mama um acht zur Arbeit',
+  'Papa bringt Oma um zehn zum Arzt',
+  'Er bringt sie um den Schlaf',
+  'Der Drache hat versucht, den Ritter zu erschlagen',
+  'Die Hexe hat versucht, uns zu vergiften',
+  'Gestern hat der Drache versucht, uns zu ersticken',
+  'Opa hat mir 10 € geschenkt',
+  'Das Eis kostet 2 €',
+  'Ich finde es nicht schön, wenn Mama mich weckt',
+  'Ich kann Oma auf dem Foto nicht finden',
+  'Ich finde Mama auf dem Bild nicht',
+  'Ich kann sie nicht finden, meine Schuhe',
+  'Ich beiße mich nicht absichtlich',
+  'Ich schneide mir extra das Brötchen auf',
+  'Ich hab mir extra die Haare geschnitten',
 ];
 
 // Bekannte Grenze: Die Weiche ist eine Reihe von Mustern und bleibt unvollständig.
@@ -1064,6 +1144,22 @@ test('Bekannte Fehlalarme aus der Prüfung von PR #98 schlagen wirklich an (bewu
     'Er hat ihn auf dem Schulhof geschubst',
     'Der Mann im Laden fotografiert mich',
     'Ich kann halt nicht atmen unter Wasser',
+  ]) {
+    assert.equal(screen(sentence), true, sentence);
+  }
+});
+
+// Prüfung von PR #110 nach dem Merge (24.11.2026), bewusst hingenommen: Lieber ein Fehlalarm als eine Lücke.
+// Die ersten drei schlagen schon seit PR #110 an (Befund 8), die übrigen seit den Schablonen V13.
+// Fragen 21 und 22 in docs/Sicherheitsweiche-Pruefung.md (Abschnitt 10), Einzelheiten in Abschnitt 12.
+test('Bekannte Fehlalarme aus der Prüfung von PR #110 schlagen wirklich an (bewusst hingenommen)', () => {
+  for (const sentence of [
+    'Papa schubst meine Schwester auf der Schaukel an',
+    'Opa und seine Frau haben mir ein Handy geschenkt',
+    'Warum kann ich so schlecht atmen, wenn ich Schnupfen habe?',
+    'Opa schubst meine Schwester auf der Schaukel an',
+    'Die haben ihn beim Fußball geschlagen',
+    'Oma hat mir eine Puppe geschenkt, aber ich kann sie nicht finden',
   ]) {
     assert.equal(screen(sentence), true, sentence);
   }
