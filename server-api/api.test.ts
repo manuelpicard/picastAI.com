@@ -10,7 +10,7 @@ import path from 'node:path';
 import { after, before, describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { decodeWavHeader, encodeWav } from './audio.js';
-import { CONSENT_MISSING_DE, SLEEPING_DE } from './eltern.js';
+import { CONSENT_MISSING_DE, ELTERNTEXT_VERSION, SLEEPING_DE } from './eltern.js';
 import { pair, pairAndConsent } from './eltern-testhilfe.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -1104,6 +1104,24 @@ describe('picastAI-API (echter Server)', () => {
     assert.ok(Object.values(counts).every((n) => Number.isInteger(n)));
     assert.equal(typeof dauerhaft, 'boolean');
     assert.equal(typeof ungespeichert, 'boolean');
+  });
+
+  it('GET /eltern liefert die Eltern-Seite mit strengen Kopfzeilen, nicht die Weboberfläche (Punkt D2)', async () => {
+    for (const route of ['/eltern', '/eltern/']) {
+      const res = await fetch(`${base}${route}`);
+      assert.equal(res.status, 200, route);
+      assert.equal(res.headers.get('content-type'), 'text/html; charset=utf-8');
+      assert.match(res.headers.get('content-security-policy') || '', /^default-src 'none'; script-src 'sha256-[A-Za-z0-9+/]+={0,2}'; style-src 'sha256-[A-Za-z0-9+/]+={0,2}'; connect-src 'self';/);
+      assert.equal(res.headers.get('x-frame-options'), 'DENY');
+      assert.equal(res.headers.get('referrer-policy'), 'no-referrer');
+      assert.equal(res.headers.get('x-content-type-options'), 'nosniff');
+      assert.equal(res.headers.get('set-cookie'), null, 'die Seite setzt kein Cookie');
+      const html = await res.text();
+      assert.match(html, /Seite für Eltern/);
+      assert.ok(html.includes(`<body data-elterntext="${ELTERNTEXT_VERSION}">`));
+    }
+    assert.equal((await fetch(`${base}/eltern`, { method: 'HEAD' })).status, 200);
+    assert.equal((await fetch(`${base}/eltern`, { method: 'POST' })).status, 404, 'nur lesen');
   });
 
   // Muss der letzte Test dieses Servers sein: Danach wartet diese Adresse bei jedem Fehlversuch länger.
