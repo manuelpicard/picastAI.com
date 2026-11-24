@@ -70,6 +70,19 @@ no  "Caddyfile: kein Pfad mit nur *"         grep -qE '^\s*@[a-z]+ path (.* )?/?
 yes "Caddyfile: alles andere 404"            grep -qx $'\t\trespond 404' <<<"$out"
 yes "Caddyfile: Eltern-Anfragen klein"       grep -qx $'\t\t\tmax_size 16KB' <<<"$out"
 yes "Caddyfile: HSTS"                        grep -qx $'\theader Strict-Transport-Security "max-age=31536000"' <<<"$out"
+# Protokoll (Punkt N1123-0037-c): Filter für die Fehlerzeilen im globalen Block, keine log-Direktive
+# bei der Seite (sonst schriebe Caddy Zugriffsprotokolle). Echte Fehlerzeilen: deploy/caddy.test.sh.
+vor() { [[ -n "$1" && -n "$2" && "$1" -lt "$2" ]]; }
+eq  "Caddyfile: zuerst der globale Block"    "$(grep -vE '^[[:space:]]*(#|$)' <<<"$out" | head -n 1)" "{"
+eq  "Caddyfile: genau eine log-Zeile"        "$(grep -cE '^[[:space:]]*log( |$)' <<<"$out")" 1
+yes "Caddyfile: log im globalen Block"       vor "$(grep -n -m1 -x $'\tlog {' <<<"$out" | cut -d: -f1)" "$(grep -n -m1 '^kunibert.picastai.com {' <<<"$out" | cut -d: -f1)"
+yes "Caddyfile: Fehlerzeilen als JSON"       grep -qx $'\t\t\twrap json' <<<"$out"
+for filter in 'request>headers delete' 'request>remote_ip delete' 'request>remote_port delete' 'request>client_ip delete'; do
+  yes "Caddyfile: Filter $filter"            grep -qxF $'\t\t\t\t'"$filter" <<<"$out"
+done
+# shellcheck disable=SC2016
+yes "Caddyfile: Kennung der Antwort geschwärzt" grep -qxF $'\t\t\t\trequest>uri regexp `(?i)/v1/device/audio/[^?]*` /v1/device/audio/REDACTED' <<<"$out"
+yes "Caddyfile: Adressen im Fehlertext weg"  grep -qE $'^\t\t\t\terror regexp `.+` REDACTED$' <<<"$out"
 
 write_auto_upgrades "$tmp/20auto-upgrades"
 yes "Automatische Updates: Paketlisten täglich"   grep -qx 'APT::Periodic::Update-Package-Lists "1";' "$tmp/20auto-upgrades"

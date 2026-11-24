@@ -80,6 +80,33 @@ jobs:
           KUNIBERT_INSTALLER_TEST: "1"
         run: bash pi-client/install_raspberry_pi.test.sh
 
+  # Fehlerzeilen von Caddy ohne Geräte-ID, Token und Adresse (Punkt N1123-0037-c, deploy/caddy.test.sh).
+  # Zwei Fassungen: Caddy aus Ubuntu 24.04 (2.6.2) und die neueste 2.x aus dem offiziellen Image
+  # (dieselbe Reihe wie die offizielle Paketquelle, aus der deploy/setup-server.sh installiert).
+  caddy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - name: Caddy aus Ubuntu
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq caddy
+          sudo systemctl stop caddy || true
+      - name: Fehlerzeilen mit Caddy aus Ubuntu
+        env:
+          KUNIBERT_CADDY_TEST_PFLICHT: "1"
+        run: bash deploy/caddy.test.sh
+      - name: Caddy aus dem offiziellen Image (neueste 2.x)
+        run: |
+          id=$(docker create caddy:2)
+          docker cp "$id:/usr/bin/caddy" "$RUNNER_TEMP/caddy"
+          docker rm "$id" >/dev/null
+      - name: Fehlerzeilen mit der neuesten Caddy 2.x
+        env:
+          KUNIBERT_CADDY_TEST_PFLICHT: "1"
+        run: CADDY="$RUNNER_TEMP/caddy" bash deploy/caddy.test.sh
+
   # Gerätespeicher in Firestore gegen den lokalen Firestore-Emulator (siehe docs/Firestore-Emulator-Test.md).
   # Der Emulator wird nur hier installiert, nicht als Abhängigkeit in package.json/package-lock.json.
   # Er braucht Java. Es geht nichts an das echte Firestore: emulators:exec setzt FIRESTORE_EMULATOR_HOST.

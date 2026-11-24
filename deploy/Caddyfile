@@ -9,6 +9,31 @@
 #
 # kunibert.example durch den echten Hostnamen ersetzen. Derselbe Hostname gehört in
 # PICASTAI_PUBLIC_BASE_URL (Server) und PICASTAI_API_BASE_URL (Pi).
+{
+	# Protokoll (Punkt N1123-0037-c, vorläufig, 25.11.2026). Zugriffsprotokolle gibt es nicht (keine
+	# log-Direktive im Block der Seite). Bei Fehlern (zum Beispiel 502, wenn der Kunibert-Server
+	# nicht läuft, oder 504) schreibt Caddy aber eine Zeile ins Journal, mit der ganzen Anfrage:
+	# Adresse und Port des Absenders und alle Kopfzeilen, auch X-Device-ID. Bricht das Gerät einen
+	# Ton-Strom ab (Stopp per Taste), kommt eine Zeile dazu (neuere Fassungen auch mit Anfrage).
+	# Dieser Filter nimmt aus jeder Zeile: alle Kopfzeilen (Geräte-ID, Token, Cookie, Browser), die
+	# Adresse des Absenders, die Kennung im Pfad einer Antwort und Adressen im Fehlertext.
+	# Es bleiben Zeit, Stufe, Nachricht, Methode, Pfad, Status und Dauer.
+	# Grenze: Den Text der Nachricht (msg) filtert Caddy nicht (deploy/EINRICHTUNG.md, Abschnitt 6).
+	# Test: bash deploy/caddy.test.sh (braucht Caddy; CI: Job caddy).
+	log {
+		format filter {
+			wrap json
+			fields {
+				request>headers delete
+				request>remote_ip delete
+				request>remote_port delete
+				request>client_ip delete
+				request>uri regexp `(?i)/v1/device/audio/[^?]*` /v1/device/audio/REDACTED
+				error regexp `\[[^\]]*\]|[0-9]+[.][0-9]+[.][0-9]+[.][0-9]+` REDACTED
+			}
+		}
+	}
+}
 
 kunibert.example {
 	# Durchgereicht werden nur die Geräte-API, /health und die Eltern-Seite mit ihren Routen.
@@ -55,5 +80,6 @@ kunibert.example {
 	# Der Browser fragt ein Jahr lang nur noch über HTTPS (seit der Seite /eltern; nur dieser Hostname).
 	header Strict-Transport-Security "max-age=31536000"
 
-	# Bewusst keine log-Direktive: Ohne sie schreibt Caddy keine Zugriffsprotokolle.
+	# Bewusst keine log-Direktive: Ohne sie schreibt Caddy keine Zugriffsprotokolle. Fehlerzeilen
+	# schreibt Caddy trotzdem; was darin steht, regelt der Filter oben (globale Option log).
 }

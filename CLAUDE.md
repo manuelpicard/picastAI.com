@@ -33,6 +33,7 @@ npm run build
 npm run test:e2e         # echter Pi-Client gegen echten Server, Dienste als Attrappen; Eltern-Seite im Browser (nur mit Playwright, sonst übersprungen)
 python3 -m unittest discover -s pi-client -p "test_*.py"   # mit sounddevice und libportaudio2 auch gegen die echte Audio-Bibliothek (CI: ALSA-Nullgerät)
 bash deploy/setup-server.test.sh
+bash deploy/caddy.test.sh         # Fehlerzeilen von Caddy ohne Geräte-ID und Adresse; nur mit Caddy (Paket caddy), sonst übersprungen; CI: Job caddy
 shellcheck -S warning deploy/*.sh pi-client/*.sh docs/autopilot/*.sh
 python3 -m unittest discover -s docs/autopilot -p "test_*.py"   # Werkzeuge des Wochen-Autopiloten
 # Pi-Installer als root in einem Wegwerf-Container (ändert sonst das System; CI: Job pi-installer). pruefen.sh macht es nur

@@ -63,6 +63,12 @@ if [ "${1:-}" != "--schnell" ]; then
   pruefe pi-client python3 -m unittest discover -s pi-client -p "test_*.py"
   pruefe autopilot python3 -m unittest discover -s docs/autopilot -p "test_*.py"
   pruefe setup-server bash deploy/setup-server.test.sh
+  # Fehlerzeilen von Caddy (Punkt N1123-0037-c). Nur mit Caddy (Debian/Ubuntu: Paket caddy).
+  if command -v caddy >/dev/null 2>&1; then
+    pruefe caddy bash deploy/caddy.test.sh
+  else
+    echo "OFFEN   caddy            (Caddy nicht installiert; die CI prüft es, Job caddy)"
+  fi
   if command -v shellcheck >/dev/null 2>&1; then
     pruefe shellcheck shellcheck -S warning deploy/*.sh pi-client/*.sh docs/autopilot/*.sh
   else
