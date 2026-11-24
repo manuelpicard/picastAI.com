@@ -300,7 +300,7 @@ Nur Health prüfen (muss `OK` melden; prüft die Adresse aus `kunibert.env`, nic
 sudo -u kunibert bash -c 'cd /var/lib/kunibert && set -a && . /etc/kunibert/kunibert.env && set +a && exec /opt/kunibert/.venv/bin/python /opt/kunibert/pi-client/kunibert_client.py --once health'
 ```
 
-Genau diesen Aufruf führt der Containertest aus (`install_raspberry_pi.test.sh`, gegen einen kleinen Test-Server unter der Adresse aus `kunibert.env`).
+Genau diesen Aufruf führt der Containertest aus (`install_raspberry_pi.test.sh`, gegen einen kleinen Test-Server unter der Adresse aus `kunibert.env`). [`test_anleitung.py`](test_anleitung.py) prüft, dass derselbe Aufruf auch in Schritt 5 von „Später: der Pi im selben WLAN“, in `deploy/CHECKLISTE.md`, Teil B, und in `deploy/EINRICHTUNG.md`, Abschnitt 8, steht. `--once health` greift nicht auf Taster und Ton zu; der Dienst darf dabei laufen.
 
 Ohne Pi-Hardware gibt es zwei Prüfungen:
 
@@ -450,7 +450,13 @@ Ohne `PICASTAI_PUBLIC_BASE_URL` baut der Server die `audio_url` aus der Adresse,
 New-NetFirewallRule -DisplayName "Kunibert-Server (Heimnetz)" -Direction Inbound -Protocol TCP -LocalPort 3000 -Profile Private -RemoteAddress LocalSubnet -Action Allow
 ```
 
-**5. Am Pi:** Installation wie oben („Automatische Installation“) mit `--api-url http://192.168.178.20:3000 --device-id prototype-001` (deine Adresse); das Token fragt der Installer verdeckt ab. Ob der Rechner vom Pi aus erreichbar ist, zeigt `curl -fsS http://192.168.178.20:3000/health` am Pi (deine Adresse; Antwort mit `"status":"ok"`). Danach `--once health` (muss `OK` melden), dann `deploy/CHECKLISTE.md`, Teil B bis D.
+**5. Am Pi:** Installation wie oben („Automatische Installation“) mit `--api-url http://192.168.178.20:3000 --device-id prototype-001` (deine Adresse); das Token fragt der Installer verdeckt ab. Ob der Rechner vom Pi aus erreichbar ist, zeigt `curl -fsS http://192.168.178.20:3000/health` am Pi (deine Adresse; Antwort mit `"status":"ok"`). Danach Health mit den Einstellungen aus `/etc/kunibert/kunibert.env` prüfen, als Dienstkonto wie in „Manuell starten“ (muss `OK` melden; ohne diese Einstellungen prüft der Client die Standardadresse `https://picastAI.com`, nicht deinen Rechner):
+
+```bash
+sudo -u kunibert bash -c 'cd /var/lib/kunibert && set -a && . /etc/kunibert/kunibert.env && set +a && exec /opt/kunibert/.venv/bin/python /opt/kunibert/pi-client/kunibert_client.py --once health'
+```
+
+Dann `deploy/CHECKLISTE.md`, Teil B bis D.
 
 **Grenzen:** Zwischen Pi und Rechner läuft http, also unverschlüsselt im eigenen WLAN (das WLAN selbst ist verschlüsselt). Für Tests mit Erwachsenen im eigenen Netz in Ordnung (Einschätzung); für Geräte außerhalb deines WLANs braucht es HTTPS (Tailscale Funnel oder ein Server, siehe Projektliste, Punkt 65). Ohne Caddy ist im WLAN mehr erreichbar als hinter Caddy: die Betreiber-Routen (`/api/…`, nur mit Betreiber-Token) und die Entwicklungsseiten (`/`, `/hoerproben`; ohne Daten). Wie hinter Caddy sind auch die Eltern-Seite und die Eltern-Routen erreichbar (`/eltern`, `/v1/eltern/…`, nur mit Kopplungscode). Der Rechner muss laufen, solange der Pi arbeiten soll. Aufräumen: Fenster 1 und das Fenster der Stimme schließen, `docker stop speaches`; die Firewall-Regel entfernst du mit `Remove-NetFirewallRule -DisplayName "Kunibert-Server (Heimnetz)"` (als Administrator).
 

@@ -212,7 +212,13 @@ Von innen mit Admin-Token (nur auf dem Server): `curl -H "Authorization: Bearer 
 
 ## 8. Pi anbinden
 
-Auf dem Pi (siehe [`pi-client/README.md`](../pi-client/README.md)) `PICASTAI_API_BASE_URL=https://kunibert.example`, dieselbe `PICASTAI_DEVICE_ID` und das Geräte-Token eintragen, dann `--once health` und `--once story` prüfen. Weiter mit der Checkliste.
+Auf dem Pi (siehe [`pi-client/README.md`](../pi-client/README.md)) `PICASTAI_API_BASE_URL=https://kunibert.example`, dieselbe `PICASTAI_DEVICE_ID` und das Geräte-Token eintragen (der Installer schreibt sie nach `/etc/kunibert/kunibert.env`). Dann Health prüfen, als Dienstkonto mit den Einstellungen aus dieser Datei (muss `OK` melden; ohne sie prüft der Client die Standardadresse `https://picastAI.com`, nicht diesen Server):
+
+```bash
+sudo -u kunibert bash -c 'cd /var/lib/kunibert && set -a && . /etc/kunibert/kunibert.env && set +a && exec /opt/kunibert/.venv/bin/python /opt/kunibert/pi-client/kunibert_client.py --once health'
+```
+
+Eine Geschichte prüft derselbe Aufruf mit `--once story` statt `--once health` (vorher die Einwilligung erteilen, Abschnitt 5, „Einwilligung für Tests mit Erwachsenen“). Weiter mit der Checkliste.
 
 ## Betrieb
 

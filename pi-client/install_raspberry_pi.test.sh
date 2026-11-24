@@ -219,6 +219,8 @@ for _ in $(seq 1 50); do
 done
 : > "$work/health-aufrufe.log"
 # Genau der Aufruf aus der Anleitung, aus einem Ordner, den das Dienstkonto nicht lesen darf.
+# Dieselbe Zeile steht in pi-client/README.md (zweimal), deploy/CHECKLISTE.md (Teil B) und
+# deploy/EINRICHTUNG.md (Abschnitt 8); pi-client/test_anleitung.py prüft das. Hier ändern heißt dort ändern.
 (cd /root && sudo -u kunibert bash -c 'cd /var/lib/kunibert && set -a && . /etc/kunibert/kunibert.env && set +a && exec /opt/kunibert/.venv/bin/python /opt/kunibert/pi-client/kunibert_client.py --once health') > "$work/health.txt" 2>&1
 eq "Health als Dienstkonto meldet OK" "$(tail -n 1 "$work/health.txt")" OK
 [[ "$(tail -n 1 "$work/health.txt")" == OK ]] || show "$work/health.txt"

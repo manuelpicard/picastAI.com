@@ -42,7 +42,13 @@ Stand 21.11.2026: **nicht unter Windows und nicht mit einem Pi getestet**; gesch
 
 - [ ] USB-Mikrofon und USB-Lautsprecher (Pi 5) mit `pi-client/test_alsa_audio.sh` einzeln geprüft; bei zwei USB-Geräten `KUNIBERT_INPUT_DEVICE`/`KUNIBERT_OUTPUT_DEVICE` gesetzt (siehe `pi-client/README.md`, „Erster Aufbau“).
 - [ ] `/etc/kunibert/kunibert.env` auf dem Pi: richtige URL, Geräte-ID, Token. Ohne das Token ansehen: `sudo grep -v '^PICASTAI_DEVICE_TOKEN=' /etc/kunibert/kunibert.env`. Rechte wie vom Installer: `sudo stat -c '%a %U %G' /etc/kunibert/kunibert.env` zeigt `640 root kunibert` (nur root und das Dienstkonto lesen das Token; `pi-client/README.md`, „Wer das Token lesen darf“).
-- [ ] `python pi-client/kunibert_client.py --once health` gibt `OK`.
+- [ ] **Health mit den eigenen Einstellungen** gibt `OK`. Der Aufruf läuft wie der Dienst als Dienstkonto `kunibert` und liest `/etc/kunibert/kunibert.env` (nur root und dieses Konto dürfen die Datei lesen). Ohne diese Einstellungen prüft der Client die Standardadresse `https://picastAI.com`, nicht den eigenen Server. Der Dienst darf dabei laufen: `--once health` greift nicht auf Taster und Ton zu.
+
+  ```bash
+  sudo -u kunibert bash -c 'cd /var/lib/kunibert && set -a && . /etc/kunibert/kunibert.env && set +a && exec /opt/kunibert/.venv/bin/python /opt/kunibert/pi-client/kunibert_client.py --once health'
+  ```
+
+  Derselbe Aufruf steht in `pi-client/README.md`, „Manuell starten“. Der Containertest führt genau ihn aus (`pi-client/install_raspberry_pi.test.sh`, in der CI Job `pi-installer`). Meldet er `FEHLER` oder bricht mit einer Fehlermeldung ab: die URL in `kunibert.env` prüfen (Punkt davor) und am Pi `curl -fsS <URL aus kunibert.env>/health` (Antwort mit `"status":"ok"`; sonst blockieren WLAN, Adresse oder Firewall).
 - [ ] Mikrofon-Aus-Schalter trennt das Mikrofon **elektrisch** (separat geprüft, nicht nur GPIO 22).
 
 ## C. Erster Durchlauf
