@@ -95,7 +95,7 @@ input:focus-visible, button:focus-visible { outline: 3px solid var(--knopf); out
 <main>
   <h1>Ritter Kunibert <small>Seite für Eltern</small></h1>
 
-  <p id="testbetrieb" class="hinweis" hidden>Testbetrieb: Bis zur Rechtsprüfung testen nur Erwachsene. Es gibt noch keinen geprüften Elterntext.</p>
+  <p id="testbetrieb" class="hinweis" hidden>Testbetrieb: Kinder dürfen Kunibert noch nicht benutzen. Bis zur Rechtsprüfung testen nur Erwachsene. Es gibt noch keinen geprüften Elterntext.</p>
   <noscript><p class="fehler">Diese Seite braucht JavaScript.</p></noscript>
   <p id="meldung" role="status" aria-live="polite" hidden></p>
 
@@ -114,7 +114,7 @@ input:focus-visible, button:focus-visible { outline: 3px solid var(--knopf); out
     <p id="koppeln-test" class="klein" hidden>Im Test sagt das Gerät den Code noch nicht. Dann bekommst du den Code vom Betreiber.</p>
     <form id="koppeln-form" novalidate>
       <label for="code">Code</label>
-      <input id="code" name="code" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required>
+      <input id="code" name="code" type="text" inputmode="numeric" autocomplete="one-time-code" required>
       <button type="submit" id="koppeln-knopf">Verbinden</button>
     </form>
     <p id="koppeln-fehler" class="fehler" role="alert" hidden></p>
@@ -126,6 +126,7 @@ input:focus-visible, button:focus-visible { outline: 3px solid var(--knopf); out
         <li>Gib den neuen Code hier ein.</li>
       </ol>
       <p class="klein">Das hilft nicht immer. Zum Beispiel nicht, wenn Handy und Gerät auf verschiedenen Wegen ins Internet gehen.</p>
+      <p id="insgesamt-test" class="klein" hidden>Im Test kommt der Code vom Betreiber. Dann hilft nur Warten.</p>
     </div>
   </section>
 
@@ -136,6 +137,7 @@ input:focus-visible, button:focus-visible { outline: 3px solid var(--knopf); out
     <div id="einwilligen-box" hidden>
       <p>Mit deiner Einwilligung darf Kunibert auf diesem Gerät zuhören, antworten und Geschichten erzählen. Ohne Einwilligung sagt Kunibert nur einen festen Hinweis.</p>
       <p class="klein">Elterntext: Version <span id="elterntext-version"></span>.</p>
+      <p id="einwilligen-test" class="hinweis" hidden>Der Knopf schaltet Kunibert nur für Tests mit Erwachsenen frei.</p>
       <button type="button" id="einwilligen-knopf">Ich willige ein</button>
     </div>
     <div id="widerrufen-box" hidden>
@@ -152,14 +154,17 @@ input:focus-visible, button:focus-visible { outline: 3px solid var(--knopf); out
     <p id="ruhezeiten-text"></p>
     <p class="klein">Ändern kannst du das bald auch hier.</p>
   </section>
+
+  <p class="klein">Datenschutz: Diese Seite lädt nichts von anderen Servern. Auf deinem Handy legt sie nur ein Cookie ab, das dein Handy mit Kunibert verbindet. Mehr dazu steht bald auf einer eigenen Seite.</p>
 </main>
 <script>
 'use strict';
 (function () {
   var el = function (id) { return document.getElementById(id); };
   var testbetrieb = document.body.getAttribute('data-elterntext') === '0';
-  el('testbetrieb').hidden = !testbetrieb;
-  el('koppeln-test').hidden = !testbetrieb;
+  // Testbetrieb (Elterntext Version 0): Hinweise, dass Kinder Kunibert noch nicht benutzen dürfen und der
+  // Code im Test vom Betreiber kommt (das Gerät sagt ihn noch nicht, Punkt D1 der Arbeitsliste).
+  ['testbetrieb', 'koppeln-test', 'insgesamt-test', 'einwilligen-test'].forEach(function (id) { el(id).hidden = !testbetrieb; });
   el('elterntext-version').textContent = document.body.getAttribute('data-elterntext') || '?';
 
   // Wer die letzte Änderung der Einwilligung gemacht hat (Feld "weg", docs/picastAI-Pi-API.md).
@@ -313,7 +318,8 @@ input:focus-visible, button:focus-visible { outline: 3px solid var(--knopf); out
   el('koppeln-form').addEventListener('submit', function (ereignis) {
     ereignis.preventDefault();
     if (Date.now() < wartenBis || el('koppeln-knopf').disabled) return;
-    var code = el('code').value.replace(/\s+/g, '');
+    // Leerzeichen und Bindestriche beim Einfügen (zum Beispiel „123 456“) zählen nicht mit.
+    var code = el('code').value.replace(/[\s-]+/g, '');
     if (!/^[0-9]{6}$/.test(code)) {
       koppelnFehler('Bitte gib genau sechs Ziffern ein.');
       return;

@@ -33,11 +33,13 @@ export function cspHash(source: string): string {
 
 /**
  * Baut Seite und Kopfzeilen aus der Vorlage. Wirft, wenn die Vorlage etwas enthält, das die CSP nicht
- * abdeckt: Skript oder Stil mit Attributen (zum Beispiel `src`), mehr oder weniger als genau ein
- * Skript und ein Stil, oder ein übrig gebliebener Platzhalter.
+ * abdeckt: Skript oder Stil mit Attributen (zum Beispiel `src`) oder mehr oder weniger als genau ein
+ * Skript und ein Stil.
  */
 export function buildParentPage(template: string, elterntextVersion: string): ParentPage {
-  const html = template.split(ELTERNTEXT_PLACEHOLDER).join(escapeHtml(elterntextVersion));
+  // Zeilenenden wie der Browser: Sein HTML-Parser macht aus CRLF und CR ein LF, bevor er den Hash bildet.
+  // Ohne das blockierte die CSP Skript und Stil, wenn Git unter Windows mit CRLF auscheckt.
+  const html = template.replace(/\r\n?/g, '\n').split(ELTERNTEXT_PLACEHOLDER).join(escapeHtml(elterntextVersion));
   if (/<(script|style)\b[^>]+>/i.test(html)) throw new Error('Eltern-Seite: <script> und <style> nur ohne Attribute');
   const scripts = inlineBlocks(html, 'script');
   const styles = inlineBlocks(html, 'style');

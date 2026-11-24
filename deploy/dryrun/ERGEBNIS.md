@@ -34,8 +34,8 @@ Stand: ✓ stimmt, ✗ war falsch und ist korrigiert, „offen“ nicht prüfbar
 
 | Aussage | Ergebnis | Quelle |
 | --- | --- | --- |
-| Nur 80/443 öffentlich, nur Caddy | ✓ (Firewall selbst: offen, erst auf dem Server prüfbar) | `deploy/Caddyfile:13` (nur Hostname lauscht), `:16-17` |
-| Caddy reicht nur `/health` und `/v1/device/*` durch, sonst 404 (seit 12.11.2026 enger: vorher `/v1/*`; `/v1/turn` der Weboberfläche ist damit von außen gesperrt). Seit 24.11.2026 (Punkt D2) auch `/eltern` und `/v1/eltern/*`; mit `smoke-test.sh` gegen Caddy 2.6.2 geprüft (PR #112) | ✓ im Test vom 11.11. gegen echtes Caddy mit `/v1/*`: `/`, `/api/status`, `/api/devices` je 404; die engere Regel ist **nicht** neu gegen Caddy getestet | `deploy/Caddyfile:16-17`, `:30-32` |
+| Nur 80/443 öffentlich, nur Caddy | ✓ (Firewall selbst: offen, erst auf dem Server prüfbar) | `deploy/Caddyfile:13` (nur Hostname lauscht), `:17`, `:38`, `:49-51` |
+| Caddy reicht nur `/health` und `/v1/device/*` durch, sonst 404 (seit 12.11.2026 enger: vorher `/v1/*`; `/v1/turn` der Weboberfläche ist damit von außen gesperrt). Seit 24.11.2026 (Punkt D2) auch `/eltern`, `/eltern/` und `/v1/eltern/*` | ✓ im Test vom 11.11. gegen echtes Caddy mit `/v1/*`: `/`, `/api/status`, `/api/devices` je 404. ✓ am 24.11.2026 mit Caddy 2.6.2 (Ubuntu-Paket) und `smoke-test.sh` vor dem lokalen Server: `/`, `/api/status`, `/api/devices`, `POST /v1/turn` und `/eltern/x` je 404, `/eltern` 200, `/v1/eltern/status` ohne Anmeldung 401. Die beiden Größengrenzen von Caddy gaben dort 502 statt 413 (Punkt N1124-1338-b). Offen: Pfade mit `%2F` oder `//` liest Caddy anders als der Server (Punkt N1124-1338-d) | `deploy/Caddyfile:17`, `:38`, `:49-51` |
 | Port 3000 nie nach außen | ✓ per Konfiguration: `HOST=127.0.0.1`. ✗ Ohne `HOST` lauscht der Server auf `0.0.0.0` (jetzt im Text) | `deploy/kunibert.env.example:9`, `server-api/config.ts:219`, `server.ts:516` |
 | Port 8000 nie nach außen | ✓ `--publish 127.0.0.1:8000:8000`. Hinweis zu Docker und `ufw` ergänzt | `deploy/EINRICHTUNG.md` Abschnitt 4 |
 | `PICASTAI_PUBLIC_BASE_URL` bestimmt die `audio_url` | ✓ im Test (Antwort enthielt die eingestellte Adresse) | `server.ts:112-119`, `server-api/http-utils.ts:36-63` |
@@ -47,7 +47,7 @@ Stand: ✓ stimmt, ✗ war falsch und ist korrigiert, „offen“ nicht prüfbar
 | Modellnamen für Piper („nicht gegengeprüft“) | ✓ jetzt geprüft: `speaches-ai/piper-de_DE-thorsten-medium`, Stimme `thorsten` | Speaches-Registry |
 | Meldung „Feste Sprechtexte vorbereitet (3 von 3)“ | ✓ | `server.ts:521-525`, Start-Log |
 | Zeitgrenze Server 120 s | ✗ galt nur bei einem Sprachmodell-Aufruf; Worst Case 150 s. **Seit 11.11.2026 (vorläufig):** gemeinsames Zeitbudget von 120 s für die ganze Anfrage, Tests in `server-api/timing.test.ts` (Zeilen unter „Zeitbudget“); die Quellenzeilen in dieser Zeile gelten für den Code vor der Änderung | `server-api/config.ts:225,241`, `server-api/brain.ts:231,247,368`, `server-api/voice.ts:160,200`, `server-api/llm.ts:80` |
-| Caddy 130 s | ✓ im Caddyfile; Wirkung bei echten Wartezeiten nicht gemessen | `deploy/Caddyfile:26` |
+| Caddy 130 s | ✓ im Caddyfile; Wirkung bei echten Wartezeiten nicht gemessen | `deploy/Caddyfile:30` |
 | Pi-Client 140 s | ✓ | `pi-client/kunibert_client.py:70,115`, Test `pi-client/test_kunibert_client.py:624-626` |
 | Caddy begrenzt den Body auf 3 MB, Server auf 2 MiB | ✓ 2,5 MB und 4 MB ergaben je 413 (welche der beiden Stellen bei 4 MB ablehnt, ist am Status nicht zu sehen) | `deploy/Caddyfile:19-21`, `server.ts:47-52`, `:456-461` |
 | „Caddyfile nicht geprüft“ | ✗ jetzt mit `caddy validate` geprüft | Trockenlauf |

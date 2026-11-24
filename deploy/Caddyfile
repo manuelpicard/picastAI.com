@@ -52,6 +52,8 @@ kunibert.example {
 
 	# Keine Software-Kennung nach außen.
 	header -Server
+	# Der Browser fragt ein Jahr lang nur noch über HTTPS (seit der Seite /eltern; nur dieser Hostname).
+	header Strict-Transport-Security "max-age=31536000"
 
 	# Bewusst keine log-Direktive: Ohne sie schreibt Caddy keine Zugriffsprotokolle.
 }

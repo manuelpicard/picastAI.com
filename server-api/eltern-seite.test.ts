@@ -104,6 +104,13 @@ describe('Eltern-Seite: Vorlage wird streng geprüft', () => {
     assert.match(built.headers['Content-Security-Policy'], new RegExp(`script-src ${sha256('1').replace(/[+/]/g, '\\$&')};`));
   });
 
+  it('CRLF-Zeilenenden (Git unter Windows) ergeben dieselbe Seite und dieselbe CSP wie LF', () => {
+    const crlf = buildParentPage(template.replace(/\n/g, '\r\n'), ELTERNTEXT_VERSION);
+    assert.equal(crlf.headers['Content-Security-Policy'], page.headers['Content-Security-Policy']);
+    assert.equal(crlf.html, page.html);
+    assert.ok(!crlf.html.includes('\r'));
+  });
+
   it('wirft bei Skript mit src, zweitem Skript oder fehlendem Stil', () => {
     assert.throws(() => buildParentPage(minimal('<script src="/x.js"></script>'), '0'), /ohne Attribute/);
     assert.throws(() => buildParentPage(minimal('<script>2</script>'), '0'), /genau ein/);

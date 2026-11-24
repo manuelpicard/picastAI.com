@@ -106,10 +106,13 @@ before(async () => {
   if (skip) return;
   const port = await freePort();
   base = `http://127.0.0.1:${port}`;
+  // Keine Einstellungen aus der Shell übernehmen (Sprachdienste, Claude, Datei der Eltern-Steuerung):
+  // Sonst bereitete der Server im Betrieb feste Texte bei einem echten Sprachdienst vor.
+  const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !/^(PICASTAI_|KUNIBERT_|ANTHROPIC_|GOOGLE_)/.test(name)));
   server = spawn(process.execPath, ['--import', 'tsx', 'server.ts'], {
     cwd: root,
     env: {
-      ...process.env,
+      ...env,
       NODE_ENV: 'production',
       HOST: '127.0.0.1',
       PORT: String(port),
@@ -146,7 +149,7 @@ test('Seite lädt ohne Verstoß gegen die CSP und zeigt das Koppeln mit dem Hinw
   await waitText(page, '#koppeln h2', /Handy mit Kunibert verbinden/);
   assert.equal(await visible(page, '#stand'), false);
   // Elterntext Version 0: nur Tests mit Erwachsenen (server-api/eltern.ts, ELTERNTEXT_VERSION).
-  await waitText(page, '#testbetrieb', /Bis zur Rechtsprüfung testen nur Erwachsene/);
+  await waitText(page, '#testbetrieb', /Kinder dürfen Kunibert noch nicht benutzen\. Bis zur Rechtsprüfung testen nur Erwachsene/);
   await waitText(page, '#koppeln-test', /Code vom Betreiber/);
   // Die Stile greifen (sonst hätte die CSP sie blockiert): Der Knopf hat die Farbe aus dem <style>.
   const background = await page.locator('#koppeln-knopf').evaluate((element) => getComputedStyle(element).backgroundColor);
@@ -170,9 +173,12 @@ test('Koppeln: zu kurzer Code wird nicht geschickt, falscher Code gibt einen kla
 
 test('Richtiger Code: verbunden, einwilligen, nach dem Neuladen noch verbunden, widerrufen mit Rückfrage', { skip, timeout: 60_000 }, async () => {
   const { context, page } = await openPage();
-  await submitCode(page, await pairingCode());
+  // Eingefügt mit Leerzeichen („123 456“): zählt wie sechs Ziffern.
+  const code = await pairingCode();
+  await submitCode(page, `${code.slice(0, 3)} ${code.slice(3)}`);
   await waitText(page, '#meldung', /jetzt mit Kunibert verbunden/);
   await waitText(page, '#einwilligung-text', /^Noch nicht erteilt/);
+  await waitText(page, '#einwilligen-test', /nur für Tests mit Erwachsenen/);
   await waitText(page, '#elterntext-version', /^0$/);
   await waitText(page, '#schlafmodus-text', /Schlafmodus: aus/);
   await waitText(page, '#ruhezeiten-text', /Ruhezeiten: keine/);
@@ -218,9 +224,9 @@ test('Zu viele Fehlversuche (echter Server): Wartezeit, Knopf gesperrt, danach g
     blocked = (await response).status() === 429;
   }
   assert.ok(blocked, 'nach wenigen Fehlversuchen 429');
-  await waitText(page, '#koppeln-fehler', /^Zu viele falsche Versuche\. Bitte warte [12] Sekunden?\.$/);
+  await waitText(page, '#koppeln-fehler', /^Zu viele falsche Versuche\. Bitte warte (1 Sekunde|2 Sekunden)\.$/);
   assert.equal(await page.locator('#koppeln-knopf').isDisabled(), true);
-  await waitText(page, '#koppeln-knopf', /^Bitte warten \([12] Sekunden?\)$/);
+  await waitText(page, '#koppeln-knopf', /^Bitte warten \((1 Sekunde|2 Sekunden)\)$/);
   assert.equal(await visible(page, '#insgesamt-rat'), false);
   await waitText(page, '#koppeln-fehler', /^Du kannst es jetzt wieder versuchen\.$/, 6000);
   assert.equal(await page.locator('#koppeln-knopf').isDisabled(), false);
@@ -237,6 +243,8 @@ test('Gesperrt für alle (grund "insgesamt"): Rat mit dem WLAN; ohne warten_seku
     { headers: { 'Retry-After': '30' }, body: { error: 'rate_limited', warten_sekunden: 90, grund: 'insgesamt' } },
     { headers: { 'Retry-After': '3' }, body: { error: 'rate_limited' } },
   ];
+  let pairingRequests = 0;
+  page.on('request', (request) => (request.url().endsWith('/v1/eltern/koppeln') ? pairingRequests++ : 0));
   await page.route('**/v1/eltern/koppeln', (route) => {
     const answer = answers.shift();
     return route.fulfill({ status: 429, contentType: 'application/json', headers: answer.headers, body: JSON.stringify(answer.body) });
@@ -244,10 +252,14 @@ test('Gesperrt für alle (grund "insgesamt"): Rat mit dem WLAN; ohne warten_seku
   await submitCode(page, '123456');
   await waitText(page, '#koppeln-fehler', /^Gerade versuchen sehr viele, einen Code zu erraten\. .* Bitte warte 2 Minuten\.$/);
   await waitText(page, '#insgesamt-rat', /WLAN, in dem auch Kunibert ist.*mobilen Daten aus.*neuen Code sagen.*Das hilft nicht immer/s);
+  // Im Testbetrieb kommt der Code vom Betreiber: Dann hilft der Rat nicht, und die Seite sagt das.
+  await waitText(page, '#insgesamt-test', /Im Test kommt der Code vom Betreiber\. Dann hilft nur Warten\./);
   await waitText(page, '#koppeln-knopf', /^Bitte warten \(2 Minuten\)$/);
-  // Während der Wartezeit schickt die Seite nichts ab.
+  // Während der Wartezeit schickt die Seite nichts ab (kurz warten, damit eine Anfrage auch ankäme).
   await page.locator('#koppeln-form').evaluate((form) => form.requestSubmit());
-  assert.equal(answers.length, 1, 'kein Versuch während der Wartezeit');
+  await page.waitForTimeout(500);
+  assert.equal(pairingRequests, 1, 'kein Versuch während der Wartezeit');
+  assert.equal(answers.length, 1);
 
   // Zweiter Fall in einem frischen Kontext: nur Retry-After, grund fehlt.
   await context.close();
@@ -308,6 +320,24 @@ test('Ehrliche Meldungen: Speichern fehlgeschlagen (503), nicht mehr verbunden (
   await page.unroute('**/v1/eltern/status');
   await page.click('#neu-laden');
   await waitText(page, '#einwilligung-text', /^Erteilt am/);
+  await context.close();
+});
+
+test('Ohne Testbetrieb (Elterntext-Version nicht "0"): keine Hinweise auf den Test', { skip, timeout: 60_000 }, async () => {
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  page.on('pageerror', (error) => cspErrors.push(`Skriptfehler: ${error.message}`));
+  // Nur das Attribut am <body> ändern: Skript und Stil bleiben gleich, die CSP der echten Antwort passt weiter.
+  await page.route('**/eltern', async (route) => {
+    const response = await route.fetch();
+    const body = (await response.text()).replace('<body data-elterntext="0">', '<body data-elterntext="1">');
+    await route.fulfill({ response, body });
+  });
+  await page.goto(`${base}/eltern`);
+  await waitText(page, '#koppeln h2', /Handy mit Kunibert verbinden/);
+  for (const id of ['#testbetrieb', '#koppeln-test', '#insgesamt-test', '#einwilligen-test']) {
+    assert.equal(await page.locator(id).isHidden(), true, id);
+  }
   await context.close();
 });
 

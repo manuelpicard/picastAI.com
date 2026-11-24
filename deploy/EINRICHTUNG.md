@@ -47,7 +47,7 @@ Pi --HTTPS :443--> Caddy --HTTP lokal--> 127.0.0.1:3000 Kunibert-Server
                       Sprachserver (Speaches, nur lokal) und Claude (Sprachmodell)
 ```
 
-Öffentlich ist nur Caddy, und Caddy reicht nur `/health`, `/v1/device/*`, die Seite für Eltern (`/eltern`) und die Eltern-Routen (`/v1/eltern/*`) durch (seit 24.11.2026, Punkt D2). Admin-Routen (`/api/*`) und die Weboberfläche sind von außen nicht erreichbar. Solange das Gerät den Kopplungscode noch nicht sagt (Punkt D1), kommt der Code nur über die Betreiber-Route auf dem Server; deshalb erteilt der Betreiber die Einwilligung für das Testgerät dort (Abschnitt 5).
+Öffentlich ist nur Caddy, und Caddy reicht nur `/health`, `/v1/device/*`, die Seite für Eltern (`/eltern`) und die Eltern-Routen (`/v1/eltern/*`) durch (seit 24.11.2026, Punkt D2). Admin-Routen (`/api/*`) und die Weboberfläche sind von außen nicht erreichbar (offen: Pfade mit `%2F` oder `//` liest Caddy anders als der Server, Punkt N1124-1338-d). Solange das Gerät den Kopplungscode noch nicht sagt (Punkt D1), kommt der Code nur über die Betreiber-Route auf dem Server; deshalb erteilt der Betreiber die Einwilligung für das Testgerät dort (Abschnitt 5).
 
 ## 1. Voraussetzungen
 
@@ -163,7 +163,7 @@ sudo caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
 sudo systemctl reload caddy
 ```
 
-Die Vorlage erzwingt HTTPS, reicht nur `/health`, `/v1/device/*`, `/eltern` und `/v1/eltern/*` durch, begrenzt den Body auf 3 MB (Eltern: 16 KB) und schreibt keine Zugriffsprotokolle (Fehlerzeilen schon, Punkt N1123-0037-c). In der env-Datei steht dazu `PICASTAI_TRUST_PROXY=loopback` (Vorlage und `setup-server.sh`): Der Server glaubt nur Caddy auf demselben Rechner und sieht so die echte Adresse der Eltern beim Koppeln. Ohne die Einstellung warten alle Eltern zusammen, wenn irgendwer falsche Codes rät; der Server warnt dann einmal im Journal. Steht noch ein weiterer Proxy vor Caddy (zum Beispiel ein CDN), braucht es `trusted_proxies` im Caddyfile und dieselben Adressbereiche in `PICASTAI_TRUST_PROXY` (siehe [`docs/picastAI-Pi-API.md`](../docs/picastAI-Pi-API.md), „Betrieb hinter einem Proxy“; nicht getestet).
+Die Vorlage erzwingt HTTPS (mit HSTS, ein Jahr), reicht nur `/health`, `/v1/device/*`, `/eltern` und `/v1/eltern/*` durch, begrenzt den Body auf 3 MB (Eltern: 16 KB) und schreibt keine Zugriffsprotokolle (Fehlerzeilen schon, Punkt N1123-0037-c). In der env-Datei steht dazu `PICASTAI_TRUST_PROXY=loopback` (Vorlage und `setup-server.sh`): Der Server glaubt nur Caddy auf demselben Rechner und sieht so die echte Adresse der Eltern beim Koppeln. Ohne die Einstellung warten alle Eltern zusammen, wenn irgendwer falsche Codes rät; der Server warnt dann einmal im Journal. Steht noch ein weiterer Proxy vor Caddy (zum Beispiel ein CDN), braucht es `trusted_proxies` im Caddyfile und dieselben Adressbereiche in `PICASTAI_TRUST_PROXY` (siehe [`docs/picastAI-Pi-API.md`](../docs/picastAI-Pi-API.md), „Betrieb hinter einem Proxy“; nicht getestet).
 
 ### Zeitkette
 
@@ -203,6 +203,8 @@ Ausgang 0 heißt: alles bestanden. Einzelne Prüfungen von Hand:
 curl -i https://kunibert.example/health        # 200
 curl -i https://kunibert.example/              # 404
 curl -i https://kunibert.example/api/status    # 404, Admin-Routen sind nicht erreichbar
+curl -i https://kunibert.example/eltern        # 200, Seite für Eltern
+curl -i https://kunibert.example/v1/eltern/status   # 401 ohne Anmeldung
 curl -i http://kunibert.example/health         # Weiterleitung auf https
 ```
 

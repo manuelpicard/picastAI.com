@@ -69,6 +69,7 @@ no  "Caddyfile: /api nie durchgereicht"      grep -qE '^\s*@[a-z]+ path .*/api' 
 no  "Caddyfile: kein Pfad mit nur *"         grep -qE '^\s*@[a-z]+ path (.* )?/?\*( |$)' <<<"$out"
 yes "Caddyfile: alles andere 404"            grep -qx $'\t\trespond 404' <<<"$out"
 yes "Caddyfile: Eltern-Anfragen klein"       grep -qx $'\t\t\tmax_size 16KB' <<<"$out"
+yes "Caddyfile: HSTS"                        grep -qx $'\theader Strict-Transport-Security "max-age=31536000"' <<<"$out"
 
 write_auto_upgrades "$tmp/20auto-upgrades"
 yes "Automatische Updates: Paketlisten täglich"   grep -qx 'APT::Periodic::Update-Package-Lists "1";' "$tmp/20auto-upgrades"

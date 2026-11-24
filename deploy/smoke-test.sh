@@ -71,6 +71,7 @@ if status "GET /health" 200 "$BASE/health"; then
   grep -q '"status":"ok"' "$WORK/body" 2>/dev/null && ok '/health meldet status "ok"' || bad '/health: Antwort enthält nicht status "ok"'
   if grep -qi '^server:' "$WORK/headers"; then bad "Antwort verrät die Server-Software (Header Server)"; else ok "kein Server-Header"; fi
   if grep -qi '^x-powered-by:' "$WORK/headers"; then bad "Antwort enthält X-Powered-By"; else ok "kein X-Powered-By-Header"; fi
+  grep -qi '^strict-transport-security: max-age=' "$WORK/headers" && ok "HSTS gesetzt (Browser bleiben bei HTTPS)" || bad "Header Strict-Transport-Security fehlt"
 fi
 
 # 2. TLS-Zertifikat -----------------------------------------------------------
