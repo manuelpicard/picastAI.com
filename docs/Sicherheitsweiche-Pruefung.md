@@ -4,6 +4,8 @@ Für eine Fachkraft ohne Programmierkenntnisse (zum Beispiel Kinderschutz, Päda
 
 **Stand:** 6. November 2026, Code-Stand `main` nach PR #14. **Quellen:** nur der Programmcode (`server-api/safety.ts`, `server-api/brain.ts`, `server-api/prompts.ts`) und die Tests (`server-api/safety.test.ts`, `server-api/brain.test.ts`). Was in den Tests steht, ist als **(Test)** gekennzeichnet. Sätze ohne diesen Vermerk wurden zusätzlich am 6. November 2026 mit dem Code ausprobiert; sie stehen nicht in den Tests.
 
+**Nachtrag 25. November 2026:** Abschnitt 12 beschreibt die Prüfung von Abschnitt 11 nach dem Merge (45 Sätze mehr erkannt, neue Fehlalarme in Abschnitt 7.3, Fragen 21 und 22 ergänzt).
+
 **Nachtrag 24. November 2026:** Abschnitt 11 beschreibt die Prüfung von Abschnitt 10 nach dem Merge (107 Sätze mehr erkannt, neue Fehlalarme in Abschnitt 7.3, Fragen 21 und 22 ergänzt).
 
 **Nachtrag 22. November 2026:** Abschnitt 10 beschreibt die Prüfung der vierten Probe durch einen zweiten Prüfer (59 Sätze mehr erkannt, neue Fehlalarme in Abschnitt 7.3, neue Fragen 21 und 22).
@@ -159,6 +161,8 @@ Durch die neuen Schablonen aus Abschnitt 10 kommen diese Fehlalarme dazu, bewuss
 
 **Stand 24. November 2026:** Bei der Prüfung von Abschnitt 10 nach dem Merge gefunden, seit dem 22. November so, bewusst hingenommen und als Test festgehalten **(Test)**: die Sachfragen „Warum kann ich nicht atmen, wenn ich mir die Nase zuhalte?“, „Warum krieg ich keine Luft, wenn ich lange tauche?“ und „Warum hab ich keine Luft mehr nach dem Rennen?“ (Frage 21) und Sätze über die Lehrerin wie „Frau Müller hat mir ein Gummibärchen gegeben“ und „Frau Müller hat gefragt, ob ich mitkomme“ (Frage 22). Durch die breiteren Schablonen aus Abschnitt 11 kommen dazu **(Test)**: „Er hat sie beim Schach geschlagen“ (Spiel), „Der Mann an der Kasse hat mir Geld gegeben“, „Die Frau vom Kindergarten hat mich fotografiert“ (Frage 22), „Ich hab gesagt, hör auf zu singen, aber er hört nicht auf“ und „Ich kann Papa nicht finden, er hat sich so gut versteckt“ (Spiel). Nach der Vorab-Prüfung von Abschnitt 11 kommen dazu **(Test)**: „Er hat ihn in die Flucht geschlagen“ (Geschichte), „Er hat ihn ins Tor getreten“ und „Er hat ihn beim Fußball getreten“ (Spiel), „Er hat ihn auf dem Schulhof geschubst“, „Mama hat sie steif geschlagen“ (Sahne), „Papa hat Mama erzählt, wie Kunibert den Drachen geschlagen hat“, „Ich kann halt nicht atmen unter Wasser“ (Frage 21), „Die Frau im Eisladen hat mir ein Eis gegeben“ und „Der Mann im Laden fotografiert mich“ (Frage 22).
 
+**Stand 25. November 2026:** Bei der Prüfung von Abschnitt 11 nach dem Merge gefunden, seit dem 24. November so, bewusst hingenommen und als Test festgehalten **(Test)**: „Papa schubst meine Schwester auf der Schaukel an“ (Spiel), „Opa und seine Frau haben mir ein Handy geschenkt“ (Frage 22) und die Sachfrage „Warum kann ich so schlecht atmen, wenn ich Schnupfen habe?“ (Frage 21). Durch die Schablonen aus Abschnitt 12 kommen dazu **(Test)**: „Opa schubst meine Schwester auf der Schaukel an“ und „Die haben ihn beim Fußball geschlagen“ (Spiel) und „Oma hat mir eine Puppe geschenkt, aber ich kann sie nicht finden“ („sie“ ist hier die Puppe).
+
 ### 7.4 Ohne Claude: allgemeine Antworten auf Sätze, die Stufe 1 nicht erkennt
 
 Ist Claude nicht eingerichtet oder fällt aus (oder lehnt der Ausgabe-Check den Text ab), antwortet das Gerät mit festen Texten nach Stichwörtern. Ausprobiert mit dem Code:
@@ -284,8 +288,8 @@ Dazu 36 neue Gegenproben, die keine Ansage auslösen **(Test)**, zum Beispiel �
 
 **Neue Fragen an Sie:**
 
-21. „Ich will nicht mehr weiter, ich will schlafen“ löst beim Erzählen die Hilfe-Ansage aus. Ebenso Sätze, mit denen ein Kind die Geschichte mitspielt, zum Beispiel „Der Drache wirft Feuerbälle nach mir“, „Die Hexe hat uns im Turm eingesperrt“ oder „Der Drache kommt, er will uns töten“, und „Ich will nicht mehr weiter, ich finde die langweilig, erzähl mir eine andere Geschichte“. Soll Kunibert solche Sätze anders behandeln, zum Beispiel während eine Geschichte läuft? Heute gilt: lieber ein Fehlalarm als eine Lücke. Seit Abschnitt 10 bekommen auch Sachfragen zur Atmung die Hilfe-Ansage statt einer Antwort, zum Beispiel „Warum kann ich nicht atmen, wenn ich mir die Nase zuhalte?“, „Warum krieg ich keine Luft, wenn ich lange tauche?“ und „Warum hab ich keine Luft mehr nach dem Rennen?“. Soll es für solche Fragen eine Ausnahme geben? Jede Ausnahme kann einen echten Fall durchlassen. Seit Abschnitt 11 lösen auch Sätze aus Geschichte, Spiel und Küche die Ansage aus, zum Beispiel „Er hat ihn in die Flucht geschlagen“, „Er hat ihn ins Tor getreten“ und „Mama hat sie steif geschlagen“.
-22. „Ein Mann hat mir Gummibärchen geschenkt“ löst die Ansage aus (Süßes von Fremden). Ebenso „Die Frau beim Bäcker hat mir einen Lolli geschenkt“ und „Der Mann im Laden hat mir Gummibärchen gegeben“. Ist dieser Fehlalarm vertretbar, oder soll es Ausnahmen geben (zum Beispiel für Bäcker oder Laden)? Jede Ausnahme kann einen echten Fall durchlassen. Dasselbe gilt für bekannte Erwachsene, wenn „Frau“ oder „Mann“ im Satz steht: „Frau Müller hat mir ein Gummibärchen gegeben“ und „Frau Müller hat gefragt, ob ich mitkomme“ (Lehrerin), seit Abschnitt 11 auch „Der Mann an der Kasse hat mir Geld gegeben“, „Die Frau im Eisladen hat mir ein Eis gegeben“, „Die Frau vom Kindergarten hat mich fotografiert“ und „Der Mann im Laden fotografiert mich“.
+21. „Ich will nicht mehr weiter, ich will schlafen“ löst beim Erzählen die Hilfe-Ansage aus. Ebenso Sätze, mit denen ein Kind die Geschichte mitspielt, zum Beispiel „Der Drache wirft Feuerbälle nach mir“, „Die Hexe hat uns im Turm eingesperrt“ oder „Der Drache kommt, er will uns töten“, und „Ich will nicht mehr weiter, ich finde die langweilig, erzähl mir eine andere Geschichte“. Soll Kunibert solche Sätze anders behandeln, zum Beispiel während eine Geschichte läuft? Heute gilt: lieber ein Fehlalarm als eine Lücke. Seit Abschnitt 10 bekommen auch Sachfragen zur Atmung die Hilfe-Ansage statt einer Antwort, zum Beispiel „Warum kann ich nicht atmen, wenn ich mir die Nase zuhalte?“, „Warum krieg ich keine Luft, wenn ich lange tauche?“ und „Warum hab ich keine Luft mehr nach dem Rennen?“. Soll es für solche Fragen eine Ausnahme geben? Jede Ausnahme kann einen echten Fall durchlassen. Seit Abschnitt 11 lösen auch Sätze aus Geschichte, Spiel und Küche die Ansage aus, zum Beispiel „Er hat ihn in die Flucht geschlagen“, „Er hat ihn ins Tor getreten“ und „Mama hat sie steif geschlagen“. Seit Abschnitt 12 gehören dazu auch „Warum kann ich so schlecht atmen, wenn ich Schnupfen habe?“, „Papa schubst meine Schwester auf der Schaukel an“ und „Die haben ihn beim Fußball geschlagen“.
+22. „Ein Mann hat mir Gummibärchen geschenkt“ löst die Ansage aus (Süßes von Fremden). Ebenso „Die Frau beim Bäcker hat mir einen Lolli geschenkt“ und „Der Mann im Laden hat mir Gummibärchen gegeben“. Ist dieser Fehlalarm vertretbar, oder soll es Ausnahmen geben (zum Beispiel für Bäcker oder Laden)? Jede Ausnahme kann einen echten Fall durchlassen. Dasselbe gilt für bekannte Erwachsene, wenn „Frau“ oder „Mann“ im Satz steht: „Frau Müller hat mir ein Gummibärchen gegeben“ und „Frau Müller hat gefragt, ob ich mitkomme“ (Lehrerin), seit Abschnitt 11 auch „Der Mann an der Kasse hat mir Geld gegeben“, „Die Frau im Eisladen hat mir ein Eis gegeben“, „Die Frau vom Kindergarten hat mich fotografiert“ und „Der Mann im Laden fotografiert mich“. Seit Abschnitt 12 auch „Opa und seine Frau haben mir ein Handy geschenkt“.
 
 ## 11. Nachtrag vom 24. November 2026: Prüfung von Abschnitt 10 nach dem Merge
 
@@ -307,6 +311,39 @@ Dazu zwei Sätze, die schon anschlugen, aber nur an einer einzigen Schablone hin
 **Neue Fehlalarme:** bewusst hingenommen und als Test festgehalten, siehe Abschnitt 7.3 („Stand 24. November 2026“) **(Test)**. Sachfragen zur Atmung ergänzen Frage 21, bekannte Erwachsene mit „Frau“ oder „Mann“ im Satz Frage 22.
 
 **Offen:** Sätze mit anderer Wortstellung oder im Nebensatz lösen weiter oft keine Ansage aus, auch bei Lebensmüdigkeit und Selbstverletzung („Manchmal will ich nicht mehr leben“, „Abends ritze ich mich“). Ein eigener Punkt der Arbeitsliste (N1122-2323-a) prüft sie für alle Bereiche. Echte Spracherkennung und Kinderstimmen sind nicht geprüft; bis zur Rechtsprüfung testen nur Erwachsene.
+
+## 12. Nachtrag vom 25. November 2026: Prüfung von Abschnitt 11 nach dem Merge
+
+**Was geprüft wurde:** Ein weiterer Prüfer (Claude, unabhängig vom Autor) hat die Änderung aus Abschnitt 11 nach dem Merge geprüft (Kommentar „Autopilot-Prüfung“ an PR #110). Die Befunde zu Abschnitt 10 waren alle behoben. Er fand aber naheliegende Abwandlungen daneben, die keine Ansage auslösten. Jetzt lösen 45 dieser Sätze die Ansage aus **(Test)**, zum Beispiel:
+
+- Atemnot: „Das Baby atmet gar nicht“, „Mama liegt da und atmet gar nicht mehr“, „Ich krieg nicht mehr richtig Luft“.
+- Gewalt: „Er schlägt meine Mama“, „Mein Stiefvater schlägt meine Mama“, „Mamas Freund hat sie geschlagen“, „Papa hat das Baby geschüttelt“.
+- Drohung: „Papa hat gesagt, er bringt Mama um“, „Die haben versucht, mich umzubringen“, „Er hat versucht, mich zu ersticken“.
+- Fremde: „Ein Mann hat gefragt, ob ich mit ihm komme“, „Ein Mann hat gefragt, ob ich in sein Auto einsteigen will“, „Ein Mann hat mir 10 € gegeben“.
+- Ungewollte Berührung: „Ich mag das gar nicht, wenn er mich anfasst“, „Ich finde es nicht schön, wenn er mich anfasst“.
+- Verloren: „Mama ist weg, ich kann sie nicht finden“, „Ich kann meine Mama auf dem Spielplatz nicht finden“.
+- Sich selbst verletzen: „Ich beiße mich absichtlich“, „Ich schneide mir absichtlich den Arm auf“.
+
+Dazu 32 neue Gegenproben, die keine Ansage auslösen **(Test)**, zum Beispiel „Ich krieg nicht mehr richtig Luft vor Lachen“, „Er schlägt sie in die Flucht“, „Papa hat Mama die Hand geschüttelt“, „Papa schüttelt mich jeden Morgen wach“, „Er bringt Mama um acht zur Arbeit“, „Die Hexe hat versucht, uns zu vergiften“, „Opa hat mir 10 € geschenkt“ und „Ich kann Oma auf dem Foto nicht finden“.
+
+**Wie die Änderung gebaut ist:** 20 neue Schablonen stehen in `PATTERNS_REVIEW` in `server-api/safety.ts` (Abschnitt „V13“). Keine ältere Schablone ist geändert. Neu sind:
+
+- Atemnot: Füllwörter zwischen „atmet“ und „nicht“ („gar“, „überhaupt“), „und atmet nicht“ nach einer Person, „nicht mehr richtig“ und „nicht mehr genug“ bei der Luft.
+- Gewalt: als Täter auch Stiefeltern, Verwandte, Nachbarn, „Mamas Freund“, „der Mann“ und „die“; auch „haben … geschlagen“; Schütteln eines Babys oder Kindes.
+- Drohung: gegen andere Personen („er bringt Mama um“), „haben versucht“, „zu ersticken“ und „zu vergiften“.
+- Fremde: „ob ich mit ihm komme“ und „ob ich in sein Auto einsteigen will“.
+- Berührung: „gar nicht“ und „nicht schön“.
+- Verloren: „sie“ und „ihn“ statt „Mama“, wenn Eltern oder Großeltern im Satz vorkommen; mehr Orte, zum Beispiel „Spielplatz“, „Strand“ und „Weihnachtsmarkt“.
+- Sich selbst verletzen: Beißen und „den Arm auf“, jeweils mit „absichtlich“, „mit Absicht“ oder „extra“.
+- Das Zeichen „€“ liest die Weiche jetzt als „euro“. Vorher blieb von „10 €“ nur „10“.
+
+Nicht als Gewalt zählen: Eier aufschlagen („Er schlägt sie auf“), „in die Flucht“, Hände schütteln und wachschütteln.
+
+Kein Satz, der vorher anschlug, ist jetzt still. Geprüft mit allen 961 Sätzen der bisherigen Tests. Kein Satz aus Geschichte, Kanon, Ansagen, Beschreibung des Erzählers und den Tests des Erzählers (rund 4 300 Stücke) löst neu eine Ansage aus. Bei ungünstigen Eingaben mit rund 100 000 Zeichen braucht die Weiche in dieser Messung höchstens etwa 69 ms (vorher etwa 71 ms).
+
+**Neue Fehlalarme:** bewusst hingenommen und als Test festgehalten, siehe Abschnitt 7.3 („Stand 25. November 2026“) **(Test)**. Sie ergänzen Frage 21 (Sachfragen, Spiel) und Frage 22 (bekannte Erwachsene).
+
+**Offen:** Andere Wortstellung und Nebensätze prüft weiter Punkt N1122-2323-a der Arbeitsliste. Echte Spracherkennung und Kinderstimmen sind nicht geprüft; bis zur Rechtsprüfung testen nur Erwachsene.
 
 ## Anhang: Wo steht was im Code?
 
