@@ -1,0 +1,390 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<meta name="color-scheme" content="light dark">
+<title>Ritter Kunibert – für Eltern</title>
+<link rel="icon" href="data:,">
+<style>
+:root {
+  --grund: #fbf8f1;
+  --flaeche: #ffffff;
+  --text: #1f1d18;
+  --leise: #5b574d;
+  --rand: #ddd6c6;
+  --knopf: #1f4e8c;
+  --knopf-text: #ffffff;
+  --fehler: #a3161b;
+  --ok: #1d6a33;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --grund: #15171c;
+    --flaeche: #1e2128;
+    --text: #ecebe6;
+    --leise: #b3b0a7;
+    --rand: #3a3e48;
+    --knopf: #8fb8ff;
+    --knopf-text: #10213d;
+    --fehler: #ff9a9a;
+    --ok: #8fdca6;
+  }
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--grund);
+  color: var(--text);
+  font: 1.0625rem/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+main { max-width: 36rem; margin: 0 auto; padding: 1.25rem 1rem 3rem; }
+h1 { font-size: 1.5rem; line-height: 1.2; margin: 0.5rem 0 1rem; }
+h1 small { display: block; font-size: 1rem; font-weight: normal; color: var(--leise); }
+h2 { font-size: 1.15rem; margin: 1.5rem 0 0.5rem; }
+section {
+  background: var(--flaeche);
+  border: 1px solid var(--rand);
+  border-radius: 0.75rem;
+  padding: 0.25rem 1rem 1rem;
+  margin: 1rem 0;
+}
+ol, ul { padding-left: 1.25rem; }
+li { margin: 0.25rem 0; }
+label { display: block; font-weight: 600; margin: 0.75rem 0 0.25rem; }
+input {
+  width: 100%;
+  max-width: 12rem;
+  font: inherit;
+  font-size: 1.5rem;
+  letter-spacing: 0.25em;
+  padding: 0.5rem 0.75rem;
+  border: 2px solid var(--rand);
+  border-radius: 0.5rem;
+  background: var(--grund);
+  color: var(--text);
+}
+button {
+  display: block;
+  font: inherit;
+  font-weight: 600;
+  min-height: 3rem;
+  margin: 0.75rem 0 0;
+  padding: 0.5rem 1.25rem;
+  border: 2px solid var(--knopf);
+  border-radius: 0.5rem;
+  background: var(--knopf);
+  color: var(--knopf-text);
+  cursor: pointer;
+}
+button.zweitrangig { background: transparent; color: var(--knopf); }
+button:disabled { opacity: 0.55; cursor: default; }
+input:focus-visible, button:focus-visible { outline: 3px solid var(--knopf); outline-offset: 2px; }
+.klein { font-size: 0.95rem; color: var(--leise); }
+.hinweis { border-left: 4px solid var(--knopf); padding: 0.25rem 0 0.25rem 0.75rem; }
+.fehler { color: var(--fehler); font-weight: 600; }
+.ok { color: var(--ok); font-weight: 600; }
+.frage { border-top: 1px solid var(--rand); margin-top: 1rem; padding-top: 0.5rem; }
+</style>
+</head>
+<body data-elterntext="__ELTERNTEXT_VERSION__">
+<main>
+  <h1>Ritter Kunibert <small>Seite für Eltern</small></h1>
+
+  <p id="testbetrieb" class="hinweis" hidden>Testbetrieb: Kinder dürfen Kunibert noch nicht benutzen. Bis zur Rechtsprüfung testen nur Erwachsene. Es gibt noch keinen geprüften Elterntext.</p>
+  <noscript><p class="fehler">Diese Seite braucht JavaScript.</p></noscript>
+  <p id="meldung" role="status" aria-live="polite" hidden></p>
+
+  <section id="laden">
+    <p id="laden-text">Einen Moment …</p>
+    <button type="button" id="neu-laden" hidden>Noch einmal versuchen</button>
+  </section>
+
+  <section id="koppeln" hidden>
+    <h2>Handy mit Kunibert verbinden</h2>
+    <ol>
+      <li>Halte am Gerät beide Tasten 5 Sekunden lang gedrückt.</li>
+      <li>Kunibert sagt einen Code mit sechs Ziffern. Der Code gilt 10 Minuten.</li>
+      <li>Gib den Code hier ein.</li>
+    </ol>
+    <p id="koppeln-test" class="klein" hidden>Im Test sagt das Gerät den Code noch nicht. Dann bekommst du den Code vom Betreiber.</p>
+    <form id="koppeln-form" novalidate>
+      <label for="code">Code</label>
+      <input id="code" name="code" type="text" inputmode="numeric" autocomplete="one-time-code" required>
+      <button type="submit" id="koppeln-knopf">Verbinden</button>
+    </form>
+    <p id="koppeln-fehler" class="fehler" role="alert" hidden></p>
+    <div id="insgesamt-rat" hidden>
+      <p>So geht es vielleicht schneller:</p>
+      <ol>
+        <li>Verbinde dein Handy mit dem WLAN, in dem auch Kunibert ist. Schalte dafür die mobilen Daten aus.</li>
+        <li>Lass Kunibert einen neuen Code sagen.</li>
+        <li>Gib den neuen Code hier ein.</li>
+      </ol>
+      <p class="klein">Das hilft nicht immer. Zum Beispiel nicht, wenn Handy und Gerät auf verschiedenen Wegen ins Internet gehen.</p>
+      <p id="insgesamt-test" class="klein" hidden>Im Test kommt der Code vom Betreiber. Dann hilft nur Warten.</p>
+    </div>
+  </section>
+
+  <section id="stand" hidden>
+    <h2>Einwilligung</h2>
+    <p id="einwilligung-text"></p>
+    <p id="einwilligung-weg" class="klein" hidden></p>
+    <div id="einwilligen-box" hidden>
+      <p>Mit deiner Einwilligung darf Kunibert auf diesem Gerät zuhören, antworten und Geschichten erzählen. Ohne Einwilligung sagt Kunibert nur einen festen Hinweis.</p>
+      <p class="klein">Elterntext: Version <span id="elterntext-version"></span>.</p>
+      <p id="einwilligen-test" class="hinweis" hidden>Der Knopf schaltet Kunibert nur für Tests mit Erwachsenen frei.</p>
+      <button type="button" id="einwilligen-knopf">Ich willige ein</button>
+    </div>
+    <div id="widerrufen-box" hidden>
+      <button type="button" id="widerrufen-knopf" class="zweitrangig">Einwilligung widerrufen</button>
+      <div id="widerrufen-frage" class="frage" hidden>
+        <p>Wirklich widerrufen? Danach sagt Kunibert nur noch einen festen Hinweis. Der Stand der Geschichte wird gelöscht.</p>
+        <button type="button" id="widerrufen-ja">Ja, widerrufen</button>
+        <button type="button" id="widerrufen-nein" class="zweitrangig">Abbrechen</button>
+      </div>
+    </div>
+
+    <h2>Einstellungen</h2>
+    <p id="schlafmodus-text"></p>
+    <p id="ruhezeiten-text"></p>
+    <p class="klein">Ändern kannst du das bald auch hier.</p>
+  </section>
+
+  <p class="klein">Datenschutz: Diese Seite lädt nichts von anderen Servern. Auf deinem Handy legt sie nur ein Cookie ab, das dein Handy mit Kunibert verbindet. Mehr dazu steht bald auf einer eigenen Seite.</p>
+</main>
+<script>
+'use strict';
+(function () {
+  var el = function (id) { return document.getElementById(id); };
+  var testbetrieb = document.body.getAttribute('data-elterntext') === '0';
+  // Testbetrieb (Elterntext Version 0): Hinweise, dass Kinder Kunibert noch nicht benutzen dürfen und der
+  // Code im Test vom Betreiber kommt (das Gerät sagt ihn noch nicht, Punkt D1 der Arbeitsliste).
+  ['testbetrieb', 'koppeln-test', 'insgesamt-test', 'einwilligen-test'].forEach(function (id) { el(id).hidden = !testbetrieb; });
+  el('elterntext-version').textContent = document.body.getAttribute('data-elterntext') || '?';
+
+  // Wer die letzte Änderung der Einwilligung gemacht hat (Feld "weg", docs/picastAI-Pi-API.md).
+  var WEG = {
+    geraet: 'mit einem Handy, dessen Code das Gerät gesagt hat',
+    betreiber: 'mit einem Handy, dessen Code vom Betreiber kam'
+  };
+  var wartenBis = 0;
+  var wartenTimer = null;
+
+  function zeigen(name) {
+    ['laden', 'koppeln', 'stand'].forEach(function (id) { el(id).hidden = id !== name; });
+  }
+
+  function meldung(text, art) {
+    var m = el('meldung');
+    m.textContent = text || '';
+    m.className = art || '';
+    m.hidden = !text;
+  }
+
+  function koppelnFehler(text) {
+    el('koppeln-fehler').textContent = text || '';
+    el('koppeln-fehler').hidden = !text;
+  }
+
+  function datumZeit(iso) {
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    var datum = d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    var zeit = d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+    return datum + ' um ' + zeit + ' Uhr';
+  }
+
+  // Alle Anfragen gehen nur an /v1/eltern/* auf diesem Server. Das Cookie schickt der Browser selbst mit.
+  function anfrage(methode, route, inhalt) {
+    var optionen = { method: methode, credentials: 'same-origin', cache: 'no-store', headers: {} };
+    if (inhalt !== undefined) {
+      optionen.headers['Content-Type'] = 'application/json';
+      optionen.body = JSON.stringify(inhalt);
+    }
+    return fetch('/v1/eltern/' + route, optionen).then(function (res) {
+      return res.json().catch(function () { return null; }).then(function (daten) {
+        return { status: res.status, daten: daten, kopf: res.headers };
+      });
+    }, function () {
+      return { status: 0, daten: null, kopf: null };
+    });
+  }
+
+  function fehlerText(r) {
+    if (r.status === 0) return 'Keine Verbindung zum Server. Bitte prüfe das Internet und versuche es noch einmal.';
+    if (r.status === 503 && r.daten && r.daten.error === 'parent_store_unavailable') {
+      return r.daten.wirksam === true
+        ? 'Die Änderung gilt. Der Server konnte sie aber noch nicht speichern und versucht es weiter.'
+        : 'Das hat nicht geklappt: Der Server konnte nicht speichern. Bitte versuche es später noch einmal.';
+    }
+    return 'Das hat nicht geklappt (Fehler ' + r.status + '). Bitte versuche es später noch einmal.';
+  }
+
+  function standZeigen(s) {
+    zeigen('stand');
+    var e = (s && s.einwilligung) || {};
+    var text;
+    if (e.erteilt === true) {
+      text = 'Erteilt' + (e.zeitpunkt ? ' am ' + datumZeit(e.zeitpunkt) : '') + '. Kunibert darf auf dem Gerät antworten und erzählen.';
+    } else if (e.zeitpunkt) {
+      text = 'Gilt gerade nicht. Letzte Änderung am ' + datumZeit(e.zeitpunkt) + '. Kunibert sagt nur einen festen Hinweis.';
+    } else {
+      text = 'Noch nicht erteilt. Kunibert sagt nur einen festen Hinweis.';
+    }
+    el('einwilligung-text').textContent = text;
+    var weg = '';
+    if (e.weg === 'server') {
+      weg = 'Der Server hat alle Einwilligungen widerrufen, weil er eine Änderung nicht speichern konnte. Bitte willige neu ein.';
+    } else if (typeof e.weg === 'string' && Object.prototype.hasOwnProperty.call(WEG, e.weg)) {
+      weg = 'Letzte Änderung ' + WEG[e.weg] + (e.elterntextVersion ? ' (Elterntext Version ' + e.elterntextVersion + ')' : '') + '.';
+    }
+    el('einwilligung-weg').textContent = weg;
+    el('einwilligung-weg').hidden = !weg;
+    el('einwilligen-box').hidden = e.erteilt === true;
+    el('widerrufen-box').hidden = e.erteilt !== true;
+    el('widerrufen-frage').hidden = true;
+    el('schlafmodus-text').textContent = s && s.schlafmodus === true
+      ? 'Schlafmodus: an. Kunibert sagt nur, dass er schläft.'
+      : 'Schlafmodus: aus.';
+    var ruhe = s && s.ruhezeiten;
+    el('ruhezeiten-text').textContent = ruhe && typeof ruhe.von === 'string' && typeof ruhe.bis === 'string'
+      ? 'Ruhezeiten: von ' + ruhe.von + ' bis ' + ruhe.bis + ' Uhr (deutsche Zeit). Dann sagt Kunibert nur, dass er schläft.'
+      : 'Ruhezeiten: keine.';
+  }
+
+  function nichtVerbunden(text) {
+    zeigen('koppeln');
+    meldung(text || '', text ? 'fehler' : '');
+  }
+
+  function laden() {
+    el('laden-text').textContent = 'Einen Moment …';
+    el('neu-laden').hidden = true;
+    return anfrage('GET', 'status').then(function (r) {
+      if (r.status === 200 && r.daten) { standZeigen(r.daten); return true; }
+      if (r.status === 401) { nichtVerbunden(''); return true; }
+      zeigen('laden');
+      el('laden-text').textContent = fehlerText(r);
+      el('neu-laden').hidden = false;
+      return false;
+    });
+  }
+
+  function dauer(sekunden) {
+    if (sekunden < 60) return sekunden === 1 ? '1 Sekunde' : sekunden + ' Sekunden';
+    var minuten = Math.ceil(sekunden / 60);
+    return minuten === 1 ? '1 Minute' : minuten + ' Minuten';
+  }
+
+  function koppelnKnopf() {
+    var rest = Math.ceil((wartenBis - Date.now()) / 1000);
+    var knopf = el('koppeln-knopf');
+    if (rest > 0) {
+      knopf.disabled = true;
+      knopf.textContent = 'Bitte warten (' + dauer(rest) + ')';
+      return;
+    }
+    if (wartenTimer) {
+      clearInterval(wartenTimer);
+      wartenTimer = null;
+      koppelnFehler('Du kannst es jetzt wieder versuchen.');
+    }
+    knopf.disabled = false;
+    knopf.textContent = 'Verbinden';
+  }
+
+  // 429: Wartezeit aus dem Feld warten_sekunden, sonst aus dem Kopf Retry-After (server.ts, kopplungsschutz.ts).
+  function warten(r) {
+    var sekunden = Number(r.daten && r.daten.warten_sekunden);
+    if (!(sekunden > 0)) sekunden = Number(r.kopf && r.kopf.get('Retry-After'));
+    if (!(sekunden > 0)) sekunden = 60;
+    sekunden = Math.min(Math.ceil(sekunden), 3600);
+    var insgesamt = Boolean(r.daten && r.daten.grund === 'insgesamt');
+    wartenBis = Date.now() + sekunden * 1000;
+    koppelnFehler(insgesamt
+      ? 'Gerade versuchen sehr viele, einen Code zu erraten. Darum geht das Verbinden kurz nicht. Bitte warte ' + dauer(sekunden) + '.'
+      : 'Zu viele falsche Versuche. Bitte warte ' + dauer(sekunden) + '.');
+    el('insgesamt-rat').hidden = !insgesamt;
+    if (wartenTimer) clearInterval(wartenTimer);
+    wartenTimer = setInterval(koppelnKnopf, 1000);
+    koppelnKnopf();
+  }
+
+  el('koppeln-form').addEventListener('submit', function (ereignis) {
+    ereignis.preventDefault();
+    if (Date.now() < wartenBis || el('koppeln-knopf').disabled) return;
+    // Leerzeichen und Bindestriche beim Einfügen (zum Beispiel „123 456“) zählen nicht mit.
+    var code = el('code').value.replace(/[\s-]+/g, '');
+    if (!/^[0-9]{6}$/.test(code)) {
+      koppelnFehler('Bitte gib genau sechs Ziffern ein.');
+      return;
+    }
+    meldung('');
+    koppelnFehler('');
+    el('insgesamt-rat').hidden = true;
+    el('koppeln-knopf').disabled = true;
+    anfrage('POST', 'koppeln', { code: code }).then(function (r) {
+      el('koppeln-knopf').disabled = false;
+      if (r.status === 200 && r.daten) {
+        el('code').value = '';
+        standZeigen(r.daten);
+        meldung('Dein Handy ist jetzt mit Kunibert verbunden.', 'ok');
+        return;
+      }
+      if (r.status === 429) { warten(r); return; }
+      if (r.status === 400) {
+        koppelnFehler('Der Code stimmt nicht oder ist abgelaufen. Lass Kunibert einen neuen Code sagen.');
+        return;
+      }
+      koppelnFehler(fehlerText(r));
+    });
+  });
+
+  function aktion(knopf, methode, route, inhalt, erfolg) {
+    knopf.disabled = true;
+    meldung('');
+    return anfrage(methode, route, inhalt).then(function (r) {
+      knopf.disabled = false;
+      if (r.status === 200 && r.daten) {
+        standZeigen(r.daten);
+        meldung(erfolg, 'ok');
+        return;
+      }
+      if (r.status === 401) {
+        nichtVerbunden('Dieses Handy ist nicht mehr mit Kunibert verbunden. Bitte verbinde es neu.');
+        return;
+      }
+      // Gilt die Änderung trotz Fehler beim Speichern, den neuen Stand zeigen.
+      if (r.status === 503 && r.daten && r.daten.wirksam === true) {
+        return laden().then(function () { meldung(fehlerText(r), 'fehler'); });
+      }
+      meldung(fehlerText(r), 'fehler');
+    });
+  }
+
+  el('einwilligen-knopf').addEventListener('click', function () {
+    aktion(el('einwilligen-knopf'), 'PUT', 'einwilligung', {}, 'Danke. Die Einwilligung ist erteilt.');
+  });
+  el('widerrufen-knopf').addEventListener('click', function () {
+    el('widerrufen-frage').hidden = false;
+    el('widerrufen-ja').focus();
+  });
+  el('widerrufen-nein').addEventListener('click', function () {
+    el('widerrufen-frage').hidden = true;
+    el('widerrufen-knopf').focus();
+  });
+  el('widerrufen-ja').addEventListener('click', function () {
+    aktion(el('widerrufen-ja'), 'DELETE', 'einwilligung', undefined, 'Die Einwilligung ist widerrufen.');
+  });
+  el('neu-laden').addEventListener('click', function () { laden(); });
+
+  laden();
+})();
+</script>
+</body>
+</html>

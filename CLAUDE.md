@@ -14,7 +14,7 @@ Vernetztes Sprach-Spielzeug für Kinder von 6 bis 10 Jahren: Sprechtaste (Frage)
 
 | Ordner | Inhalt |
 | --- | --- |
-| `server.ts`, `server-api/` | Node-Server (Express, TypeScript über tsx): Routen, Sicherheitsweiche (`safety.ts`), Erzähler (`brain.ts`, `prompts.ts`), Claude-Anbindung (`llm.ts`), Sprachdienste (`voice.ts`), Geräteliste (`devices.ts`), Eltern-Steuerung (`eltern.ts`), Zeitbudget (`timing.ts`) |
+| `server.ts`, `server-api/` | Node-Server (Express, TypeScript über tsx): Routen, Sicherheitsweiche (`safety.ts`), Erzähler (`brain.ts`, `prompts.ts`), Claude-Anbindung (`llm.ts`), Sprachdienste (`voice.ts`), Geräteliste (`devices.ts`), Eltern-Steuerung (`eltern.ts`) und Seite für Eltern (`eltern-seite.html`), Zeitbudget (`timing.ts`) |
 | `pi-client/` | Python-Client für den Pi 5 und Installationsskript |
 | `firmware/esp32-s3/` | ESP-IDF-Firmware (Entwurf, auf keinem Gerät gelaufen) |
 | `deploy/` | Einrichtung des Servers (Caddy, systemd, Skripte), Checkliste, Trockenlauf und Ende-zu-Ende-Test |
@@ -30,7 +30,7 @@ npm ci
 npm test                 # Server-Tests (node:test)
 npm run lint             # tsc --noEmit
 npm run build
-npm run test:e2e         # echter Pi-Client gegen echten Server, Dienste als Attrappen
+npm run test:e2e         # echter Pi-Client gegen echten Server, Dienste als Attrappen; Eltern-Seite im Browser (nur mit Playwright, sonst übersprungen)
 python3 -m unittest discover -s pi-client -p "test_*.py"   # mit sounddevice und libportaudio2 auch gegen die echte Audio-Bibliothek (CI: ALSA-Nullgerät)
 bash deploy/setup-server.test.sh
 shellcheck -S warning deploy/*.sh pi-client/*.sh docs/autopilot/*.sh

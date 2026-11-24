@@ -11,8 +11,9 @@
 # PICASTAI_PUBLIC_BASE_URL (Server) und PICASTAI_API_BASE_URL (Pi).
 
 kunibert.example {
-	# Nur die Geräte-API wird durchgereicht. /api/* (Admin: Geräte anlegen, Status) und
-	# die Weboberfläche bleiben von außen unerreichbar, alles andere bekommt 404.
+	# Durchgereicht werden nur die Geräte-API, /health und die Eltern-Seite mit ihren Routen.
+	# /api/* (Admin: Geräte anlegen, Status) und die Weboberfläche bleiben von außen
+	# unerreichbar, alles andere bekommt 404.
 	@api path /v1/device/* /health
 	handle @api {
 		# Aufnahme höchstens 2 MiB plus Formularfelder (der Server lehnt mehr als 2 MiB ab).
@@ -30,12 +31,29 @@ kunibert.example {
 			}
 		}
 	}
+	# Eltern (Punkt D2): die Seite /eltern und die Routen /v1/eltern/* (docs/picastAI-Pi-API.md,
+	# Abschnitt „Eltern“). Nur kleine JSON-Anfragen, kein Ton-Strom. Der Schutz vor dem Raten des
+	# Kopplungscodes braucht PICASTAI_TRUST_PROXY=loopback in der env-Datei: Sonst sieht der
+	# Server jede Anfrage von 127.0.0.1, und alle Eltern warten zusammen.
+	@eltern path /eltern /eltern/ /v1/eltern/*
+	handle @eltern {
+		request_body {
+			max_size 16KB
+		}
+		reverse_proxy 127.0.0.1:3000 {
+			transport http {
+				response_header_timeout 30s
+			}
+		}
+	}
 	handle {
 		respond 404
 	}
 
 	# Keine Software-Kennung nach außen.
 	header -Server
+	# Der Browser fragt ein Jahr lang nur noch über HTTPS (seit der Seite /eltern; nur dieser Hostname).
+	header Strict-Transport-Security "max-age=31536000"
 
 	# Bewusst keine log-Direktive: Ohne sie schreibt Caddy keine Zugriffsprotokolle.
 }

@@ -60,6 +60,16 @@ out=$(render_caddyfile "$here/Caddyfile" kunibert.picastai.com)
 yes "Caddyfile: Hostname eingesetzt"   grep -q '^kunibert.picastai.com {' <<<"$out"
 no  "Caddyfile: kein Platzhalter mehr" grep -q 'kunibert\.example' <<<"$out"
 yes "Caddyfile: Zeitgrenze bleibt"     grep -q 'response_header_timeout 130s' <<<"$out"
+# Welche Pfade Caddy durchreicht (Punkt D2): Geräte-API, /health, Eltern-Seite und Eltern-Routen.
+# Nie /api/* (Betreiber) und nie alles (die Weboberfläche bliebe sonst nicht gesperrt).
+yes "Caddyfile: Geräte-API und /health"      grep -qx $'\t@api path /v1/device/\* /health' <<<"$out"
+yes "Caddyfile: Eltern-Seite und -Routen"    grep -qx $'\t@eltern path /eltern /eltern/ /v1/eltern/\*' <<<"$out"
+eq  "Caddyfile: nur diese zwei Freigaben"    "$(grep -cE '^\s*@[a-z]+ path ' <<<"$out")" 2
+no  "Caddyfile: /api nie durchgereicht"      grep -qE '^\s*@[a-z]+ path .*/api' <<<"$out"
+no  "Caddyfile: kein Pfad mit nur *"         grep -qE '^\s*@[a-z]+ path (.* )?/?\*( |$)' <<<"$out"
+yes "Caddyfile: alles andere 404"            grep -qx $'\t\trespond 404' <<<"$out"
+yes "Caddyfile: Eltern-Anfragen klein"       grep -qx $'\t\t\tmax_size 16KB' <<<"$out"
+yes "Caddyfile: HSTS"                        grep -qx $'\theader Strict-Transport-Security "max-age=31536000"' <<<"$out"
 
 write_auto_upgrades "$tmp/20auto-upgrades"
 yes "Automatische Updates: Paketlisten täglich"   grep -qx 'APT::Periodic::Update-Package-Lists "1";' "$tmp/20auto-upgrades"
