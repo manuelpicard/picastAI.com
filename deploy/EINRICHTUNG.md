@@ -212,13 +212,13 @@ Von innen mit Admin-Token (nur auf dem Server): `curl -H "Authorization: Bearer 
 
 ## 8. Pi anbinden
 
-Auf dem Pi (siehe [`pi-client/README.md`](../pi-client/README.md)) `PICASTAI_API_BASE_URL=https://kunibert.example`, dieselbe `PICASTAI_DEVICE_ID` und das Geräte-Token eintragen (der Installer schreibt sie nach `/etc/kunibert/kunibert.env`). Dann Health prüfen, als Dienstkonto mit den Einstellungen aus dieser Datei (muss `OK` melden; ohne sie prüft der Client die Standardadresse `https://picastAI.com`, nicht diesen Server):
+Auf dem Pi (siehe [`pi-client/README.md`](../pi-client/README.md)) `PICASTAI_API_BASE_URL=https://kunibert.example`, dieselbe `PICASTAI_DEVICE_ID` und das Geräte-Token eintragen (der Installer schreibt sie auf dem Pi nach `/etc/kunibert/kunibert.env`). Dann am Pi, nicht auf dem Server, Health prüfen, als Dienstkonto mit den Einstellungen aus dieser Datei. Er muss `OK` melden. Ohne diese Einstellungen fehlt das Token, und der Client bricht ab; steht in der Shell ein Token, prüft er die Standardadresse `https://picastAI.com`, nicht diesen Server. Was eine andere Ausgabe bedeutet, steht in der Checkliste, Teil B.
 
 ```bash
 sudo -u kunibert bash -c 'cd /var/lib/kunibert && set -a && . /etc/kunibert/kunibert.env && set +a && exec /opt/kunibert/.venv/bin/python /opt/kunibert/pi-client/kunibert_client.py --once health'
 ```
 
-Eine Geschichte prüft derselbe Aufruf mit `--once story` statt `--once health` (vorher die Einwilligung erteilen, Abschnitt 5, „Einwilligung für Tests mit Erwachsenen“). Weiter mit der Checkliste.
+Eine Geschichte prüft danach die Checkliste, Teil C, mit der Erzähltaste (vorher die Einwilligung erteilen, Abschnitt 5, „Einwilligung für Tests mit Erwachsenen“). `--once story` hier besser nicht: Es holt Teil 1 der Folge ungehört ab, dann beginnt Teil C, Schritt 3, bei Teil 2. Ohne Einwilligung kommt nur der feste Hinweis, und der Client meldet trotzdem „Story-Audio empfangen“. Weiter mit der Checkliste.
 
 ## Betrieb
 
