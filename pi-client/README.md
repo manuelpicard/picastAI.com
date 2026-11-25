@@ -294,6 +294,8 @@ sudo -u kunibert bash -c 'cd /var/lib/kunibert && set -a && . /etc/kunibert/kuni
 
 Beim Start wartet der Client, bis der Server antwortet: Ist er nicht erreichbar (WLAN noch nicht da, Router startet noch), blinkt die LED schnell (Fehler), und der Client versucht es alle `KUNIBERT_CONNECT_RETRY` Sekunden (Standard 10) wieder. Er beendet sich dabei nicht.
 
+Vorher prüft der Client Token und Geräte-ID. Leerzeichen und Zeilenenden am Rand von Token, Geräte-ID und Adresse lässt er weg, zum Beispiel ein Windows-Zeilenende, wenn die Shell `kunibert.env` einliest. Erlaubt sind im Token dieselben Zeichen wie beim Installer (siehe „Das Token“ oben); in der Geräte-ID ist kein Steuerzeichen erlaubt. Sonst startet der Client nicht, auch nicht mit `--once`. Er meldet dann eine Zeile wie „Kunibert kann nicht starten: PICASTAI_DEVICE_TOKEN enthält Zeichen, …“, ohne den Wert und ohne Traceback. Abhilfe: mit `sudoedit /etc/kunibert/kunibert.env` die Zeile `PICASTAI_DEVICE_TOKEN=` prüfen oder den Installer mit `--ask-token` noch einmal laufen lassen. Scheitert eine Anfrage trotzdem an einem Zeichen in einer Kopfzeile, nennt die Meldung nur die Art des Fehlers („Anfrage nicht gesendet: ungültiges Zeichen in Adresse oder Kopfzeile“), nie den Kopf.
+
 Nur Health prüfen (muss `OK` melden; prüft die Adresse aus `kunibert.env`, nicht die Standardadresse):
 
 ```bash

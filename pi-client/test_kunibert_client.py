@@ -1,8 +1,10 @@
+import dataclasses
 import io
 import json
 import os
 import sys
 import threading
+import traceback
 import unittest
 import wave
 from types import ModuleType
@@ -1499,6 +1501,114 @@ class StreamedWavTests(unittest.TestCase):
         self.assertEqual(PicastApi(ClientConfig(device_token="t", audio_stream=False))._stream_header, {})
         with patch.dict(os.environ, {"KUNIBERT_AUDIO_STREAM": "0"}):
             self.assertFalse(ClientConfig.from_env().audio_stream)
+
+
+class TokenCharacterTests(unittest.TestCase):
+    """Punkt N1123-1937-a: Ein Token mit falschen Zeichen steht nie im Protokoll, auch in keinem Traceback.
+
+    Python lehnt eine Kopfzeile mit Zeilenende beim Senden mit einem ValueError ab, der die ganze
+    Kopfzeile nennt, also „Bearer <Token>“. Der Client prüft das Token deshalb beim Start und meldet
+    einen Fehler beim Senden nur mit der Art des Fehlers.
+    """
+
+    SECRET = "geheim-token-0815"
+
+    def assert_nothing_secret_logged(self, logs, *secrets):
+        for record in logs.records:
+            self.assertIsNone(record.exc_info, "kein Traceback im Protokoll")
+            for secret in secrets:
+                self.assertNotIn(secret, record.getMessage())
+
+    def test_environment_values_lose_spaces_and_line_ends_at_the_edges(self):
+        # So kommen die Werte an, wenn die Shell eine kunibert.env mit Windows-Zeilenenden einliest.
+        env = {
+            "PICASTAI_DEVICE_TOKEN": f" {self.SECRET}\r",
+            "PICASTAI_DEVICE_ID": "prototype-001\r",
+            "PICASTAI_API_BASE_URL": "https://picastAI.com/\r\n",
+        }
+        with patch.dict(os.environ, env):
+            config = ClientConfig.from_env()
+        self.assertEqual(config.device_token, self.SECRET)
+        self.assertEqual(config.device_id, "prototype-001")
+        self.assertEqual(config.api_base_url, "https://picastAI.com")
+        headers = PicastApi(config)._headers
+        self.assertEqual(headers["Authorization"], f"Bearer {self.SECRET}")
+        self.assertEqual(headers["X-Device-ID"], "prototype-001")
+
+    def test_token_with_invalid_characters_is_refused_without_its_value(self):
+        for token in ("geheim\rtoken", "geheim\ntoken", "geheim token", "Bearer geheimtoken", '"geheimtoken"', "geheimtöken"):
+            for dry_run in (False, True):
+                with self.subTest(token=token, dry_run=dry_run):
+                    with self.assertRaises(ApiError) as caught:
+                        PicastApi(ClientConfig(device_token=token, dry_run=dry_run))
+                    message = str(caught.exception)
+                    self.assertIn("PICASTAI_DEVICE_TOKEN", message)
+                    self.assertIn("Wert nicht angezeigt", message)
+                    self.assertNotIn("geheim", message)
+
+    def test_token_with_the_characters_of_the_installer_is_accepted(self):
+        for token in ("0123456789abcdef" * 4, "AbC+/xyz==", "a-b_c.d~e:f"):
+            with self.subTest(token=token):
+                self.assertEqual(PicastApi(ClientConfig(device_token=token))._headers["Authorization"], f"Bearer {token}")
+
+    def test_device_id_with_control_character_is_refused_without_its_value(self):
+        for device_id in ("geraet-geheim\r", "geraet\ngeheim", "geraet-geheim\x00"):
+            with self.subTest(device_id=device_id):
+                with self.assertRaises(ApiError) as caught:
+                    PicastApi(ClientConfig(device_token="t", device_id=device_id))
+                self.assertIn("PICASTAI_DEVICE_ID", str(caught.exception))
+                self.assertNotIn("geheim", str(caught.exception))
+
+    def _api_with_bad_token(self):
+        """Ein Token mit Zeilenende, an der Prüfung beim Start vorbei (wie eine Änderung zur Laufzeit)."""
+        api = PicastApi(ClientConfig(api_base_url="http://127.0.0.1:9", device_token="t", feedback_enabled=False))
+        api.config = dataclasses.replace(api.config, device_token=f"{self.SECRET}\r")
+        return api
+
+    def test_unsendable_header_is_reported_without_header_and_without_traceback(self):
+        api = self._api_with_bad_token()
+        senders = {
+            "_request_absolute": lambda: api._request_absolute("GET", "http://127.0.0.1:9/health", None, api._headers),
+            "_open_stream": lambda: api._open_stream("http://127.0.0.1:9/v1/device/audio/t_AAAAAAAAAAAAAAAA"),
+            "request_story": api.request_story,
+        }
+        for name, send in senders.items():
+            with self.subTest(name), patch("kunibert_client.time.sleep") as sleep:
+                with self.assertRaises(ApiError) as caught:
+                    send()
+                error = caught.exception
+                self.assertIn("Anfrage nicht gesendet", str(error))
+                self.assertNotIn(self.SECRET, str(error))
+                self.assertFalse(error.retryable)
+                sleep.assert_not_called()  # kein zweiter Versuch mit demselben Fehler
+                self.assertIsNone(error.__cause__)
+                self.assertTrue(error.__suppress_context__)
+                shown = "".join(traceback.format_exception(type(error), error, error.__traceback__))
+                self.assertNotIn(self.SECRET, shown, "auch ein Traceback zeigt das Token nicht")
+
+    def test_client_logs_unsendable_request_without_token_or_traceback(self):
+        api = self._api_with_bad_token()
+        config = api.config
+        client = KunibertClient(config, api, DryRunAudio(config), CaptureAudioOutput(), PressedButtons(), DryRunLed())
+        client.transition(ClientState.WIFI_CONNECTING)
+        client.transition(ClientState.READY)
+        with self.assertLogs("kunibert", level="DEBUG") as logs, patch("kunibert_client.time.sleep"):
+            client.handle_story()
+        self.assertIn(ClientState.ERROR, client.state_history)
+        self.assertTrue(any("Anfrage nicht gesendet" in line for line in logs.output))
+        self.assert_nothing_secret_logged(logs, self.SECRET)
+        self.assertNotIn(self.SECRET, client.last_error or "")
+
+    def test_main_refuses_invalid_token_with_one_line_and_without_value(self):
+        from kunibert_client import main
+        # Ohne --dry-run: Die Prüfung kommt vor Tastern und Ton, sonst meldete der Rechner ohne GPIO zuerst die Taster.
+        for argv in ([], ["--dry-run"], ["--once", "story"], ["--once", "health"]):
+            with self.subTest(argv=argv), patch.dict(os.environ, {"PICASTAI_DEVICE_TOKEN": "geheim token 0815\r"}):
+                with self.assertLogs("kunibert", level="DEBUG") as logs:
+                    self.assertEqual(main(argv), 1)
+                self.assertEqual(len(logs.records), 1, logs.output)
+                self.assertIn("PICASTAI_DEVICE_TOKEN enthält Zeichen", logs.output[0])
+                self.assert_nothing_secret_logged(logs, "geheim")
 
 
 @unittest.skipIf(_real_sounddevice() is None, "sounddevice mit PortAudio und Audiogerät nicht vorhanden")

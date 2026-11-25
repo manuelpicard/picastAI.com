@@ -39,6 +39,13 @@ from rueckmeldung import Feedback, build_feedback
 
 LOG = logging.getLogger("kunibert")
 
+# Zeichen, die in einem Geräte-Token vorkommen dürfen: dieselben wie TOKEN_PATTERN im Installer
+# (install_raspberry_pi.sh; hex, Base64, Base64url). Python würde ein Token mit einem
+# Zeilenende beim Senden mit einem ValueError ablehnen, der die ganze Kopfzeile nennt.
+TOKEN_PATTERN = re.compile(r"[A-Za-z0-9._~+/=:-]+")
+# Steuerzeichen (zum Beispiel ein Windows-Zeilenende) sind in keiner Kopfzeile erlaubt.
+CONTROL_CHARACTER = re.compile(r"[\x00-\x1f\x7f]")
+
 
 class ClientState(Enum):
     BOOT = auto()
@@ -121,10 +128,13 @@ class ClientConfig:
         def device(name: str) -> Optional[int | str]:
             return parse_audio_device(os.getenv(name))
 
+        # Adresse, Geräte-ID und Token ohne Leerzeichen und Zeilenenden am Rand, wie beim Installer
+        # (trim, Zeilen ohne Windows-Zeilenende). Liest die Shell eine kunibert.env mit Windows-
+        # Zeilenenden ein („Manuell starten“), hängt sonst an jedem Wert ein \r.
         return cls(
-            api_base_url=os.getenv("PICASTAI_API_BASE_URL", "https://picastAI.com").rstrip("/"),
-            device_id=os.getenv("PICASTAI_DEVICE_ID", "prototype-001"),
-            device_token=os.getenv("PICASTAI_DEVICE_TOKEN", ""),
+            api_base_url=os.getenv("PICASTAI_API_BASE_URL", "https://picastAI.com").strip().rstrip("/"),
+            device_id=os.getenv("PICASTAI_DEVICE_ID", "prototype-001").strip(),
+            device_token=os.getenv("PICASTAI_DEVICE_TOKEN", "").strip(),
             locale=os.getenv("KUNIBERT_LOCALE", "de-DE"),
             age_band=os.getenv("KUNIBERT_AGE_BAND", "6-10"),
             sample_rate=integer("KUNIBERT_SAMPLE_RATE", 16_000),
@@ -173,6 +183,16 @@ class ApiError(RuntimeError):
         super().__init__(message)
         self.status = status
         self.retryable = retryable
+
+
+def unsendable(exc: ValueError) -> ApiError:
+    """Fehler beim Aufbau einer Anfrage, ohne den Text des Originals.
+
+    Python nennt in diesem ValueError die ganze Kopfzeile, bei einem Zeilenende im Wert also das
+    Token oder die Geräte-ID. Deshalb nur die Art des Fehlers; aufrufen mit ``raise … from None``,
+    damit auch ein Traceback den ValueError nicht zeigt.
+    """
+    return ApiError(f"Anfrage nicht gesendet: ungültiges Zeichen in Adresse oder Kopfzeile ({type(exc).__name__})")
 
 
 class NoRedirectHandler(HTTPRedirectHandler):
@@ -741,6 +761,14 @@ class PicastApi:
     def __init__(self, config: ClientConfig):
         if not config.device_token and not config.dry_run:
             raise ApiError("PICASTAI_DEVICE_TOKEN ist nicht gesetzt")
+        # Beim Start prüfen, nicht erst beim Senden: Dort nennt Pythons Fehler die ganze Kopfzeile.
+        # Die Meldungen nennen den Wert nie (keine Tokens und keine Geräte-IDs im Protokoll).
+        if config.device_token and not TOKEN_PATTERN.fullmatch(config.device_token):
+            raise ApiError("PICASTAI_DEVICE_TOKEN enthält Zeichen, die in einem Geräte-Token nicht vorkommen "
+                           "(zum Beispiel Leerzeichen, Anführungszeichen oder das Wort Bearer). Wert nicht angezeigt.")
+        if CONTROL_CHARACTER.search(config.device_id):
+            raise ApiError("PICASTAI_DEVICE_ID enthält ein Steuerzeichen (zum Beispiel ein Zeilenende). "
+                           "Wert nicht angezeigt.")
         self.config = config
         self.session_id = secrets.token_urlsafe(12)
         # Uhr für die Wiederholungsregel (Tests setzen eine eigene).
@@ -847,13 +875,15 @@ class PicastApi:
 
     def _open_stream(self, url: str) -> StreamedWav:
         """Öffnet den Ton-Strom und lässt die Verbindung offen; abgespielt wird beim Lesen."""
-        request = Request(url, headers=self._headers, method="GET")
         try:
+            request = Request(url, headers=self._headers, method="GET")
             raw = build_opener(NoRedirectHandler()).open(request, timeout=self.config.audio_timeout_seconds)
         except HTTPError as exc:
             raise ApiError(f"Audioabruf fehlgeschlagen (HTTP {exc.code})", status=exc.code, retryable=exc.code >= 500) from exc
         except URLError as exc:
             raise OSError(str(exc.reason)) from exc
+        except ValueError as exc:
+            raise unsendable(exc) from None
         content_type = raw.headers.get("Content-Type", "")
         if raw.status != 200 or content_type.split(";")[0].lower() != "audio/wav":
             raw.close()
@@ -923,8 +953,8 @@ class PicastApi:
 
     def _request_absolute(self, method: str, url: str, body: Optional[bytes], headers: dict[str, str],
                           timeout: Optional[float] = None) -> tuple[int, dict[str, str], bytes]:
-        request = Request(url, data=body, headers=headers, method=method)
         try:
+            request = Request(url, data=body, headers=headers, method=method)
             opener = build_opener(NoRedirectHandler())
             effective_timeout = self.config.request_timeout_seconds if timeout is None else timeout
             with opener.open(request, timeout=effective_timeout) as response:
@@ -937,6 +967,8 @@ class PicastApi:
             raise OSError(str(exc.reason)) from exc
         except OSError:
             raise
+        except ValueError as exc:
+            raise unsendable(exc) from None
 
 
 def multipart_form(fields: dict[str, str], file_field: str, filename: str,
@@ -1292,11 +1324,13 @@ class KunibertClient:
 
 
 def build_client(config: ClientConfig, keyboard: bool = False) -> KunibertClient:
+    # Erst die Angaben für den Server prüfen (Token, Geräte-ID), dann Taster und Ton öffnen.
+    api = PicastApi(config)
     if keyboard:
         # Probelauf am Rechner: echtes Mikrofon und echter Lautsprecher, Tastatur statt GPIO.
         keys = KeyboardButtons()
         sound = SoundDeviceAudio(config)
-        client = KunibertClient(config, PicastApi(config), sound, sound, keys, ConsoleLed())
+        client = KunibertClient(config, api, sound, sound, keys, ConsoleLed())
         keys.on_quit = lambda: setattr(client, "stop_requested", True)
         return client
     if config.dry_run:
@@ -1311,7 +1345,7 @@ def build_client(config: ClientConfig, keyboard: bool = False) -> KunibertClient
         audio_out = audio
         led = GpioStatusLed(config)
     feedback = build_feedback(config) if config.feedback_enabled else None
-    return KunibertClient(config, PicastApi(config), audio_in, audio_out, buttons, led, feedback=feedback)
+    return KunibertClient(config, api, audio_in, audio_out, buttons, led, feedback=feedback)
 
 
 def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
@@ -1332,16 +1366,22 @@ def main(argv: Optional[list[str]] = None) -> int:
     )
     config = ClientConfig.from_env(dry_run=args.dry_run)
     if args.once:
-        api = PicastApi(config)
-        if args.once == "health":
-            print("OK" if api.health() else "FEHLER")
-            return 0
-        if args.once == "story":
-            answer = api.request_story()
-            streamed = isinstance(answer, StreamedWav)
-            wav = answer.read_all() if isinstance(answer, StreamedWav) else answer
-            print(f"Story-Audio empfangen: {len(wav)} Bytes{' (Ton-Strom)' if streamed else ''}")
-            return 0
+        try:
+            api = PicastApi(config)
+            if args.once == "health":
+                print("OK" if api.health() else "FEHLER")
+                return 0
+            if args.once == "story":
+                answer = api.request_story()
+                streamed = isinstance(answer, StreamedWav)
+                wav = answer.read_all() if isinstance(answer, StreamedWav) else answer
+                print(f"Story-Audio empfangen: {len(wav)} Bytes{' (Ton-Strom)' if streamed else ''}")
+                return 0
+        except ApiError as exc:
+            # Klare Meldung statt Traceback (zum Beispiel ungültiges Token oder HTTP 401). Die
+            # Meldungen von ApiError nennen nie Token oder Geräte-ID.
+            LOG.error("Test --once %s fehlgeschlagen: %s", args.once, exc)
+            return 1
     try:
         client = build_client(config, keyboard=args.keyboard)
     except (HardwareError, ApiError) as exc:

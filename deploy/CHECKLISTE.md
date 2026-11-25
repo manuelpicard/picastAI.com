@@ -49,6 +49,7 @@ Stand 21.11.2026: **nicht unter Windows und nicht mit einem Pi getestet**; gesch
   ```
   Derselbe Aufruf steht in `pi-client/README.md`, „Manuell starten“. Der Containertest führt genau ihn aus (`pi-client/install_raspberry_pi.test.sh`, in der CI Job `pi-installer`). Kommt nicht `OK`, hilft die letzte Zeile der Ausgabe:
   - endet mit `PICASTAI_DEVICE_TOKEN ist nicht gesetzt`: In `kunibert.env` fehlt das Token (zum Beispiel nach einer Installation ohne Token). Mit `sudoedit /etc/kunibert/kunibert.env` eintragen.
+  - enthält `PICASTAI_DEVICE_TOKEN enthält Zeichen` oder `PICASTAI_DEVICE_ID enthält ein Steuerzeichen`: Im Wert steht etwas, das nicht hineingehört (zum Beispiel ein Leerzeichen, Anführungszeichen oder das Wort Bearer). Den Wert zeigt der Client nie. Mit `sudoedit /etc/kunibert/kunibert.env` prüfen oder den Installer mit `--ask-token` noch einmal laufen lassen.
   - enthält `Permission denied`: Die Rechte der Datei stimmen nicht (Punkt davor: `640 root kunibert`).
   - `FEHLER` oder ein Verbindungsfehler (zum Beispiel `Connection refused`): die URL in `kunibert.env` prüfen (Punkt davor) und am Pi `curl -fsS <URL aus kunibert.env>/health` (Antwort mit `"status":"ok"`; sonst blockieren WLAN, Adresse oder Firewall).
 - [ ] Mikrofon-Aus-Schalter trennt das Mikrofon **elektrisch** (separat geprüft, nicht nur GPIO 22).
