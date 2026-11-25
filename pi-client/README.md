@@ -294,7 +294,13 @@ sudo -u kunibert bash -c 'cd /var/lib/kunibert && set -a && . /etc/kunibert/kuni
 
 Beim Start wartet der Client, bis der Server antwortet: Ist er nicht erreichbar (WLAN noch nicht da, Router startet noch), blinkt die LED schnell (Fehler), und der Client versucht es alle `KUNIBERT_CONNECT_RETRY` Sekunden (Standard 10) wieder. Er beendet sich dabei nicht.
 
-Vorher prüft der Client Token und Geräte-ID. Leerzeichen und Zeilenenden am Rand von Token, Geräte-ID und Adresse lässt er weg, zum Beispiel ein Windows-Zeilenende, wenn die Shell `kunibert.env` einliest. Erlaubt sind im Token dieselben Zeichen wie beim Installer (siehe „Das Token“ oben); in der Geräte-ID ist kein Steuerzeichen erlaubt. Sonst startet der Client nicht, auch nicht mit `--once`. Er meldet dann eine Zeile wie „Kunibert kann nicht starten: PICASTAI_DEVICE_TOKEN enthält Zeichen, …“, ohne den Wert und ohne Traceback. Abhilfe: mit `sudoedit /etc/kunibert/kunibert.env` die Zeile `PICASTAI_DEVICE_TOKEN=` prüfen oder den Installer mit `--ask-token` noch einmal laufen lassen. Scheitert eine Anfrage trotzdem an einem Zeichen in einer Kopfzeile, nennt die Meldung nur die Art des Fehlers („Anfrage nicht gesendet: ungültiges Zeichen in Adresse oder Kopfzeile“), nie den Kopf.
+Vorher prüft der Client Adresse, Geräte-ID und Token. Leerzeichen und Zeilenenden am Rand lässt er weg, zum Beispiel ein Windows-Zeilenende, wenn die Shell `kunibert.env` einliest. Erlaubt sind:
+
+- Adresse: `http://` oder `https://` mit Rechnername, ohne Name und Passwort.
+- Geräte-ID: sichtbare ASCII-Zeichen ohne Leerzeichen (keine Umlaute).
+- Token: dieselben Zeichen wie beim Installer (siehe „Das Token“ oben).
+
+Fehlt die Geräte-ID oder das Token oder passt ein Wert nicht, startet der Client nicht, auch nicht mit `--once`. Ausnahme: `--dry-run` braucht keine Geräte-ID und kein Token; ist eines gesetzt, muss es aber passen. Der Client meldet dann eine Zeile wie „Kunibert kann nicht starten: PICASTAI_DEVICE_TOKEN enthält Zeichen, …“, ohne den Wert und ohne Traceback. Abhilfe: mit `sudoedit /etc/kunibert/kunibert.env` die genannte Zeile prüfen (`PICASTAI_DEVICE_TOKEN=`, `PICASTAI_DEVICE_ID=` oder `PICASTAI_API_BASE_URL=`). Oder den Installer noch einmal laufen lassen: mit `--ask-token` für ein neues Token, mit `--device-id` für die Geräte-ID. Scheitert eine Anfrage trotzdem an einem Wert in einer Kopfzeile, nennt die Meldung nur die Art des Fehlers („Anfrage nicht gesendet: ungültige Adresse oder Kopfzeile“), nie den Kopf.
 
 Nur Health prüfen (muss `OK` melden; prüft die Adresse aus `kunibert.env`, nicht die Standardadresse):
 
@@ -385,7 +391,7 @@ py pi-client\kunibert_client.py --keyboard
 
 Danach: Fenster 1 schließen (der Schlüssel steht bis dahin in seinen Einstellungen) und `docker stop speaches`. Kommt später der Pi, kann der Server im selben WLAN auf diesem Rechner bleiben (Abschnitt „Später: der Pi im selben WLAN“ weiter unten).
 
-`--dry-run` startet den Zustandsautomaten mit Attrappen für Taster, Mikrofon, Lautsprecher und LED. Es sendet **keine** Anfrage an den Server (auch keinen Health-Check), und die Attrappen drücken nie eine Taste. Der Lauf zeigt nur, dass der Client startet und `READY` erreicht; Server-Adresse und Token spielen dabei keine Rolle:
+`--dry-run` startet den Zustandsautomaten mit Attrappen für Taster, Mikrofon, Lautsprecher und LED. Es sendet **keine** Anfrage an den Server (auch keinen Health-Check), und die Attrappen drücken nie eine Taste. Der Lauf zeigt nur, dass der Client startet und `READY` erreicht; Geräte-ID und Token braucht er nicht (sind sie gesetzt, prüft er ihre Zeichen wie unter „Manuell starten“):
 
 ```bash
 python3 pi-client/kunibert_client.py --dry-run --debug

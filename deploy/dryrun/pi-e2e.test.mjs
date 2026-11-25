@@ -185,6 +185,7 @@ test('Pi-Client: Token mit Leerzeichen: eine Zeile ohne Token, kein Traceback', 
   await assert.rejects(run('python3', [client, '--once', 'story'], { env }), (error) => {
     assert.match(error.stderr, /PICASTAI_DEVICE_TOKEN enthält Zeichen/);
     assert.ok(!error.stderr.includes('geheim'), 'Token im Protokoll');
+    assert.ok(!error.stderr.includes(DEVICE_ID), 'Geräte-ID im Protokoll');
     assert.ok(!error.stderr.includes('Traceback'), 'Traceback im Protokoll');
     return true;
   });
@@ -194,6 +195,7 @@ test('Pi-Client: Windows-Zeilenende an Token und Geräte-ID fällt weg', async (
   const env = { ...clientEnv(), PICASTAI_DEVICE_TOKEN: `${DEVICE_TOKEN}\r`, PICASTAI_DEVICE_ID: `${DEVICE_ID}\r` };
   const { stdout, stderr } = await run('python3', [client, '--once', 'story'], { env });
   assert.match(stdout, /Story-Audio empfangen: \d+ Bytes/);
+  for (const secret of [DEVICE_TOKEN, DEVICE_ID]) assert.ok(!stderr.includes(secret), 'Token oder Geräte-ID im Protokoll');
   assert.ok(!stderr.includes('Traceback'), 'Traceback im Protokoll');
 });
 

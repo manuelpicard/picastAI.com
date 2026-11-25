@@ -43,8 +43,9 @@ LOG = logging.getLogger("kunibert")
 # (install_raspberry_pi.sh; hex, Base64, Base64url). Python würde ein Token mit einem
 # Zeilenende beim Senden mit einem ValueError ablehnen, der die ganze Kopfzeile nennt.
 TOKEN_PATTERN = re.compile(r"[A-Za-z0-9._~+/=:-]+")
-# Steuerzeichen (zum Beispiel ein Windows-Zeilenende) sind in keiner Kopfzeile erlaubt.
-CONTROL_CHARACTER = re.compile(r"[\x00-\x1f\x7f]")
+# Geräte-ID: sichtbare ASCII-Zeichen ohne Leerzeichen (die Firmware lehnt Leerzeichen und
+# Steuerzeichen ab; der Server legt nur IDs aus Buchstaben, Ziffern, - und _ an).
+DEVICE_ID_PATTERN = re.compile(r"[\x21-\x7e]+")
 
 
 class ClientState(Enum):
@@ -185,14 +186,14 @@ class ApiError(RuntimeError):
         self.retryable = retryable
 
 
-def unsendable(exc: ValueError) -> ApiError:
-    """Fehler beim Aufbau einer Anfrage, ohne den Text des Originals.
+def unsendable(kind: str) -> ApiError:
+    """Fehler beim Aufbau einer Anfrage, nur mit der Art des Fehlers (``kind``, zum Beispiel ValueError).
 
     Python nennt in diesem ValueError die ganze Kopfzeile, bei einem Zeilenende im Wert also das
-    Token oder die Geräte-ID. Deshalb nur die Art des Fehlers; aufrufen mit ``raise … from None``,
-    damit auch ein Traceback den ValueError nicht zeigt.
+    Token oder die Geräte-ID. Deshalb nie den Text des Originals. Die Aufrufer werfen den Fehler
+    erst nach dem except-Block: So hängt der ValueError auch nicht als ``__context__`` daran.
     """
-    return ApiError(f"Anfrage nicht gesendet: ungültiges Zeichen in Adresse oder Kopfzeile ({type(exc).__name__})")
+    return ApiError(f"Anfrage nicht gesendet: ungültige Adresse oder Kopfzeile ({kind})")
 
 
 class NoRedirectHandler(HTTPRedirectHandler):
@@ -761,14 +762,20 @@ class PicastApi:
     def __init__(self, config: ClientConfig):
         if not config.device_token and not config.dry_run:
             raise ApiError("PICASTAI_DEVICE_TOKEN ist nicht gesetzt")
+        if not config.device_id and not config.dry_run:
+            raise ApiError("PICASTAI_DEVICE_ID ist nicht gesetzt")
         # Beim Start prüfen, nicht erst beim Senden: Dort nennt Pythons Fehler die ganze Kopfzeile.
-        # Die Meldungen nennen den Wert nie (keine Tokens und keine Geräte-IDs im Protokoll).
+        # Die Meldungen nennen den Wert nie (keine Tokens und keine Geräte-IDs im Protokoll; eine
+        # Adresse kann Zugangsdaten enthalten).
         if config.device_token and not TOKEN_PATTERN.fullmatch(config.device_token):
             raise ApiError("PICASTAI_DEVICE_TOKEN enthält Zeichen, die in einem Geräte-Token nicht vorkommen "
                            "(zum Beispiel Leerzeichen, Anführungszeichen oder das Wort Bearer). Wert nicht angezeigt.")
-        if CONTROL_CHARACTER.search(config.device_id):
-            raise ApiError("PICASTAI_DEVICE_ID enthält ein Steuerzeichen (zum Beispiel ein Zeilenende). "
-                           "Wert nicht angezeigt.")
+        if config.device_id and not DEVICE_ID_PATTERN.fullmatch(config.device_id):
+            raise ApiError("PICASTAI_DEVICE_ID enthält Zeichen, die in einer Geräte-ID nicht vorkommen "
+                           "(zum Beispiel Leerzeichen, Umlaute oder ein Zeilenende). Wert nicht angezeigt.")
+        if _origin(config.api_base_url) is None:
+            raise ApiError("PICASTAI_API_BASE_URL ist keine gültige Adresse (erwartet http:// oder https:// "
+                           "mit Rechnername, ohne Name und Passwort). Wert nicht angezeigt.")
         self.config = config
         self.session_id = secrets.token_urlsafe(12)
         # Uhr für die Wiederholungsregel (Tests setzen eine eigene).
@@ -875,6 +882,7 @@ class PicastApi:
 
     def _open_stream(self, url: str) -> StreamedWav:
         """Öffnet den Ton-Strom und lässt die Verbindung offen; abgespielt wird beim Lesen."""
+        unsendable_kind = ""
         try:
             request = Request(url, headers=self._headers, method="GET")
             raw = build_opener(NoRedirectHandler()).open(request, timeout=self.config.audio_timeout_seconds)
@@ -883,7 +891,9 @@ class PicastApi:
         except URLError as exc:
             raise OSError(str(exc.reason)) from exc
         except ValueError as exc:
-            raise unsendable(exc) from None
+            unsendable_kind = type(exc).__name__  # erst unten werfen, ohne __context__ (siehe unsendable)
+        if unsendable_kind:
+            raise unsendable(unsendable_kind)
         content_type = raw.headers.get("Content-Type", "")
         if raw.status != 200 or content_type.split(";")[0].lower() != "audio/wav":
             raw.close()
@@ -968,7 +978,8 @@ class PicastApi:
         except OSError:
             raise
         except ValueError as exc:
-            raise unsendable(exc) from None
+            unsendable_kind = type(exc).__name__  # erst unten werfen, ohne __context__ (siehe unsendable)
+        raise unsendable(unsendable_kind)
 
 
 def multipart_form(fields: dict[str, str], file_field: str, filename: str,

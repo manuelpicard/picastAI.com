@@ -26,6 +26,8 @@ X-Device-ID: prototype-001
 Content-Type: multipart/form-data
 ```
 
+Erlaubte Zeichen (seit 25.11.2026, Punkt N1123-1937-a): im Token Buchstaben, Ziffern und `. _ ~ + / = : -` (so prüfen Installer und Pi-Client; die Tokens des Servers, `tok_` mit Base64url, und `openssl rand -hex 32` passen). In der Geräte-ID sichtbare ASCII-Zeichen ohne Leerzeichen; neue Geräte legt der Server nur mit Buchstaben, Ziffern, `-` und `_` an (höchstens 80 Zeichen). Der Pi-Client prüft beides beim Start und nennt den Wert nie. Die Firmware lehnt bisher nur Steuerzeichen und Leerzeichen ab (Punkt N1125-1338-a).
+
 Formularfelder:
 
 - `audio`: PCM-WAV, mono, 16 Bit, konfigurierte Abtastrate, maximal 2 MB

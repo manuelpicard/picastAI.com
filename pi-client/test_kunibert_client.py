@@ -1551,13 +1551,40 @@ class TokenCharacterTests(unittest.TestCase):
             with self.subTest(token=token):
                 self.assertEqual(PicastApi(ClientConfig(device_token=token))._headers["Authorization"], f"Bearer {token}")
 
-    def test_device_id_with_control_character_is_refused_without_its_value(self):
-        for device_id in ("geraet-geheim\r", "geraet\ngeheim", "geraet-geheim\x00"):
+    def test_device_id_with_invalid_characters_is_refused_without_its_value(self):
+        for device_id in ("geraet-geheim\r", "geraet\ngeheim", "geraet-geheim\x00", "geraet geheim", "geraet-geheim-€", "geraet-geheim-ä"):
+            for dry_run in (False, True):
+                with self.subTest(device_id=device_id, dry_run=dry_run):
+                    with self.assertRaises(ApiError) as caught:
+                        PicastApi(ClientConfig(device_token="t", device_id=device_id, dry_run=dry_run))
+                    self.assertIn("PICASTAI_DEVICE_ID", str(caught.exception))
+                    self.assertIn("Wert nicht angezeigt", str(caught.exception))
+                    self.assertNotIn("geheim", str(caught.exception))
+
+    def test_device_id_is_required_unless_dry_run(self):
+        with patch.dict(os.environ, {"PICASTAI_DEVICE_ID": " \r", "PICASTAI_DEVICE_TOKEN": "t"}):
+            config = ClientConfig.from_env()
+        self.assertEqual(config.device_id, "")
+        with self.assertRaises(ApiError) as caught:
+            PicastApi(config)
+        self.assertIn("PICASTAI_DEVICE_ID ist nicht gesetzt", str(caught.exception))
+        PicastApi(dataclasses.replace(config, dry_run=True))  # Probelauf ohne Server: keine Pflicht
+
+    def test_device_ids_of_server_and_docs_are_accepted(self):
+        for device_id in ("prototype-001", "prototype-1", "pi-e2e", "simulator-web", "Geraet_2"):
             with self.subTest(device_id=device_id):
+                self.assertEqual(PicastApi(ClientConfig(device_token="t", device_id=device_id))._headers["X-Device-ID"], device_id)
+
+    def test_api_base_url_is_checked_at_start_without_its_value(self):
+        for url in ("picastai.com", "ftp://picastai.com", "https://nutzer:geheim@picastai.com", "https://", "http://[::1", "https://picastai.com:99999"):
+            with self.subTest(url=url):
                 with self.assertRaises(ApiError) as caught:
-                    PicastApi(ClientConfig(device_token="t", device_id=device_id))
-                self.assertIn("PICASTAI_DEVICE_ID", str(caught.exception))
+                    PicastApi(ClientConfig(api_base_url=url, device_token="t"))
+                self.assertIn("PICASTAI_API_BASE_URL ist keine gültige Adresse", str(caught.exception))
                 self.assertNotIn("geheim", str(caught.exception))
+        for url in ("https://picastAI.com", "http://127.0.0.1:9", "https://picastai.com/kunibert"):
+            with self.subTest(url=url):
+                PicastApi(ClientConfig(api_base_url=url, device_token="t"))
 
     def _api_with_bad_token(self):
         """Ein Token mit Zeilenende, an der Prüfung beim Start vorbei (wie eine Änderung zur Laufzeit)."""
@@ -1581,8 +1608,9 @@ class TokenCharacterTests(unittest.TestCase):
                 self.assertNotIn(self.SECRET, str(error))
                 self.assertFalse(error.retryable)
                 sleep.assert_not_called()  # kein zweiter Versuch mit demselben Fehler
+                # Auch nicht verdeckt angehängt: __context__ hielte sonst den ValueError samt Kopfzeile.
                 self.assertIsNone(error.__cause__)
-                self.assertTrue(error.__suppress_context__)
+                self.assertIsNone(error.__context__)
                 shown = "".join(traceback.format_exception(type(error), error, error.__traceback__))
                 self.assertNotIn(self.SECRET, shown, "auch ein Traceback zeigt das Token nicht")
 
@@ -1599,16 +1627,26 @@ class TokenCharacterTests(unittest.TestCase):
         self.assert_nothing_secret_logged(logs, self.SECRET)
         self.assertNotIn(self.SECRET, client.last_error or "")
 
-    def test_main_refuses_invalid_token_with_one_line_and_without_value(self):
+    def test_main_refuses_invalid_values_with_one_line_and_without_value(self):
         from kunibert_client import main
-        # Ohne --dry-run: Die Prüfung kommt vor Tastern und Ton, sonst meldete der Rechner ohne GPIO zuerst die Taster.
-        for argv in ([], ["--dry-run"], ["--once", "story"], ["--once", "health"]):
-            with self.subTest(argv=argv), patch.dict(os.environ, {"PICASTAI_DEVICE_TOKEN": "geheim token 0815\r"}):
-                with self.assertLogs("kunibert", level="DEBUG") as logs:
-                    self.assertEqual(main(argv), 1)
-                self.assertEqual(len(logs.records), 1, logs.output)
-                self.assertIn("PICASTAI_DEVICE_TOKEN enthält Zeichen", logs.output[0])
-                self.assert_nothing_secret_logged(logs, "geheim")
+        valid = {"PICASTAI_API_BASE_URL": "http://127.0.0.1:9", "PICASTAI_DEVICE_ID": "prototype-001", "PICASTAI_DEVICE_TOKEN": "t"}
+        cases = {
+            "PICASTAI_DEVICE_TOKEN enthält Zeichen": {"PICASTAI_DEVICE_TOKEN": "geheim token 0815\r"},
+            "PICASTAI_DEVICE_ID enthält Zeichen": {"PICASTAI_DEVICE_ID": "geraet geheim"},
+            "PICASTAI_API_BASE_URL ist keine gültige Adresse": {"PICASTAI_API_BASE_URL": "https://nutzer:geheim@127.0.0.1:9"},
+        }
+        # Ohne --dry-run: Die Prüfung kommt vor Tastern und Ton, sonst meldete der Rechner ohne GPIO zuerst
+        # die Taster. Fiele die Prüfung weg, schlägt die Attrappe für run() an, statt dass der Test hängt;
+        # --once ginge dann nur an 127.0.0.1:9 (dort antwortet nichts).
+        for expected, env in cases.items():
+            for argv in ([], ["--dry-run"], ["--once", "story"], ["--once", "health"]):
+                with self.subTest(expected=expected, argv=argv), patch.dict(os.environ, {**valid, **env}), \
+                        patch.object(KunibertClient, "run", side_effect=AssertionError("Client darf nicht starten")):
+                    with self.assertLogs("kunibert", level="DEBUG") as logs:
+                        self.assertEqual(main(argv), 1)
+                    self.assertEqual(len(logs.records), 1, logs.output)
+                    self.assertIn(expected, logs.output[0])
+                    self.assert_nothing_secret_logged(logs, "geheim")
 
 
 @unittest.skipIf(_real_sounddevice() is None, "sounddevice mit PortAudio und Audiogerät nicht vorhanden")
