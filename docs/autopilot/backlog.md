@@ -503,7 +503,7 @@ Angelegt am 17.11.2026, 20:15, von Claude (Chat). Gepflegt von den Läufen des W
 - Fertig, wenn: gemergt; die Stellen passen zum Code auf `main`.
 
 ### N1122-1941-a · Zubehör für den Pi-Aufbau neu prüfen
-- Rolle: Recherche · Prio: 2 · Status: offen · Bezug: H1, PR #97, Nr. 33
+- Rolle: Recherche · Prio: 1 (vorher 2; 25.11.2026, Planung: „Pi bespielen“ steht an erster Stelle in der Reihenfolge des Betreibers. Ohne Zubehör lässt sich der Pi nicht aufbauen. H1 ist bis 28.11.2026 nicht fällig, und Händlerseiten ließen sich am 25.11. über die Websuche lesen, anders als die Seiten in N1122-1825-c.) · Status: offen · Bezug: H1, PR #97, Nr. 33
 - Ziel: Netzteil (offizielles 27 W), Active Cooler, microSD 32 GB (A2), USB-Mikrofon, USB-Lautsprecher und Kleinteile (Breadboard, Jumper, zwei Taster, zwei LEDs, Widerstände) als eigener Abschnitt „Zubehör“ in `docs/recherche/lieferbarkeit.md`: Preis, Lieferbarkeit, Link, Abrufdatum, wie viel wörtlich gelesen wurde. Die Werte vom 7. bis 11.11.2026 (nur im Claude-Projekt, `claude/stand-2026-11-07-anfragen-und-hosting.md`) als Vergleich. Summe als eigene Rechnung, mit 4-GB- und mit 8-GB-Pi.
 - Fertig, wenn: Abschnitt „Zubehör“ steht in der Datei, mit Quellen. Nichts bestellen. Danach gehört er zur wiederkehrenden Prüfung von H1.
 
@@ -712,6 +712,6 @@ Angelegt am 17.11.2026, 20:15, von Claude (Chat). Gepflegt von den Läufen des W
 - Fertig, wenn: gemergt; Rechner-Test der Firmware-Logik (`firmware/esp32-s3/test/test_logic.c`) mit gültigen und ungültigen Werten (Umlaut, Anführungszeichen, „Bearer “ vor dem Token); der Satz „Die Firmware lehnt bisher …“ in `docs/picastAI-Pi-API.md` ist entfernt.
 
 ### N1125-1338-b · Pi-Installer: Geräte-ID und Adresse wie der Pi-Client prüfen
-- Rolle: Bauen · Prio: 2 · Status: offen · Bezug: PR #119 (N1123-1937-a), unabhängige Prüfung vom 25.11.2026
+- Rolle: Bauen · Prio: 1 (vorher 2; 25.11.2026, Planung: „Pi bespielen“ steht an erster Stelle in der Reihenfolge des Betreibers. Der Installer ist der erste Schritt am Pi. Ein Tippfehler in Geräte-ID oder Adresse hinterlässt dort einen Dienst, der alle 5 Sekunden neu startet.) · Status: offen · Bezug: PR #119 (N1123-1937-a), unabhängige Prüfung vom 25.11.2026
 - Ziel: `pi-client/install_raspberry_pi.sh` prüft `--device-id` und `--api-url` nur auf Zeilenumbrüche. Er nimmt also zum Beispiel eine Geräte-ID mit Leerzeichen oder Umlaut oder eine Adresse ohne `https://` an und meldet Erfolg. Seit PR #119 startet der Pi-Client mit solchen Werten nicht (eine Zeile ohne Wert im Journal); wegen `Restart=on-failure` und `StartLimitIntervalSec=0` startet der Dienst dann alle 5 Sekunden neu. Der Installer soll dieselben Regeln prüfen wie der Client (`DEVICE_ID_PATTERN`, `_origin` in `pi-client/kunibert_client.py`; Bereiche unter `LC_ALL=C`), auch für Werte, die er aus einer vorhandenen `kunibert.env` übernimmt, und ohne den Wert zu nennen abbrechen.
 - Fertig, wenn: gemergt; Fälle in `pi-client/install_raspberry_pi.test.sh` (CI-Job `pi-installer`) für eine ungültige Geräte-ID und eine Adresse ohne Schema; `pi-client/README.md` passt.
