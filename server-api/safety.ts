@@ -221,9 +221,8 @@ export function screenOutput(text: string, kind: 'story' | 'answer'): boolean {
 }
 
 export function normalize(text: string): string {
-  // „€“ nach einer Zahl als Wort lesen, sonst bleibt von „10 €“ nur „10“ (Prüfung von PR #110, 24.11.2026, Befund 4).
-  // Sonst wie früher ein Satzzeichen: Als Wort trennte es Wortketten („Ich möchte € sterben“; Prüfung von PR #115, Befund 11).
-  const norm = (text || '').normalize('NFC').toLowerCase().replace(/([0-9])\s*€+/g, '$1 euro ');
+  // „€“ als Wort lesen, sonst bleibt von „10 €“ nur „10“ (Prüfung von PR #110, 24.11.2026, Befund 4)
+  const norm = (text || '').normalize('NFC').toLowerCase().replace(/€+/g, ' euro ');
   const cleaned = norm.replace(/[^\wäöüß ]+/gi, ' ');
   return cleaned.replace(/\s+/g, ' ').trim() + ' ';
 }
@@ -507,33 +506,53 @@ const PLACE =
   'weihnachtsmarkt|jahrmarkt|rummel|kirmes|freizeitpark|flughafen|krankenhaus|stadt|menge|gedränge|straße|parkplatz|parkhaus|' +
   'kino|museum|schule|kindergarten|kita|fest|festival|konzert|stadion|ubahn|u bahn|s bahn|straßenbahn|haltestelle|bushaltestelle|' +
   'see|meer|hafen|garten|feld|[a-zäöüß]*(bad|park|platz|markt|halle|zentrum|hof))';
-// Für V14 (Prüfung von PR #115 nach dem Merge, 25.11.2026). Nur in neuen Schablonen; ältere bleiben, wie sie sind.
-// Opfer einer Drohung, auch zwei („Er bringt Mama und mich um“)
-const THREAT_VICTIM = `(mich|uns|${ART}${PERSON_WIDE}|das baby|unser baby|sie|ihn)`;
-// Nur Füllwörter zwischen Opfer und „um“ („Er bringt Mama bestimmt noch um“); nicht „bringt mich zum Bahnhof, um …“
-const THREAT_FILL = '((bestimmt|sicher|wirklich|echt|noch|nochmal|irgendwann|bald|gleich|heute|morgen|doch|schon|wohl|mal|auch|einfach|jetzt|dann|richtig|eines|tages) ){0,2}';
-// Nach „um“ beginnt ein neuer Satz („Er bringt mich um, das hat er gesagt“, „Er bringt mich um, meine Mama hat Angst“)
-const UM_NEW_CLAUSE = ` ((das|dies) (hat|hatte|haben|hab|habe|sagt|sagte|meint|meinte|schreit|schrie|brüllt|brüllte)|((mein|meine|meinen|der|die|den|unser|unsere|unseren) )?${PERSON_WIDE} (hat|hatte|ist|war|weint|schreit|sagt|sagte|kann|will|weiß))${R}`;
+// Für V14 (Prüfung von PR #115 nach dem Merge, 25.11.2026, und Prüfung vor dem Merge von PR #122). Nur in neuen
+// Schablonen; ältere bleiben, wie sie sind.
+// Opfer einer Drohung, auch zwei („Er bringt Mama und mich um“, „mich und meinen kleinen Bruder“)
+const THREAT_VICTIM = `(mich|uns|${ART}(kleine |kleinen |kleiner |große |großen |großer )?${PERSON_WIDE}|das baby|unser baby|sie|ihn)`;
+// Nur Füllwörter zwischen Opfer und „um“ („Er bringt Mama bestimmt noch um“, „uns noch alle um“); nicht „bringt mich zum
+// Bahnhof, um …“
+const THREAT_FILL = '((bestimmt|sicher|wirklich|echt|noch|nochmal|irgendwann|bald|gleich|heute|morgen|doch|schon|wohl|mal|auch|einfach|jetzt|dann|richtig|eines|tages|alle|beide) ){0,3}';
+// Uhrzeiten, die UM_NOT_TIME nicht kennt („um zwanzig nach acht“, „um dreiviertel acht“, „um 8 Uhr“)
+const UM_NOT_TIME_MORE = `(?! (dreiviertel|zwanzig|dreißig|vierzig|fünfzig|[a-zäöüß]+zehn|[a-zäöüß]+zig|uhr)${R})`;
+// Nach „um“ beginnt ein neuer Satz („Er bringt mich um, das hat er gesagt“, „…, meine Mama hat Angst“, „…, mein Papa“)
+const UM_NEW_CLAUSE = ` ((das|dies) (hat|hatte|haben|hab|habe|sagt|sagte|meint|meinte|schreit|schrie|brüllt|brüllte|ist|war|weiß|glaub|glaube|stimmt)|((mein|meine|meinen|der|die|den|unser|unsere|unseren) )?${PERSON_WIDE}( (hat|hatte|ist|war|weint|schreit|sagt|sagte|kann|will|weiß|auch|und))?)${R}`;
 const PERP_WOMAN = `(die|eine|diese) (${WORD} )?frau`;
+// Kinder als Opfer, auch ohne „mein“ („Die Frau schlägt das Kind“, „… den Jungen“)
+const VICTIM_WIDE = `(${VICTIM}|(das|ein|dieses) (kleine |kleines )?(kind|mädchen)|(den|einen|diesen) (kleinen )?jungen)`;
+// Das Baby, wenn Geschwister die Täter sind („Mein Bruder schlägt das kleine Baby“); nicht „dem Baby die Hand“
+const SIB_BABY = '((das|unser|mein) (kleine |kleines )?baby)';
+// „…, damit ich wach werde“: Wecken, kein Schütteln aus Gewalt
+const NOT_WAKE = `(?! (${WORD} ){0,2}(damit|bis|weil|wenn|dass|sodass) ich (${WORD} ){0,3}(wach|aufwache|aufwach|munter)${R})`;
 const STRANGER_START = '(mann|frau|typ|fremder|fremde|fremden|unbekannter|unbekannte)';
-const WITH_HIM = '(mit ihm|mit ihr|zu ihm|zu ihr|mit zu ihm|mit zu ihr)';
+// Bei „zu ihm“ und „zu ihr“ nur mit Artikel („der Mann“), nicht „Frau Müller hat gefragt, ob ich zu ihr komme“ (Lehrerin)
+const STRANGER_ART = `(${STRANGER}|(der|die|ein|eine|dieser|diese) (${WORD} )?(unbekannte|unbekannter))`;
+const WITH_HIM = '(mit ihm|mit ihr|mit zu ihm|mit zu ihr)';
 const HOME = '(nach hause |heim |zu sich |zu sich nach hause )?';
-// Figuren aus Geschichten und Tiere zählen bei der Berührung nicht als Täter („Ich will nicht, dass der Drache mich anfasst“)
+const GO_WANT = `((${WORD} ){0,2}(gehen|kommen|fahren|mitkommen|mitgehen|mitfahren) )?(will|möchte|soll|muss|würde|kann|darf|mag)`;
+// Figuren aus Geschichten, Tiere und Berufe, bei denen Anfassen dazugehört, zählen bei der Berührung nicht als Täter
+// („Ich will nicht, dass der Drache mich anfasst“, „Ich hab Angst, wenn der Arzt mich anfasst“ bleibt ruhig wie vorher),
+// auch in der Mehrzahl („die Gespenster“) und in Zusammensetzungen („der Werwolf“, „der Tierarzt“). Auch nicht „du“ und „es“.
 const FICTION =
-  '(drache|drachen|monster|gespenst|geist|hexe|riese|zwerg|troll|zauberer|zauberin|ritter|kunibert|prinzessin|prinz|frosch|' +
-  'könig|königin|fee|einhorn|skelett|vampir|zombie|ungeheuer|pferd|hund|katze|wolf|bär|löwe|tiger|krokodil)';
-// Berufe, bei denen Anfassen dazugehört („Ich hab Angst, wenn der Arzt mich anfasst“ bleibt ruhig, wie vorher)
-const CARE = '(arzt|ärztin|doktor|doktorin|zahnarzt|zahnärztin|kinderarzt|kinderärztin|krankenschwester|pfleger|pflegerin|friseur|friseurin)';
-// Täter bei Berührung, auch mit Artikel, „jemand“ und Namen („wenn der Trainer mich anfasst“, „wenn Onkel Peter mich anfasst“)
-const TOUCH_SUBJ_WIDE = `(${TOUCH_SUBJ}|jemand|einer|irgendwer|irgendjemand|man|((der|die|ein|eine|dieser|diese|mein|meine|unser|unsere) )?(?!(${FICTION}|${CARE})${R})${WORD}( (?!(${FICTION}|${CARE})${R})${WORD})?)`;
-const TOUCH_PAST = '(angefasst|angegrapscht|angegrabscht|begrapscht|begrabscht|geküsst|gestreichelt|berührt|ausgezogen)';
+  '(drache|monster|gespenst|geist|hexe|riese|zwerg|troll|zauberer|zauberin|ritter|kunibert|prinzessin|prinz|frosch|' +
+  'könig|königin|fee|einhorn|skelett|vampir|zombie|ungeheuer|pferd|hund|katze|wolf|bär|löwe|tiger|krokodil|spinne|qualle|' +
+  'schlange|mumie|clown|teufel|wölfe|frösche|einhörner)';
+const CARE = '(arzt|ärztin|ärzte|doktor|doktorin|krankenschwester|pfleger|pflegerin|friseur|friseurin|frisör|frisörin|hebamme)';
+const NOT_TOUCH_PERP = `(?!([a-zäöüß]*(${FICTION}|${CARE})(e|en|er|ern|n|s|nen|innen)?|du|es|was|das)${R})`;
+// Täter bei Berührung, auch mit Artikel, „jemand“ und Namen („wenn der Trainer mich anfasst“, „wenn Onkel Peter mich
+// anfasst“, „wenn Herr Wolf mich anfasst“)
+const TOUCH_SUBJ_WIDE = `(${TOUCH_SUBJ}|jemand|einer|irgendwer|irgendjemand|man|((der|die) )?(herr|frau|onkel|tante|opa|oma) ${WORD}|((der|die|ein|eine|dieser|diese|mein|meine|unser|unsere) )?${NOT_TOUCH_PERP}${WORD}( ${NOT_TOUCH_PERP}${WORD})?)`;
+// „…, wenn er mich anfasst“ und „…, wenn mich jemand anfasst“ (zwischen Täter und Verb dann nur Füllwörter)
+const TOUCH_CLAUSE = `(dass|wenn) (${TOUCH_SUBJ_WIDE} mich (${WORD} ){0,3}|mich ${TOUCH_SUBJ_WIDE} ${VADV})${TOUCH_VERB}`;
+const TOUCH_PAST = `((angefasst|angegrapscht|angegrabscht|begrapscht|begrabscht|geküsst|gestreichelt|berührt|ausgezogen) (hat|hatte|haben)|anfasste|küsste|streichelte|berührte|auszog|grapschte|grabschte)`;
 // Orte, auch mit „hier“ oder „da“ davor („hier im Park“) und mit mehr Läden („beim Bäcker“)
 const PLACE_WIDE =
   `((hier|da|dort) )?(${PLACE}|(im|in der|in dem|am|auf dem|auf der|beim|bei der|an der|vor dem|vor der) (${WORD} )?` +
   '(bäcker|bäckerei|metzger|metzgerei|apotheke|arzt|ärztin|friseur|drogerie|kiosk|tankstelle|eisdiele|café|cafe|restaurant|' +
-  'toilette|klo|umkleide|garderobe|kasse|eingang|ausgang|treppe|rolltreppe|aufzug)|hier|da|dort)';
-// Ohne Zunge und Lippe: „Ich beiße mir extra auf die Zunge, damit ich nicht lache“
-const SELF_BODY = '(arm|arme|bein|beine|finger|hand|handgelenk|haut|bauch|oberschenkel|knie|wange|daumen)';
+  'toilette|klo|umkleide|garderobe|kasse|eingang|ausgang|treppe|rolltreppe|aufzug))';
+// Ohne Zunge, Lippe und Wange: „Ich beiße mir extra auf die Zunge, damit ich nicht lache“
+const SELF_BODY = '(arm|arme|bein|beine|finger|hand|handgelenk|haut|bauch|oberschenkel|knie|daumen)';
+const BITE = '(beiße|beiß|beisse|beiss)';
 
 const PATTERNS_REVIEW: RegExp[] = [
   // V12 Vorab-Prüfung von PR #110 (24.11.2026): Gewalt gegen Mutter, Geschwister und Baby im Präsens, gegen „die Kinder“
@@ -648,44 +667,55 @@ const PATTERNS_REVIEW: RegExp[] = [
   // V14 Prüfung von PR #115 nach dem Merge (25.11.2026): naheliegende Abwandlungen neben V13, die keine Ansage
   // auslösten. Beispiele in beiden Listen von safety.test.ts und in docs/Sicherheitsweiche-Pruefung.md, Abschnitt 13.
   // Atemnot: „Ich kann keine Luft mehr holen“, „Ich krieg kaum mehr Luft“ (Befund 1)
-  new RegExp(`${L}${NOT_AFTER_LAUGH}(ich kann|kann ich|(${WHO}|das baby|${POSS}baby) kann) ${ADV}(keine|kaum|nicht|nicht mehr|nicht richtig|nicht mehr richtig|schlecht|nur schwer|schwer)( noch| mehr)? luft( mehr| noch)? (holen|kriegen|bekommen|reinkriegen|rein kriegen)${NOT_BEFORE_LAUGH}${R}`),
+  new RegExp(`${L}${NOT_AFTER_LAUGH}(ich kann|kann ich|(${WHO}|das baby|${POSS}baby) kann) ${ADV}(keine|kaum|nicht|nicht mehr|nicht richtig|nicht mehr richtig|nicht so richtig|nicht mehr so richtig|schlecht|nur schwer|schwer|nur noch schwer|nur noch schlecht|nicht gut|nicht so gut|nicht mehr gut|nicht mehr so gut)( noch| mehr)? luft( mehr| noch)? (holen|kriegen|bekommen|reinkriegen|rein kriegen)${NOT_BEFORE_LAUGH}${R}`),
   new RegExp(`${L}${NOT_AFTER_LAUGH}(ich (habe|hab|bekomme|bekomm|kriege|krieg)|(krieg|kriege|bekomm|bekomme|habe|hab) ich|(${WHO}|das baby|${POSS}baby) (kriegt|bekommt|hat)) ${ADV}(kaum|fast keine|so gut wie keine) mehr luft${NOT_BEFORE_LAUGH}${R}`),
-  // Schütteln: Die Ausnahme gilt nur zwischen Opfer und Verb, „wach“ nur direkt danach (Befund 2)
-  new RegExp(`${L}${PERP} ((hat|hatte|haben|hatten) (${WORD} )?${SMALL_VICTIM} ((?!(hand|hände|händchen|kopf|köpfe|wach)${R})${WORD} ){0,3}(geschüttelt|durchgeschüttelt)|(schüttelt|schütteln) ${SMALL_VICTIM}(?! ((?!(nicht|nie|kein|keine|ist|war|wird|und|aber)${R})${WORD} ){0,3}(wach|munter)${R}))${R}`),
+  // Schütteln: Die Ausnahme gilt nur zwischen Opfer und Verb, „wach“ nur kurz danach, Wecken („damit ich wach werde“),
+  // nicht „dem Bruder die Hand“ (Befund 2)
+  new RegExp(`${L}${PERP} ((hat|hatte|haben|hatten) (${WORD} )?${SMALL_VICTIM} ((?!(hand|hände|händchen|kopf|köpfe|wach)${R})${WORD} ){0,3}(geschüttelt|durchgeschüttelt)${R}${NOT_WAKE}|(schüttelt|schütteln) (?!(dem|meinem|meiner|der|unserem|unserer|deinem|deiner) )${SMALL_VICTIM}${R}(?! ((?!(nicht|nie|kein|keine|ist|war|wird|und|aber)${R})${WORD} ){0,3}(wach|munter)${R})${NOT_WAKE})`),
   // Drohung gegen zwei Personen, mit Füllwörtern vor „um“, mit neuem Satz nach „um“; „hat mich versucht zu …“ (Befund 3)
-  new RegExp(`${L}(${POSS}${PERSON_WIDE}|er|sie|der|die|jemand) (bringt|bringen|würde|will|wird) ${THREAT_VICTIM}( und ${THREAT_VICTIM})? ${THREAT_FILL}um(${R}${UM_NOT_TIME}|${UM_NEW_CLAUSE})`),
+  new RegExp(`${L}(${POSS}${PERSON_WIDE}|er|sie|der|die|jemand) (bringt|bringen|würde|will|wird) ${THREAT_VICTIM}( und ${THREAT_VICTIM})? ${THREAT_FILL}um(${R}${UM_NOT_TIME}${UM_NOT_TIME_MORE}|${UM_NEW_CLAUSE})`),
   new RegExp(`${L}(dass|wenn|sonst|weil|ob) (er|sie|jemand|${POSS}${PERSON_WIDE}|der mann|die frau|der typ) ${THREAT_VICTIM} und ${THREAT_VICTIM} (${WORD} )?(tötet|töten will|töten wird|töten wollte|umbringt|umbringen will|umbringen wird|totmacht|tot macht|erwürgt|erstickt)${R}`),
   new RegExp(`${L}${SUBJ} (hat|hatte|haben|hatten) (${WORD} ){0,2}(mich|uns|das baby|${ART}${PERSON_WIDE}) (${WORD} )?(versucht|versuchte|probiert) (${WORD} ){0,3}(zu töten|umzubringen|zu erwürgen|zu würgen|zu erdrosseln|tot zu machen|totzumachen|zu ersticken|zu vergiften|zu ertränken|zu erschlagen|zu erstechen|abzustechen|zu erschießen)${R}`),
-  // Fremde: „ob ich mit ihm fahren will“, „ob ich zu ihm nach Hause komme“, „ich soll mit ihm nach Hause kommen“, „10,50 €“ (Befund 4)
-  new RegExp(`${L}${STRANGER_START}( ${WORD}){0,8} (ob|dass|wenn) ich ${WITH_HIM} ${HOME}(gehen|kommen|fahren|mitkommen|mitgehen|mitfahren) (will|möchte|soll|muss|würde|kann|darf|mag)${R}`),
-  new RegExp(`${L}${STRANGER_START}( ${WORD}){0,8} (ob|dass|wenn) ich (zu ihm|zu ihr) ${HOME}(komme|gehe|fahre|mitkomme|mitgehe|mitfahre)${R}`),
+  // Fremde: „ob ich mit ihm fahren will“, „… nach Hause will“, „ob ich zu ihm nach Hause komme“, „ich soll mit ihm nach Hause
+  // kommen“, „ob ich mitkommen mag“, „10,50 €“ (Befund 4)
+  new RegExp(`${L}${STRANGER_START}( ${WORD}){0,8} (ob|dass|wenn) ich ${WITH_HIM} ${HOME}${GO_WANT}${R}`),
+  new RegExp(`${L}${STRANGER_ART}( ${WORD}){0,8} (ob|dass|wenn) ich (zu ihm|zu ihr) ${HOME}((komme|gehe|fahre|mitkomme|mitgehe|mitfahre)|${GO_WANT})${R}`),
   new RegExp(`${L}${STRANGER_START}( ${WORD}){0,8} (ich soll|ich muss|dass ich) ${WITH_HIM} ${HOME}(gehen|gehe|kommen|komme|fahren|fahre|mitkommen|mitgehen|mitfahren)${R}`),
+  new RegExp(`${L}${STRANGER_ART}( ${WORD}){0,8} (ich soll|ich muss|dass ich) (zu ihm|zu ihr) ${HOME}(gehen|gehe|kommen|komme|fahren|fahre|mitkommen|mitgehen|mitfahren)${R}`),
+  new RegExp(`${L}${STRANGER_START}( ${WORD}){0,8} (ob|dass|wenn) ich (mit ihm |mit ihr )?(mitkommen|mitgehen|mitfahren|einsteigen|ins auto steigen|in sein auto steigen|in ihr auto steigen) mag${R}`),
   new RegExp(`${L}(mann|frau|typ|fremder|fremde|fremden)( ${WORD}){0,4} (hat|haben|wollte|will|bietet|bot) mir ((${WORD}|[0-9]+) ){0,3}${GIFT} (angeboten|anbieten|an|geschenkt|schenken|gegeben|geben|gekauft|kaufen|versprochen|versprechen)${R}`),
-  // Ungewollte Berührung: Täter mit Artikel, „jemand“ oder Name, „wollte nicht“, Vergangenheit (Befund 5)
-  new RegExp(`${L}ich (mag|will|möchte|wollte|mochte) (es |das )?${ADV}nicht( mehr)? (dass|wenn) ${TOUCH_SUBJ_WIDE} mich (${WORD} ){0,3}${TOUCH_VERB}${R}`),
-  new RegExp(`${L}(das|es) gefällt mir ${ADV}nicht( mehr)? (dass|wenn) ${TOUCH_SUBJ_WIDE} mich (${WORD} ){0,3}${TOUCH_VERB}${R}`),
-  new RegExp(`${L}(ich ((finde|find|finds) (es |das |s )?${ADV}(nicht (so |sehr |besonders )?(schön|gut|toll|okay|ok|lustig|angenehm)|eklig|ekelig|doof|blöd|schlimm|komisch|unangenehm|gruselig)|(hasse|hass) (es|das)|(hab|habe) ${ADV}angst)|(es|das) ist ${ADV}(nicht (so |sehr |besonders )?(schön|gut|toll|okay|ok|lustig|angenehm)|eklig|ekelig|schlimm|unangenehm|gruselig)) (dass|wenn) ${TOUCH_SUBJ_WIDE} mich (${WORD} ){0,3}${TOUCH_VERB}${R}`),
-  new RegExp(`${L}(ich (fand|mochte|wollte) (es |das )?|(es|das) war )${ADV}(nicht (so |sehr |besonders )?(schön|gut|toll|okay|ok|lustig|angenehm)|nicht|eklig|ekelig|doof|blöd|schlimm|komisch|unangenehm|gruselig) (dass|wie|als|wenn) ${TOUCH_SUBJ_WIDE} mich (${WORD} ){0,3}${TOUCH_PAST} (hat|hatte|haben)${R}`),
-  // Verloren: Ort auch nach „nicht (mehr)“, „hier“ und „da“ davor, mehr Orte (Befund 6)
+  // Ungewollte Berührung: Täter mit Artikel, „jemand“ oder Name, auch „wenn mich jemand anfasst“, „wollte nicht“, „mag's
+  // nicht“, Vergangenheit (Befund 5)
+  new RegExp(`${L}ich (mag|mags|will|möchte|wollte|mochte) (es |das |s )?${ADV}nicht( mehr)? ${TOUCH_CLAUSE}${R}`),
+  new RegExp(`${L}(das|es) gefällt mir ${ADV}nicht( mehr)? ${TOUCH_CLAUSE}${R}`),
+  new RegExp(`${L}(ich ((finde|find|finds) (es |das |s )?${ADV}(nicht (so |sehr |besonders )?(schön|gut|toll|okay|ok|lustig|angenehm)|eklig|ekelig|doof|blöd|schlimm|komisch|unangenehm|gruselig)|(hasse|hass) (es|das)|(hab|habe) ${ADV}angst)|(es|das) ist ${ADV}(nicht (so |sehr |besonders )?(schön|gut|toll|okay|ok|lustig|angenehm)|eklig|ekelig|schlimm|unangenehm|gruselig)) ${TOUCH_CLAUSE}${R}`),
+  new RegExp(`${L}(ich (fand|mochte|wollte) (es |das |s )?|(es|das) war )${ADV}(nicht (so |sehr |besonders )?(schön|gut|toll|okay|ok|lustig|angenehm)|nicht|eklig|ekelig|doof|blöd|schlimm|komisch|unangenehm|gruselig) (dass|wie|als|wenn) ${TOUCH_SUBJ_WIDE} mich (${WORD} ){0,3}${TOUCH_PAST}${R}`),
+  // Verloren: Ort auch nach „nicht (mehr)“, „hier“ und „da“ davor, mehr Orte; „sie“, wenn Mama im Satz vorkommt (Befund 6)
   new RegExp(`${L}(finde|find|sehe|seh) (${POSS}|(die|den|unsere|unseren|unser) )${RELATIVE} (nicht( mehr| wieder)?|nirgends|nirgendwo) ${PLACE_WIDE}${R}`),
+  new RegExp(`^(?=.*${L}${RELATIVE}${R}).*${L}(finde|find|sehe|seh) (sie|ihn|die beiden|euch) (${FILL_LOST} ){0,2}(nicht( mehr| wieder)?|nirgends|nirgendwo) ${PLACE_WIDE}${R}`),
   new RegExp(`${L}ich kann (${FILL_LOST} ){0,2}(${POSS}|(die|den|unsere|unseren|unser) )${RELATIVE}( und ${POSS}(oma|opa|omi|opi|${PARENTS}))? (${PLACE_WIDE} )?(${FILL_LOST} ){0,2}(nicht|nirgends|nirgendwo) (mehr )?(${PLACE_WIDE} )?finden${R}`),
-  // Gewalt durch „die Frau“; Geschwister nur gegen das Baby (Befund 7)
-  new RegExp(`${L}${PERP_WOMAN} (schlägt|schlagen|haut|hauen|tritt|treten|würgt|würgen|verprügelt|verprügeln|verhaut|verhauen|boxt|schubst|ohrfeigt) ${VADV}${VICTIM}${R}(?! (auf|vor|nach)( *$| (und|aber|weil|wenn|dann)${R})| (in die flucht|zum ritter|zur ritterin|steif|schaumig)${R})`),
-  new RegExp(`${L}${PERP_WOMAN} (hat|hatte|haben|hatten) (${WORD} )?${VICTIM} (${WORD} ){0,8}(?<!flucht )(geschlagen|gehauen|gehaut|gehaun|getreten|gewürgt|verprügelt|verhauen|geohrfeigt|geboxt|geschubst)${R}`),
-  new RegExp(`${L}${POSS}((große|großer|großen|ältere|älterer|älteren) )?(bruder|schwester|cousin|cousine) (schlägt|haut|tritt|würgt|verprügelt|verhaut|boxt|schubst|ohrfeigt|schüttelt) ${VADV}(das baby|unser baby|${ART}(kleine |kleinen |kleiner )?baby)${R}`),
-  new RegExp(`${L}${POSS}((große|großer|großen|ältere|älterer|älteren) )?(bruder|schwester|cousin|cousine) (hat|hatte) (${WORD} )?(das baby|unser baby|${ART}(kleine |kleinen |kleiner )?baby) (${WORD} ){0,6}(geschlagen|gehauen|getreten|gewürgt|verprügelt|verhauen|geohrfeigt|geboxt|geschubst|geschüttelt)${R}`),
-  // Sich selbst beißen: „Ich beiße mir absichtlich in den Arm“, „Ich beiß mich selber“ (Befund 8)
-  new RegExp(`^(?=.*${L}(mit absicht|absichtlich|extra)${R}).*${L}ich (beiße|beiß|beisse|beiss) mir (${WORD} ){0,2}(in|auf) (den|die|das|meinen|meine|mein) ${SELF_BODY}${R}`),
+  // Gewalt durch „die Frau“, gegen „das Kind“ und „den Jungen“; Geschwister nur gegen das Baby (Befund 7)
+  new RegExp(`${L}(${PERP}|${PERP_WOMAN}) (schlägt|schlagen|haut|hauen|tritt|treten|würgt|würgen|verprügelt|verprügeln|verhaut|verhauen|boxt|schubst|ohrfeigt) ${VADV}${VICTIM_WIDE}${R}(?! (auf|vor|nach)( *$| (und|aber|weil|wenn|dann)${R})| (in die flucht|zum ritter|zur ritterin|steif|schaumig)${R})`),
+  new RegExp(`${L}(${PERP}|${PERP_WOMAN}) (hat|hatte|haben|hatten) (${WORD} )?${VICTIM_WIDE} (${WORD} ){0,8}(?<!flucht )(geschlagen|gehauen|gehaut|gehaun|getreten|gewürgt|verprügelt|verhauen|geohrfeigt|geboxt|geschubst)${R}`),
+  new RegExp(`${L}${POSS}((große|großer|großen|ältere|älterer|älteren) )?(bruder|schwester|cousin|cousine) (schlägt|haut|tritt|würgt|verprügelt|verhaut|boxt|schubst|ohrfeigt|schüttelt) ${VADV}${SIB_BABY}${R}(?! (${WORD} ){0,3}an *$| (auf der schaukel|im kinderwagen|im wagen|in der wiege|in den schlaf)${R})`),
+  new RegExp(`${L}${POSS}((große|großer|großen|ältere|älterer|älteren) )?(bruder|schwester|cousin|cousine) (hat|hatte) (${WORD} )?${SIB_BABY} ((?!(hand|hände|händchen|kopf|köpfe|wach|rassel|flasche|fläschchen)${R})${WORD} ){0,6}(geschlagen|gehauen|getreten|gewürgt|verprügelt|verhauen|geohrfeigt|geboxt|geschubst|geschüttelt)${R}`),
+  // Sich selbst beißen: „Ich beiße mir absichtlich in den Arm“, „Ich beiß mich selber“, „Ich habe mich selbst gebissen“ (Befund 8)
+  new RegExp(`^(?=.*${L}(mit absicht|absichtlich|extra)${R}).*${L}ich ${BITE} mir (${WORD} ){0,2}(in|auf) (den|die|das|meinen|meine|mein) ${SELF_BODY}${R}`),
   new RegExp(`^(?=.*${L}(mit absicht|absichtlich|extra)${R}).*${L}(ich (habe|hab)|(habe|hab) ich) mir (${WORD} ){0,3}(in|auf) (den|die|das|meinen|meine|mein) ${SELF_BODY} (${WORD} )?gebissen${R}`),
-  new RegExp(`${L}ich (beiße|beiß|beisse|beiss) mich ((?!(nicht|nie)${R})${WORD} )?(selbst|selber)${R}`),
+  new RegExp(`${L}ich ${BITE} mir (selbst|selber) (${WORD} ){0,2}(in|auf) (den|die|das|meinen|meine|mein) ${SELF_BODY}${R}`),
+  new RegExp(`${L}ich ${BITE} mich ((?!(nicht|nie)${R})${WORD} )?(selbst|selber)${R}(?! (nicht|nie)${R})`),
+  new RegExp(`${L}(ich (habe|hab)|(habe|hab) ich) mich ((?!(nicht|nie)${R})${WORD} )?(selbst|selber) (${WORD} )?gebissen${R}`),
 ];
 
 const ALL_PATTERNS: RegExp[] = [...PATTERNS, ...PATTERNS_EXTRA, ...PATTERNS_2026_11, ...PATTERNS_2026_11_B, ...PATTERNS_2026_11_C, ...PATTERNS_2026_11_D, ...PATTERNS_REVIEW];
 
 export function screen(transcript: string): boolean {
   if (!transcript) return false;
-  const normalized = normalize(transcript);
-  return ALL_PATTERNS.some((pattern) => pattern.test(normalized));
+  const readings = [normalize(transcript)];
+  // „€“ zusätzlich als Satzzeichen lesen, wie vor PR #115: Als Wort trennt es Wortketten („Ich möchte € sterben“).
+  // Beide Lesarten zählen, damit weder „zehn € gegeben“ noch „€ sterben“ still wird (Prüfung von PR #115 und #122).
+  if (transcript.includes('€')) readings.push(normalize(transcript.replace(/€+/g, ' ')));
+  return readings.some((normalized) => ALL_PATTERNS.some((pattern) => pattern.test(normalized)));
 }
 
 export function getSafetyResponse(): string {

@@ -662,6 +662,34 @@ const MUST_TRIGGER = [
   'Ich beiß mich selber',
   'Ich beiße mich manchmal selbst',
   'Ich möchte € sterben',
+  // Dazu aus der unabhängigen Prüfung von PR #122 vor dem Merge (26.11.2026)
+  'Ein Mann hat mir zehn € gegeben',
+  'Ein Fremder hat mir hundert € versprochen',
+  'Er bringt uns noch alle um',
+  'Papa bringt uns bestimmt alle um',
+  'Er bringt mich und meinen kleinen Bruder um',
+  'Er bringt mich um, mein Papa',
+  'Er bringt mich um, das weiß ich',
+  "Ich mag's nicht, wenn der Trainer mich anfasst",
+  'Ich mag es nicht, wenn Herr Wolf mich anfasst',
+  'Ich fand es nicht schön, als er mich küsste',
+  'Ich mag es nicht, wenn mich jemand anfasst',
+  'Es gefällt mir nicht, wenn der Trainer mich anfasst',
+  'Ich finde es eklig, wenn Onkel Peter mich anfasst',
+  'Die Frau schlägt das Kind',
+  'Die Frau schlägt den Jungen',
+  'Der Mann schlägt das Kind',
+  'Mein Bruder schlägt das kleine Baby',
+  'Ein Mann hat gefragt, ob ich mit ihm nach Hause will',
+  'Ein Mann hat gefragt, ob ich mit ihm spazieren gehen will',
+  'Ein Mann hat gefragt, ob ich mitkommen mag',
+  'Der Mann hat gesagt, ich soll zu ihm kommen',
+  'Ich kann nur noch schwer Luft holen',
+  'Ich kann nicht mehr so gut Luft holen',
+  'Ich habe mich selbst gebissen',
+  'Ich beiße mir selbst in den Arm',
+  'Wo ist Mama, ich finde sie nicht mehr auf dem Spielplatz',
+  'Papa schüttelt das Baby, bis es nicht mehr wach ist',
 ];
 
 // Alltägliche Sätze, die NICHT anschlagen dürfen (Fehlalarme sind für Kinder
@@ -1129,7 +1157,6 @@ const MUST_NOT_TRIGGER = [
   'Ich will nicht, dass der Drache mich anfasst',
   'Ich will nicht, dass die Prinzessin mich küsst',
   'Ich habe Angst, dass das Monster mich anfasst',
-  'Ich mag es nicht, wenn er mich auslacht',
   'Es gefällt mir nicht, wenn er mich auslacht',
   'Ich fand es schön, dass Oma mich gestreichelt hat',
   'Ich fand es nicht schlimm, dass Oma mich geküsst hat',
@@ -1151,6 +1178,30 @@ const MUST_NOT_TRIGGER = [
   'Mama hat gefragt, ob ich ins Auto steigen will',
   'Es gefällt mir, wenn Mama mich streichelt',
   'Es gefällt mir nicht, wenn es regnet',
+  // Dazu aus der unabhängigen Prüfung von PR #122 vor dem Merge (26.11.2026)
+  'Ich hab Angst, dass die Gespenster mich anfassen',
+  'Ich will nicht, dass die Wölfe mich anfassen',
+  'Ich hab Angst, dass der Werwolf mich anfasst',
+  'Ich hab Angst, dass die Spinne mich berührt',
+  'Ich will nicht, dass du mich küsst',
+  'Ich hab Angst, wenn der Tierarzt mich anfasst',
+  'Ich will nicht, dass mich der Drache anfasst',
+  'Ich hab Angst, wenn mich der Arzt anfasst',
+  'Opa schüttelt meinem Bruder die Hand',
+  'Papa schüttelt dem Baby das Händchen',
+  'Papa hat mich geschüttelt, damit ich wach werde',
+  'Papa schüttelt mich, wenn ich nicht wach werde',
+  'Meine Schwester hat dem Baby die Hand geschüttelt',
+  'Mein Bruder hat das Baby wach geschüttelt',
+  'Meine Schwester schubst das Baby auf der Schaukel an',
+  'Mein Bruder schubst das Baby im Kinderwagen',
+  'Papa bringt mich und meinen Bruder um zwanzig nach acht zur Schule',
+  'Mama bringt mich und meine Schwester um dreiviertel acht zur Schule',
+  'Frau Müller hat gesagt, ich soll zu ihr kommen',
+  'Frau Schmidt hat gefragt, ob ich zu ihr komme',
+  'Ich sehe Oma nicht dort auf dem Foto',
+  'Ich beiße mich selbst nicht',
+  'Ich beiße mir extra in die Wange, damit ich nicht lache',
 ];
 
 // Bekannte Grenze: Die Weiche ist eine Reihe von Mustern und bleibt unvollständig.
@@ -1293,7 +1344,8 @@ test('Bekannte Fehlalarme aus der Prüfung von PR #110 schlagen wirklich an (bew
 });
 
 // Prüfung von PR #115 nach dem Merge (25.11.2026), bewusst hingenommen: Lieber ein Fehlalarm als eine Lücke.
-// Die ersten drei schlagen seit den Schablonen V13 an (Befund 12), die übrigen seit V14.
+// Die ersten drei schlagen seit den Schablonen V13 an (Befund 12), die übrigen seit V14 (die letzten vier seit der
+// unabhängigen Prüfung von PR #122).
 // Fragen 19, 21 und 22 in docs/Sicherheitsweiche-Pruefung.md, neu Fragen 23 und 24; Einzelheiten in Abschnitt 13.
 test('Bekannte Fehlalarme aus der Prüfung von PR #115 schlagen wirklich an (bewusst hingenommen)', () => {
   for (const sentence of [
@@ -1304,7 +1356,10 @@ test('Bekannte Fehlalarme aus der Prüfung von PR #115 schlagen wirklich an (bew
     'Ich mag es nicht, wenn der Wind mich streichelt',
     'Papa bringt Mama und mich um, wenn wir nicht leise sind',
     'Warum kann ich keine Luft mehr holen, wenn ich tauche?',
-    'Die Frau an der Kasse hat gefragt, ob ich mit ihr kommen will',
+    'Die Frau schubst ihr Kind auf der Schaukel an',
+    'Die Frau hat ihn beim Tennis geschlagen',
+    'Ich sehe Oma nicht mehr im Krankenhaus, sie ist wieder zu Hause',
+    'Sie bringt mich um, meine Schwester ist so nervig',
   ]) {
     assert.equal(screen(sentence), true, sentence);
   }
