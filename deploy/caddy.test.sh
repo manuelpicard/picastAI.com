@@ -37,6 +37,7 @@ eq()  { if [[ "$2" == "$3" ]]; then ok "$1"; else bad "$1: erwartet '$3', war '$
 
 tmp=$(mktemp -d)
 pids=()
+rot=()   # Protokolldateien der Runden mit Fehlern
 aufraeumen() {
   local p
   for p in ${pids[@]+"${pids[@]}"}; do kill "$p" 2>/dev/null || true; done
@@ -141,7 +142,7 @@ def anfragen(obj):
 verboten = ("headers", "remote_ip", "remote_port", "client_ip")
 reste = sorted({k for z in zeilen for a in anfragen(z) for k in verboten if k in a})
 melde(not reste, "keine Kopfzeilen und keine Adresse des Absenders" + (f" (gefunden: {', '.join(reste)})" if reste else ""))
-adresse = re.compile(r"\d+\.\d+\.\d+\.\d+|\[[0-9A-Fa-f:.]*\]")
+adresse = re.compile(r"\d+\.\d+\.\d+\.\d+|\[[0-9A-Za-z.%]*:[0-9A-Za-z:.%]*\]")
 mit_adresse = [z["error"] for z in zeilen if adresse.search(str(z.get("error", "")))]
 melde(not mit_adresse, "keine Adresse im Fehlertext (error)" + (f": {mit_adresse[0]}" if mit_adresse else ""))
 
@@ -160,10 +161,16 @@ if runde == "Runde 1":
     melde(gesehen == erwartet, f"Methode und Pfad bleiben, Kennung im Pfad einer Antwort geschwärzt: {gesehen}")
     melde(all(z.get("msg") and "duration" in z for z in fz), "Nachricht und Dauer bleiben")
 else:
-    lesen = [z for z in zeilen if z.get("msg") == "reading from backend"]
-    melde(bool(lesen), "Zeile „reading from backend“ da")
-    melde(any("REDACTED" in str(z.get("error", "")) for z in lesen), "Adressen im Fehlertext geschwärzt")
-    melde(any(z.get("msg") == "aborting with incomplete response" for z in zeilen), "Zeile „aborting with incomplete response“ da")
+    abbruch = [z for z in zeilen if z.get("msg") == "aborting with incomplete response"]
+    melde(bool(abbruch), "Zeile „aborting with incomplete response“ da")
+    # „reading from backend“ schreibt Caddy 2.6.2; neuere Fassungen nur mit verbose_logs, dort steht
+    # der Lesefehler im Fehlertext der Abbruchzeile („reading: …“).
+    texte = [str(z.get("error", "")) for z in zeilen if z.get("msg") in ("reading from backend", "aborting with incomplete response")]
+    melde(any("REDACTED" in t for t in texte), "Adressen im Fehlertext geschwärzt")
+    for t in texte:
+        print(f"info {runde}: Fehlertext: {t}")
+    mit_anfrage = sum(1 for z in abbruch if isinstance(z.get("request"), dict))
+    print(f"info {runde}: Abbruchzeilen mit Anfrage: {mit_anfrage} von {len(abbruch)} (neuere Fassungen hängen sie an)")
 sys.exit(1 if fehler else 0)
 PY
 }
@@ -190,7 +197,7 @@ eq "Großschreibung: 502"   "$(anfrage "${geraet_koepfe[@]}" "$basis/V1/DEVICE/A
 eq "/health: 502"          "$(anfrage -H "X-Forwarded-For: $fremd" "$basis/health")" 502
 eq "Eltern koppeln: 502"   "$(anfrage -X POST -H 'Content-Type: application/json' -H "Cookie: kb_eltern=$cookie" -H "User-Agent: $agent" --data '{"code":"123456"}' "$basis/v1/eltern/koppeln")" 502
 stoppe_caddy
-pruefe "Runde 1" "$tmp/caddy1.log" || fails=$((fails + 1))
+pruefe "Runde 1" "$tmp/caddy1.log" || rot+=("$tmp/caddy1.log")
 
 # Runde 2: Attrappe schickt Kopf und ein Stück Ton, dann bricht sie die Verbindung hart ab (RST).
 python3 - "$p_attrappe" >/dev/null 2>&1 <<'PY' &
@@ -226,11 +233,14 @@ starte_caddy "$tmp/Caddyfile2" "$tmp/caddy2.log" "$p2"
 anfrage "${geraet_koepfe[@]}" "http://127.0.0.1:$p2/v1/device/audio/$turn" >/dev/null
 sleep 0.5
 stoppe_caddy
-pruefe "Runde 2" "$tmp/caddy2.log" || fails=$((fails + 1))
+pruefe "Runde 2" "$tmp/caddy2.log" || rot+=("$tmp/caddy2.log")
 
-if [[ "$fails" -ne 0 ]]; then
-  echo "$fails Fehler. Protokoll der Runde 1:"
-  cut -c1-400 "$tmp/caddy1.log" | tail -n 12
+for datei in ${rot[@]+"${rot[@]}"}; do
+  echo "Protokoll $(basename "$datei") (gekürzt):"
+  cut -c1-400 "$datei" | tail -n 12
+done
+if [[ "$fails" -ne 0 || ${#rot[@]} -ne 0 ]]; then
+  echo "Rot: $fails Prüfung(en) außerhalb der Runden, ${#rot[@]} Runde(n) mit Fehlern."
   exit 1
 fi
 echo "Alle Prüfungen bestanden."
