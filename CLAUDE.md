@@ -52,6 +52,7 @@ cd firmware/esp32-s3 && cc -std=c11 -Wall -Wextra -Werror -pedantic -fsanitize=a
 - Kunibert spricht nie nach, was das Kind gesagt hat, ohne Ausgabe-Check (`screenOutput`).
 - Änderungen an `safety.ts` immer mit Sätzen in beiden Listen von `safety.test.ts` (muss anschlagen, darf nicht anschlagen). Lieber ein Fehlalarm als eine Lücke.
 - Server, Pi-Client und Firmware müssen zur Schnittstellen-Doku passen; Zeitkette Server 120 s, Caddy 130 s, Gerät 140 s.
+- Was auf Pi oder Server läuft oder dort gelesen wird (Skripte, Python, systemd, Umgebungsvorlagen, HTML), hat LF. Neue Dateiarten in `.gitattributes` eintragen; `server-api/zeilenenden.test.ts` prüft es.
 - Keine Schlüssel, Tokens oder Passwörter in Code, Tests, Doku oder Commits. Nie danach fragen.
 - Arbeit nur auf einem eigenen Branch mit Pull Request. Nie direkt auf `main` pushen, kein Force-Push. Seit 14.11.2026, 10:51 (Wort des Betreibers) mergt Claude PRs selbst, sobald die CI grün ist; Schließen und Löschen ebenso. Bestellen und Bezahlen nur nach Bestätigung des einzelnen Kaufs.
 - Seit 14.11.2026, 10:51 ist nichts mehr geparkt (Wort des Betreibers); auch Stimme, Recht und die PRs dazu dürfen bearbeitet werden. Offene Punkte stehen in `claude/aufgaben.md`.

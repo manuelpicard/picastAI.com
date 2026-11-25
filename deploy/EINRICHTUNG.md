@@ -26,6 +26,8 @@ Gesamt bis zum ersten Pi-Durchlauf grob **2 bis 3 Stunden** reine Arbeitszeit (S
 
 Die Schritte 5, 6 und 8 und die Vorbereitung von Schritt 7 erledigt [`setup-server.sh`](setup-server.sh) in einem Lauf (Pakete, Node.js 22, Docker, Caddy, Benutzer, Frist für Protokolle, Code, Build, env-Datei, Sprachserver mit Modellen, Dienst, Caddyfile). Es ist mehrfach ausführbar. **Stand: auf keinem echten Server gelaufen.** Geprüft sind `bash -n`, `shellcheck` und die Hilfsfunktionen (`bash deploy/setup-server.test.sh`). Bricht es ab, geht es von Hand mit den Abschnitten 1 bis 6 weiter.
 
+**Unter Windows vorher die Zeilenenden prüfen** (PowerShell, im Repo-Ordner): `git ls-files --eol deploy/setup-server.sh deploy/smoke-test.sh` muss bei beiden `w/lf` zeigen. Bei `w/crlf` bricht das Skript sofort ab (`$'\r': command not found`). Dann den Ordner neu klonen: Seit dem 25.11.2026 checkt Git Skripte über `.gitattributes` auch unter Windows mit LF aus, aber ein älterer Klon behält seine Windows-Zeilenenden auch nach `git pull`.
+
 ```bash
 # von deinem Rechner (im Repo-Ordner; unter Windows in PowerShell mit OpenSSH)
 scp deploy/setup-server.sh root@<IPv4>:
@@ -64,8 +66,8 @@ sudo useradd --system --home-dir /var/lib/kunibert --shell /usr/sbin/nologin kun
 sudo install -d -o root -g root -m 755 /opt/kunibert
 sudo install -d -o root -g root -m 700 /etc/kunibert
 
-# Code: geprüften Stand von main (oder einem Tag) holen. Das Repo ist privat: einen
-# read-only Deploy-Key verwenden, kein persönliches Token auf dem Server.
+# Code: geprüften Stand von main (oder einem Tag) holen. Das Repo ist öffentlich; wie
+# setup-server.sh einen read-only Deploy-Key verwenden, kein persönliches Token auf dem Server.
 sudo git clone git@github.com:manuelpicard/picastAI.com.git /opt/kunibert/app
 cd /opt/kunibert/app
 sudo npm ci             # genau die Versionen aus package-lock.json; tsx (devDependency) wird zur Laufzeit gebraucht
@@ -205,6 +207,8 @@ Offen: ob 120 s die richtige Größe sind, und die echten Zeiten auf der CCX13 (
 Wer die Server-Grenzen ändert, passt die beiden anderen an. Quellen (ohne Zeilennummern, die veralten): `server-api/timing.ts` (`TURN_BUDGET_MS`, `TTS_RESERVE_MS`, `MIN_LLM_MS`, `MIN_TTS_MS`), `server-api/brain.ts` (Frist je Sprachmodell-Aufruf), `server.ts` (Erkennung und Sprachausgabe), `server-api/config.ts` (`llmTimeoutMs` und `voiceTimeoutMs`, Grenzen je Aufruf, 3 bis 120 s), `deploy/Caddyfile` (`response_header_timeout 130s`), `pi-client/kunibert_client.py` (`KUNIBERT_PIPELINE_TIMEOUT`, Standard 140 s).
 
 ## 7. Abnahme von außen
+
+Unter Windows (WSL) vorher die Zeilenenden des Skripts prüfen, wie unter „Kürzer mit dem Skript“ beschrieben.
 
 Alle Prüfungen dieses Abschnitts (und mehr: Zertifikat, falscher Token gibt 401, zu große Datei gibt 413) macht das Skript `deploy/smoke-test.sh`. Es läuft auf deinem Rechner (Linux oder macOS mit `bash`, `curl` und `openssl`; unter Windows in WSL, in Git Bash mit dem Windows-`curl` ging es im Test nicht), ruft weder Spracherkennung noch Sprachmodell auf und liest Adresse und Gerätetoken nur aus der Umgebung:
 
