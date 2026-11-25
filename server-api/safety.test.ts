@@ -690,6 +690,19 @@ const MUST_TRIGGER = [
   'Ich beiße mir selbst in den Arm',
   'Wo ist Mama, ich finde sie nicht mehr auf dem Spielplatz',
   'Papa schüttelt das Baby, bis es nicht mehr wach ist',
+  // Dazu aus der zweiten unabhängigen Prüfung von PR #122 vor dem Merge (26.11.2026)
+  'Mein Bruder hat dem Baby auf den Kopf gehauen',
+  'Mein Bruder haut dem Baby auf den Kopf',
+  'Meine Schwester schlägt dem Baby ins Gesicht',
+  'Mein Bruder hat das Baby auf den Kopf geschlagen',
+  'Mein Bruder schlägt das Baby im Kinderwagen',
+  'Papa schüttelt mich, bis ich nicht mehr wach bin',
+  'Papa hat mich geschüttelt, bis ich nicht mehr wach war',
+  'Ich hab zu ihm gesagt, ich will nicht, dass du mich anfasst',
+  'Ich habe Onkel Peter gesagt, ich mag es nicht, wenn du mich anfasst',
+  'Ich will nicht, dass das Mädchen mich küsst',
+  'Er bringt mich um, meine Mama auch',
+  'Mama ist weg, ich finde sie nicht mehr im Supermarkt',
 ];
 
 // Alltägliche Sätze, die NICHT anschlagen dürfen (Fehlalarme sind für Kinder
@@ -1202,6 +1215,16 @@ const MUST_NOT_TRIGGER = [
   'Ich sehe Oma nicht dort auf dem Foto',
   'Ich beiße mich selbst nicht',
   'Ich beiße mir extra in die Wange, damit ich nicht lache',
+  // Dazu aus der zweiten unabhängigen Prüfung von PR #122 vor dem Merge (26.11.2026)
+  'Papa hat mir einen Ball geschenkt, aber ich finde ihn nicht mehr im Garten',
+  'Mama sucht ihre Brille, ich finde sie auch nicht im Bad',
+  'Oma hat mir eine Puppe geschenkt, ich finde sie nicht mehr auf dem Spielplatz',
+  'Frau Schmidt hat gefragt, ob ich mitkommen mag',
+  'Frau Müller hat gefragt, ob ich mit ihr zum Sport gehen will',
+  'Ich hab Angst, wenn Frau Doktor mich anfasst',
+  'Ich mag es nicht, wenn Herr Doktor mich anfasst',
+  'Er würde mich um meine Mama beneiden',
+  'Mein Bruder schüttelt dem Baby die Rassel',
 ];
 
 // Bekannte Grenze: Die Weiche ist eine Reihe von Mustern und bleibt unvollständig.
@@ -1344,8 +1367,8 @@ test('Bekannte Fehlalarme aus der Prüfung von PR #110 schlagen wirklich an (bew
 });
 
 // Prüfung von PR #115 nach dem Merge (25.11.2026), bewusst hingenommen: Lieber ein Fehlalarm als eine Lücke.
-// Die ersten drei schlagen seit den Schablonen V13 an (Befund 12), die übrigen seit V14 (die letzten vier seit der
-// unabhängigen Prüfung von PR #122).
+// Die ersten drei schlagen seit den Schablonen V13 an (Befund 12), die übrigen seit V14 (die letzten vier gefunden bei
+// der unabhängigen Prüfung von PR #122).
 // Fragen 19, 21 und 22 in docs/Sicherheitsweiche-Pruefung.md, neu Fragen 23 und 24; Einzelheiten in Abschnitt 13.
 test('Bekannte Fehlalarme aus der Prüfung von PR #115 schlagen wirklich an (bewusst hingenommen)', () => {
   for (const sentence of [
