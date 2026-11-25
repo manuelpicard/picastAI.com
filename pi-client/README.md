@@ -14,12 +14,12 @@ Das Skript `install_raspberry_pi.sh` installiert die Python-Laufzeit, GPIO-/Audi
 **So kommt der Ordner auf den Pi:** am besten am Pi selbst mit `git clone`. Dann haben alle Dateien Linux-Zeilenenden (LF):
 
 ```bash
-sudo apt install -y git
+sudo apt update && sudo apt install -y git
 git clone https://github.com/manuelpicard/picastAI.com.git
 cd picastAI.com
 ```
 
-Kopierst du den Ordner von einem Windows-Rechner (USB-Stick, `scp`), nimm einen Klon, der nach dem 25.11.2026 neu angelegt wurde. Seitdem legt `.gitattributes` fest, dass Git Skripte, Python-, systemd-, Umgebungs- und HTML-Dateien auch unter Windows mit LF auscheckt. Ein älterer Windows-Klon behält seine Windows-Zeilenenden auch nach `git pull`. Meldet der Installer `$'\r': command not found` oder `invalid option name`, hat die Kopie Windows-Zeilenenden: den Ordner am Pi mit `git clone` neu holen. `npm test` zeigt auf dem Rechner solche Dateien an (`server-api/zeilenenden.test.ts`).
+Kopierst du den Ordner von einem Windows-Rechner (USB-Stick, `scp`), prüf vorher im Windows-Klon (PowerShell, im Repo-Ordner): `git ls-files --eol pi-client/install_raspberry_pi.sh` muss `w/lf` zeigen. Zeigt es `w/crlf`, den Ordner neu klonen. Seit dem 25.11.2026 legt `.gitattributes` fest, dass Git Skripte, Python-, systemd-, Umgebungs- und HTML-Dateien auch unter Windows mit LF auscheckt. Ein älterer Windows-Klon behält seine Windows-Zeilenenden aber auch nach `git pull`. Meldet der Installer `$'\r': command not found` oder `invalid option name`, hat die Kopie Windows-Zeilenenden: den Ordner am Pi mit `git clone` neu holen.
 
 Dann im Ordner des Repos:
 
