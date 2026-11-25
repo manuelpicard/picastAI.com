@@ -1,0 +1,17 @@
+# Zeilenenden (Punkt N1123-1937-b, 25.11.2026)
+#
+# Diese Dateien laufen auf dem Pi oder dem Server (Linux) oder werden dort gelesen.
+# Mit Windows-Zeilenenden (CRLF) gehen sie kaputt: bash meldet "$'\r': command not found",
+# systemd nimmt "\r" in einen Wert auf, und die CSP-Hashes der Eltern-Seite passen nicht mehr.
+# Darum speichert und checkt Git sie immer mit LF aus, auch unter Windows (core.autocrlf=true).
+# Neue Dateiarten, die auf Pi oder Server laufen, hier eintragen.
+# Test: server-api/zeilenenden.test.ts (prüft auch jede Datei mit "#!" in der ersten Zeile).
+
+*.sh            text eol=lf
+*.py            text eol=lf
+*.mjs           text eol=lf
+*.service       text eol=lf
+*.env.example   text eol=lf
+Caddyfile       text eol=lf
+*.html          text eol=lf
+demo/bin/*      text eol=lf
