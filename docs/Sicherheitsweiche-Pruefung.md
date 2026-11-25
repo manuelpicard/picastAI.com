@@ -163,6 +163,8 @@ Durch die neuen Schablonen aus Abschnitt 10 kommen diese Fehlalarme dazu, bewuss
 
 **Stand 25. November 2026:** Bei der Prüfung von Abschnitt 11 nach dem Merge gefunden, seit dem 24. November so, bewusst hingenommen und als Test festgehalten **(Test)**: „Papa schubst meine Schwester auf der Schaukel an“ (Spiel), „Opa und seine Frau haben mir ein Handy geschenkt“ (Frage 22) und die Sachfrage „Warum kann ich so schlecht atmen, wenn ich Schnupfen habe?“ (Frage 21). Durch die Schablonen aus Abschnitt 12 kommen dazu **(Test)**: „Opa schubst meine Schwester auf der Schaukel an“ und „Die haben ihn beim Fußball geschlagen“ (Spiel), „Er schlägt ihn mit dem Schwert“ und „Die Prinzessin hat Angst, dass er sie tötet“ (Geschichte), „Oma hat mir eine Puppe geschenkt, aber ich kann sie nicht finden“ und „Mama hat gesagt, ich soll meine Jacke holen, aber ich kann sie nicht finden“ („sie“ ist hier die Puppe oder die Jacke).
 
+**Stand 26. November 2026:** Bei der Prüfung von Abschnitt 12 nach dem Merge gefunden, seit dem 25. November so, bewusst hingenommen und als Test festgehalten **(Test)**: „Mein Ball ist platt, er hat nicht mehr genug Luft“, „Ich kneife mich extra, um zu sehen, ob ich träume“ und „Opa schüttelt das Baby sanft, damit es aufwacht“. Durch die Schablonen aus Abschnitt 13 kommen dazu **(Test)**: „Ich will nicht, dass Lisa mich küsst“ (ein Name als Täter, auch unter Kindern; Frage 23), „Ich mag es nicht, wenn der Wind mich streichelt“, „Papa bringt Mama und mich um, wenn wir nicht leise sind“ (Übertreibung; Frage 19), die Sachfrage „Warum kann ich keine Luft mehr holen, wenn ich tauche?“ (Frage 21) und „Die Frau an der Kasse hat gefragt, ob ich mit ihr kommen will“ (Frage 22).
+
 ### 7.4 Ohne Claude: allgemeine Antworten auf Sätze, die Stufe 1 nicht erkennt
 
 Ist Claude nicht eingerichtet oder fällt aus (oder lehnt der Ausgabe-Check den Text ab), antwortet das Gerät mit festen Texten nach Stichwörtern. Ausprobiert mit dem Code:
@@ -344,6 +346,43 @@ Kein Satz, der vorher anschlug, ist jetzt still. Geprüft mit allen 961 Sätzen 
 **Neue Fehlalarme:** bewusst hingenommen und als Test festgehalten, siehe Abschnitt 7.3 („Stand 25. November 2026“) **(Test)**. Sie ergänzen Frage 21 (Sachfragen, Spiel) und Frage 22 (bekannte Erwachsene).
 
 **Offen:** Andere Wortstellung und Nebensätze prüft weiter Punkt N1122-2323-a der Arbeitsliste. Echte Spracherkennung und Kinderstimmen sind nicht geprüft; bis zur Rechtsprüfung testen nur Erwachsene.
+
+## 13. Nachtrag vom 26. November 2026: Prüfung von Abschnitt 12 nach dem Merge
+
+**Was geprüft wurde:** Ein weiterer Prüfer (Claude, unabhängig vom Autor) hat die Änderung aus Abschnitt 12 nach dem Merge geprüft (Kommentar „Autopilot-Prüfung“ an PR #115). Er fand 12 Befunde, davon einen hohen: „Ich kann keine Luft mehr holen“ löste keine Ansage aus. Jetzt lösen 44 weitere Sätze die Ansage aus **(Test)**, zum Beispiel:
+
+- Atemnot: „Ich kann keine Luft mehr holen“, „Mama kann keine Luft mehr holen“, „Ich krieg kaum mehr Luft“.
+- Schütteln: „Papa hat das Baby geschüttelt und jetzt ist es nicht mehr wach“, „Papa hat das Baby geschüttelt, der Kopf ist hin und her geflogen“.
+- Drohung: „Er bringt Mama und mich um“, „Er bringt Mama bestimmt noch um“, „Er bringt mich um, das hat er gesagt“, „Er hat mich versucht zu ersticken“.
+- Fremde: „Ein Mann hat gefragt, ob ich mit ihm fahren will“, „Ein Mann hat gesagt, ich soll mit ihm nach Hause kommen“, „Ein Mann hat mir 10,50 € gegeben“.
+- Ungewollte Berührung: „Ich mag es nicht, wenn der Trainer mich anfasst“, „Ich mag nicht, wenn Onkel Peter mich anfasst“, „Ich fand es nicht schön, dass er mich angefasst hat“, „Ich wollte nicht, dass er mich auszieht“.
+- Verloren: „Ich finde meine Mama nicht mehr auf dem Spielplatz“, „Ich kann Mama hier im Park nicht finden“, „Ich kann meine Mama beim Bäcker nicht finden“.
+- Gewalt: „Die Frau schlägt das Baby“, „Eine Frau schlägt ihr Kind“, „Mein großer Bruder schlägt das Baby“.
+- Sich selbst beißen: „Ich beiße mir absichtlich in den Arm“, „Ich beiß mich selber“.
+
+Dazu 45 neue Gegenproben, die keine Ansage auslösen **(Test)**, zum Beispiel „Ich kann keine Luft mehr holen vor Lachen“, „Papa hat mich wach geschüttelt“, „Papa bringt mich zum Bahnhof, um Oma abzuholen“, „Er bringt mich um den Verstand“, „Papa bringt Mama und mich um neun zum Zug“, „Ich will nicht, dass der Drache mich anfasst“, „Ich finde meine Mütze nicht auf dem Spielplatz“, „Die Frau schlägt die Eier auf“ und „Ich beiße mir extra auf die Zunge, damit ich nicht lache“. Acht davon sind Gegenproben zu Schablonen aus Abschnitt 12, die bisher keine eigene hatten.
+
+**Wie die Änderung gebaut ist:** 23 neue Schablonen stehen in `PATTERNS_REVIEW` in `server-api/safety.ts` (Abschnitt „V14“). Keine ältere Schablone ist geändert. Neu sind:
+
+- Atemnot: „mehr“ oder „noch“ auch nach „Luft“ („keine Luft mehr holen“), „kaum mehr Luft“.
+- Schütteln: Hand, Kopf und „wach“ nehmen nur noch aus, wenn sie zwischen dem Opfer und „geschüttelt“ stehen („Papa hat mich wach geschüttelt“) oder kurz nach dem Opfer ohne Verneinung („Papa schüttelt mich jeden Morgen wach“). Vorher galt die Ausnahme für den ganzen Satz.
+- Drohung: zwei Opfer („Mama und mich“), bis zu zwei Füllwörter vor „um“ („bestimmt noch“), ein neuer Satz nach „um“ („…, das hat er gesagt“, „…, meine Mama hat Angst“), „hat mich versucht zu ersticken“. Uhrzeit, Artikel und Bitte nach „um“ bleiben ausgenommen wie vorher.
+- Fremde: „mit ihm fahren will“, „zu ihm (nach Hause) komme“, „ich soll mit ihm nach Hause kommen“, Beträge mit Komma.
+- Berührung: Als Täter zählen auch „der Trainer“, „jemand“ und ein oder zwei freie Wörter (ein Name wie „Onkel Peter“), dazu „wollte nicht“, „mochte nicht“ und die Vergangenheit („…, dass er mich angefasst hat“). Nicht als Täter zählen Figuren aus Geschichten, Tiere und Berufe, bei denen Anfassen dazugehört (Arzt, Friseur).
+- Verloren: der Ort auch nach „nicht (mehr)“, „hier“ und „da“ davor, mehr Orte (zum Beispiel Bäcker, Apotheke, Kasse, Rolltreppe).
+- Gewalt: „die Frau“ und „eine Frau“ als Täterin. Geschwister nur, wenn sie das Baby schlagen oder schütteln (Frage 24).
+- Sich selbst beißen: „mir in den Arm“ und „in die Hand gebissen“ mit „absichtlich“, „mit Absicht“ oder „extra“, ohne Zunge und Lippe; „mich selbst“ und „mich selber“.
+- Das Zeichen „€“ liest die Weiche nur noch nach einer Zahl als „euro“. Sonst ist es wieder ein Satzzeichen wie vor Abschnitt 12. Als eigenes Wort trennte es Wortketten: „Ich möchte € sterben“ war seit Abschnitt 12 still und schlägt jetzt wieder an.
+
+Kein Satz, der vorher anschlug, ist jetzt still. Geprüft mit allen Sätzen der bisherigen Tests und mit rund 20 500 Stücken aus dem Repo (Geschichte, Kanon, Ansagen, Anweisungen an Claude, Tests des Erzählers und Doku, ohne die Dateien der Sicherheitsweiche und die Arbeitsliste). Keines dieser Stücke löst neu eine Ansage aus. Bei ungünstigen Eingaben mit rund 100 000 Zeichen braucht die Weiche in dieser Messung höchstens etwa 83 ms (vorher etwa 62 ms). Die Erkennung liefert höchstens 1 000 Zeichen.
+
+**Neue Fehlalarme:** bewusst hingenommen und als Test festgehalten, siehe Abschnitt 7.3 („Stand 26. November 2026“) **(Test)**. Dazu drei neue Fragen:
+
+23. Als Täter bei ungewollter Berührung zählt jetzt jeder Name, auch unter Kindern („Ich will nicht, dass Lisa mich küsst“). Ist die Hilfe-Ansage dort richtig, oder braucht es eine ruhigere Antwort?
+24. Geschwister zählen in den neuen Schablonen als Täter nur, wenn sie das Baby schlagen oder schütteln. Ist das die richtige Grenze? (Streit unter Geschwistern gibt viele Fehlalarme, siehe Frage 7.)
+25. „Ich kann sie nicht finden“ löst die Ansage aus, wenn Eltern oder Großeltern im Satz vorkommen, auch wenn „sie“ eine Jacke oder Puppe ist (Abschnitt 7.3). Ist das vertretbar?
+
+**Offen:** Wörter mit ae, oe, ue statt Umlaut oder mit „ss“ statt „ß“ erkennt keine Schablone („Er schlaegt meine Mama“). Die Spracherkennung schreibt meist Umlaute, getippter Text im Simulator vielleicht nicht. Das ist ein eigener Punkt der Arbeitsliste. Andere Wortstellung und Nebensätze prüft weiter Punkt N1122-2323-a. Echte Spracherkennung und Kinderstimmen sind nicht geprüft; bis zur Rechtsprüfung testen nur Erwachsene.
 
 ## Anhang: Wo steht was im Code?
 
