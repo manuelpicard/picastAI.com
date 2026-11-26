@@ -87,13 +87,18 @@ snapshot() {
   ls -A /etc/kunibert
 }
 
-echo "== Vorbereitung (systemd für systemd-analyze, sudo für den Aufruf aus der Anleitung)"
+echo "== Vorbereitung (systemd für systemd-analyze, sudo für den Aufruf aus der Anleitung, deutsche Sprachumgebung)"
 export DEBIAN_FRONTEND=noninteractive
-if ! { apt-get update -qq && apt-get install -y -qq --no-install-recommends systemd sudo; } > "$work/vorbereitung.txt" 2>&1; then
+if ! { apt-get update -qq && apt-get install -y -qq --no-install-recommends systemd sudo locales; } > "$work/vorbereitung.txt" 2>&1; then
   tail -n 20 "$work/vorbereitung.txt"
   echo "Vorbereitung gescheitert." >&2
   exit 1
 fi
+# de_DE.UTF-8 wie an einem deutsch eingestellten Pi: Dort trifft [A-Za-z] in bash auch Umlaute.
+sed -i 's/^# *de_DE.UTF-8 UTF-8/de_DE.UTF-8 UTF-8/' /etc/locale.gen
+locale-gen > "$work/locale-gen.txt" 2>&1
+de=de_DE.UTF-8
+if locale -a | grep -qix 'de_DE.utf8'; then ok "Vorbereitung: $de vorhanden"; else bad "Vorbereitung: $de fehlt"; fi
 # Attrappe: Im Container läuft kein systemd als PID 1. /usr/local/sbin steht in PATH vor /usr/bin.
 mkdir -p /usr/local/sbin
 cat > /usr/local/sbin/systemctl <<'EOF'
@@ -414,6 +419,113 @@ run_tty "$work/tty4.txt" "$token4" --ask-token
 eq "--ask-token, neues Token: Rückgabe 0" "$rc" 0
 token_is "--ask-token: neues Token gespeichert" "$token4"
 no_token "--ask-token: Token nicht am Bildschirm" "$work/tty4.txt"
+
+echo "== Geräte-ID und Adresse wie beim Server und im Pi-Client (Wert nie in der Meldung)"
+# Alle Aufrufe hier in der deutschen Sprachumgebung: Dort träfe [A-Za-z] in bash auch Umlaute.
+snapshot > "$work/stand-werte.txt"
+lang80="$(printf 'k%.0s' $(seq 1 80))"
+i=0
+for wert in 'ungueltig 1' 'ungültig-ä' 'UNGÜLTIG' 'ungueltig$(id)' 'ungueltig"x' "ungueltig'x" 'ungueltig\x' \
+    'ungueltig`id`' 'ungueltig.x' "${lang80}k" ''; do
+  i=$((i + 1))
+  LC_ALL=$de run "$work/id$i.txt" --non-interactive --device-id "$wert"
+  if [[ "$rc" -ne 0 ]] && grep -qF -- "--device-id: Die Geräte-ID passt nicht" "$work/id$i.txt"; then
+    ok "Geräte-ID abgelehnt: $(printf '%q' "$wert")"
+  else
+    bad "Geräte-ID angenommen oder ohne Meldung: $(printf '%q' "$wert") (Rückgabe $rc)"
+  fi
+  if [[ -n "$wert" ]] && grep -qF -- "$wert" "$work/id$i.txt"; then bad "Geräte-ID $i: Wert steht in der Ausgabe"; fi
+done
+for wert in "$lang80" 'A-z_09' ' mit-rand '; do
+  LC_ALL=$de run "$work/id-gut.txt" --dry-run --non-interactive --device-id "$wert"
+  eq "Geräte-ID angenommen (Probelauf): $(printf '%q' "$wert")" "$rc" 0
+done
+printf 'tokenmitä%s\n' "$(od -An -N4 -tx1 /dev/urandom | tr -d ' \n')" > "$work/token-umlaut"
+chmod 0600 "$work/token-umlaut"
+LC_ALL=$de run "$work/token-umlaut.txt" --non-interactive --api-token-file "$work/token-umlaut"
+if [[ "$rc" -ne 0 ]] && grep -qF "Das Token enthält Zeichen" "$work/token-umlaut.txt"; then
+  ok "Token mit Umlaut abgelehnt"
+else
+  bad "Token mit Umlaut angenommen oder ohne Meldung (Rückgabe $rc)"
+fi
+hasnt "Token mit Umlaut: Token nicht in der Ausgabe" "$work/token-umlaut.txt" "$(head -n 1 "$work/token-umlaut")"
+i=0
+for wert in 'kunibert-ohne-schema.example' 'ftp://kunibert-ftp.example' 'https://:3000' \
+    'https://name:geheimwort@kunibert.example' 'https://@kunibert-at.example' 'http://kunibert-port.example:70000' \
+    'http://kunibert-port.example:80a' 'https://kunibert.example/leer zeichen' 'https://kunibert.example/$(id)' \
+    'https://kunibert.example/?frage=1' 'https://kunibert.example/#anker' 'https://künibert.example' \
+    'http://[192.168.1.20]:3000' 'http://[::1::2]:3000' 'http://[12345::1]' 'https://kunibert.example/a;id' \
+    'https://kunibert.example/a&b' 'https://kunibert.example/a(b)'; do
+  i=$((i + 1))
+  LC_ALL=$de run "$work/url$i.txt" --non-interactive --api-url "$wert"
+  if [[ "$rc" -ne 0 ]] && grep -qF -- "--api-url: keine gültige Adresse" "$work/url$i.txt"; then
+    ok "Adresse abgelehnt: $(printf '%q' "$wert")"
+  else
+    bad "Adresse angenommen oder ohne Meldung: $(printf '%q' "$wert") (Rückgabe $rc)"
+  fi
+  if grep -qF -- "${wert#*://}" "$work/url$i.txt"; then bad "Adresse $i: Wert steht in der Ausgabe"; fi
+done
+hasnt "Adresse mit Passwort: Passwort nicht in der Ausgabe" "$work/url4.txt" "geheimwort"
+# Gültige IPv6-Adressen prüft der Installer mit Python wie urlsplit im Pi-Client.
+for wert in 'HTTPS://picastAI.com' 'http://[::1]:3000' 'http://[2001:db8::1]:3000' 'http://192.168.1.20:3000/' \
+    'https://kunibert.example/api/' 'http://kunibert_server.local:3000' 'https://kunibert.example/a_b~c%20d'; do
+  LC_ALL=$de run "$work/url-gut.txt" --dry-run --non-interactive --api-url "$wert"
+  eq "Adresse angenommen (Probelauf): $wert" "$rc" 0
+done
+if snapshot | cmp -s - "$work/stand-werte.txt"; then ok "abgelehnte Werte und Probeläufe ändern nichts"; else bad "abgelehnter Wert hat etwas geändert"; fi
+
+echo "== Ungültige Geräte-ID und Adresse aus einer vorhandenen kunibert.env"
+sed -i 's/^PICASTAI_DEVICE_ID=.*/PICASTAI_DEVICE_ID="gespeichert ungueltig"/' "$env_file"
+snapshot > "$work/stand-werte2.txt"
+run "$work/id-alt.txt" --non-interactive
+if [[ "$rc" -ne 0 ]] && grep -qF "PICASTAI_DEVICE_ID in $env_file passt nicht" "$work/id-alt.txt"; then
+  ok "Geräte-ID aus kunibert.env: Abbruch mit Meldung"
+else
+  bad "Geräte-ID aus kunibert.env angenommen oder ohne Meldung (Rückgabe $rc)"
+fi
+hasnt "Geräte-ID aus kunibert.env: Wert nicht in der Ausgabe" "$work/id-alt.txt" "gespeichert ungueltig"
+run "$work/id-alt-probe.txt" --dry-run --non-interactive
+if [[ "$rc" -ne 0 ]]; then ok "Geräte-ID aus kunibert.env: auch der Probelauf bricht ab"; else bad "Probelauf meldet Erfolg trotz ungültiger Geräte-ID"; fi
+if snapshot | cmp -s - "$work/stand-werte2.txt"; then ok "Abbruch wegen kunibert.env ändert nichts"; else bad "Abbruch wegen kunibert.env hat etwas geändert"; fi
+run "$work/id-neu.txt" --non-interactive --device-id test-geraet-1
+eq "neue Geräte-ID beim Aufruf ersetzt den ungültigen Wert: Rückgabe 0" "$rc" 0
+eq "Geräte-ID wieder gültig" "$(val PICASTAI_DEVICE_ID)" '"test-geraet-1"'
+sed -i 's|^PICASTAI_API_BASE_URL=.*|PICASTAI_API_BASE_URL="kunibert-alt-ohne-schema.example"|' "$env_file"
+run "$work/url-alt.txt" --non-interactive
+if [[ "$rc" -ne 0 ]] && grep -qF "PICASTAI_API_BASE_URL in $env_file ist keine gültige Adresse" "$work/url-alt.txt"; then
+  ok "Adresse ohne Schema aus kunibert.env: Abbruch mit Meldung"
+else
+  bad "Adresse ohne Schema aus kunibert.env angenommen oder ohne Meldung (Rückgabe $rc)"
+fi
+hasnt "Adresse aus kunibert.env: Wert nicht in der Ausgabe" "$work/url-alt.txt" "kunibert-alt-ohne-schema"
+run "$work/url-neu.txt" --non-interactive --api-url "http://127.0.0.1:$port"
+eq "neue Adresse beim Aufruf ersetzt den ungültigen Wert: Rückgabe 0" "$rc" 0
+eq "Adresse wieder gültig" "$(val PICASTAI_API_BASE_URL)" "\"http://127.0.0.1:$port\""
+# Ungültige Werte in der Schreibweise NAME = wert: Prüfung und Zusammenführen sehen dieselbe Zeile.
+sed -i 's/^PICASTAI_DEVICE_ID=.*/PICASTAI_DEVICE_ID = "mein geraet"/' "$env_file"
+sed -i 's|^PICASTAI_API_BASE_URL=.*|PICASTAI_API_BASE_URL = "kunibert-alt.example"|' "$env_file"
+run "$work/werte-name-alt.txt" --non-interactive
+if [[ "$rc" -ne 0 ]] && grep -qF "PICASTAI_DEVICE_ID in $env_file passt nicht" "$work/werte-name-alt.txt"; then
+  ok "NAME = wert: ungültige Geräte-ID erkannt, Abbruch"
+else
+  bad "NAME = wert: ungültige Geräte-ID nicht erkannt (Rückgabe $rc)"
+fi
+run "$work/werte-name-neu.txt" --non-interactive --device-id probe-2 --api-url "http://127.0.0.1:$port"
+eq "NAME = wert, neue Angaben: Rückgabe 0" "$rc" 0
+eq "NAME = wert: genau eine Zeile für PICASTAI_DEVICE_ID" \
+  "$(grep -cE '^[[:space:]]*PICASTAI_DEVICE_ID[[:blank:]]*=' "$env_file")" 1
+eq "NAME = wert: Geräte-ID ist die neue" "$(val PICASTAI_DEVICE_ID)" '"probe-2"'
+eq "NAME = wert: genau eine Zeile für PICASTAI_API_BASE_URL" \
+  "$(grep -cE '^[[:space:]]*PICASTAI_API_BASE_URL[[:blank:]]*=' "$env_file")" 1
+eq "NAME = wert: Adresse ist die neue" "$(val PICASTAI_API_BASE_URL)" "\"http://127.0.0.1:$port\""
+hasnt "NAME = wert: alte Werte nicht in der Ausgabe" "$work/werte-name-neu.txt" "mein geraet"
+run "$work/werte-name-zurueck.txt" --non-interactive --device-id test-geraet-1
+eq "Geräte-ID zurück: Rückgabe 0" "$rc" 0
+# Einfache Anführungszeichen versteht systemd, Leerzeichen am Rand lässt der Pi-Client weg.
+sed -i "s/^PICASTAI_DEVICE_ID=.*/PICASTAI_DEVICE_ID=' test-geraet-1 '/" "$env_file"
+run "$work/id-einfach.txt" --non-interactive
+eq "gültige Geräte-ID in einfachen Anführungszeichen: Rückgabe 0" "$rc" 0
+token_is "nach den Prüfungen: Token bleibt" "$token4"
 
 echo "== Token in keiner anderen Datei"
 leaks="$(grep -rlsF "${tokens[@]/#/-e}" /etc /opt /var/lib /tmp /root 2>/dev/null | grep -v -e "^$work/" -e "^${env_file}\$")"
