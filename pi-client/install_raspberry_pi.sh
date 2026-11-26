@@ -51,11 +51,13 @@ env_quote() { local v="$1"; v="${v//\\/\\\\}"; v="${v//\"/\\\"}"; printf '"%s"' 
 # Leerzeichen am Anfang und Ende entfernen (kopierte Tokens).
 trim() { local v="$1"; v="${v#"${v%%[![:space:]]*}"}"; v="${v%"${v##*[![:space:]]}"}"; printf '%s' "$v"; }
 # 0, wenn die vorhandene kunibert.env ein nicht leeres Token enthält. Gibt den Wert nie aus.
+# Wie systemd: auch „PICASTAI_DEVICE_TOKEN = …“ (Leerzeichen um „=“, etwa mit sudoedit geschrieben).
 existing_token_set() {
   [[ -f "$CONFIG_FILE" ]] || return 1
   local line value
-  line="$(grep -E '^[[:space:]]*PICASTAI_DEVICE_TOKEN=' "$CONFIG_FILE" | tail -n 1)" || return 1
-  value="${line#*PICASTAI_DEVICE_TOKEN=}"
+  line="$(grep -E '^[[:space:]]*PICASTAI_DEVICE_TOKEN[[:blank:]]*=' "$CONFIG_FILE" | tail -n 1)" || return 1
+  # Bis zum ersten „=“: Der Name enthält keines, das Token vielleicht (Base64).
+  value="${line#*=}"
   value="${value//\"/}"; value="${value//\'/}"; value="${value//[[:space:]]/}"
   [[ -n "$value" ]]
 }
@@ -63,16 +65,29 @@ existing_token_set() {
 # Ergebnis auf stdout. Werte, die beim Aufruf nicht angegeben wurden, bleiben wie in der
 # vorhandenen Datei (auch das Token und Änderungen mit sudoedit); Ausnahme: FORCED_KEYS.
 # Schlüssel, die nur in der vorhandenen Datei stehen (von Hand ergänzt), kommen ans Ende.
-# Kommentare kommen aus der Vorlage. Windows-Zeilenenden und Einrückung vor einem Schlüssel
-# fallen weg. Namen behaltener Schlüssel, die von der Vorlage abweichen, schreibt awk nach $3,
-# Namen fester Schlüssel, die zurückgesetzt werden, nach $4 (nur Namen, nie Werte).
+# Kommentare kommen aus der Vorlage. Windows-Zeilenenden, Einrückung vor einem Schlüssel und
+# Leerzeichen oder Tabs um „=“ fallen weg: Aus „NAME = wert“ wird „NAME=wert“. systemd liest
+# beide Schreibweisen gleich (die letzte Zeile eines Namens gilt), die Shell (set -a; . Datei)
+# nur „NAME=wert“. Ohne das stünde „KUNIBERT_PIPELINE_TIMEOUT = 60“ als fremde Zeile hinter der
+# festen Zeile und gälte. Namen behaltener Schlüssel, die von der Vorlage abweichen, schreibt awk
+# nach $3, Namen fester Schlüssel, die zurückgesetzt werden, nach $4 (nur Namen, nie Werte).
 merge_config() {
   local given=" " forced=" " key
   for key in "${!GIVEN[@]}"; do given+="$key "; done
   for key in "${FORCED_KEYS[@]}"; do forced+="$key "; done
   awk -v oldfile="$2" -v given="$given" -v forced="$forced" -v keptfile="$3" -v resetfile="$4" '
-    function is_key(l) { return l ~ /^[A-Za-z_][A-Za-z0-9_]*=/ }
-    function key_of(l) { return substr(l, 1, index(l, "=") - 1) }
+    function is_key(l) { return l ~ /^[A-Za-z_][A-Za-z0-9_]*[[:blank:]]*=/ }
+    function key_of(l,   name) {
+      name = substr(l, 1, index(l, "=") - 1)
+      sub(/[[:blank:]]+$/, "", name)
+      return name
+    }
+    # „NAME = wert“ als „NAME=wert“. Der Wert bleibt sonst, wie er ist (auch am Ende der Zeile).
+    function normalized(l,   value) {
+      value = substr(l, index(l, "=") + 1)
+      sub(/^[[:blank:]]+/, "", value)
+      return key_of(l) "=" value
+    }
     BEGIN {
       while ((getline line < oldfile) > 0) {
         sub(/\r$/, "", line)
@@ -81,7 +96,7 @@ merge_config() {
         if (is_key(stripped)) {
           k = key_of(stripped)
           if (!(k in old)) order[++n] = k
-          old[k] = stripped
+          old[k] = normalized(stripped)
         } else if (stripped !~ /^(#|$)/) {
           other[++m] = line
         }
@@ -276,7 +291,7 @@ if ! [[ "$SAMPLE_RATE" =~ ^[0-9]+$ ]] || (( SAMPLE_RATE < 8000 || SAMPLE_RATE > 
 fi
 # Wert für den Probelauf: Fehlt die Angabe und steht der Schlüssel schon in kunibert.env, bleibt er.
 shown() {
-  if [[ -z "${GIVEN[$1]:-}" && -f "$CONFIG_FILE" ]] && grep -qE "^[[:space:]]*$1=" "$CONFIG_FILE"; then
+  if [[ -z "${GIVEN[$1]:-}" && -f "$CONFIG_FILE" ]] && grep -qE "^[[:space:]]*$1[[:blank:]]*=" "$CONFIG_FILE"; then
     printf 'bleibt wie in kunibert.env'
   else
     printf '%s' "$2"
