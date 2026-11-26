@@ -159,7 +159,7 @@ test('Dateien mit eol=lf haben im Index und im Arbeitsordner LF', { skip }, () =
 });
 
 test('Binärdateien bekommen keine Regel, die Bytes ändert', { skip }, () => {
-  const pfade = ['hoerproben/neu.mp3', 'neu.wav', 'docs/neu.png', 'neu.pdf'];
+  const pfade = ['neu.mp3', 'neu.wav', 'docs/neu.png', 'neu.pdf'];
   assert.deepEqual(unsichereBinaerRegeln(git, pfade), [], 'Regel in .gitattributes trifft Binärdateien');
 });
 

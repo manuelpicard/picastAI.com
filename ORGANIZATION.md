@@ -7,7 +7,6 @@ Dieses Repository `picastAI.com` ist der zentrale Produktbereich von **picastAI.
 - `src/` — Web-Oberfläche und Produkt-UI
 - `server-api/` und `server.ts` — Backend/API
 - `docs/` — Produkt-, Hardware-, Software- und Kanon-Dokumentation
-- `hoerproben/` — Audio-Prototypen und Mitlese-Versionen
 - `firebase-*` — Firebase-Konfiguration und Sicherheitsregeln
 
 ## Zugehörige Repositories
