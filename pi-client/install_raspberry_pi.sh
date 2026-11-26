@@ -51,11 +51,15 @@ env_quote() { local v="$1"; v="${v//\\/\\\\}"; v="${v//\"/\\\"}"; printf '"%s"' 
 # Leerzeichen am Anfang und Ende entfernen (kopierte Tokens).
 trim() { local v="$1"; v="${v#"${v%%[![:space:]]*}"}"; v="${v%"${v##*[![:space:]]}"}"; printf '%s' "$v"; }
 # 0, wenn die vorhandene kunibert.env ein nicht leeres Token enthält. Gibt den Wert nie aus.
+# Wie systemd: auch „PICASTAI_DEVICE_TOKEN = …“ (Leerzeichen um „=“, etwa mit sudoedit geschrieben).
 existing_token_set() {
   [[ -f "$CONFIG_FILE" ]] || return 1
   local line value
-  line="$(grep -E '^[[:space:]]*PICASTAI_DEVICE_TOKEN=' "$CONFIG_FILE" | tail -n 1)" || return 1
-  value="${line#*PICASTAI_DEVICE_TOKEN=}"
+  # LC_ALL=C: Nur Leerzeichen und Tab zählen als [[:blank:]], wie bei systemd und in merge_config.
+  # In UTF-8 träfe grep sonst auch Zeichen wie U+3000, die mawk und systemd nicht so lesen.
+  line="$(LC_ALL=C grep -E '^[[:space:]]*PICASTAI_DEVICE_TOKEN[[:blank:]]*=' "$CONFIG_FILE" | tail -n 1)" || return 1
+  # Bis zum ersten „=“: Der Name enthält keines, das Token vielleicht (Base64).
+  value="${line#*=}"
   value="${value//\"/}"; value="${value//\'/}"; value="${value//[[:space:]]/}"
   [[ -n "$value" ]]
 }
@@ -63,16 +67,30 @@ existing_token_set() {
 # Ergebnis auf stdout. Werte, die beim Aufruf nicht angegeben wurden, bleiben wie in der
 # vorhandenen Datei (auch das Token und Änderungen mit sudoedit); Ausnahme: FORCED_KEYS.
 # Schlüssel, die nur in der vorhandenen Datei stehen (von Hand ergänzt), kommen ans Ende.
-# Kommentare kommen aus der Vorlage. Windows-Zeilenenden und Einrückung vor einem Schlüssel
-# fallen weg. Namen behaltener Schlüssel, die von der Vorlage abweichen, schreibt awk nach $3,
-# Namen fester Schlüssel, die zurückgesetzt werden, nach $4 (nur Namen, nie Werte).
+# Kommentare kommen aus der Vorlage. Windows-Zeilenenden, Einrückung vor einem Schlüssel und
+# Leerzeichen oder Tabs um „=“ fallen weg: Aus „NAME = wert“ wird „NAME=wert“. systemd liest
+# beide Schreibweisen gleich (die letzte Zeile eines Namens gilt), die Shell (set -a; . Datei)
+# nur „NAME=wert“. Ohne das stünde „KUNIBERT_PIPELINE_TIMEOUT = 60“ als fremde Zeile hinter der
+# festen Zeile und gälte. Namen behaltener Schlüssel, die von der Vorlage abweichen, schreibt awk
+# nach $3, Namen fester Schlüssel, die zurückgesetzt werden, nach $4 (nur Namen, nie Werte).
 merge_config() {
   local given=" " forced=" " key
   for key in "${!GIVEN[@]}"; do given+="$key "; done
   for key in "${FORCED_KEYS[@]}"; do forced+="$key "; done
-  awk -v oldfile="$2" -v given="$given" -v forced="$forced" -v keptfile="$3" -v resetfile="$4" '
-    function is_key(l) { return l ~ /^[A-Za-z_][A-Za-z0-9_]*=/ }
-    function key_of(l) { return substr(l, 1, index(l, "=") - 1) }
+  # LC_ALL=C: Zeichenklassen und -bereiche nur für ASCII, gleich in mawk und gawk (siehe oben).
+  LC_ALL=C awk -v oldfile="$2" -v given="$given" -v forced="$forced" -v keptfile="$3" -v resetfile="$4" '
+    function is_key(l) { return l ~ /^[A-Za-z_][A-Za-z0-9_]*[[:blank:]]*=/ }
+    function key_of(l,   name) {
+      name = substr(l, 1, index(l, "=") - 1)
+      sub(/[[:blank:]]+$/, "", name)
+      return name
+    }
+    # „NAME = wert“ als „NAME=wert“. Der Wert bleibt sonst, wie er ist (auch am Ende der Zeile).
+    function normalized(l,   value) {
+      value = substr(l, index(l, "=") + 1)
+      sub(/^[[:blank:]]+/, "", value)
+      return key_of(l) "=" value
+    }
     BEGIN {
       while ((getline line < oldfile) > 0) {
         sub(/\r$/, "", line)
@@ -81,7 +99,7 @@ merge_config() {
         if (is_key(stripped)) {
           k = key_of(stripped)
           if (!(k in old)) order[++n] = k
-          old[k] = stripped
+          old[k] = normalized(stripped)
         } else if (stripped !~ /^(#|$)/) {
           other[++m] = line
         }
@@ -129,18 +147,24 @@ valid_token() ( LC_ALL=C; [[ "$1" =~ $TOKEN_PATTERN ]] )
 valid_device_id() ( LC_ALL=C; [[ "$1" =~ ^[A-Za-z0-9_-]{1,80}$ ]] )
 DEVICE_ID_RULE="nur Buchstaben A bis Z und a bis z, Ziffern, - und _, höchstens 80 Zeichen (wie beim Server)"
 # Adresse wie _origin im Pi-Client: http:// oder https:// (groß oder klein), ein Rechnername oder
-# eine IPv6-Adresse in [], kein Name und Passwort, Port nur aus Ziffern bis 65535. Strenger als der
-# Client: keine Leerzeichen, keine Zeichen, die die Shell beim Einlesen deutet ($, `, ", \, '), kein
-# ? oder # (die Basis-Adresse bekommt noch Pfade angehängt) und im Rechnernamen nur Buchstaben,
-# Ziffern, Punkt, - und _.
-URL_PATTERN='^[Hh][Tt][Tt][Pp][Ss]?://(\[[0-9A-Fa-f:.]+]|[A-Za-z0-9._-]+)(:([0-9]{0,5}))?(/[A-Za-z0-9._~%!&()*+,;=:@/-]*)?$'
+# eine IPv6-Adresse in [], kein Name und Passwort, Port nur aus Ziffern bis 65535. Den Inhalt von []
+# prüft Python wie urlsplit im Client (sonst nähme der Installer etwa [192.168.1.20] an, der Client
+# aber nicht); ohne python3 lehnt der Installer [] ab. Strenger als der Client: keine Leerzeichen, im
+# Rechnernamen nur Buchstaben, Ziffern, Punkt, - und _, im Pfad nur Buchstaben, Ziffern und . _ ~ % / -.
+# So fehlen Zeichen, die die Shell beim Einlesen deutet ($, `, ", \, ' und ohne Anführungszeichen
+# auch ;, &, ( und )), und ? oder # (an die Basis-Adresse hängt der Client noch Pfade an).
+URL_PATTERN='^[Hh][Tt][Tt][Pp][Ss]?://(\[([0-9A-Fa-f:.]+)]|[A-Za-z0-9._-]+)(:([0-9]{0,5}))?(/[A-Za-z0-9._~%/-]*)?$'
 valid_api_url() (
   LC_ALL=C
   [[ "$1" =~ $URL_PATTERN ]] || exit 1
-  [[ -z "${BASH_REMATCH[3]}" ]] || (( 10#${BASH_REMATCH[3]} <= 65535 ))
+  ipv6="${BASH_REMATCH[2]}" port="${BASH_REMATCH[4]}"
+  [[ -z "$port" ]] || (( 10#$port <= 65535 )) || exit 1
+  [[ -n "$ipv6" ]] || exit 0
+  command -v python3 >/dev/null 2>&1 || exit 1
+  # Der Wert geht als Argument an Python, nie in den Programmtext; Fehler (mit dem Wert) nach /dev/null.
+  python3 -I -c 'import ipaddress, sys; ipaddress.IPv6Address(sys.argv[1])' "$ipv6" >/dev/null 2>&1
 )
-# shellcheck disable=SC2016  # Die Zeichen $ und ` sind hier gemeint, nicht ausgewertet.
-API_URL_RULE='http:// oder https:// und ein Rechnername, ohne Name und Passwort, Port nur aus Ziffern; keine Leerzeichen, keine Anführungszeichen, keines der Zeichen $ ` \ ? #'
+API_URL_RULE='http:// oder https:// und ein Rechnername (Buchstaben, Ziffern, Punkt, - und _) oder eine IPv6-Adresse in [ ], ohne Name und Passwort, Port nur aus Ziffern; im Pfad nur Buchstaben, Ziffern und . _ ~ % / -; keine Leerzeichen, kein ? und #'
 # Wert eines Schlüssels in der vorhandenen kunibert.env auf stdout (die letzte Zeile gilt, wie bei
 # systemd), ohne Leerzeichen am Rand und ohne ein Paar Anführungszeichen außen. Rückgabe 1, wenn
 # Datei oder Schlüssel fehlen. Nur für Prüfungen in eine Variable lesen, nie ausgeben: Eine Adresse
@@ -148,7 +172,8 @@ API_URL_RULE='http:// oder https:// und ein Rechnername, ohne Name und Passwort,
 existing_value() {
   [[ -f "$CONFIG_FILE" ]] || return 1
   local line value
-  line="$(grep -E "^[[:space:]]*$1[[:blank:]]*=" "$CONFIG_FILE" | tail -n 1)" || return 1
+  # LC_ALL=C wie in existing_token_set und merge_config: nur Leerzeichen und Tab um „=“.
+  line="$(LC_ALL=C grep -E "^[[:space:]]*$1[[:blank:]]*=" "$CONFIG_FILE" | tail -n 1)" || return 1
   value="$(trim "${line#*=}")"
   if [[ ${#value} -ge 2 && ( "$value" == \"*\" || "$value" == \'*\' ) ]]; then
     value="$(trim "${value:1:${#value}-2}")"
@@ -200,7 +225,8 @@ Zweiter Lauf:
   Werte, die beim Aufruf fehlen, übernimmt der Installer aus der vorhandenen
   /etc/kunibert/kunibert.env: Adresse, Geräte-ID, Token, Name, Abtastrate,
   Mikrofon, Lautsprecher und von Hand (sudoedit) geänderte oder ergänzte Zeilen.
-  Kommentare übernimmt er nicht. Immer neu setzt er KUNIBERT_PIPELINE_TIMEOUT
+  Kommentare übernimmt er nicht. Aus "NAME = wert" macht er "NAME=wert" (systemd
+  liest beides gleich, die Shell nur "NAME=wert"). Immer neu setzt er KUNIBERT_PIPELINE_TIMEOUT
   (Zeitkette), KUNIBERT_CACHE_DIR und KUNIBERT_ANNOUNCEMENTS_DIR (passen zur
   Dienstdatei). Mit denselben Angaben ändert ein zweiter Lauf an Datei, Dienst,
   Rechten und Besitzern nichts.
@@ -332,7 +358,7 @@ if ! [[ "$SAMPLE_RATE" =~ ^[0-9]+$ ]] || (( SAMPLE_RATE < 8000 || SAMPLE_RATE > 
 fi
 # Wert für den Probelauf: Fehlt die Angabe und steht der Schlüssel schon in kunibert.env, bleibt er.
 shown() {
-  if [[ -z "${GIVEN[$1]:-}" && -f "$CONFIG_FILE" ]] && grep -qE "^[[:space:]]*$1=" "$CONFIG_FILE"; then
+  if [[ -z "${GIVEN[$1]:-}" && -f "$CONFIG_FILE" ]] && LC_ALL=C grep -qE "^[[:space:]]*$1[[:blank:]]*=" "$CONFIG_FILE"; then
     printf 'bleibt wie in kunibert.env'
   else
     printf '%s' "$2"
