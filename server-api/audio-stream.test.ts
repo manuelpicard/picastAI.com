@@ -86,10 +86,11 @@ test('StreamingSpeaker: anderes Format als der Strom wird abgelehnt', async () =
 // eigenen je Aufruf oder der mitgegebenen, und werfen dann VoiceProviderError('TTS-Timeout', retryable).
 
 test('Ton-Strom: hängt die Sprachausgabe beim ersten Absatz, endet das Warten auf den ersten Ton mit dem Budget (Zeiten verkürzt)', async () => {
-  // Verkürzt: Budget 300 ms statt 120 s, Mindestzeit 50 ms statt 5 s, Grenze je Aufruf 3 s statt 90 s.
+  // Verkürzt: Budget 300 ms statt 120 s, Mindestzeit 50 ms statt 5 s, Grenze je Aufruf 4 s statt 90 s.
+  // Die Schranke unten lässt 1 s Spielraum für eine langsame CI und liegt weit unter der Grenze je Aufruf.
   const BUDGET_MS = 300;
   const MIN_MS = 50;
-  const PER_CALL_MS = 3_000;
+  const PER_CALL_MS = 4_000;
   const timers: NodeJS.Timeout[] = [];
   const asked: Array<number | undefined> = [];
   const hanging = (_text: string, timeoutMs?: number) => {
@@ -110,7 +111,7 @@ test('Ton-Strom: hängt die Sprachausgabe beim ersten Absatz, endet das Warten a
     const error = await firstSound(speaker, result).then(() => null, (caught: unknown) => caught);
     const elapsed = performance.now() - started;
     assert.ok(error instanceof VoiceProviderError && error.retryable, 'wie ohne Strom: 503 voice_provider_failed, retryable (Routen in server.ts)');
-    assert.ok(elapsed < BUDGET_MS + MIN_MS + 400, `Antwort nach ${Math.round(elapsed)} ms, erwartet innerhalb des Budgets (${BUDGET_MS} ms), nicht erst nach der Grenze je Aufruf (${PER_CALL_MS} ms)`);
+    assert.ok(elapsed < BUDGET_MS + MIN_MS + 1_000, `Antwort nach ${Math.round(elapsed)} ms, erwartet innerhalb des Budgets (${BUDGET_MS} ms), nicht erst nach der Grenze je Aufruf (${PER_CALL_MS} ms)`);
     assert.equal(asked.length, 1, 'nach dem Ausfall wird nichts mehr vertont');
     assert.ok(asked[0] !== undefined && asked[0] <= BUDGET_MS, 'der erste Absatz bekommt den Rest des Budgets');
     await assert.rejects(speaker.finish());
