@@ -785,8 +785,12 @@ describe('Stopp im Ton-Strom mit Vorbereitung des nächsten Teils (echter Server
       assert.equal((await k.reportStop({ turn_id: turnId, heard_seconds: afterFirstSentenceInStream(1) })).status, 204);
       await waitFor(() => /modus=weiter_strom status=200/.test(k.output.slice(outputBefore)), 'der angehaltene Teil gilt als ausgeliefert');
       assert.ok(k.output.slice(outputBefore).includes('Stopp per Taste: gemerkt teil=1/5 saetze=1/4'), 'Stelle gemerkt');
-      await new Promise((resolve) => setTimeout(resolve, 300));
-      assert.equal(part2Calls(), 0, 'nach dem Stopp wird Teil 2 nicht vorbereitet: Der nächste Druck erzählt Teil 1 ab der Stelle');
+      // Ohne feste Wartezeit (Nachprüfung von PR #134, Befund 4): Der Server trägt eine Vorbereitung sofort ein
+      // (`prefetcher.start`), noch bevor er die Zeile `weiter_strom status=200` schreibt.
+      const res = await fetch(`${k.base}/api/status`, { headers: { Authorization: `Bearer ${ADMIN_TOKEN}` } });
+      assert.equal(((await res.json()) as { storyPrefetches: number }).storyPrefetches, 0,
+        'nach dem Stopp wird Teil 2 nicht vorbereitet: Der nächste Druck erzählt Teil 1 ab der Stelle');
+      assert.equal(part2Calls(), 0, 'kein Aufruf an Claude für Teil 2');
     } finally {
       release();
     }
