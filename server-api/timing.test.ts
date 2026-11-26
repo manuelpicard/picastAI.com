@@ -4,7 +4,7 @@ import { encodeWav } from './audio.js';
 import { Brain } from './brain.js';
 import type { LlmJsonRequest, LlmProvider } from './llm.js';
 import { SAFETY_RESPONSE_DE } from './safety.js';
-import { budgetTimeoutMs, NO_TIMER, TIMED_STAGES, TTS_RESERVE_MS, TurnTimer, wavSeconds } from './timing.js';
+import { budgetTimeoutMs, MIN_TTS_MS, NO_TIMER, TIMED_STAGES, TTS_RESERVE_MS, ttsTimeoutMs, TurnTimer, wavSeconds } from './timing.js';
 
 /** Alle Zeilen müssen genau dieser Form folgen: feste Schlüssel, Zahlen oder "-", sonst nichts. */
 const LINE_FORMAT = new RegExp(
@@ -258,6 +258,20 @@ test('Zeitbudget: 120 s ab Beginn, Rest sinkt mit der Uhr und wird nie negativ',
   assert.equal(NO_TIMER.remainingMs(), Number.POSITIVE_INFINITY);
   assert.equal(budgetTimeoutMs(NO_TIMER, 15_000), undefined);
   assert.equal(budgetTimeoutMs(timer, 15_000), 0);
+});
+
+test('ttsTimeoutMs: Rest des Budgets, mindestens MIN_TTS_MS; ohne Budget keine Frist', () => {
+  const clock = fakeClock();
+  const timer = new TurnTimer(clock.now, 'c1c1c1c1');
+  assert.equal(ttsTimeoutMs(NO_TIMER), undefined);
+  assert.equal(ttsTimeoutMs(timer), 120_000);
+  clock.advance(60_000);
+  assert.equal(ttsTimeoutMs(timer), 60_000);
+  clock.advance(58_000);
+  assert.equal(ttsTimeoutMs(timer), MIN_TTS_MS, 'bei 2 s Rest gilt die Mindestzeit');
+  clock.advance(10_000);
+  assert.equal(ttsTimeoutMs(timer), MIN_TTS_MS, 'auch bei aufgebrauchtem Budget');
+  assert.equal(ttsTimeoutMs(timer, 50), 50, 'Mindestzeit einstellbar (für Tests mit kurzen Zeiten)');
 });
 
 test('Zeitbudget: ein Sprachmodell-Aufruf bekommt Budget minus Reserve für die Sprachausgabe', async () => {

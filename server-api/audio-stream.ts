@@ -4,6 +4,7 @@
 // bekommen wie bisher eine ganze WAV-Datei.
 import crypto from 'node:crypto';
 import { encodeWav, isPcmFormat, parseWav } from './audio.js';
+import { MIN_TTS_MS, ttsTimeoutMs, type StageTimer } from './timing.js';
 
 /** Pause zwischen zwei getrennt vertonten Absätzen (Pocket setzt innerhalb eines Absatzes eigene Pausen). */
 export const PARAGRAPH_PAUSE_MS = 900;
@@ -74,8 +75,31 @@ export class PcmStream {
   }
 }
 
-/** Schnittstelle der Sprachausgabe, die der Sprecher braucht (VoicePipeline.synthesize). */
-export type Synthesize = (text: string) => Promise<Buffer>;
+/**
+ * Schnittstelle der Sprachausgabe, die der Sprecher braucht. `index` zählt die Texte in der Reihenfolge
+ * von `say` (0 ist der erste Absatz, auf den die Antwort an das Gerät wartet).
+ */
+export type Synthesize = (text: string, index: number) => Promise<Buffer>;
+
+/**
+ * Sprachausgabe für den Ton-Strom mit Zeitmessung (Punkt N1124-1153-b). Auf den ersten Absatz wartet die
+ * Antwort auf den POST: Er bekommt höchstens den Rest des Zeitbudgets der Anfrage, mindestens MIN_TTS_MS,
+ * wie die ganze Datei ohne Strom (`ttsTimeoutMs`). So bleibt die Antwort unter den 130 s von Caddy und den
+ * 140 s des Geräts. Spätere Absätze entstehen erst nach der Antwort, während das Gerät schon spielt. Für
+ * sie gilt nur die Grenze je Aufruf (PICASTAI_VOICE_TIMEOUT_MS): Mit dem Rest des Budgets bräche sonst ein
+ * später Absatz ab, nur weil der Teil lang ist (Befund 4 der Prüfung von PR #111).
+ * `voice` ist die Sprachausgabe selbst (in server.ts `voice`, die VoicePipeline), keine eigene Funktion
+ * darum: Eine Funktion dazwischen könnte die Frist unbemerkt verlieren (Befund 1 der Prüfung von PR #127).
+ */
+export function streamSynthesizer(voice: StreamVoice, timer: StageTimer, minTtsMs = MIN_TTS_MS): Synthesize {
+  return (text, index) => timer.time('sprachausgabe', () => voice.synthesize(text, index === 0 ? ttsTimeoutMs(timer, minTtsMs) : undefined));
+}
+
+/** Was der Ton-Strom von der Sprachausgabe braucht (`VoicePipeline` in server-api/voice.ts). */
+export interface StreamVoice {
+  /** timeoutMs: Frist aus dem Zeitbudget; die eigene Grenze je Aufruf gilt zusätzlich. */
+  synthesize(text: string, timeoutMs?: number): Promise<Buffer>;
+}
 
 /**
  * Vertont Texte der Reihe nach (Pocket rechnet ohnehin nur eine Anfrage zur Zeit) und hängt den Ton
@@ -108,7 +132,7 @@ export class StreamingSpeaker {
       if (this.error) return;
       try {
         const started = performance.now();
-        const wav = await this.synthesize(text);
+        const wav = await this.synthesize(text, index);
         this.onSynth?.(performance.now() - started);
         const info = parseWav(wav);
         if (!isPcmFormat(info.formatTag) || info.channels !== 1 || info.bitsPerSample !== 16 || info.sampleRate !== this.stream.sampleRate) {
@@ -140,6 +164,19 @@ export class StreamingSpeaker {
     this.stream.fail();
     this.rejectFirst(this.error);
   }
+}
+
+/**
+ * Darauf wartet die Antwort auf den POST (server.ts, `respondTurn`): 'ton', sobald der erste Absatz
+ * vertont ist; 'fertig', wenn die Antwort ohne Strom entstand (Frage, fester Text, Ersatzgeschichte),
+ * dann folgt die ganze Datei. Wirft, wenn die Sprachausgabe des ersten Absatzes ausfällt oder in ihre
+ * Frist läuft (`streamSynthesizer`), oder wenn `result` mit einem Fehler endet.
+ */
+export function firstSound(speaker: StreamingSpeaker, result: Promise<{ streamed?: boolean }>): Promise<'ton' | 'fertig'> {
+  return Promise.race([
+    speaker.firstAudio.then(() => 'ton' as const),
+    result.then((made) => (made.streamed ? speaker.firstAudio.then(() => 'ton' as const) : 'fertig' as const)),
+  ]);
 }
 
 /** Einmal abrufbare Ströme je Gerät, wie AudioStore (devices.ts) für ganze Dateien. */
