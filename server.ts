@@ -22,7 +22,7 @@ import { VoicePipeline, VoiceProviderError } from './server-api/voice.js';
 import { FirestoreDeviceStore } from './server-api/firestore-service.js';
 import { buildAudioUrl, parentCookieSecure } from './server-api/http-utils.js';
 import { ERROR_RESPONSE_DE, SAFETY_RESPONSE_DE, UNCLEAR_RESPONSE_DE } from './server-api/safety.js';
-import { budgetTimeoutMs, MIN_TTS_MS, NO_TIMER, TurnTimer, type StageTimer } from './server-api/timing.js';
+import { budgetTimeoutMs, NO_TIMER, ttsTimeoutMs, TurnTimer, type StageTimer } from './server-api/timing.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -554,8 +554,7 @@ async function synthesizeIfConfigured(result: Awaited<ReturnType<Brain['handle']
   // ersten Mal aus dem Speicher: schneller, billiger, und der Sicherheitshinweis bleibt
   // auch bei einem Anbieter-Ausfall hörbar, wenn er vorher aufgewärmt wurde.
   // Zeit für die Sprachausgabe: der Rest des Zeitbudgets, mindestens MIN_TTS_MS (auch wenn es schon aufgebraucht ist).
-  const left = budgetTimeoutMs(timer);
-  const timeoutMs = left === undefined ? undefined : Math.max(MIN_TTS_MS, left);
+  const timeoutMs = ttsTimeoutMs(timer);
   result.wav = result.fixed
     ? await voice.synthesizeCached(result.speech, timeoutMs)
     : await voice.synthesize(result.speech, timeoutMs);
