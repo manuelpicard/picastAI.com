@@ -3,7 +3,6 @@ import {
   Shield,
   Radio,
   BookOpen,
-  Headphones,
   Sliders,
   Cpu,
   Activity,
@@ -24,15 +23,12 @@ const SafetyDemo = React.lazy(() =>
 const ParentDashboard = React.lazy(() =>
   import('./components/ParentDashboard').then((module) => ({ default: module.ParentDashboard })),
 );
-const HoerprobenPlayer = React.lazy(() =>
-  import('./components/HoerprobenPlayer').then((module) => ({ default: module.HoerprobenPlayer })),
-);
 const ArchitectureViewer = React.lazy(() =>
   import('./components/ArchitectureViewer').then((module) => ({ default: module.ArchitectureViewer })),
 );
 
 export function App() {
-  const [activeTab, setActiveTab] = useState<'simulator' | 'safety' | 'hoerproben' | 'parents' | 'architecture'>('simulator');
+  const [activeTab, setActiveTab] = useState<'simulator' | 'safety' | 'parents' | 'architecture'>('simulator');
   const [storyState, setStoryState] = useState<any>({
     v: 1,
     ep: 1,
@@ -222,17 +218,6 @@ export function App() {
             Sicherheitsweiche
           </button>
 
-          <button
-            onClick={() => setActiveTab('hoerproben')}
-            className={`px-4 py-2.5 text-xs font-semibold flex items-center gap-2 border-b-2 transition whitespace-nowrap cursor-pointer ${
-              activeTab === 'hoerproben'
-                ? 'border-purple-500 text-purple-400 bg-purple-950/20'
-                : 'border-transparent text-stone-400 hover:text-stone-200'
-            }`}
-          >
-            <Headphones className="w-4 h-4" />
-            Original-Hörproben (MP3)
-          </button>
 
           <button
             onClick={() => setActiveTab('parents')}
@@ -329,11 +314,6 @@ export function App() {
           </div>
         )}
 
-        {activeTab === 'hoerproben' && (
-          <div className="max-w-4xl mx-auto">
-            <HoerprobenPlayer />
-          </div>
-        )}
 
         {activeTab === 'parents' && (
           <div className="max-w-4xl mx-auto">
