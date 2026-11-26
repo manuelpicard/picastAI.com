@@ -472,6 +472,8 @@ export function getSafeConfigSummary(config: KunibertConfig) {
     diagnosticText: config.diagnosticText,
     testTranscript: config.testTranscript,
     requireConsent: config.requireConsent,
+    // Grenze für das Warten auf einen alten Ton-Strom (N1126-1338-f): im Betrieb immer 30000 ms.
+    pendingWaitMaxMs: config.pendingWaitMaxMs,
     // Nur ob, nie der Pfad oder der Schlüssel.
     elternDauerhaft: Boolean(config.parentStateFile && config.parentStateKey),
     deviceStore: config.deviceStore,

@@ -277,3 +277,8 @@ test('pendingWaitLimitMs: im Betrieb immer 30 s, nur im Test kürzer (Prüfung v
     assert.equal(pendingWaitLimitMs({ KUNIBERT_TEST_STROM_WARTEN_MS: bad }), PENDING_WAIT_MAX_MS, `ungültig: ${JSON.stringify(bad)}`);
   }
 });
+
+test('getSafeConfigSummary: Grenze für das Warten auf einen alten Ton-Strom als Zahl', () => {
+  assert.equal(getSafeConfigSummary({ ...loadConfig(), pendingWaitMaxMs: PENDING_WAIT_MAX_MS }).pendingWaitMaxMs, PENDING_WAIT_MAX_MS);
+  assert.equal(getSafeConfigSummary({ ...loadConfig(), pendingWaitMaxMs: 1_500 }).pendingWaitMaxMs, 1_500);
+});

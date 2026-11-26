@@ -81,7 +81,10 @@ interface PendingTurn {
   done: Promise<void>;
   /** Das Kind hat angehalten: nichts mehr vertonen; der Teil gilt mit dem Gesprochenen als ausgeliefert. */
   stop(): void;
-  /** Eine neue Anfrage wartet nicht länger: nichts mehr vertonen, keinen Stand und keine Stelle speichern. */
+  /**
+   * Eine neue Anfrage wartet nicht länger: keinen neuen Absatz mehr vertonen, keinen Stand speichern, nichts
+   * vorbereiten. Die gehörte Stelle regelt der Strom wie beim Abbruch (`settleHeard`).
+   */
   drop(): void;
 }
 const pendingTurns = new Map<string, PendingTurn>();
@@ -256,8 +259,9 @@ function deviceResponse(
  * baute diese Anfrage auf einem veralteten Stand auf, und der alte Teil überschriebe danach den neuen.
  * Das Warten ist begrenzt (N1126-1338-f, `pendingWaitMs`): höchstens 30 s, und danach bleiben 45 s vom
  * Budget für Claude und die Stimme. So reißt die Zeitkette 120/130/140 s nie. Ist der alte Strom dann
- * nicht fertig, wird er verworfen (`drop`): Er vertont nichts mehr und speichert weder Stand noch Stelle.
- * Diese Anfrage arbeitet mit dem gespeicherten Stand weiter, der alte Teil zählt nicht.
+ * nicht fertig, wird er verworfen (`drop`): Er vertont keinen neuen Absatz mehr (ein Absatz, der schon bei
+ * der Sprachausgabe ist, läuft dort zu Ende) und speichert keinen Stand. Die gehörte Stelle regelt er wie beim
+ * Abbruch (`settleHeard`). Diese Anfrage arbeitet mit dem gespeicherten Stand weiter, der alte Teil zählt nicht.
  */
 async function waitForPendingTurn(deviceId: string, timer: StageTimer): Promise<void> {
   const pending = pendingTurns.get(deviceId);
