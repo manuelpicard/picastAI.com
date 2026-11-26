@@ -174,7 +174,7 @@ So liest man das Dokument:
 
 ## 4. Stand im Repo
 
-Suche in `main` am 26.11.2026 (zuerst Stand ecda762, danach auf Stand b872e38 wiederholt, mit gleichem Ergebnis):
+Suche in `main` am 26.11.2026 (zuerst Stand ecda762, danach auf Stand 97d3e2e wiederholt, mit gleichem Ergebnis):
 
 - **Kein gesprochener KI-Hinweis.** [`deploy/ansagen.json`](../../deploy/ansagen.json) (Zeile 2) und [`server-api/ansagen.test.ts`](../../server-api/ansagen.test.ts) (Zeile 27) sagen, die KI-Ansage beim ersten Einschalten komme aus dem Server, und nennen dafür `server-api/ansage.ts`. Diese Datei gibt es in `main` nicht. [`server-api/ansagen.ts`](../../server-api/ansagen.ts) (Zeile 7) und [`docs/Ansagen.md`](../Ansagen.md) (Zeile 3) sagen nur, sie komme aus dem Server. Die Doku verweist auf [`pi-client/README.md`](../../pi-client/README.md). Der Punkt N1123-1153-a macht aus den Verweisen echte oder streicht sie.
 - **Eine Regel für die Frage, keine Ansage.** [`server-api/prompts.ts`](../../server-api/prompts.ts), Zeile 208: Kunibert darf nie behaupten, Papa, Mama oder ein Mensch zu sein. Zeile 97 verlangt dasselbe für die Erzählstimme. Ein Testsatz dazu steht in [`server-api/eval-prompts.json`](../../server-api/eval-prompts.json), Zeile 20. Die Regel wirkt nur als Antwort auf eine Frage.
