@@ -39,44 +39,137 @@ export const FALLBACK_ANSWER_DE =
 
 // Ohne Claude: feste Antworten auf Angst (Punkt N1120-1610-d). Nur Beruhigung und der Rat, mit einem
 // Erwachsenen zu sprechen; keine Deutung. In den Geschichten bleibt der Drache böse (Erzählregeln vom
-// 14.11.2026); hier geht es nur darum, dass er nicht zum Kind kommt. Notlagen fängt vorher die
-// Sicherheitsweiche ab („Ich habe Angst vor Papa“, `screen` in `handle`).
+// 14.11.2026); hier geht es nur darum, dass er nicht zum Kind kommt. Die Sicherheitsweiche läuft vorher
+// (`screen` in `handle`), kennt aber nicht jede Notlage: „Ich habe Angst vor Papa“ fängt sie, „Ich fürchte
+// mich vor Papa“ landet hier (Punkt N1126-2323-e). Darum steht der Rat zum Erwachsenen allein, ohne „oder“,
+// und heißt „dem du vertraust“ wie in der Hilfe-Ansage (unabhängige Prüfung von PR #145, Befund 3).
 /** Angst ohne den Drachen, zum Beispiel „Ich habe Angst im Dunkeln“. */
 export const FEAR_COMFORT_DE =
-  'Angst haben ist ganz in Ordnung. Jeder Mensch hat manchmal Angst, sogar Ritter Kunibert. ' +
-  'Sag es am besten einem Erwachsenen, den du lieb hast, oder nimm ein Kuscheltier in den Arm.';
+  'Angst haben ist ganz in Ordnung. Sag es am besten einem Erwachsenen, dem du vertraust. ' +
+  'Jeder Mensch hat manchmal Angst, sogar Ritter Kunibert.';
 
 /** Angst vor dem Drachen, oder die Frage, ob er kommt oder ob es ihn wirklich gibt. */
 export const DRAGON_COMFORT_DE =
   'Den Drachen gibt es nur in den Geschichten von Ritter Kunibert. ' +
   'Zu dir kommt er nicht, auch nicht in der Nacht. ' +
-  'Angst haben ist trotzdem ganz in Ordnung. Wenn du Angst hast, sag es einem Erwachsenen, den du lieb hast.';
+  'Angst haben ist trotzdem ganz in Ordnung. Wenn du Angst hast, sag es einem Erwachsenen, dem du vertraust.';
 
+// Lieber einmal zu oft beruhigen als „alle haben Angst vor ihm“ für ein Kind mit Angst (Befund 2 und 4).
 const FEAR_WORDS = new Set([
-  'angst', 'ängste', 'ängstlich', 'fürchte', 'fürchten', 'fürchtest', 'fürchtet', 'gruselig', 'gruselt', 'grusle',
-  'grusel', 'unheimlich', 'albtraum', 'albträume', 'alptraum', 'alpträume', 'bammel', 'schiss',
+  'angst', 'ängste', 'ängstlich', 'fürchte', 'fürcht', 'fürchten', 'fürchtest', 'fürchtet',
+  'gruselig', 'gruselige', 'gruseligen', 'gruseliger', 'gruseliges', 'gruselt', 'grusle', 'grusel', 'gruseln',
+  'unheimlich', 'unheimliche', 'unheimlichen', 'unheimlicher', 'unheimliches',
+  'albtraum', 'albträume', 'albträumen', 'alptraum', 'alpträume', 'alpträumen',
+  'bammel', 'schiss', 'bange', 'bang', 'mulmig', 'panik', 'erschrocken', 'erschreckt', 'erschrecke',
 ]);
-const FEAR_NEGATIONS = new Set(['kein', 'keine', 'keinen', 'nicht', 'nie', 'ohne']);
-const FIRST_PERSON = ['ich', 'mir', 'mich', 'mein', 'meine', 'meinem', 'meinen', 'meiner', 'wir', 'uns'];
-// „Hat Kunibert Angst?“, „Hast du Angst?“: eine Frage nach der Angst von jemand anderem, nicht die des Kindes.
-const OTHER_FEAR_VERBS = ['hast', 'hat', 'hatte', 'hattest', 'habt', 'fürchtest', 'fürchtet'];
+// Angst, die man „hat“: Dort fragen „Hast du Angst?“, „Kriegt Kunibert Angst?“ und „Warum haben alle Angst?“
+// nach anderen. „Ist Kunibert ängstlich?“ ebenso. Mit „ich“, „mir“ oder „uns“ ist es doch das Kind, ebenso bei
+// Angst, die etwas macht („Das hat Angst gemacht“).
+const FEAR_HAVE = new Set([
+  'angst', 'ängste', 'fürchten', 'fürchtest', 'fürchtet', 'albtraum', 'albträume', 'albträumen', 'alptraum',
+  'alpträume', 'alpträumen', 'bammel', 'schiss', 'panik',
+]);
+const OTHER_HAVE = [
+  'hast', 'hat', 'hatte', 'hattest', 'habt', 'haben', 'hatten', 'kriegst', 'kriegt', 'kriegen', 'bekommst', 'bekommt',
+  'bekommen', 'fürchtest', 'fürchtet', 'fürchten',
+];
+const OTHER_BE = ['bist', 'ist', 'sind', 'seid', 'war', 'warst', 'waren'];
+const FIRST_PERSON = ['ich', 'mir', 'mich', 'mein', 'meine', 'meinem', 'meinen', 'meiner', 'wir', 'uns', 'unser', 'unsere', 'unserem', 'unseren', 'unserer'];
+const MAKES_FEAR = ['macht', 'machen', 'machst', 'gemacht'];
+// „keine Angst“, „vor nichts Angst“, „kein bisschen Angst“, „nicht so gruselig“: keine Angst. Nur direkt davor
+// (oder mit einem Füllwort dazwischen), sonst bliebe „Ich will nicht, ich habe Angst“ unerkannt. Ein Wunsch
+// („Ich will keine Angst mehr haben“) ist Angst.
+const FEAR_NEGATIONS = new Set(['kein', 'keine', 'keinen', 'keiner', 'nicht', 'nie', 'niemals', 'ohne', 'nichts', 'null']);
+const NEGATION_FILLERS = new Set(['bisschen', 'so', 'sehr', 'besonders', 'mehr', 'wirklich']);
+const WISHES = ['will', 'möchte', 'möchten', 'wollen', 'wünsche', 'wünsch'];
+// „unheimlich mutig“, „unheimlich lieb“: Hier heißt „unheimlich“ nur „sehr“.
+const INTENSIFIED = new Set([
+  'mutig', 'schön', 'lieb', 'toll', 'gut', 'gern', 'gerne', 'cool', 'lustig', 'spannend', 'klug', 'schlau', 'nett', 'süß',
+  'witzig', 'froh', 'glücklich', 'super', 'interessant', 'freundlich', 'stolz',
+]);
+// Schlechte Träume: „Ich hab schlecht geträumt“, „ein böser Traum“. Mit dem Drachen zählt jeder Traum.
+const DREAMS = ['geträumt', 'traum', 'träume', 'träumen', 'träumst'];
+const BAD = ['schlecht', 'schlechten', 'schlechter', 'schlechtes', 'böse', 'bösen', 'böser', 'böses'];
+
 const DRAGON_WORDS = ['drache', 'drachen', 'drachens'];
-const DRAGON_COMES = ['kommt', 'kommen', 'komme', 'holt', 'holen', 'frisst', 'fressen', 'beißt', 'findet', 'fliegt', 'fliegen'];
-const DRAGON_TARGETS = ['mir', 'mich', 'uns', 'zimmer', 'haus', 'bett', 'fenster', 'kinder', 'kind'];
-const DRAGON_REAL = ['echt', 'wirklich', 'real', 'wahr'];
+// Kommt der Drache zum Kind? Ein Verb wie „kommt“ mit dem Kind, seinen Leuten oder einem Ort bei ihm („zu mir“,
+// „zu Oma“, „in mein Zimmer“, „heute Nacht“), oder „ist“ mit einem Ort („Ist der Drache unter meinem Bett?“).
+const DRAGON_COMES = [
+  'kommt', 'kommen', 'komme', 'käme', 'kämen', 'holt', 'holen', 'frisst', 'fressen', 'beißt', 'beißen', 'findet',
+  'finden', 'sucht', 'suchen', 'sieht', 'sehen', 'fliegt', 'fliegen',
+];
+const DRAGON_IS = ['ist', 'sind', 'wohnt', 'wohnen', 'lebt', 'leben', 'sitzt', 'versteckt', 'wartet'];
+const NEAR_CHILD = [...FIRST_PERSON.filter((word) => word !== 'ich' && word !== 'wir'), 'kinder', 'kind', 'mama', 'papa', 'oma', 'opa'];
+const NEAR_PLACES = [
+  'zimmer', 'kinderzimmer', 'haus', 'bett', 'fenster', 'schrank', 'wohnung', 'zuhause', 'hause', 'hier', 'hierher',
+  'keller', 'garten', 'dorf', 'stadt', 'schule', 'kindergarten', 'nacht', 'nachts',
+];
+// Fragen zur Geschichte („Fliegt der Drache zum Haus der Hexe?“): Orte und Zeiten gehören dann zur Geschichte.
+const STORY_FIGURES = ['kunibert', 'kuniberts', 'ritter', 'hexe', 'wirtin', 'kutscher', 'gasthaus', 'höhle', 'berg'];
+// „Mein Drachen fliegt hoch“: ein Drachen zum Steigenlassen, nicht der Drache aus den Geschichten.
+const POSSESSIVES = new Set(['mein', 'meine', 'meinem', 'meinen', 'meiner', 'dein', 'deine', 'deinem', 'deinen', 'unser', 'unsere', 'unserem', 'unseren']);
+// Gibt es den Drachen? „Gibt es den Drachen wirklich?“, „Ist der Drache echt?“, „in echt“. „wirklich“ und „echt“
+// als Füllwort zählen nicht („Kann der Drache wirklich Feuer spucken?“, „Mein Drachen fliegt echt hoch“).
+const REAL = ['echt', 'real', 'wahr'];
+const STORY_WORDS = ['geschichte', 'geschichten', 'märchen'];
+
+const wordsOf = (transcript: string) => transcript.toLowerCase().split(/[^a-zäöüß]+/).filter(Boolean);
+
+/** Hat das Kind selbst Angst? Fragen nach der Angst von anderen und verneinte Angst zählen nicht. */
+function childIsAfraid(list: string[], has: (candidates: readonly string[]) => boolean): boolean {
+  const negated = (i: number) =>
+    FEAR_NEGATIONS.has(list[i - 1] ?? '') || (NEGATION_FILLERS.has(list[i - 1] ?? '') && FEAR_NEGATIONS.has(list[i - 2] ?? ''));
+  const aboutOthers = !has(FIRST_PERSON) && !has(MAKES_FEAR);
+  const fearAt = (word: string, i: number): boolean => {
+    // „Ich bin ein Angsthase“ ja, „Bist du ein Angsthase?“ und „Ich bin kein Angsthase“ nein.
+    if (word === 'angsthase') return has(['bin']) && !negated(i);
+    if (!FEAR_WORDS.has(word)) return false;
+    if (word === 'unheimlich' && INTENSIFIED.has(list[i + 1] ?? '')) return false;
+    if (negated(i) && !has(WISHES)) return false;
+    if (aboutOthers && FEAR_HAVE.has(word) && has(OTHER_HAVE)) return false;
+    return !(aboutOthers && word === 'ängstlich' && has(OTHER_BE));
+  };
+  return list.some(fearAt) || (has(DREAMS) && has(BAD));
+}
 
 /**
  * Feste Beruhigung ohne Claude, oder '' (Punkt N1120-1610-d). Ganze Wörter wie in `fallbackQuestion`.
  * „keine Angst“ zählt nicht als Angst; eine Frage nach der Angst von Kunibert oder „du“ auch nicht.
  */
 export function fearComfortFor(transcript: string): string {
-  const list = transcript.toLowerCase().split(/[^a-zäöüß]+/).filter(Boolean);
+  const list = wordsOf(transcript);
   const words = new Set(list);
-  const has = (candidates: string[]) => candidates.some((word) => words.has(word));
-  const fearWord = list.some((word, i) => FEAR_WORDS.has(word) && !FEAR_NEGATIONS.has(list[i - 1] ?? ''));
-  const afraid = fearWord && !(has(OTHER_FEAR_VERBS) && !has(FIRST_PERSON));
-  if (has(DRAGON_WORDS) && (afraid || (has(DRAGON_COMES) && has(DRAGON_TARGETS)) || has(DRAGON_REAL))) return DRAGON_COMFORT_DE;
-  return afraid ? FEAR_COMFORT_DE : '';
+  const has = (candidates: readonly string[]) => candidates.some((word) => words.has(word));
+  const afraid = childIsAfraid(list, has);
+  if (!has(DRAGON_WORDS)) return afraid ? FEAR_COMFORT_DE : '';
+  if (afraid || has(DREAMS)) return DRAGON_COMFORT_DE;
+  if (list.some((word, i) => DRAGON_WORDS.includes(word) && POSSESSIVES.has(list[i - 1] ?? ''))) return '';
+  const nearPlace = has(NEAR_PLACES) && !has(STORY_FIGURES);
+  const comes = has(DRAGON_COMES) && (has(NEAR_CHILD) || nearPlace);
+  const here = has(DRAGON_IS) && (nearPlace || (has(['bei']) && has(NEAR_CHILD)));
+  const real =
+    (has(['gibt']) && has(['es']) && !has(STORY_WORDS)) ||
+    has(['existiert', 'existieren']) ||
+    list.some((word, i) => word === 'echt' && list[i - 1] === 'in') ||
+    (has(REAL) && has(['ist', 'sind']));
+  return comes || here || real ? DRAGON_COMFORT_DE : '';
+}
+
+// Klare Bitte ums Erzählen, die bei Angst vor der Beruhigung geht (unabhängige Prüfung von PR #145, Befund 1):
+// eine Aufforderung („erzähl weiter“, „weiter“, „Ich will eine Geschichte“). Nicht verneint, kein Aufhören
+// („hör auf zu erzählen“, „bitte nicht weitererzählen“, „stopp“) und kein Nebensatz („wenn du vom Drachen
+// erzählst“, „dass er nochmal kommt“). „erzählst“, „erzählen“ und „nochmal“ allein sind keine Bitte.
+// Verneinte Wünsche ohne Angst beginnen bisher noch eine Geschichte (Punkt N1120-0950-a kann dies mitbenutzen).
+const REQUEST_STOPS = ['nicht', 'kein', 'keine', 'keinen', 'keiner', 'nie', 'ohne', 'auf', 'aufhören', 'aufhörst', 'stopp', 'stop', 'schluss', 'genug', 'wenn', 'dass'];
+const REQUEST_VERBS = ['erzähl', 'erzähle', 'weiter', 'weitererzählen'];
+const STORY_WISHES = ['will', 'möchte', 'möchten', 'wollen', 'bitte', 'hören'];
+
+/** Bittet das Kind klar ums Erzählen? Siehe oben. */
+export function explicitStoryRequest(transcript: string): boolean {
+  const words = new Set(wordsOf(transcript));
+  const has = (candidates: readonly string[]) => candidates.some((word) => words.has(word));
+  if (has(REQUEST_STOPS)) return false;
+  return has(REQUEST_VERBS) || (has(STORY_WORDS) && has(STORY_WISHES));
 }
 
 export interface StoryState {
@@ -1015,9 +1108,10 @@ export class Brain {
 
     // Angst zuerst (Punkt N1120-1610-d): vor „Geschichte“ und vor „Kunibert“, weil Kinder Kunibert mit Namen
     // ansprechen („Kunibert, ich hab Angst“) und „Die Geschichte ist so gruselig“ sonst eine neue Folge mit dem
-    // Drachen beginnt. Nur eine ausdrückliche Bitte um Erzählen oder „weiter“ geht vor.
+    // Drachen beginnt. Nur eine klare Bitte ums Erzählen geht vor (`explicitStoryRequest`). Für eine Geschichte
+    // gibt es außerdem die Erzähltaste.
     const comfort = fearComfortFor(transcript);
-    if (comfort && !has('erzähl', 'erzähle', 'erzählst', 'erzählen', 'weiter', 'weitererzählen', 'nochmal')) {
+    if (comfort && !explicitStoryRequest(transcript)) {
       return { kind: 'frage', speech: comfort, story_state: state, fixed: 'ersatz', wav: this.synthesizeWav(comfort, 'frage') };
     }
 
@@ -1043,13 +1137,15 @@ export class Brain {
       speech =
         'Der Himmel wirkt blau, weil das weiße Sonnenlicht in der Luft auf winzig kleine Teilchen trifft ' +
         'und dabei in alle Richtungen gestreut wird. Blaues Licht wird dabei viel stärker gestreut als ' +
-        'rotes Licht, deshalb sehen wir den Himmel blau leuchten.';
+        // „leuchtet der Himmel“, nicht „sehen wir“: Das Gerät spricht nicht als Mensch (Kanon, Abschnitt 2).
+        'rotes Licht, deshalb leuchtet der Himmel blau.';
     } else if (has('traurig', 'weine', 'weinen', 'geweint', 'allein', 'alleine', 'einsam')) {
       speech =
         // „Jeder Mensch“, nicht „Jeder von uns“: Das Gerät spricht nicht als Mensch (Kanon, Abschnitt 2).
+        // Der Rat zum Erwachsenen steht allein und heißt wie bei Angst „dem du vertraust“ (siehe FEAR_COMFORT_DE).
         'Es ist ganz in Ordnung, manchmal traurig zu sein. Jeder Mensch fühlt sich ab und zu so, ' +
         'sogar Ritter Kunibert, wenn er vom Drachenberg zurückkehrt. ' +
-        'Sprich am besten mit einem Erwachsenen, den du lieb hast, oder nimm ein Kuscheltier in den Arm.';
+        'Sprich am besten mit einem Erwachsenen, dem du vertraust.';
     } else if (has('drache', 'drachen')) {
       speech =
         'In den Geschichten von Ritter Kunibert wohnt der Drache oben am Berg in einer dunklen Höhle. ' +
