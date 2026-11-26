@@ -594,6 +594,39 @@ describe('Stopp per Taste mit Ton-Strom (echter Server, Punkt B2)', () => {
     assert.deepEqual(lines.slice(-2), ['Stopp per Taste: wartet', 'Stopp per Taste: gemerkt teil=1/5 saetze=1/4']);
   });
 
+  it('Stopp beendet die Vertonung: Die nächste Anfrage wartet nicht auf den Rest des alten Teils (N1126-1338-f)', async () => {
+    // Die Vertonung des zweiten Absatzes hängt bis zum Ende des Tests. Das Kind hält nach dem ersten Satz an
+    // und sagt gleich eine Idee. Bisher wartete die Idee, bis der alte Teil ganz vertont war. Hing die Stimme,
+    // verbrauchte das Warten das Budget (Ersatztext statt Claude) oder die Antwort kam nach den 130 s von Caddy.
+    await k.freshStory();
+    let release!: () => void;
+    k.speech.state.holdIf = sentence(1, 2);
+    k.speech.state.hold = new Promise<void>((resolve) => (release = resolve));
+    try {
+      const outputBefore = k.output.length;
+      const { turnId } = await k.storyButton();
+      await waitFor(() => k.speech.state.waiting > 0, 'zweiter Absatz wartet auf die Sprachausgabe');
+      // Ab hier hält die Attrappe nichts Neues mehr fest; der zweite Absatz des alten Teils hängt weiter.
+      k.speech.state.holdIf = 'kommt in keinem Text vor';
+      assert.equal((await k.reportStop({ turn_id: turnId, heard_seconds: afterFirstSentenceStreamed(1) })).status, 204);
+      await waitFor(() => k.output.slice(outputBefore).includes('Stopp per Taste: gemerkt teil=1/5 saetze=1/4'), 'die Meldung gilt sofort');
+      const mark = k.claude.calls.length;
+      const form = new FormData();
+      form.append('audio', new Blob([new Uint8Array(wav16k())], { type: 'audio/wav' }), 'question.wav');
+      const res = await fetch(`${k.base}/v1/device/question`, { method: 'POST', headers: k.auth, body: form, signal: AbortSignal.timeout(15_000) });
+      assert.equal(res.status, 200, await res.clone().text());
+      const [retold] = k.storyCallsSince(mark);
+      assert.ok(retold, 'Claude erzählt, kein Ersatztext');
+      assert.match(retold.user, /Erzähle jetzt Teil 1 von 5/, 'derselbe Teil, ab der gehörten Stelle');
+      assert.ok(retold.user.includes(`«${sentence(1, 0)}»`), retold.user);
+      assert.equal(k.speech.state.waiting, 1, 'der alte Absatz hängt noch: Die Idee hat nicht auf ihn gewartet');
+    } finally {
+      k.speech.state.hold = null;
+      k.speech.state.holdIf = '';
+      release?.();
+    }
+  });
+
   it('neu erzählter Teil bricht im Strom ab: Das schon Gesprochene kommt zur Stelle dazu', async () => {
     await k.freshStory();
     const { turnId } = await k.storyButton();
