@@ -24,7 +24,7 @@ Zeitmessung id=3f9a1c2b modus=frage status=200 erkennung_ms=1204 weiche_ms=0 spr
 | --- | --- |
 | `id` | Zufällige Nummer der Anfrage (8 Zeichen). Sie hat nichts mit Gerät oder Inhalt zu tun. |
 | `modus` | `frage` (Sprechtaste), `weiter` (Erzähltaste), `kopplung` (Kopplungscode für die Eltern) oder bei `/v1/turn` der gesendete Modus (`frage`, `geschichte`, `weiter`). |
-| `status` | Antwortcode an das Gerät. `200` ist gut, `503` heißt: Sprachdienst gerade nicht erreichbar. `abgebrochen` heißt: Das Gerät hat aufgelegt, bevor die Antwort fertig war. |
+| `status` | Antwortcode an das Gerät. `200` ist gut, `503` heißt: Sprachdienst gerade nicht erreichbar. `abgebrochen` heißt: Das Gerät hat aufgelegt, bevor die Antwort fertig war. `verworfen` heißt: Diese Arbeit zählt nicht (siehe „Ton-Strom“ und „Einordnung parallel“ unten). |
 | `erkennung_ms` | Spracherkennung (Aufnahme in Text umwandeln). |
 | `weiche_ms` | Sicherheitsweiche (prüft den Text des Kindes auf Notlagen). |
 | `sprachmodell_ms` | Claude: Antwort oder Geschichte schreiben. Mehrere Aufrufe werden addiert. |
@@ -42,7 +42,8 @@ Anfragen, die gleich abgewiesen werden (keine Anmeldung, zu viele Anfragen, kein
 ### Ton-Strom (seit 14.11.2026, Punkt 71)
 
 - `erster_ton_ms`: mit `PICASTAI_AUDIO_STREAM=1` die Zeit vom Start der Antwort bis zum ersten vertonten Absatz (ohne Strom `-`). Bei der Sprechtaste kommt `erkennung_ms` davor.
-- Bei einem Strom gibt es zwei Zeilen mit derselben `id`: die erste, wenn die Antwort hinausgeht (`modus=weiter`, `sprachmodell_ms=-`, weil Claude noch schreibt), die zweite, wenn alles vertont ist (`modus=weiter_strom` oder `frage_strom`, mit allen Werten und `audio_s`).
+- Bei einem Strom gibt es zwei Zeilen mit derselben `id`: die erste, wenn die Antwort hinausgeht (`modus=weiter`, `sprachmodell_ms=-`, weil Claude noch schreibt), die zweite, wenn alles vertont ist (`modus=weiter_strom` oder `frage_strom`, mit allen Werten und `audio_s`). Hat das Kind per Taste angehalten, solange der Teil noch entstand, kommt die zweite Zeile schon, wenn Claude fertig geschrieben hat; `audio_s` zählt dann nur die vertonten Absätze (seit 26.11.2026).
+- `status=verworfen` in der zweiten Zeile (seit 26.11.2026, `waitForPendingTurn` in `server.ts`): Eine neue Anfrage desselben Geräts hat auf diesen Strom gewartet, höchstens 30 s, und er war dann nicht fertig. Er zählt nicht: kein Stand, keine Vorbereitung; für die gehörte Stelle gilt dasselbe wie bei einem abgebrochenen Strom. Die Wartezeit der neuen Anfrage hat kein eigenes Feld; sie steckt in deren `gesamt_ms` (offen: Punkt N1126-1937-g der Arbeitsliste).
 - Messung: `node deploy/dryrun/strom-messung.mjs` (echtes Pocket auf `POCKET_URL`, Claude als Attrappe mit 14 s Schreibzeit). Ergebnis 14.11.2026 in der Cloud (2 Kerne): erster Ton ohne Strom nach 61,4 s, mit Strom nach 13,2 s, mit kurzem erstem Absatz nach 7,8 s; der Ton lag beim Abspielen immer mindestens 2,0 s vor (kein Aussetzer).
 
 ### Einordnung parallel zur Geschichte (seit 20.11.2026, Punkt B1, Schalter `KUNIBERT_EINORDNUNG_PARALLEL=1`)
