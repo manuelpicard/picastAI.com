@@ -193,7 +193,7 @@ Diese Punkte gehören in die Liste der Restrisiken:
 
 - **N1122-1825-a** (Bauen, Prio 2): Lizenz-Hinweise für Pocket TTS in die Doku, mit dem Textvorschlag oben. Nur Doku.
 - **N1122-1825-b** (Bauen, Prio 3, ändert, was Kinder hören): Der Server warnt bei nicht freier Stimme und schaltet die Sprachausgabe im Betrieb ab. Heute heißt „aus“: eine leere Audiodatei, das Kind hört nichts (`server.ts`, `server-api/voice.ts`). Darum ist es ein eigener PR mit „(ändert, was Kinder hören)“. Das schließt R2 und R5.
-- **N1122-1825-c** (Recherche, Prio 2): Herkunft von `stuart_bell` bis zum Ursprung (Voice-Zero, LibriVox). Teil 1 ist am 26.11.2026 erledigt (Abschnitt „Herkunft von `stuart_bell`“). Teil 2 fehlt noch: die README im Unterordner von Voice-Zero. Erst er kann die Lücke bei R1 schließen.
+- **N1122-1825-c** (Recherche, Prio 2): Herkunft von `stuart_bell` bis zum Ursprung (Voice-Zero, LibriVox). Teil 1 ist am 26.11.2026 erledigt (Abschnitt „Herkunft von `stuart_bell`“). Teil 2 fehlt noch: die README im Unterordner von Voice-Zero. Er kann die Herkunft klären. Ob er auch die Einwilligung belegt, ist offen.
 - **N1122-1825-d** (Recherche, Prio 3): Lizenzen der acht Trainings-Datensätze und Trainingsdaten der deutschen Gewichte. Das schließt R4.
 - **N1122-1825-e** (Recherche, Prio 2): Lizenzen der übrigen Sprachbausteine (Spracherkennung, Rückfall-Stimme Piper, Speaches). H5 deckt sie nicht ab.
 
@@ -223,7 +223,7 @@ Das README von Pocket TTS nennt für andere Sprachen größere Varianten mit 24 
 | Wer | Was | Wo |
 | --- | --- | --- |
 | Betreiber | Prüfen, ob sein Hugging-Face-Konto die Bedingungen von `kyutai/pocket-tts` akzeptiert hat, und ob der Server-Download dieses Konto braucht. Datum notieren. Kein Token in Repo oder Chat. | im Browser auf huggingface.co |
-| Betreiber | Optional, wenn die Herkunft geklärt werden soll: im Voice-Zero-Repository (Adresse in Q17) den Ordner `voices` öffnen und dort die README.md lesen. Die Zeile zu `stuart_bell` suchen. Claude im Chat sagen, welcher Sprecher und welche Aufnahme dort stehen. Claude liest dann die Seite der Aufnahme bei LibriVox. | im Browser auf github.com |
+| Betreiber | Optional, wenn die Herkunft geklärt werden soll: im Voice-Zero-Repository (Adresse in Q17) den Ordner `voices` öffnen und dort die README.md lesen. Die Zeile zu `stuart_bell` suchen (der Dateiname kann dort anders heißen). Claude im Chat sagen, welcher Sprecher und welche Aufnahme dort stehen. Claude liest dann die Seite der Aufnahme bei LibriVox. | im Browser auf github.com |
 | Betreiber | Entscheiden: bleibt `stuart_bell` für den Verkauf, oder Hörtest mit `javert` und `marius`? | im Chat |
 | Claude | Punkte N1122-1825-a bis -e abarbeiten. Bei -c fehlt nur Teil 2 (README im Unterordner von Voice-Zero). | Repo, `docs/autopilot/backlog.md` |
 | Claude | Ergebnis und Risiken R1 bis R5 in `claude/aufgaben.md` und ins Doc „Datenschutz-Folgenabschätzung“ vorschlagen (der Lauf „Planen & Bericht“). | Claude-Projekt |
