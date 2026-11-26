@@ -137,6 +137,50 @@ merge_config() {
   ' "$1"
 }
 
+# Prüfungen mit Zeichenbereichen laufen in einer Unterschale mit LC_ALL=C: In einer deutschen
+# Sprachumgebung (de_DE.UTF-8, unter sudo meist übernommen) trifft [A-Za-z] in bash auch ä, Ä, é
+# und ß (am 26.11.2026 in Debian 13 nachgeprüft). Der Pi-Client (Python) lässt sie nie zu.
+# Geräte-Token: dieselben Zeichen wie TOKEN_PATTERN im Pi-Client.
+valid_token() ( LC_ALL=C; [[ "$1" =~ $TOKEN_PATTERN ]] )
+# Geräte-ID: dieselben Zeichen wie beim Server (server-api/devices.ts). Der Pi-Client lässt bisher
+# mehr zu; $, `, ", \ und ' könnte die Shell beim Handstart (set -a; . kunibert.env) aber ausführen.
+valid_device_id() ( LC_ALL=C; [[ "$1" =~ ^[A-Za-z0-9_-]{1,80}$ ]] )
+DEVICE_ID_RULE="nur Buchstaben A bis Z und a bis z, Ziffern, - und _, höchstens 80 Zeichen (wie beim Server)"
+# Adresse wie _origin im Pi-Client: http:// oder https:// (groß oder klein), ein Rechnername oder
+# eine IPv6-Adresse in [], kein Name und Passwort, Port nur aus Ziffern bis 65535. Den Inhalt von []
+# prüft Python wie urlsplit im Client (sonst nähme der Installer etwa [192.168.1.20] an, der Client
+# aber nicht); ohne python3 lehnt der Installer [] ab. Strenger als der Client: keine Leerzeichen, im
+# Rechnernamen nur Buchstaben, Ziffern, Punkt, - und _, im Pfad nur Buchstaben, Ziffern und . _ ~ % / -.
+# So fehlen Zeichen, die die Shell beim Einlesen deutet ($, `, ", \, ' und ohne Anführungszeichen
+# auch ;, &, ( und )), und ? oder # (an die Basis-Adresse hängt der Client noch Pfade an).
+URL_PATTERN='^[Hh][Tt][Tt][Pp][Ss]?://(\[([0-9A-Fa-f:.]+)]|[A-Za-z0-9._-]+)(:([0-9]{0,5}))?(/[A-Za-z0-9._~%/-]*)?$'
+valid_api_url() (
+  LC_ALL=C
+  [[ "$1" =~ $URL_PATTERN ]] || exit 1
+  ipv6="${BASH_REMATCH[2]}" port="${BASH_REMATCH[4]}"
+  [[ -z "$port" ]] || (( 10#$port <= 65535 )) || exit 1
+  [[ -n "$ipv6" ]] || exit 0
+  command -v python3 >/dev/null 2>&1 || exit 1
+  # Der Wert geht als Argument an Python, nie in den Programmtext; Fehler (mit dem Wert) nach /dev/null.
+  python3 -I -c 'import ipaddress, sys; ipaddress.IPv6Address(sys.argv[1])' "$ipv6" >/dev/null 2>&1
+)
+API_URL_RULE='http:// oder https:// und ein Rechnername (Buchstaben, Ziffern, Punkt, - und _) oder eine IPv6-Adresse in [ ], ohne Name und Passwort, Port nur aus Ziffern; im Pfad nur Buchstaben, Ziffern und . _ ~ % / -; keine Leerzeichen, kein ? und #'
+# Wert eines Schlüssels in der vorhandenen kunibert.env auf stdout (die letzte Zeile gilt, wie bei
+# systemd), ohne Leerzeichen am Rand und ohne ein Paar Anführungszeichen außen. Rückgabe 1, wenn
+# Datei oder Schlüssel fehlen. Nur für Prüfungen in eine Variable lesen, nie ausgeben: Eine Adresse
+# kann Zugangsdaten enthalten.
+existing_value() {
+  [[ -f "$CONFIG_FILE" ]] || return 1
+  local line value
+  # LC_ALL=C wie in existing_token_set und merge_config: nur Leerzeichen und Tab um „=“.
+  line="$(LC_ALL=C grep -E "^[[:space:]]*$1[[:blank:]]*=" "$CONFIG_FILE" | tail -n 1)" || return 1
+  value="$(trim "${line#*=}")"
+  if [[ ${#value} -ge 2 && ( "$value" == \"*\" || "$value" == \'*\' ) ]]; then
+    value="$(trim "${value:1:${#value}-2}")"
+  fi
+  printf '%s' "$value"
+}
+
 usage() {
   cat <<'EOF'
 Installiert den Ritter-Kunibert-Raspberry-Pi-Client auf Raspberry Pi OS.
@@ -146,8 +190,10 @@ Aufruf:
 
 Optionen:
   --source-dir DIR       Repository-/Installationsquelle (Standard: automatisch)
-  --api-url URL          picastAI-API-Basis-URL
-  --device-id ID         Geräte-ID
+  --api-url URL          picastAI-API-Basis-URL (http:// oder https://, ohne Name
+                         und Passwort)
+  --device-id ID         Geräte-ID (Buchstaben A-Z und a-z, Ziffern, - und _;
+                         höchstens 80 Zeichen, wie beim Server)
   --api-token-file DATEI Geräte-Token aus einer Datei (erste Zeile), zum Beispiel für
                          Skripte mit --non-interactive. Ohne diese Option fragt der
                          Installer verdeckt nach dem Token. Das Token gibt es bewusst
@@ -227,10 +273,27 @@ done
 for _dev in "$CAPTURE_DEVICE" "$PLAYBACK_DEVICE" "$API_BASE_URL" "$DEVICE_ID" "$DEVICE_TOKEN" "$DEVICE_NAME"; do
   [[ "$_dev" != *$'\n'* ]] || die "Werte für die Konfiguration dürfen keinen Zeilenumbruch enthalten."
 done
+# Geräte-ID und Adresse prüfen, bevor sich etwas ändert. Leerzeichen am Rand fallen weg (wie im
+# Pi-Client). Die Meldungen nennen den Wert nie (eine Adresse kann Zugangsdaten enthalten).
+DEVICE_ID="$(trim "$DEVICE_ID")"
+API_BASE_URL="$(trim "$API_BASE_URL")"
+API_BASE_URL="${API_BASE_URL%/}"
+valid_device_id "$DEVICE_ID" || die "--device-id: Die Geräte-ID passt nicht. Erlaubt: $DEVICE_ID_RULE. Wert nicht angezeigt."
+valid_api_url "$API_BASE_URL" || die "--api-url: keine gültige Adresse. Erwartet: $API_URL_RULE. Wert nicht angezeigt."
 
 [[ "${EUID}" -eq 0 ]] || die "Bitte mit sudo oder als root ausführen."
 command -v apt-get >/dev/null || die "apt-get wurde nicht gefunden; dieses Skript erwartet Raspberry Pi OS."
 command -v systemctl >/dev/null || die "systemctl wurde nicht gefunden; dieses Skript erwartet systemd."
+
+# Werte, die ein neuer Lauf aus kunibert.env übernimmt, genauso prüfen: Mit einer ungültigen
+# Geräte-ID oder Adresse startet der Pi-Client nicht, und systemd startet ihn alle 5 Sekunden neu.
+if [[ -z "${GIVEN[PICASTAI_DEVICE_ID]:-}" ]] && STORED_VALUE="$(existing_value PICASTAI_DEVICE_ID)"; then
+  valid_device_id "$STORED_VALUE" || die "PICASTAI_DEVICE_ID in $CONFIG_FILE passt nicht. Erlaubt: $DEVICE_ID_RULE. Wert nicht angezeigt. Abhilfe: den Installer mit --device-id aufrufen oder die Zeile mit sudoedit $CONFIG_FILE berichtigen."
+fi
+if [[ -z "${GIVEN[PICASTAI_API_BASE_URL]:-}" ]] && STORED_VALUE="$(existing_value PICASTAI_API_BASE_URL)"; then
+  valid_api_url "${STORED_VALUE%/}" || die "PICASTAI_API_BASE_URL in $CONFIG_FILE ist keine gültige Adresse. Erwartet: $API_URL_RULE. Wert nicht angezeigt. Abhilfe: den Installer mit --api-url aufrufen oder die Zeile mit sudoedit $CONFIG_FILE berichtigen."
+fi
+unset STORED_VALUE
 
 if [[ -z "$SOURCE_DIR" ]]; then
   SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
@@ -277,7 +340,7 @@ if [[ -z "$DEVICE_TOKEN" && "$DRY_RUN" != "1" ]] && [[ "$ASK_TOKEN" == "1" || "$
   fi
 fi
 [[ "$DEVICE_TOKEN" != *$'\n'* ]] || die "Werte für die Konfiguration dürfen keinen Zeilenumbruch enthalten."
-if [[ -n "$DEVICE_TOKEN" && ! "$DEVICE_TOKEN" =~ $TOKEN_PATTERN ]]; then
+if [[ -n "$DEVICE_TOKEN" ]] && ! valid_token "$DEVICE_TOKEN"; then
   die "Das Token enthält Zeichen, die in einem Geräte-Token nicht vorkommen (zum Beispiel Leerzeichen, Anführungszeichen oder das Wort Bearer). Wert nicht angezeigt."
 fi
 if [[ -n "$DEVICE_TOKEN" ]]; then
