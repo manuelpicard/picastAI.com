@@ -176,7 +176,8 @@ Zweiter Lauf:
   Werte, die beim Aufruf fehlen, übernimmt der Installer aus der vorhandenen
   /etc/kunibert/kunibert.env: Adresse, Geräte-ID, Token, Name, Abtastrate,
   Mikrofon, Lautsprecher und von Hand (sudoedit) geänderte oder ergänzte Zeilen.
-  Kommentare übernimmt er nicht. Immer neu setzt er KUNIBERT_PIPELINE_TIMEOUT
+  Kommentare übernimmt er nicht. Aus "NAME = wert" macht er "NAME=wert" (systemd
+  liest beides gleich, die Shell nur "NAME=wert"). Immer neu setzt er KUNIBERT_PIPELINE_TIMEOUT
   (Zeitkette), KUNIBERT_CACHE_DIR und KUNIBERT_ANNOUNCEMENTS_DIR (passen zur
   Dienstdatei). Mit denselben Angaben ändert ein zweiter Lauf an Datei, Dienst,
   Rechten und Besitzern nichts.
