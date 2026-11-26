@@ -4,7 +4,10 @@ import { encodeWav } from './audio.js';
 import { Brain } from './brain.js';
 import type { LlmJsonRequest, LlmProvider } from './llm.js';
 import { SAFETY_RESPONSE_DE } from './safety.js';
-import { budgetTimeoutMs, MIN_TTS_MS, NO_TIMER, TIMED_STAGES, TTS_RESERVE_MS, ttsTimeoutMs, TurnTimer, wavSeconds } from './timing.js';
+import {
+  budgetTimeoutMs, MIN_TTS_MS, NO_TIMER, PENDING_WAIT_MAX_MS, PENDING_WAIT_RESERVE_MS, pendingWaitMs, settlesWithin, TIMED_STAGES,
+  TTS_RESERVE_MS, ttsTimeoutMs, TurnTimer, wavSeconds,
+} from './timing.js';
 
 /** Alle Zeilen müssen genau dieser Form folgen: feste Schlüssel, Zahlen oder "-", sonst nichts. */
 const LINE_FORMAT = new RegExp(
@@ -272,6 +275,45 @@ test('ttsTimeoutMs: Rest des Budgets, mindestens MIN_TTS_MS; ohne Budget keine F
   clock.advance(10_000);
   assert.equal(ttsTimeoutMs(timer), MIN_TTS_MS, 'auch bei aufgebrauchtem Budget');
   assert.equal(ttsTimeoutMs(timer, 50), 50, 'Mindestzeit einstellbar (für Tests mit kurzen Zeiten)');
+});
+
+test('pendingWaitMs: höchstens 30 s, und nach dem Warten bleiben 45 s für Claude und die Stimme (N1126-1338-f)', () => {
+  const clock = fakeClock();
+  const timer = new TurnTimer(clock.now, 'c2c2c2c2');
+  assert.equal(PENDING_WAIT_RESERVE_MS, 30_000 + TTS_RESERVE_MS);
+  assert.equal(pendingWaitMs(timer), PENDING_WAIT_MAX_MS, 'am Anfang der Anfrage: die Obergrenze');
+  clock.advance(60_000);
+  assert.equal(pendingWaitMs(timer), 15_000, 'nach 60 s: nur noch 120 - 60 - 45 s');
+  clock.advance(20_000);
+  assert.equal(pendingWaitMs(timer), 0, 'bleibt weniger als die Reserve: gar nicht warten');
+  assert.equal(pendingWaitMs(NO_TIMER), PENDING_WAIT_MAX_MS, 'ohne Budget gilt die Obergrenze');
+  for (let elapsed = 0; elapsed <= 130_000; elapsed += 5_000) {
+    const probe = fakeClock();
+    const t = new TurnTimer(probe.now, 'c3c3c3c3');
+    probe.advance(elapsed);
+    const wait = pendingWaitMs(t);
+    assert.ok(wait === 0 || elapsed + wait <= 120_000 - PENDING_WAIT_RESERVE_MS, `nach dem Warten bleibt die Reserve (bei ${elapsed} ms)`);
+  }
+});
+
+test('pendingWaitMs: eine kürzere Grenze (nur für Tests) gilt, eine längere nie (Prüfung von PR #134, Befund 2)', () => {
+  const clock = fakeClock();
+  const timer = new TurnTimer(clock.now, 'c4c4c4c4');
+  assert.equal(pendingWaitMs(timer, 1_500), 1_500, 'kürzere Grenze');
+  assert.equal(pendingWaitMs(timer, 60_000), PENDING_WAIT_MAX_MS, 'nie länger als die Obergrenze');
+  assert.equal(pendingWaitMs(timer, -5), 0, 'nie unter 0');
+  assert.equal(pendingWaitMs(NO_TIMER, 1_500), 1_500);
+  clock.advance(74_000);
+  assert.equal(pendingWaitMs(timer, 1_500), 1_000, 'die Reserve geht auch der kürzeren Grenze vor');
+});
+
+test('settlesWithin: true, wenn das Versprechen rechtzeitig endet (auch abgelehnt), sonst false', async () => {
+  assert.equal(await settlesWithin(Promise.resolve(), 1_000), true);
+  assert.equal(await settlesWithin(Promise.reject(new Error('alt')), 1_000), true, 'ein abgebrochener alter Strom zählt als fertig');
+  const started = performance.now();
+  assert.equal(await settlesWithin(new Promise(() => {}), 50), false);
+  assert.ok(performance.now() - started < 1_000, 'die Frist gilt');
+  assert.equal(await settlesWithin(new Promise(() => {}), 0), false, 'Frist 0: nicht warten');
 });
 
 test('Zeitbudget: ein Sprachmodell-Aufruf bekommt Budget minus Reserve für die Sprachausgabe', async () => {
