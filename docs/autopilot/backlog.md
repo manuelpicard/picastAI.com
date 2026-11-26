@@ -276,10 +276,11 @@ Angelegt am 17.11.2026, 20:15, von Claude (Chat). Gepflegt von den Läufen des W
 - Gefunden bei der Prüfung von PR #66 (20.11.2026).
 
 ### N1120-1610-e · Ersatz mitten in einer Claude-Folge ohne Sprung (Kinder)
-- Rolle: Bauen · Prio: 2 · Status: offen · Bezug: Erzählregel „Ideen springen nicht“
+- Rolle: Bauen · Prio: 2 · Status: erledigt (PR #147, 27.11.2026) · Bezug: Erzählregel „Ideen springen nicht“
 - Ziel: Fällt Claude mitten in einer Folge mit Plan von Claude aus, erzählt die Ersatzfolge ihre eigene Handlung weiter (`fallbackStory` in `server-api/brain.ts`). Beispiel aus der Prüfung: Bei Claude gab die Hexe eine Feder, die Ersatz-Mitte spricht vom silbernen Glöckchen. Die Ersatz-List zitiert Worte der Hexe, die das Kind nie gehört hat. Das Ersatz-Finale sagt nicht, wie die List ausging. Hat die Folge einen Plan von Claude, kommen nur Brückentexte ohne eigenes Geschenk und ohne Worte der Variante. Das Finale beginnt mit dem Ausgang („Kuniberts List gelang für heute. … Besiegt war er nicht.“). Nicht dasselbe wie N1120-0939-b.
 - Fertig, wenn: Tests für die Übernahme in Teil 3 und in Teil 5; Ausgabe-Check grün. Eigener PR mit „(ändert, was Kinder hören)“.
 - Gefunden bei der Prüfung von PR #66 (20.11.2026).
+- Ergebnis (27.11.2026, 00:05, PR #147, vorläufig): Hat die Folge einen Plan von Claude, erzählt die Ersatzfolge nur Brücken (`fallbackBridge` in `server-api/brain.ts`): kein eigenes Geschenk, keine Worte der festen Varianten; die Hexe sagt höchstens den Hinweis aus Claudes Plan (nach Ausgabe-Check); vorletzter Teil: die Idee; letzter Teil: zuerst der Ausgang. Zusammenfassung, Fäden und Plan von Claude bleiben. Tests für die Übernahme in Teil 2, 3, 4 und 5 und für ganze Brückenfolgen mit 3, 5 und 7 Teilen.
 
 ### N1120-1610-f · Ersatzfolge: Wunsch aufgreifen, Variante wechseln, kurze Sätze (Kinder)
 - Rolle: Bauen · Prio: 3 · Status: offen · Bezug: B4, Maßnahme M9
