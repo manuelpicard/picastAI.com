@@ -751,6 +751,165 @@ describe('Stopp per Taste mit Ton-Strom (echter Server, Punkt B2)', () => {
   });
 });
 
+/** Mit Ton-Strom kennt der Server die Sekunden je Absatz: Mitte zwischen dem Ende von Satz 1 und Satz 2. */
+const afterFirstSentenceInStream = (part: number) => (SECONDS_PER_CHAR * (sentence(part, 0).length + storyText(part).split('\n\n')[0].length)) / 2;
+
+/** Hält die Vertonung des zweiten Absatzes jedes Teils fest, bis `release` kommt. */
+function holdSecondParagraph(k: Awaited<ReturnType<typeof startKunibert>>): () => void {
+  let release!: () => void;
+  k.speech.state.holdIf = sentence(1, 2);
+  k.speech.state.hold = new Promise<void>((resolve) => (release = resolve));
+  return () => {
+    k.speech.state.hold = null;
+    k.speech.state.holdIf = '';
+    release();
+  };
+}
+
+describe('Stopp im Ton-Strom mit Vorbereitung des nächsten Teils (echter Server, Prüfung von PR #134, Befund 1)', () => {
+  let k: Awaited<ReturnType<typeof startKunibert>>;
+  // Vorbereitung an (Standard) und Ton-Strom an.
+  before(async () => {
+    k = await startKunibert({ PICASTAI_AUDIO_STREAM: '1' });
+    k.auth['X-Kunibert-Audio-Stream'] = '1';
+  });
+  after(async () => { await k?.stop(); });
+
+  it('Stopp, solange der Teil entsteht: kein Aufruf an Claude für den nächsten Teil; ohne Stopp wieder Vorbereitung', async () => {
+    const part2Calls = () => k.storyCallsSince(0).filter((call) => /Erzähle jetzt Teil 2 von 5/.test(call.user)).length;
+    const release = holdSecondParagraph(k);
+    try {
+      const outputBefore = k.output.length;
+      const { turnId } = await k.storyButton();
+      await waitFor(() => k.speech.state.waiting > 0, 'zweiter Absatz wartet auf die Sprachausgabe');
+      assert.equal((await k.reportStop({ turn_id: turnId, heard_seconds: afterFirstSentenceInStream(1) })).status, 204);
+      await waitFor(() => /modus=weiter_strom status=200/.test(k.output.slice(outputBefore)), 'der angehaltene Teil gilt als ausgeliefert');
+      assert.ok(k.output.slice(outputBefore).includes('Stopp per Taste: gemerkt teil=1/5 saetze=1/4'), 'Stelle gemerkt');
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      assert.equal(part2Calls(), 0, 'nach dem Stopp wird Teil 2 nicht vorbereitet: Der nächste Druck erzählt Teil 1 ab der Stelle');
+    } finally {
+      release();
+    }
+    const mark = k.claude.calls.length;
+    await k.storyButton();
+    const [retold] = k.storyCallsSince(mark);
+    assert.match(retold.user, /Erzähle jetzt Teil 1 von 5/, 'derselbe Teil ab der gehörten Stelle');
+    assert.ok(retold.user.includes(`«${sentence(1, 0)}»`), retold.user);
+    await waitFor(() => part2Calls() === 1, 'ohne Stopp wird Teil 2 wie bisher im Hintergrund vorbereitet');
+  });
+});
+
+describe('Verwerfen eines alten Ton-Stroms (echter Server, Sicherheitsnetz N1126-1338-f, Prüfung von PR #134)', () => {
+  let k: Awaited<ReturnType<typeof startKunibert>>;
+  // Nur außerhalb von NODE_ENV=production lässt sich die Grenze von 30 s kürzer stellen (pendingWaitLimitMs).
+  const WAIT_MS = 1_500;
+  before(async () => {
+    k = await startKunibert({
+      NODE_ENV: 'development',
+      KUNIBERT_TEST_STROM_WARTEN_MS: String(WAIT_MS),
+      PICASTAI_STORY_PREFETCH: '0',
+      PICASTAI_AUDIO_STREAM: '1',
+    });
+    k.auth['X-Kunibert-Audio-Stream'] = '1';
+  });
+  after(async () => { await k?.stop(); });
+
+  it('Vertonung hängt ohne Stopp-Meldung: Nach der Grenze erzählt Claude; der alte Teil zählt nicht (Befund 2)', async () => {
+    await k.freshStory();
+    const release = holdSecondParagraph(k);
+    const outputBefore = k.output.length;
+    try {
+      await k.storyButton();
+      await waitFor(() => k.speech.state.waiting > 0, 'zweiter Absatz wartet auf die Sprachausgabe');
+      // Ab hier hält die Attrappe nichts Neues mehr fest; der zweite Absatz des alten Teils hängt weiter.
+      k.speech.state.holdIf = 'kommt in keinem Text vor';
+      const mark = k.claude.calls.length;
+      const started = Date.now();
+      const res = await fetch(`${k.base}/v1/device/kunibert-story`, {
+        method: 'POST',
+        headers: { ...k.auth, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ locale: 'de-DE', age_band: '6-10', length: 'short', session_id: 'sitzung-stopp' }),
+        signal: AbortSignal.timeout(15_000),
+      });
+      const tookMs = Date.now() - started;
+      assert.equal(res.status, 200, await res.clone().text());
+      assert.ok(tookMs >= WAIT_MS - 100, `die neue Anfrage hat bis zur Grenze gewartet (${tookMs} ms)`);
+      const [told] = k.storyCallsSince(mark);
+      assert.ok(told, 'Claude erzählt, kein Ersatztext');
+      assert.match(told.user, /Erzähle jetzt Teil 1 von 5/, 'der verworfene Teil wurde nicht gespeichert: wieder Teil 1');
+      assert.equal(k.speech.state.waiting, 1, 'der alte Absatz hängt noch: Die neue Anfrage hat nicht auf ihn gewartet');
+      await waitFor(() => /modus=weiter_strom status=verworfen/.test(k.output.slice(outputBefore)), 'Zeile für den verworfenen Strom');
+    } finally {
+      release();
+    }
+    await waitFor(() => /modus=weiter_strom status=200/.test(k.output.slice(outputBefore)), 'der neue Teil 1 ist fertig');
+    const lines = k.output.slice(outputBefore).split('\n').filter((line) => line.includes('status=verworfen'));
+    assert.equal(lines.length, 1, lines.join('\n'));
+    assert.match(lines[0], /^Zeitmessung id=[0-9a-f]{8} modus=weiter_strom status=verworfen( [a-z_]+=(-|\d+(\.\d+)?))+$/, 'nur Zahlen und feste Wörter');
+    assert.ok(!k.output.slice(outputBefore).includes('Stopp per Taste:'), 'keine Stelle');
+    const mark = k.claude.calls.length;
+    await k.storyButton();
+    const [next] = k.storyCallsSince(mark);
+    assert.match(next.user, /Erzähle jetzt Teil 2 von 5/, 'danach geht es wie gewohnt weiter');
+    assert.ok(!next.user.includes('Von diesem Teil hat das Kind schon gehört'));
+  });
+
+  it('verworfener Strom einer neuen Folge nach einem Stopp: Die alte Stelle gilt nicht mehr, wie beim Abbruch (Befund 3)', async () => {
+    await k.freshStory();
+    const start = k.output.length;
+    const { turnId } = await k.storyButton();
+    await waitFor(() => /modus=weiter_strom status=200/.test(k.output.slice(start)), 'erster Teil fertig');
+    await k.reportStop({ turn_id: turnId, heard_seconds: afterFirstSentenceInStream(1) });
+    await waitFor(() => k.output.slice(start).includes('Stopp per Taste: gemerkt'), 'Stelle gemerkt');
+    k.speech.state.transcript = 'erzähl mir eine neue geschichte';
+    const release = holdSecondParagraph(k);
+    try {
+      await k.speak();
+      await waitFor(() => k.speech.state.waiting > 0, 'zweiter Absatz der neuen Folge wartet');
+      k.speech.state.holdIf = 'kommt in keinem Text vor';
+      k.speech.state.transcript = IDEA;
+      const mark = k.claude.calls.length;
+      await k.speak();
+      const [idea] = k.storyCallsSince(mark);
+      assert.match(idea.user, /Erzähle jetzt Teil 2 von 5/, 'kein Sprung zurück in den angehaltenen Teil');
+      assert.ok(!idea.user.includes('Von diesem Teil hat das Kind schon gehört'));
+      assert.ok(!idea.user.includes('Wunsch des Kindes'), 'die verworfene neue Folge wurde nicht gespeichert');
+    } finally {
+      k.speech.state.transcript = IDEA;
+      release();
+    }
+  });
+
+  it('verworfener Strom eines neu erzählten Teils: Das Gesprochene kommt zur Stelle dazu, wie beim Abbruch (Befund 3)', async () => {
+    await k.freshStory();
+    const start = k.output.length;
+    const { turnId } = await k.storyButton();
+    await waitFor(() => /modus=weiter_strom status=200/.test(k.output.slice(start)), 'erster Teil fertig');
+    await k.reportStop({ turn_id: turnId, heard_seconds: afterFirstSentenceInStream(1) });
+    await waitFor(() => k.output.slice(start).includes('Stopp per Taste: gemerkt'), 'Stelle gemerkt');
+    const release = holdSecondParagraph(k);
+    try {
+      // Die Idee erzählt Teil 1 ab der Stelle neu; dessen zweiter Absatz hängt, und es kommt keine Meldung.
+      await k.speak();
+      await waitFor(() => k.speech.state.waiting > 0, 'zweiter Absatz des neu erzählten Teils wartet');
+      k.speech.state.holdIf = 'kommt in keinem Text vor';
+      const mark = k.claude.calls.length;
+      await k.storyButton();
+      const [again] = k.storyCallsSince(mark);
+      assert.match(again.user, /Erzähle jetzt Teil 1 von 5/, 'derselbe Teil, nichts übersprungen');
+      assert.ok(again.user.includes(`«${sentence(1, 0)} ${sentence(1, 0)} ${sentence(1, 1)}»`), again.user);
+    } finally {
+      release();
+    }
+  });
+
+  it('Protokoll: keine Geräte-ID, kein Token, kein Text', () => {
+    for (const secret of [DEVICE_ID, DEVICE_TOKEN, ADMIN_TOKEN, FAKE_ANTHROPIC_KEY, IDEA, sentence(1, 0), 'erzähl mir eine neue geschichte']) {
+      assert.ok(!k.output.includes(secret), `steht im Server-Protokoll: ${secret.slice(0, 12)}…`);
+    }
+  });
+});
+
 describe('Stopp per Taste: Grenze für Meldungen (echter Server, Punkt B2)', () => {
   let k: Awaited<ReturnType<typeof startKunibert>>;
   // Eigener Server: Nach diesem Test nimmt er zehn Minuten lang keine Meldung des Geräts mehr an.

@@ -262,7 +262,7 @@ function deviceResponse(
 async function waitForPendingTurn(deviceId: string, timer: StageTimer): Promise<void> {
   const pending = pendingTurns.get(deviceId);
   if (!pending) return;
-  if (await settlesWithin(pending.done, pendingWaitMs(timer))) return;
+  if (await settlesWithin(pending.done, pendingWaitMs(timer, config.pendingWaitMaxMs))) return;
   pending.drop();
   if (pendingTurns.get(deviceId) === pending) pendingTurns.delete(deviceId);
 }
@@ -343,16 +343,30 @@ async function respondTurn(
     return refuse(req, res, deviceId, type, timer, refusal);
   }
   const turnId = streams.put(deviceId, speaker.stream);
+  // Ton war schon beim Kind (B2), aber der Strom zählt nicht (Abbruch oder Verwerfen): Bei einem neu erzählten
+  // Teil kommt das Gesprochene zur gemerkten Stelle dazu; sonst gilt die alte Stelle nicht mehr (das Kind hat
+  // schon etwas Neues gehört).
+  const settleHeard = () => {
+    if (speaker.stream.bytes === 0) return;
+    if (resumed) stops.appendHeard(deviceId, turnId, spokenStory(said.slice(0, speaker.segments.length), speaker.segments, PARAGRAPH_PAUSE_MS / 1000));
+    else stops.delete(deviceId);
+  };
   // Verworfen (N1126-1338-f, `waitForPendingTurn`): Eine neue Anfrage desselben Geräts hat zu lange auf
-  // diesen Strom gewartet. Dann zählt er nicht mehr: kein Stand, keine Stelle, keine Vorbereitung.
+  // diesen Strom gewartet. Dann zählt er nicht mehr: kein Stand, keine Vorbereitung. Die gehörte Stelle regelt
+  // `settleHeard` wie beim Abbruch, und zwar sofort: Die wartende Anfrage liest sie gleich danach (Prüfung von
+  // PR #134, Befund 3).
   let dropped = false;
+  // Ab hier zählt der Strom (Stand gespeichert oder Abbruch geregelt); ein spätes Verwerfen ändert nichts mehr.
+  let settled = false;
   const pending: PendingTurn = {
     turnId,
     done: Promise.resolve(),
     stop: () => speaker.stop(),
     drop: () => {
+      if (dropped || settled) return;
       dropped = true;
       speaker.abort();
+      settleHeard();
     },
   };
   pending.done = (async () => {
@@ -361,13 +375,14 @@ async function respondTurn(
       const result = await resultPromise;
       await speaker.finish();
       if (dropped) return;
+      settled = true;
       // Erst wenn alles vertont ist, rückt die Folge vor (wie ohne Strom: kein Stand ohne Ton), oder wenn
       // das Kind vorher angehalten hat (B2, N1126-1338-f): Dann gilt der Teil mit dem Gesprochenen als
       // ausgeliefert, und die Meldung legt die gehörte Stelle fest. Während des Stroms gesperrt: kein Stand
       // und keine Vorbereitung, also nichts mehr an Claude (N1120-1610-b). Ohne Einwilligung oder im
       // Schlafmodus auch keine Vorbereitung im Hintergrund.
       const late = refusalFor(req, deviceId);
-      if (late !== 'gesperrt' && advanceStory(deviceId, result.story_state, generation, !late && preparesNext(deviceId, result))) {
+      if (late !== 'gesperrt' && advanceStory(deviceId, result.story_state, generation, false)) {
         // Für den Stopp per Taste (B2): Die Sekunden je Absatz sind hier genau bekannt. Nach einem Stopp
         // fehlen die nicht mehr vertonten Absätze; sie liegen hinter der gehörten Stelle (Schätzung).
         const paragraphs = speechParagraphs(result.speech);
@@ -379,17 +394,17 @@ async function respondTurn(
           totalSeconds: speaker.stream.seconds,
           pauseSeconds: PARAGRAPH_PAUSE_MS / 1000,
         }, resumed);
+        // Den nächsten Teil erst jetzt vorbereiten, und nur, wenn keine gehörte Stelle gilt (Prüfung von PR #134,
+        // Befund 1): Hat das Kind angehalten, solange der Teil entstand, erzählt der nächste Druck denselben Teil
+        // ab der Stelle. Ein vorbereiteter nächster Teil würde nie genommen und hielte Claude und die Stimme auf.
+        if (!late && !stops.resumeFor(deviceId, result.story_state)) prefetcher.start(deviceId, result.story_state);
       }
       ok = true;
     } catch (error) {
       speaker.abort();
       if (!dropped) {
-        // Ton war schon beim Kind (B2): Bei einem neu erzählten Teil kommt das Gesprochene zur gemerkten
-        // Stelle dazu; sonst gilt die alte Stelle nicht mehr (das Kind hat schon etwas Neues gehört).
-        if (speaker.stream.bytes > 0) {
-          if (resumed) stops.appendHeard(deviceId, turnId, spokenStory(said.slice(0, speaker.segments.length), speaker.segments, PARAGRAPH_PAUSE_MS / 1000));
-          else stops.delete(deviceId);
-        }
+        settled = true;
+        settleHeard();
         // Nur die Art des Fehlers, nie Text (CLAUDE.md).
         console.warn('Ton-Strom abgebrochen:', (error as Error)?.name || 'Fehler');
       }
