@@ -100,6 +100,7 @@ Whisper stammt von OpenAI, und eine Google-Seite nennt Gemini. Beides kommt hier
 | etwa 10.11.2026 | Die Karte der Stimme auf `main` zeigt einen Commit, der die Stimmen aus den Grundlagen `rdh` und `hifi_tts_92` neu trainiert (laut Seite „16 days ago“, daraus berechnet; passt zu den PRs). Sie nennt jetzt `rdh` (nl_BE, CC0) als Grundlage und verlangt Piper 1.5 oder höher. | Q21 |
 
 - Widerspruch: Die Ordnerliste von `main` zeigte für die Karte (285 Byte) und die Modelldatei als letzte Änderung „vor über drei Jahren“ (Q23). Die Karte auf `main` ist aber 7 302 Zeichen lang und neu (Q21). Beide Seiten habe ich am 26.11.2026 innerhalb weniger Minuten gelesen. Ich kann den Widerspruch nicht auflösen. Ob die Modelldatei neu trainiert wurde, steht damit nicht fest.
+- Hinweis zur Kopfzeile des Stimmen-Repos: Bei der unabhängigen Prüfung dieses PRs am 26.11.2026 zeigte die Kopfzeile der Seite `rhasspy/piper-voices` (Adresse wie bei Q21) „License: mit“, während die Karte der Stimme für die Aufnahmen „CC0“ nennt. Das habe nicht ich gelesen, sondern der Prüfer. Es zählt nur als Hinweis. Nach Q12 vergibt das Piper-Projekt selbst keine Lizenz an Stimmenmodellen. Einschätzung: Die Kopfzeile gilt dann nicht für die einzelnen Stimmen. Offen: Was sie genau meint.
 
 **Einschätzung (vorläufig, 26.11.2026, 16:03 Uhr):**
 
@@ -111,7 +112,7 @@ Whisper stammt von OpenAI, und eine Google-Seite nennt Gemini. Beides kommt hier
 
 - Der Sprecher hat eine zweite Stimme veröffentlicht, `Piper-Thorsten-CC0`. Sie ist von Grund auf neu trainiert, ohne `lessac`: erst eine Basis aus seinen Aufnahmen (2021.02 und 2022.10, etwa 32 Stunden), dann die Stimme aus den Aufnahmen 2022.10 (etwa 9,7 Stunden). Die Seite sagt, in der Trainingsgeschichte gebe es keinen `lessac`-Stand und kein anderes Fremdmodell.
 - Lizenz CC0 1.0. Kommerzielle Nutzung erlaubt. Nur Deutsch, mittlere Qualität, nur neutraler Stil. Die Modelldatei heißt `onnx/de_DE-thorsten_cc0-medium.onnx`. Ein Datum zeigt die Seite nicht.
-- Ob Speaches diese Stimme laden kann, habe ich nicht geprüft (offen, Punkt N1126-1600-a). Die Qualität kenne ich nicht: Piper-Stimmen klangen im Hörtest vom 6.11.2026 unnatürlich (`deploy/EINRICHTUNG.md`).
+- Ob Speaches diese Stimme laden kann, habe ich nicht geprüft (offen, Punkt N1126-1600-b). Die Qualität kenne ich nicht: Piper-Stimmen klangen im Hörtest vom 6.11.2026 unnatürlich (`deploy/EINRICHTUNG.md`).
 
 ### Google Cloud Text-to-Speech (Chirp 3 HD)
 
@@ -153,7 +154,7 @@ Die Nummern L1 bis L5 gehören neben R1 bis R5 aus `stimme-lizenz.md`. Die Stufe
 - **N1126-1600-a** · Piper-Rückfall: saubere Stimme festlegen, Skript und Doku anpassen (Rolle Bauen, ändert, was Kinder hören könnten). Nach N1126-1600-b.
 - **N1126-1600-b** · Piper-Stimme `thorsten`: Fassung bei Speaches klären (Rolle Recherche). Dazu `docs/COMMERCIAL_USE.md` im Piper-Repository lesen.
 - **N1126-1600-c** · Google: Abschnitt 20 der Cloud-Bedingungen im Wortlaut lesen (Rolle Recherche).
-- Zu N1122-1825-a (Lizenz-Hinweise in der Doku) und N1122-1825-b (nur freie Stimmen im Betrieb) kommt je eine Stand-Zeile: Die Hinweise sollen auch die Bausteine dieses Dokuments führen. Ein Rückfall auf Piper im Betrieb gibt es nicht ohne die Klärung aus L1.
+- Zu N1122-1825-a (Lizenz-Hinweise in der Doku) und N1122-1825-b (nur freie Stimmen im Betrieb) kommt je eine Stand-Zeile: Die Hinweise sollen auch die Bausteine dieses Dokuments führen. Einen Rückfall auf Piper im Betrieb gibt es nicht ohne die Klärung aus L1.
 - Die Aussage in `deploy/EINRICHTUNG.md`, jede Piper-Stimme habe eine eigene Lizenz und müsse vor dem Einsatz mit Kindern geprüft werden, bleibt richtig. Dieses Dokument liefert dazu die Befunde.
 
 ## Nicht geprüft
