@@ -1,0 +1,42 @@
+[Unit]
+Description=Ritter Kunibert – Stimme (Pocket TTS, nur lokal auf Port 8001)
+# Eingerichtet von deploy/setup-server.sh (Punkt N1124-1153-a). Feste Version von Pocket TTS in
+# /opt/kunibert/pocket-tts (gehört root, der Dienst kann sie nicht ändern). Der erste Start lädt
+# Modell und Stimme von Hugging Face (einige hundert MB) nach /var/lib/kunibert-tts.
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=kunibert-tts
+Group=kunibert-tts
+# Gleiche Werte wie in deploy/CHECKLISTE.md, Teil A1. Nur 127.0.0.1: von außen nicht erreichbar.
+# Adresse und Stimme passen zu PICASTAI_POCKET_TTS_URL und PICASTAI_POCKET_TTS_VOICE (setup-server.sh).
+ExecStart=/opt/kunibert/pocket-tts/bin/pocket-tts serve --language german --default-voice stuart_bell --host 127.0.0.1 --port 8001
+# Kein Protokoll ins Journal (vorläufig, 26.11.2026): Pocket TTS 4.0.1 schreibt bei langen Sätzen eine
+# Warnung mit den ersten 50 Zeichen des Satzes (models/text_chunking.py). Das wären Teile der
+# Antworttexte. Start, Ende und Abbrüche des Dienstes meldet systemd trotzdem. Fehlersuche von Hand:
+# deploy/EINRICHTUNG.md, Abschnitt 4.
+StandardOutput=null
+StandardError=null
+SyslogIdentifier=kunibert-tts
+Restart=on-failure
+RestartSec=10
+# Schreibbar nur hier: Zwischenspeicher für Modell und Stimme (Hugging Face, Pocket TTS).
+StateDirectory=kunibert-tts
+StateDirectoryMode=0700
+Environment=HOME=/var/lib/kunibert-tts
+Environment=HF_HUB_DISABLE_TELEMETRY=1
+# Härtung (wie deploy/kunibert-server.service)
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+# Vorläufig, nicht gemessen: Modell und PyTorch brauchen nach Einschätzung gut 1 GB.
+MemoryMax=2G
+
+[Install]
+WantedBy=multi-user.target
