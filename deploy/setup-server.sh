@@ -35,6 +35,20 @@ DEPLOY_KEY=/root/.ssh/kunibert_deploy
 SPEACHES_IMAGE=ghcr.io/speaches-ai/speaches:0.8.3-cpu
 SPEACHES_URL=http://127.0.0.1:8000
 
+# Kuniberts Stimme (Pocket TTS von Kyutai, Stimme stuart_bell, seit 13.11.2026; Punkt N1124-1153-a).
+# Eigener Dienst deploy/kunibert-tts.service mit eigenem Konto. Feste Version wie in deploy/CHECKLISTE.md, Teil A1.
+POCKET_VERSION=4.0.1
+POCKET_DIR=/opt/kunibert/pocket-tts            # Python-Umgebung; gehört root, der Dienst kann sie nicht ändern
+POCKET_USER=kunibert-tts                        # wie User= in deploy/kunibert-tts.service
+POCKET_SERVICE=kunibert-tts
+POCKET_UNIT=/etc/systemd/system/kunibert-tts.service
+POCKET_URL=http://127.0.0.1:8001                # wie --host und --port in deploy/kunibert-tts.service
+POCKET_VOICE=stuart_bell                        # wie --default-voice in deploy/kunibert-tts.service
+# PyTorch ohne Grafikkarte, aus der Paketquelle von pytorch.org (Seite „Get Started“, „CPU“). Von PyPI käme
+# unter Linux auf x86 die Ausgabe mit CUDA (nach Einschätzung mehrere GB, nicht gemessen).
+TORCH_INDEX=https://download.pytorch.org/whl/cpu
+POCKET_WAIT_TRIES=120                           # je 5 Sekunden: höchstens 10 Minuten (erster Start lädt das Modell)
+
 # Frist für Protokolle (vorläufig 14 Tage, Punkt E1 der Arbeitsliste; Einschätzung, keine
 # Rechtsberatung). Sie gilt für das ganze Journal dieses Servers. Damit sie auch für den
 # Sprachserver gilt, schreibt sein Container ins Journal statt in eine eigene Docker-Datei.
@@ -54,6 +68,7 @@ STT_MODEL=Systran/faster-whisper-small
 TTS_MODEL=speaches-ai/piper-de_DE-thorsten-medium
 TTS_VOICE=thorsten
 SKIP_SPEACHES=0
+SKIP_POCKET=0
 SKIP_CADDY=0
 
 say()  { printf '\n== %s\n' "$*"; }
@@ -71,6 +86,8 @@ Aufruf: sudo bash deploy/setup-server.sh --hostname <name> [Optionen]
   --tts-voice <name>  Stimme (Standard: thorsten)
   --speaches-image <name>  Image des Sprachservers (Standard: ghcr.io/speaches-ai/speaches:0.8.3-cpu)
   --skip-speaches     Sprachserver nicht einrichten
+  --skip-pocket       Kuniberts Stimme (Pocket TTS) nicht einrichten; die Zeilen zur
+                      Sprachausgabe in der env-Datei bleiben dann, wie sie sind
   --skip-caddy        Caddy nicht einrichten
   -h, --help          Diese Hilfe
 EOF
@@ -147,6 +164,26 @@ install_if_changed() { # Quelle Ziel
   install -m 644 "$1" "$2" || die "Datei ließ sich nicht schreiben: $2"
 }
 
+# Ist Pocket TTS in genau dieser Version in der Python-Umgebung? Prüft nur Dateien, führt nichts aus.
+pocket_installed() { # Umgebung Version
+  [[ -n "$(compgen -G "$1/lib/python3*/site-packages/pocket_tts-$2.dist-info/METADATA" || true)" ]]
+}
+
+# Die drei Zeilen für Kuniberts Stimme in der env-Datei (Werte wie in deploy/kunibert-tts.service).
+write_pocket_env() { # Datei
+  env_set "$1" PICASTAI_TTS_PROVIDER pocket
+  env_set "$1" PICASTAI_POCKET_TTS_URL "$POCKET_URL"
+  env_set "$1" PICASTAI_POCKET_TTS_VOICE "$POCKET_VOICE"
+}
+
+# Befehl für die Fehlersuche: Pocket TTS im Vordergrund, Meldungen nur im Terminal (nicht im Journal).
+pocket_debug_hint() {
+  note "Fehlersuche (Meldungen nur im Terminal, nicht im Journal):"
+  note "  sudo systemctl stop $POCKET_SERVICE"
+  note "  sudo -u $POCKET_USER env HOME=/var/lib/$POCKET_USER $POCKET_DIR/bin/pocket-tts serve --language german --default-voice $POCKET_VOICE --host 127.0.0.1 --port ${POCKET_URL##*:}"
+  note "  danach Strg+C und: sudo systemctl start $POCKET_SERVICE"
+}
+
 # Hinweis, wenn der Container des Sprachservers nicht ins Journal schreibt (dort gilt die Frist nicht).
 speaches_log_hint() { # Log-Treiber des Containers
   [[ "$1" == journald ]] && return 0
@@ -158,7 +195,7 @@ speaches_log_hint() { # Log-Treiber des Containers
 # --- Schritte -----------------------------------------------------------------
 
 install_packages() {
-  say "Pakete: git, curl, openssl, Docker, Node.js 22, Caddy"
+  say "Pakete: git, curl, openssl, Docker, Python, Node.js 22, Caddy"
   export DEBIAN_FRONTEND=noninteractive
   apt-get update -qq
   apt-get install -y -qq ca-certificates curl git openssl gnupg debian-keyring debian-archive-keyring apt-transport-https >/dev/null
@@ -167,6 +204,12 @@ install_packages() {
     apt-get install -y -qq docker.io >/dev/null
   fi
   note "Docker: $(docker --version 2>/dev/null || echo fehlt)"
+
+  # Für Kuniberts Stimme: eigene Python-Umgebung (Pocket TTS braucht Python 3.10 bis 3.14).
+  if [[ "$SKIP_POCKET" == 0 ]]; then
+    apt-get install -y -qq python3 python3-venv >/dev/null
+    note "Python: $(python3 --version 2>/dev/null || echo fehlt)"
+  fi
 
   # Sicherheitsupdates des Betriebssystems automatisch einspielen (Debian und Ubuntu:
   # Paket unattended-upgrades, Standard nur Sicherheitsquellen; kein automatischer Neustart).
@@ -271,6 +314,9 @@ write_env() {
   env_set "$ENV_FILE" PICASTAI_STT_MODEL "$STT_MODEL"
   env_set "$ENV_FILE" PICASTAI_TTS_MODEL "$TTS_MODEL"
   env_set "$ENV_FILE" PICASTAI_TTS_VOICE "$TTS_VOICE"
+  # Kuniberts Stimme (Pocket TTS). Die Piper-Zeilen darüber bleiben für einen Rückfall von Hand stehen:
+  # Zeile PICASTAI_TTS_PROVIDER löschen und das Skript danach nur noch mit --skip-pocket starten.
+  if [[ "$SKIP_POCKET" == 0 ]]; then write_pocket_env "$ENV_FILE"; fi
   if env_set_if_empty "$ENV_FILE" PICASTAI_ADMIN_TOKEN "$(openssl rand -hex 32)"; then note "Admin-Token erzeugt (steht nur in der Datei)"; fi
   if env_set_if_empty "$ENV_FILE" PICASTAI_DEVICE_TOKEN "$(openssl rand -hex 32)"; then note "Geräte-Token erzeugt (steht nur in der Datei)"; fi
   # Eltern-Steuerung dauerhaft (Punkt E2). Einen vorhandenen Schlüssel nie überschreiben: Mit einem
@@ -310,6 +356,48 @@ setup_speaches() {
   # Welche Version genau läuft (für ein späteres festes Image mit --speaches-image).
   SPEACHES_DIGEST=$(docker inspect --format '{{.Image}}' speaches 2>/dev/null || true)
   note "Sprachserver-Image: $SPEACHES_IMAGE (${SPEACHES_DIGEST:-Kennung unbekannt})"
+}
+
+setup_pocket() {
+  say "Kuniberts Stimme (Pocket TTS $POCKET_VERSION, Dienst $POCKET_SERVICE, nur lokal auf Port ${POCKET_URL##*:})"
+  local changed=0
+  id "$POCKET_USER" >/dev/null 2>&1 || useradd --system --home-dir "/var/lib/$POCKET_USER" --shell /usr/sbin/nologin "$POCKET_USER"
+  if pocket_installed "$POCKET_DIR" "$POCKET_VERSION"; then
+    note "Pocket TTS $POCKET_VERSION ist schon installiert ($POCKET_DIR)"
+  else
+    # Neu aufbauen: Eine Python-Umgebung lässt sich nicht verschieben, und ein abgebrochener Lauf
+    # hinterlässt sonst Reste. Die Umgebung gehört root; der Dienst darf sie nur lesen.
+    [[ -n "$POCKET_DIR" && "$POCKET_DIR" != / ]] || die "POCKET_DIR ist leer"
+    note "installiere Pocket TTS $POCKET_VERSION und PyTorch ohne Grafikkarte (dauert einige Minuten)"
+    rm -rf "$POCKET_DIR"
+    python3 -m venv "$POCKET_DIR" || die "Python-Umgebung ließ sich nicht anlegen: $POCKET_DIR"
+    "$POCKET_DIR/bin/pip" install --quiet --disable-pip-version-check --index-url "$TORCH_INDEX" 'torch>=2.5' \
+      || die "PyTorch ließ sich nicht installieren (Quelle $TORCH_INDEX)"
+    "$POCKET_DIR/bin/pip" install --quiet --disable-pip-version-check "pocket-tts==$POCKET_VERSION" \
+      || die "Pocket TTS $POCKET_VERSION ließ sich nicht installieren"
+    pocket_installed "$POCKET_DIR" "$POCKET_VERSION" || die "Pocket TTS $POCKET_VERSION fehlt nach der Installation ($POCKET_DIR)"
+    changed=1
+  fi
+  if install_if_changed "$APP_DIR/deploy/kunibert-tts.service" "$POCKET_UNIT"; then
+    systemctl daemon-reload
+    changed=1
+  fi
+  systemctl enable --quiet "$POCKET_SERVICE"
+  # Neu starten nur, wenn sich etwas geändert hat oder der Dienst nicht läuft: Jeder Start lädt das Modell neu.
+  if [[ "$changed" == 1 ]] || ! systemctl is-active --quiet "$POCKET_SERVICE"; then
+    systemctl restart "$POCKET_SERVICE"
+  fi
+  note "warte auf die Stimme (der erste Start lädt Modell und Stimme, einige hundert MB)"
+  local i
+  for i in $(seq 1 "$POCKET_WAIT_TRIES"); do
+    if curl -fsS -o /dev/null "$POCKET_URL/health" 2>/dev/null; then
+      note "Stimme antwortet ($POCKET_URL/health). Ihr Protokoll geht absichtlich nicht ins Journal."
+      return 0
+    fi
+    sleep 5
+  done
+  pocket_debug_hint
+  die "Die Stimme antwortet nicht ($POCKET_URL/health). Befehle zur Fehlersuche stehen oben."
 }
 
 start_service() {
@@ -367,6 +455,10 @@ summary() {
   fi
   note "Danach von deinem Rechner: deploy/smoke-test.sh (EINRICHTUNG.md, Abschnitt 7)."
   note "Zeiten je Anfrage: sudo journalctl -u kunibert-server -n 200 --no-pager | grep Zeitmessung"
+  if [[ "$SKIP_POCKET" == 0 ]]; then
+    note "Stimme: Dienst $POCKET_SERVICE (Pocket TTS $POCKET_VERSION, $POCKET_VOICE). Im Journal stehen von ihm nur Start und Ende,"
+    note "  denn seine eigenen Meldungen könnten Teile der Antworttexte enthalten. Fehlersuche: EINRICHTUNG.md, Abschnitt 4."
+  fi
   note "Protokolle bleiben etwa $JOURNAL_RETENTION_TEXT (vorläufig), wenn kein eigener Wert gesetzt ist. Prüfen: systemd-analyze cat-config systemd/journald.conf | grep -E '^(MaxRetentionSec|MaxFileSec)='"
   if [[ -n "${SPEACHES_LOG_DRIVER+x}" ]]; then speaches_log_hint "$SPEACHES_LOG_DRIVER" || true; fi
 }
@@ -381,6 +473,7 @@ main() {
       --tts-voice) TTS_VOICE=${2:-}; shift 2 ;;
       --speaches-image) SPEACHES_IMAGE=${2:-}; shift 2 ;;
       --skip-speaches) SKIP_SPEACHES=1; shift ;;
+      --skip-pocket) SKIP_POCKET=1; shift ;;
       --skip-caddy) SKIP_CADDY=1; shift ;;
       -h|--help) usage; exit 0 ;;
       *) usage >&2; die "Unbekannte Option: $1" ;;
@@ -397,6 +490,7 @@ main() {
   fetch_code
   write_env
   if [[ "$SKIP_SPEACHES" == 0 ]]; then setup_speaches; fi
+  if [[ "$SKIP_POCKET" == 0 ]]; then setup_pocket; fi
   start_service
   if [[ "$SKIP_CADDY" == 0 ]]; then setup_caddy; fi
   summary
