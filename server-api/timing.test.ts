@@ -296,6 +296,17 @@ test('pendingWaitMs: höchstens 30 s, und nach dem Warten bleiben 45 s für Clau
   }
 });
 
+test('pendingWaitMs: eine kürzere Grenze (nur für Tests) gilt, eine längere nie (Prüfung von PR #134, Befund 2)', () => {
+  const clock = fakeClock();
+  const timer = new TurnTimer(clock.now, 'c4c4c4c4');
+  assert.equal(pendingWaitMs(timer, 1_500), 1_500, 'kürzere Grenze');
+  assert.equal(pendingWaitMs(timer, 60_000), PENDING_WAIT_MAX_MS, 'nie länger als die Obergrenze');
+  assert.equal(pendingWaitMs(timer, -5), 0, 'nie unter 0');
+  assert.equal(pendingWaitMs(NO_TIMER, 1_500), 1_500);
+  clock.advance(74_000);
+  assert.equal(pendingWaitMs(timer, 1_500), 1_000, 'die Reserve geht auch der kürzeren Grenze vor');
+});
+
 test('settlesWithin: true, wenn das Versprechen rechtzeitig endet (auch abgelehnt), sonst false', async () => {
   assert.equal(await settlesWithin(Promise.resolve(), 1_000), true);
   assert.equal(await settlesWithin(Promise.reject(new Error('alt')), 1_000), true, 'ein abgebrochener alter Strom zählt als fertig');

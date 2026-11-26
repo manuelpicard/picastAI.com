@@ -78,10 +78,12 @@ export function ttsTimeoutMs(timer: StageTimer, minMs = MIN_TTS_MS): number | un
 /**
  * So lange darf eine Anfrage auf einen alten Ton-Strom desselben Geräts warten (N1126-1338-f): höchstens
  * PENDING_WAIT_MAX_MS und nur so lange, dass PENDING_WAIT_RESERVE_MS vom Budget übrig bleiben (nie weniger
- * als 0). So reißt die Zeitkette nicht, und Claude hat danach noch Zeit.
+ * als 0). So reißt die Zeitkette nicht, und Claude hat danach noch Zeit. `maxMs` ist nur für Tests kürzer
+ * (`pendingWaitLimitMs` in config.ts, im Betrieb immer PENDING_WAIT_MAX_MS); länger als die Obergrenze wird es nie.
  */
-export function pendingWaitMs(timer: StageTimer): number {
-  return Math.min(PENDING_WAIT_MAX_MS, budgetTimeoutMs(timer, PENDING_WAIT_RESERVE_MS) ?? Number.POSITIVE_INFINITY);
+export function pendingWaitMs(timer: StageTimer, maxMs: number = PENDING_WAIT_MAX_MS): number {
+  const limit = Math.min(PENDING_WAIT_MAX_MS, Math.max(0, maxMs));
+  return Math.min(limit, budgetTimeoutMs(timer, PENDING_WAIT_RESERVE_MS) ?? Number.POSITIVE_INFINITY);
 }
 
 /**

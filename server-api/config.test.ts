@@ -11,11 +11,13 @@ import {
   normalizeServiceUrl,
   parentStateSettings,
   parentStateWarnings,
+  pendingWaitLimitMs,
   resolveTtsProvider,
   testSwitchWarnings,
   ttsProviderWarnings,
   voiceConfigWarnings,
 } from './config.js';
+import { PENDING_WAIT_MAX_MS } from './timing.js';
 
 test('diagnosticText is opt-in and disabled in production', async (t) => {
   await t.test('is disabled when the flag is missing', () => {
@@ -262,4 +264,16 @@ test('getSafeConfigSummary: Eltern-Steuerung nur als ja oder nein, ohne Pfad und
   assert.equal(summary.elternDauerhaft, true);
   const text = JSON.stringify(summary);
   assert.ok(!text.includes('geheim-geheim') && !text.includes('/var/lib/kunibert/eltern.json'));
+});
+
+test('pendingWaitLimitMs: im Betrieb immer 30 s, nur im Test kürzer (Prüfung von PR #134, Befund 2)', () => {
+  assert.equal(pendingWaitLimitMs({}), PENDING_WAIT_MAX_MS, 'ohne Angabe die Obergrenze');
+  assert.equal(pendingWaitLimitMs({ NODE_ENV: 'production', KUNIBERT_TEST_STROM_WARTEN_MS: '1500' }), PENDING_WAIT_MAX_MS, 'im Betrieb ohne Wirkung');
+  assert.equal(pendingWaitLimitMs({ NODE_ENV: 'development', KUNIBERT_TEST_STROM_WARTEN_MS: '1500' }), 1_500);
+  assert.equal(pendingWaitLimitMs({ KUNIBERT_TEST_STROM_WARTEN_MS: ' 2000 ' }), 2_000);
+  assert.equal(pendingWaitLimitMs({ KUNIBERT_TEST_STROM_WARTEN_MS: '90000' }), PENDING_WAIT_MAX_MS, 'nie länger als 30 s');
+  assert.equal(pendingWaitLimitMs({ KUNIBERT_TEST_STROM_WARTEN_MS: '0' }), 100, 'mindestens 100 ms');
+  for (const bad of ['', 'abc', '-5', '1.5', '1e3', '15s']) {
+    assert.equal(pendingWaitLimitMs({ KUNIBERT_TEST_STROM_WARTEN_MS: bad }), PENDING_WAIT_MAX_MS, `ungültig: ${JSON.stringify(bad)}`);
+  }
 });
