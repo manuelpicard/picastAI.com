@@ -218,7 +218,6 @@ export function App() {
             Sicherheitsweiche
           </button>
 
-
           <button
             onClick={() => setActiveTab('parents')}
             className={`px-4 py-2.5 text-xs font-semibold flex items-center gap-2 border-b-2 transition whitespace-nowrap cursor-pointer ${
@@ -313,7 +312,6 @@ export function App() {
             />
           </div>
         )}
-
 
         {activeTab === 'parents' && (
           <div className="max-w-4xl mx-auto">
