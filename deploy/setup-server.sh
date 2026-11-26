@@ -100,9 +100,12 @@ EOF
 # --- Hilfsfunktionen (in setup-server.test.sh getestet) ----------------------
 
 # Prüft einen Hostnamen: nur Buchstaben, Ziffern, Punkt, Bindestrich; mit Punkt.
-valid_hostname() {
+# In einer Unterschale mit LC_ALL=C: In de_DE.UTF-8 trifft [A-Za-z0-9] in bash sonst auch ä, Ä, é
+# und ß (am 26.11.2026 in Debian 13 nachgeprüft), und der Name käme so ins Caddyfile.
+valid_hostname() (
+  LC_ALL=C
   [[ "$1" =~ ^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$ ]] && [[ "$1" == *.* ]] && [[ "$1" != *..* ]]
-}
+)
 
 # Liest den Wert eines Schlüssels aus einer env-Datei (leer, wenn nicht gesetzt).
 env_get() { # Datei Schlüssel
