@@ -205,34 +205,72 @@ eq  "Stimme: alle acht Zeilen der Härtung"     "$(haertung "$tts_unit" | wc -l)
 yes "Stimme: Speichergrenze"                   grep -qE '^MemoryMax=[0-9]+[MG]$' "$tts_unit"
 yes "Hilfe nennt --skip-pocket"                grep -qF -- '--skip-pocket' <<<"$(usage)"
 
+yes "Stimme: Startgrenze im Abschnitt [Unit]"   grep -qx 'StartLimitBurst=5' <<<"$(sed -n '/^\[Unit\]/,/^\[Service\]/p' "$tts_unit")"
+yes "Stimme: Startgrenze zehn Minuten"         grep -qx 'StartLimitIntervalSec=10min' <<<"$(sed -n '/^\[Unit\]/,/^\[Service\]/p' "$tts_unit")"
+install_body=$(sed -n '/^install_packages() {/,/^}/p' "$here/setup-server.sh")
+# shellcheck disable=SC2016
+eq  "Pakete: python3-venv nur ohne --skip-pocket" "$(grep -A1 '^  if \[\[ "\$SKIP_POCKET" == 0 \]\]; then$' <<<"$install_body" | tail -n 1)" '    apt-get install -y -qq python3 python3-venv >/dev/null'
+
 cp "$here/kunibert.env.example" "$f"; chmod 600 "$f"
 eq  "Vorlage: ohne Skript keine Pocket-Zeile"  "$(env_get "$f" PICASTAI_TTS_PROVIDER)" ""
-write_pocket_env "$f"
+eq  "Stimme: frische Datei, kein Hinweis"      "$(write_pocket_env "$f")" ""
 eq  "Stimme: Anbieter pocket"                  "$(env_get "$f" PICASTAI_TTS_PROVIDER)" pocket
 eq  "Stimme: Adresse gesetzt"                  "$(env_get "$f" PICASTAI_POCKET_TTS_URL)" "$POCKET_URL"
 eq  "Stimme: Stimme gesetzt"                   "$(env_get "$f" PICASTAI_POCKET_TTS_VOICE)" "$POCKET_VOICE"
 lines_before=$(wc -l < "$f")
-write_pocket_env "$f"
+eq  "Stimme: zweiter Lauf, kein Hinweis"       "$(write_pocket_env "$f")" ""
 eq  "Stimme: zweiter Lauf, keine neue Zeile"   "$(wc -l < "$f")" "$lines_before"
 for key in PICASTAI_TTS_PROVIDER PICASTAI_POCKET_TTS_URL PICASTAI_POCKET_TTS_VOICE; do
   eq "Stimme: genau eine Zeile $key"           "$(grep -c "^$key=" "$f")" 1
 done
 yes "Stimme: Kommentar der Vorlage bleibt"     grep -q '^# PICASTAI_TTS_PROVIDER=pocket' "$f"
 eq  "Stimme: Rechte bleiben 600"               "$(stat -c %a "$f")" 600
-# shellcheck disable=SC2016
-yes "Skript setzt die Zeilen nur ohne --skip-pocket" grep -qF 'if [[ "$SKIP_POCKET" == 0 ]]; then write_pocket_env "$ENV_FILE"; fi' <<<"$write_env_body"
-eq  "Stimme nach dem Sprachserver, vor dem Server" "$(grep -oE 'setup_speaches|setup_pocket|start_service' <<<"$main_body" | tr '\n' ' ')" 'setup_speaches setup_pocket start_service '
-# shellcheck disable=SC2016
-yes "Stimme nur ohne --skip-pocket"            grep -qxF '  if [[ "$SKIP_POCKET" == 0 ]]; then setup_pocket; fi' <<<"$main_body"
+# Eine andere Wahl wird ersetzt, aber das Skript sagt es (ohne Adressen zu nennen).
+env_set "$f" PICASTAI_TTS_PROVIDER google
+env_set "$f" PICASTAI_POCKET_TTS_VOICE 'hf://geheim/stimme.wav'
+env_set "$f" PICASTAI_POCKET_TTS_URL 'http://127.0.0.1:9999'
+hinweis=$(write_pocket_env "$f")
+yes "Hinweis: Anbieter google ersetzt"         grep -qF "PICASTAI_TTS_PROVIDER war 'google', jetzt 'pocket'" <<<"$hinweis"
+yes "Hinweis: Weg zur eigenen Wahl"            grep -qF -- '--skip-pocket' <<<"$hinweis"
+yes "Hinweis: Stimme als Adresse"              grep -qF 'PICASTAI_POCKET_TTS_VOICE war eine Adresse' <<<"$hinweis"
+yes "Hinweis: andere Adresse"                  grep -qF 'PICASTAI_POCKET_TTS_URL hatte einen anderen Wert' <<<"$hinweis"
+no  "Hinweis: nennt keine Adressen"            grep -qE 'geheim|9999' <<<"$hinweis"
+eq  "Hinweis: danach wieder pocket"            "$(env_get "$f" PICASTAI_TTS_PROVIDER)" pocket
+env_set "$f" PICASTAI_TTS_PROVIDER 'x;y'
+env_set "$f" PICASTAI_POCKET_TTS_VOICE anna
+hinweis=$(write_pocket_env "$f")
+yes "Hinweis: seltsamer Anbieter ohne Wert"    grep -qF 'PICASTAI_TTS_PROVIDER war ein anderer Wert' <<<"$hinweis"
+yes "Hinweis: einfache Stimme mit Namen"       grep -qF "PICASTAI_POCKET_TTS_VOICE war 'anna'" <<<"$hinweis"
+
+# write_env (mit umgelenkter Datei und Attrappen) fasst die drei Zeilen nie an: Das macht erst setup_pocket,
+# wenn die Stimme antwortet. So behält ein Lauf mit --skip-pocket eine eigene Wahl.
+vorher=$fails
+(
+  ENV_FILE="$tmp/env-write/kunibert.env"; mkdir -p "$tmp/env-write"
+  APP_DIR="$here/.."; HOSTNAME_ARG=kunibert.picastai.com
+  install() { cp "${@: -2:1}" "${@: -1}"; chmod 600 "${@: -1}"; }
+  chown() { :; }
+  openssl() { printf 'z%.0s' {1..64}; }
+  write_env >/dev/null
+  eq  "write_env: frische Datei ohne Pocket-Zeilen" "$(env_get "$ENV_FILE" PICASTAI_TTS_PROVIDER)" ""
+  eq  "write_env: Token erzeugt"              "$(env_get "$ENV_FILE" PICASTAI_DEVICE_TOKEN | wc -c)" 64
+  env_set "$ENV_FILE" PICASTAI_TTS_PROVIDER google
+  write_env >/dev/null
+  eq  "write_env: eigene Wahl google bleibt"  "$(env_get "$ENV_FILE" PICASTAI_TTS_PROVIDER)" google
+  [[ $fails -eq $vorher ]]
+) || fails=$((fails + 1))
 
 no  "installiert: leere Umgebung"              pocket_installed "$tmp/venv" "$POCKET_VERSION"
-mkdir -p "$tmp/venv/lib/python3.11/site-packages/pocket_tts-4.0.0.dist-info"
+mkdir -p "$tmp/venv/bin" "$tmp/venv/lib/python3.11/site-packages/pocket_tts-4.0.0.dist-info"
 : > "$tmp/venv/lib/python3.11/site-packages/pocket_tts-4.0.0.dist-info/METADATA"
+printf '#!/bin/sh\n' > "$tmp/venv/bin/python3"; chmod +x "$tmp/venv/bin/python3"
 no  "installiert: andere Version zählt nicht"  pocket_installed "$tmp/venv" 4.0.1
 mkdir -p "$tmp/venv/lib/python3.11/site-packages/pocket_tts-4.0.1.dist-info"
 no  "installiert: Ordner ohne METADATA zählt nicht" pocket_installed "$tmp/venv" 4.0.1
 : > "$tmp/venv/lib/python3.11/site-packages/pocket_tts-4.0.1.dist-info/METADATA"
 yes "installiert: diese Version"               pocket_installed "$tmp/venv" 4.0.1
+rm "$tmp/venv/bin/python3"; ln -s "$tmp/gibt-es-nicht/python3.11" "$tmp/venv/bin/python3"
+no  "installiert: Python zeigt ins Leere"      pocket_installed "$tmp/venv" 4.0.1
 
 # Trockenlauf des Schritts: umgelenkte Pfade, Attrappen für id, useradd, python3, pip, systemctl, curl und sleep.
 vorher=$fails
@@ -241,16 +279,22 @@ vorher=$fails
   POCKET_DIR="$tmp/opt/pocket-tts"
   POCKET_UNIT="$tmp/sys/kunibert-tts.service"
   POCKET_WAIT_TRIES=3
+  ENV_FILE="$tmp/pocket.env"
   mkdir -p "$tmp/sys"
   aufrufe="$tmp/pocket.log"
+  curl_log="$tmp/curl.log"
   export PIP_LOG="$tmp/pip.log"
-  konto=1; aktiv=0; gesund=0
-  id() { printf 'id %s\n' "$*" >> "$aufrufe"; return "$konto"; }
-  useradd() { printf 'useradd %s\n' "$*" >> "$aufrufe"; konto=0; }
+  aktiv=0; gesund=0; steigend=0
+  printf '7' > "$tmp/nrestarts"   # alte Neustarts aus früheren Tagen zählen nicht
+  # Zustand in Dateien: Die Läufe unten laufen in eigenen Subshells (ein Abbruch soll als FAIL sichtbar sein).
+  id() { printf 'id %s\n' "$*" >> "$aufrufe"; [[ -e "$tmp/konto" ]]; }
+  useradd() { printf 'useradd %s\n' "$*" >> "$aufrufe"; : > "$tmp/konto"; }
+  lauf() { (setup_pocket >/dev/null 2>&1) || bad "Trockenlauf: Schritt brach ab ($1)"; }
   python3() {
     printf 'python3 %s\n' "$*" >> "$aufrufe"
     [[ "$1 $2" == "-m venv" ]] || return 99
     mkdir -p "$3/bin" "$3/lib/python3.12/site-packages"
+    printf '#!/bin/sh\n' > "$3/bin/python3"; chmod +x "$3/bin/python3"
     # shellcheck disable=SC2016
     printf '%s\n' '#!/usr/bin/env bash' 'printf "pip %s\n" "$*" >> "$PIP_LOG"' \
       'for a in "$@"; do case "$a" in pocket-tts==*) d="$(dirname "$0")/../lib/python3.12/site-packages/pocket_tts-${a#pocket-tts==}.dist-info"; mkdir -p "$d"; : > "$d/METADATA";; esac; done' \
@@ -259,41 +303,70 @@ vorher=$fails
   }
   systemctl() {
     if [[ "$1" == is-active ]]; then return "$aktiv"; fi
+    if [[ "$1" == show ]]; then
+      local n; n=$(cat "$tmp/nrestarts"); printf '%s\n' "$n"
+      if [[ "$steigend" == 1 ]]; then printf '%s' "$((n + 1))" > "$tmp/nrestarts"; fi
+      return 0
+    fi
     printf 'systemctl %s\n' "$*" >> "$aufrufe"
   }
-  curl() { [[ "$gesund" == 1 ]]; }
+  gesund_ab=0   # >0: erst ab diesem Aufruf antwortet /health (Dienst lädt noch)
+  curl() {
+    printf '%s\n' "$*" >> "$curl_log"
+    if (( gesund_ab > 0 )); then gesund_ab=$((gesund_ab - 1)); (( gesund_ab == 0 )) || return 7; fi
+    [[ "$gesund" == 1 && "$*" == *"$POCKET_URL/health"* ]]
+  }
   sleep() { :; }
-  : > "$aufrufe"; : > "$PIP_LOG"; gesund=1
-  setup_pocket >/dev/null
+  start="systemctl reset-failed $POCKET_SERVICE;systemctl restart $POCKET_SERVICE;"
+  cp "$here/kunibert.env.example" "$ENV_FILE"
+  : > "$aufrufe"; : > "$PIP_LOG"; : > "$curl_log"; gesund=1
+  lauf "erster Lauf"
   yes "Trockenlauf: Konto angelegt"            grep -qx "useradd --system --home-dir /var/lib/$POCKET_USER --shell /usr/sbin/nologin $POCKET_USER" "$aufrufe"
   yes "Trockenlauf: Umgebung angelegt"         grep -qx "python3 -m venv $POCKET_DIR" "$aufrufe"
   yes "Trockenlauf: PyTorch ohne Grafikkarte"  grep -qx "pip install --quiet --disable-pip-version-check --index-url $TORCH_INDEX torch>=2.5" "$PIP_LOG"
   yes "Trockenlauf: feste Version"             grep -qx "pip install --quiet --disable-pip-version-check pocket-tts==$POCKET_VERSION" "$PIP_LOG"
   eq  "Trockenlauf: PyTorch zuerst"            "$(head -n 1 "$PIP_LOG")" "pip install --quiet --disable-pip-version-check --index-url $TORCH_INDEX torch>=2.5"
   eq  "Trockenlauf: Dienstdatei eingetragen"   "$(cat "$POCKET_UNIT")" "$(cat "$tts_unit")"
-  eq  "Trockenlauf: Dienst neu geladen, an, gestartet" "$(grep '^systemctl' "$aufrufe" | tr '\n' ';')" "systemctl daemon-reload;systemctl enable --quiet $POCKET_SERVICE;systemctl restart $POCKET_SERVICE;"
+  eq  "Trockenlauf: Dienst neu geladen, an, gestartet" "$(grep '^systemctl' "$aufrufe" | tr '\n' ';')" "systemctl daemon-reload;systemctl enable --quiet $POCKET_SERVICE;$start"
+  yes "Trockenlauf: fragt /health mit Zeitgrenze" grep -qxF -- "-fsS --max-time 5 -o /dev/null $POCKET_URL/health" "$curl_log"
+  eq  "Trockenlauf: setzt danach den Anbieter"  "$(env_get "$ENV_FILE" PICASTAI_TTS_PROVIDER)" pocket
+  eq  "Trockenlauf: setzt danach die Adresse"   "$(env_get "$ENV_FILE" PICASTAI_POCKET_TTS_URL)" "$POCKET_URL"
+  eq  "Trockenlauf: setzt danach die Stimme"    "$(env_get "$ENV_FILE" PICASTAI_POCKET_TTS_VOICE)" "$POCKET_VOICE"
   : > "$aufrufe"; : > "$PIP_LOG"; aktiv=0
-  setup_pocket >/dev/null
+  lauf "zweiter Lauf"
   no  "zweiter Lauf: kein neues Konto"         grep -q '^useradd' "$aufrufe"
   eq  "zweiter Lauf: nichts installiert"       "$(cat "$PIP_LOG")" ""
   no  "zweiter Lauf: Umgebung bleibt"          grep -q '^python3' "$aufrufe"
   eq  "zweiter Lauf: kein Neustart"            "$(grep '^systemctl' "$aufrufe" | tr '\n' ';')" "systemctl enable --quiet $POCKET_SERVICE;"
   : > "$aufrufe"; aktiv=3
-  setup_pocket >/dev/null
-  eq  "Dienst läuft nicht: Neustart"           "$(grep '^systemctl' "$aufrufe" | tr '\n' ';')" "systemctl enable --quiet $POCKET_SERVICE;systemctl restart $POCKET_SERVICE;"
+  lauf "Dienst aus"
+  eq  "Dienst läuft nicht: Neustart"           "$(grep '^systemctl' "$aufrufe" | tr '\n' ';')" "systemctl enable --quiet $POCKET_SERVICE;$start"
   : > "$aufrufe"; aktiv=0; printf '# alt\n' > "$POCKET_UNIT"
-  setup_pocket >/dev/null
-  eq  "Dienstdatei geändert: neu laden und starten" "$(grep '^systemctl' "$aufrufe" | tr '\n' ';')" "systemctl daemon-reload;systemctl enable --quiet $POCKET_SERVICE;systemctl restart $POCKET_SERVICE;"
+  lauf "Dienstdatei geändert"
+  eq  "Dienstdatei geändert: neu laden und starten" "$(grep '^systemctl' "$aufrufe" | tr '\n' ';')" "systemctl daemon-reload;systemctl enable --quiet $POCKET_SERVICE;$start"
   : > "$aufrufe"; : > "$PIP_LOG"; rm -rf "$POCKET_DIR/lib/python3.12/site-packages/pocket_tts-$POCKET_VERSION.dist-info"; touch "$POCKET_DIR/rest"
-  setup_pocket >/dev/null
+  lauf "andere Version"
   no  "andere Version: alte Umgebung weg"      test -e "$POCKET_DIR/rest"
   yes "andere Version: neu installiert"        grep -q "pocket-tts==$POCKET_VERSION" "$PIP_LOG"
   yes "andere Version: Neustart"               grep -qx "systemctl restart $POCKET_SERVICE" "$aufrufe"
   eq  "andere Version: erst stoppen, dann löschen" "$(grep -m1 '^systemctl' "$aufrufe")" "systemctl stop $POCKET_SERVICE"
+  # Scheitert der Schritt, bleibt die env-Datei, wie sie war (Kunibert spricht weiter mit der bisherigen Stimme).
+  cp "$here/kunibert.env.example" "$ENV_FILE"; env_set "$ENV_FILE" PICASTAI_TTS_PROVIDER google; cp "$ENV_FILE" "$tmp/pocket.env.vorher"
   gesund=0
   ausgabe=$( (setup_pocket) 2>&1 )
   yes "keine Antwort: Abbruch mit Fehler"      grep -q '^FEHLER: Die Stimme antwortet nicht' <<<"$ausgabe"
   yes "keine Antwort: Befehl zur Fehlersuche"  grep -qF "sudo -u $POCKET_USER env HOME=/var/lib/$POCKET_USER $POCKET_DIR/bin/pocket-tts serve" <<<"$ausgabe"
+  yes "keine Antwort: Hinweis, kein Gerät benutzen" grep -qF 'kein Gerät benutzen' <<<"$ausgabe"
+  yes "keine Antwort: env-Datei unverändert"   cmp -s "$ENV_FILE" "$tmp/pocket.env.vorher"
+  steigend=1; printf '0' > "$tmp/nrestarts"
+  ausgabe=$( (setup_pocket) 2>&1 )
+  yes "Neustarts: früher Abbruch"              grep -q '^FEHLER: Die Stimme bricht beim Start immer wieder ab (2 Neustarts)' <<<"$ausgabe"
+  yes "Neustarts: env-Datei unverändert"       cmp -s "$ENV_FILE" "$tmp/pocket.env.vorher"
+  steigend=0; gesund=1; aktiv=3; printf '7' > "$tmp/nrestarts"; gesund_ab=3
+  hinweis=$(setup_pocket)
+  yes "lädt noch, alte Neustarts: kein Abbruch" grep -qF 'Stimme antwortet' <<<"$hinweis"
+  yes "danach Erfolg: Hinweis auf ersetztes google" grep -qF "PICASTAI_TTS_PROVIDER war 'google'" <<<"$hinweis"
+  eq  "danach Erfolg: Anbieter pocket"         "$(env_get "$ENV_FILE" PICASTAI_TTS_PROVIDER)" pocket
   [[ $fails -eq $vorher ]]
 ) || fails=$((fails + 1))
 

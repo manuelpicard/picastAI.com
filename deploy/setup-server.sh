@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # Richtet den Kunibert-Server auf einem frischen Debian 12 / Ubuntu 24.04 ein.
 # Macht die Schritte 5, 6 und 8 aus deploy/EINRICHTUNG.md ("Nach der Bestellung")
-# und bereitet Schritt 7 vor. Mehrfach ausführbar: Vorhandenes bleibt, wie es ist. Ausnahme: die
-# eigene Datei für die Frist der Protokolle setzt es jedes Mal neu (eigene Werte: EINRICHTUNG.md, Betrieb).
+# und bereitet Schritt 7 vor. Mehrfach ausführbar. Tokens, Schlüssel und ein eigener Wert für den Proxy
+# bleiben. Bei jedem Lauf neu setzt es: die Zeilen für Betrieb, Hostname und Sprachmodelle in der env-Datei,
+# nach einem erfolgreichen Start der Stimme auch die drei Zeilen für Pocket TTS (nicht mit --skip-pocket),
+# und die eigene Datei für die Frist der Protokolle (eigene Werte: EINRICHTUNG.md, Betrieb).
 #
 #   sudo bash setup-server.sh --hostname kunibert.example
 #
@@ -86,8 +88,10 @@ Aufruf: sudo bash deploy/setup-server.sh --hostname <name> [Optionen]
   --tts-voice <name>  Stimme (Standard: thorsten)
   --speaches-image <name>  Image des Sprachservers (Standard: ghcr.io/speaches-ai/speaches:0.8.3-cpu)
   --skip-speaches     Sprachserver nicht einrichten
-  --skip-pocket       Kuniberts Stimme (Pocket TTS) nicht einrichten; die Zeilen zur
-                      Sprachausgabe in der env-Datei bleiben dann, wie sie sind
+  --skip-pocket       Kuniberts Stimme (Pocket TTS) nicht einrichten. Dann setzt das Skript
+                      PICASTAI_TTS_PROVIDER, PICASTAI_POCKET_TTS_URL und PICASTAI_POCKET_TTS_VOICE
+                      nicht; so bleibt eine eigene Wahl (zum Beispiel Google) erhalten. Ohne die
+                      Option stellt jeder Lauf diese drei Zeilen auf Pocket TTS
   --skip-caddy        Caddy nicht einrichten
   -h, --help          Diese Hilfe
 EOF
@@ -165,23 +169,51 @@ install_if_changed() { # Quelle Ziel
 }
 
 # Ist Pocket TTS in genau dieser Version in der Python-Umgebung? Prüft nur Dateien, führt nichts aus.
+# Auch das Python der Umgebung muss da sein: Nach einem Wechsel der Debian-Version zeigt es ins Leere.
 pocket_installed() { # Umgebung Version
-  [[ -n "$(compgen -G "$1/lib/python3*/site-packages/pocket_tts-$2.dist-info/METADATA" || true)" ]]
+  [[ -x "$1/bin/python3" ]] \
+    && [[ -n "$(compgen -G "$1/lib/python3*/site-packages/pocket_tts-$2.dist-info/METADATA" || true)" ]]
 }
 
 # Die drei Zeilen für Kuniberts Stimme in der env-Datei (Werte wie in deploy/kunibert-tts.service).
+# Ersetzt sie eine andere Wahl, sagt es das. Werte nennt es nur, wenn sie einfache Namen sind
+# (eine Adresse könnte ein Token enthalten).
 write_pocket_env() { # Datei
+  local alt
+  alt=$(env_get "$1" PICASTAI_TTS_PROVIDER)
+  if [[ -n "$alt" && "$alt" != pocket ]]; then
+    if [[ "$alt" =~ ^[a-z-]{1,30}$ ]]; then alt="'$alt'"; else alt="ein anderer Wert"; fi
+    note "PICASTAI_TTS_PROVIDER war $alt, jetzt 'pocket'. Eigene Wahl behalten: Zeile zurückstellen, Skript nur mit --skip-pocket."
+  fi
+  alt=$(env_get "$1" PICASTAI_POCKET_TTS_VOICE)
+  if [[ -n "$alt" && "$alt" != "$POCKET_VOICE" ]]; then
+    if [[ "$alt" =~ ^[a-z][a-z0-9_]{0,39}$ ]]; then alt="'$alt'"; else alt="eine Adresse"; fi
+    note "PICASTAI_POCKET_TTS_VOICE war $alt, jetzt '$POCKET_VOICE'. Eigene Stimme behalten: Zeile zurückstellen, Skript nur mit --skip-pocket."
+  fi
+  alt=$(env_get "$1" PICASTAI_POCKET_TTS_URL)
+  if [[ -n "$alt" && "$alt" != "$POCKET_URL" ]]; then
+    note "PICASTAI_POCKET_TTS_URL hatte einen anderen Wert, jetzt $POCKET_URL (der Dienst $POCKET_SERVICE)."
+  fi
   env_set "$1" PICASTAI_TTS_PROVIDER pocket
   env_set "$1" PICASTAI_POCKET_TTS_URL "$POCKET_URL"
   env_set "$1" PICASTAI_POCKET_TTS_VOICE "$POCKET_VOICE"
 }
 
+# Wie oft systemd den Dienst der Stimme neu gestartet hat (0, wenn unbekannt).
+pocket_restarts() {
+  local n
+  n=$(systemctl show -p NRestarts --value "$POCKET_SERVICE" 2>/dev/null || true)
+  [[ "$n" =~ ^[0-9]+$ ]] || n=0
+  printf '%s' "$n"
+}
+
 # Befehl für die Fehlersuche: Pocket TTS im Vordergrund, Meldungen nur im Terminal (nicht im Journal).
 pocket_debug_hint() {
-  note "Fehlersuche (Meldungen nur im Terminal, nicht im Journal):"
+  note "Fehlersuche (Meldungen nur im Terminal, nicht im Journal). Währenddessen kein Gerät benutzen:"
+  note "  sonst können Satzanfänge der Antworten im Terminal stehen."
   note "  sudo systemctl stop $POCKET_SERVICE"
   note "  sudo -u $POCKET_USER env HOME=/var/lib/$POCKET_USER $POCKET_DIR/bin/pocket-tts serve --language german --default-voice $POCKET_VOICE --host 127.0.0.1 --port ${POCKET_URL##*:}"
-  note "  danach Strg+C und: sudo systemctl start $POCKET_SERVICE"
+  note "  danach Strg+C und: sudo systemctl reset-failed $POCKET_SERVICE; sudo systemctl start $POCKET_SERVICE"
 }
 
 # Hinweis, wenn der Container des Sprachservers nicht ins Journal schreibt (dort gilt die Frist nicht).
@@ -314,9 +346,8 @@ write_env() {
   env_set "$ENV_FILE" PICASTAI_STT_MODEL "$STT_MODEL"
   env_set "$ENV_FILE" PICASTAI_TTS_MODEL "$TTS_MODEL"
   env_set "$ENV_FILE" PICASTAI_TTS_VOICE "$TTS_VOICE"
-  # Kuniberts Stimme (Pocket TTS). Die Piper-Zeilen darüber bleiben für einen Rückfall von Hand stehen:
-  # Zeile PICASTAI_TTS_PROVIDER löschen und das Skript danach nur noch mit --skip-pocket starten.
-  if [[ "$SKIP_POCKET" == 0 ]]; then write_pocket_env "$ENV_FILE"; fi
+  # Die drei Zeilen für Kuniberts Stimme setzt erst setup_pocket, wenn der Dienst antwortet. Die Piper-Zeilen
+  # darüber bleiben für einen Rückfall von Hand: Zeile PICASTAI_TTS_PROVIDER löschen, Skript nur mit --skip-pocket.
   if env_set_if_empty "$ENV_FILE" PICASTAI_ADMIN_TOKEN "$(openssl rand -hex 32)"; then note "Admin-Token erzeugt (steht nur in der Datei)"; fi
   if env_set_if_empty "$ENV_FILE" PICASTAI_DEVICE_TOKEN "$(openssl rand -hex 32)"; then note "Geräte-Token erzeugt (steht nur in der Datei)"; fi
   # Eltern-Steuerung dauerhaft (Punkt E2). Einen vorhandenen Schlüssel nie überschreiben: Mit einem
@@ -386,15 +417,26 @@ setup_pocket() {
   fi
   systemctl enable --quiet "$POCKET_SERVICE"
   # Neu starten nur, wenn sich etwas geändert hat oder der Dienst nicht läuft: Jeder Start lädt das Modell neu.
+  # reset-failed: Hat der Dienst die Startgrenze erreicht (StartLimitBurst in kunibert-tts.service), startet er sonst nicht.
   if [[ "$changed" == 1 ]] || ! systemctl is-active --quiet "$POCKET_SERVICE"; then
+    systemctl reset-failed "$POCKET_SERVICE" 2>/dev/null || true
     systemctl restart "$POCKET_SERVICE"
   fi
   note "warte auf die Stimme (der erste Start lädt Modell und Stimme, einige hundert MB)"
-  local i
+  local i neustarts basis
+  basis=$(pocket_restarts)
   for i in $(seq 1 "$POCKET_WAIT_TRIES"); do
-    if curl -fsS -o /dev/null "$POCKET_URL/health" 2>/dev/null; then
+    if curl -fsS --max-time 5 -o /dev/null "$POCKET_URL/health" 2>/dev/null; then
       note "Stimme antwortet ($POCKET_URL/health). Ihr Protokoll geht absichtlich nicht ins Journal."
+      # Erst jetzt auf Pocket TTS umstellen: Scheitert der Schritt, bleibt die bisherige Stimme eingestellt.
+      write_pocket_env "$ENV_FILE"
       return 0
+    fi
+    # Bricht der Dienst immer wieder ab, nicht die vollen 10 Minuten warten (der Grund steht nicht im Journal).
+    neustarts=$(pocket_restarts)
+    if (( neustarts - basis >= 2 )); then
+      pocket_debug_hint
+      die "Die Stimme bricht beim Start immer wieder ab ($((neustarts - basis)) Neustarts). Befehle zur Fehlersuche stehen oben."
     fi
     sleep 5
   done

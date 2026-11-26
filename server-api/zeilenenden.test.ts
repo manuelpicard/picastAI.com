@@ -117,6 +117,7 @@ const PFLICHT = [
   'deploy/setup-server.sh',
   'deploy/smoke-test.sh',
   'deploy/kunibert-server.service',
+  'deploy/kunibert-tts.service',
   'deploy/kunibert.env.example',
   '.env.example',
   'deploy/Caddyfile',

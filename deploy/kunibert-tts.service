@@ -5,6 +5,11 @@ Description=Ritter Kunibert – Stimme (Pocket TTS, nur lokal auf Port 8001)
 # Modell und Stimme von Hugging Face (einige hundert MB) nach /var/lib/kunibert-tts.
 After=network-online.target
 Wants=network-online.target
+# Bricht der Start immer wieder ab, nach fünf Versuchen in zehn Minuten aufhören: Jeder Versuch lädt PyTorch
+# und das Modell und nimmt der Spracherkennung Rechenzeit. Wieder starten: sudo systemctl reset-failed kunibert-tts,
+# dann sudo systemctl start kunibert-tts (oder setup-server.sh noch einmal).
+StartLimitIntervalSec=10min
+StartLimitBurst=5
 
 [Service]
 User=kunibert-tts
