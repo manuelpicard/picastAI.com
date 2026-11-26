@@ -1406,6 +1406,9 @@ const MUST_TRIGGER = [
   'ich will für immer weg',
   'ich will schluss machen mit allem',
   'wenn mein hamster stirbt will ich auch sterben',
+  'Wenn Papa betrunken ist, dann hauen er und Mama mich',
+  'Papa kneift mich immer ganz doll',
+  'Er hat gesagt, das bleibt unter uns',
 ];
 
 // Alltägliche Sätze, die NICHT anschlagen dürfen (Fehlalarme sind für Kinder
@@ -2279,6 +2282,11 @@ const MUST_NOT_TRIGGER = [
   'Er zeigt mir seinen neuen Ball',
   'Wir haben Fotos vom Urlaub gemacht',
   'Ich hab ein Foto von meinem Hund',
+  'Opa kneift mich ganz sanft',
+  'Papa kneift mir in die Wange',
+  'Mama hat gesagt, das bleibt unter uns, es ist eine Überraschung',
+  'Papa und Mama umarmen mich',
+  'Dann umarmen er und Mama mich',
 ];
 
 // Bekannte Grenze: Die Weiche ist eine Reihe von Mustern und bleibt unvollständig.

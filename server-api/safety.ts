@@ -1094,6 +1094,9 @@ const PATTERNS_WORD_ORDER: RegExp[] = [
   new RegExp(`${L}((hat|hatte) (${SUBJ}|${PERP}) (mich|uns)|(${SUBJ}|${PERP}) (mich|uns)) ${VADV}(ganz |so |sehr |total )?(doll|fest|feste|heftig|stark|brutal) (geschüttelt|gerüttelt)${R}`),
   new RegExp(`${L}(schüttelt|schüttelte|rüttelt|rüttelte) (${SUBJ}|${PERP}) (mich|uns) ${VADV}(ganz |so |sehr |total )?(doll|fest|feste|heftig|stark|brutal)${R}`),
   new RegExp(`${L}(sperrt|sperren|sperrte|sperrten) ((${SUBJ}|${PERP}) )?(mich|uns) ((?!${NEG_WORD}${R})${WORD} ){0,2}(draußen|vor der tür|aus dem haus|aus der wohnung) aus${R}`),
+  // „Dann hauen er und Mama mich“, „Papa kneift mich immer ganz doll“
+  new RegExp(`${L}${HIT_PRESENT} (${SUBJ}|${PERP}) und (${SUBJ}|${PERP}) ${VADV}(mich|uns)${R}`),
+  new RegExp(`${L}((kneift|kneifen|kniff|zwickt|zwicken|zwickte) (${SUBJ}|${PERP}) ${VADV}(mich|uns)|(${SUBJ}|${PERP}) ${VADV}(kneift|kniff|zwickt|zwickte) (mich|uns)) ${VADV}(ganz |so |sehr |total )?(doll|fest|feste|heftig|stark|brutal)${R}`),
   new RegExp(`^(?=.*${L}ich${R}).*${L}(und|aber) (${FILL2} ){0,2}(werde|werd|wurde) ((?!(${NEG_WORD}|beim|im|bei|in|zum|zur|knapp|haushoch)${R})${WORD} ){0,3}(geschlagen|${PASSIVE_PART})${R}`),
   new RegExp(`^(?=.*${L}ich${R}).*${L}(und|aber) (dann |da )?(krieg|kriege|bekomme|bekomm|kriegte|bekam) ((?!${NEG_WORD}${R})${WORD} ){0,2}(schläge|prügel|haue|dresche|keile)${R}`),
   new RegExp(`${L}${POSS}${PERSON_WIDE} (${WORD} ){0,3}(und|aber) (dann |jetzt |da |immer |manchmal |oft )?(tut|tat) mir ((?!${NEG_WORD}${R})${WORD} ){0,2}weh${R}`),
@@ -1108,7 +1111,7 @@ const PATTERNS_WORD_ORDER: RegExp[] = [
   new RegExp(`${L}(darf|soll|durfte|sollte) (ich )?(es |das )?(niemandem |keinem )?(nicht|nichts|nix) (${WORD} )?(sagen|erzählen|verraten) (was|wie|wo|dass) (${WORD} ){1,3}mit mir (macht|gemacht hat|tut|getan hat|spielt|gespielt hat)${R}`),
   new RegExp(`${L}(sagen|erzählen|verraten|petzen) sonst (kommt|muss|geht|passiert|bringt|schlägt|haut|tötet|tut) (${WORD} ){0,3}(ins gefängnis|in den knast|ins heim|was|etwas|was schlimmes|um|tot|weh)${R}`),
   new RegExp(`^(?=.*${L}(wenn|falls) ich (es |das |was |etwas |davon )?(verrate|sage|erzähle|erzähl|sag|petze|petz)${R}).*${L}((bringt|tötet|schlägt|haut|tut) (er|sie) (${WORD} ){0,2}(um|tot|weh)|passiert (${POSS}${PERSON_WIDE}|dir|mir|uns|ihr|ihm) (was|etwas|was schlimmes|etwas schlimmes))${R}`),
-  new RegExp(`${L}${UNDRESS_AGENT} (hat gesagt|sagt|sagte|meint|meinte) (${WORD} ){0,3}(unter uns (bleiben|bleibt)|unser geheimnis|ein geheimnis (zwischen uns|unter uns)|darf keiner wissen|darf niemand wissen|muss geheim bleiben)${R}`),
+  new RegExp(`${L}${UNDRESS_AGENT} (hat gesagt|sagt|sagte|meint|meinte) (${WORD} ){0,3}(unter uns (bleiben|bleibt)|bleibt (unter uns|geheim|unser geheimnis)|unser geheimnis|ein geheimnis (zwischen uns|unter uns)|darf keiner wissen|darf niemand wissen|muss geheim bleiben)${R}`),
   // Übergriff: „Er hat mich missbraucht“, „Er macht Sex mit mir“, „Er macht Nacktfotos von mir“, „Ich muss sein Ding anfassen“,
   // „Er steckt mir den Finger in die Muschi“, „Er guckt immer, wenn ich nackt bin“, „Er will, dass ich mich nackt auf ihn
   // setze“, „Er reibt sich an mir“, „Manchmal küsst mich Onkel Peter mit Zunge“, „Er hat mich da unten geleckt“, „Da unten
