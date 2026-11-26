@@ -4,7 +4,7 @@ Stand: 26.11.2026 · Punkt N1122-1825-e der Arbeitsliste · Bezug: H5 (`stimme-l
 
 **Keine Rechtsberatung.** Ein Anwalt war bewusst nicht beteiligt. Das ist als Restrisiko festgehalten.
 
-Die Quellen Q1 bis Q39 stehen am Ende, mit Abrufdatum, Lesestand und einem kurzen Zitat. Die Nummern gelten nur in diesem Dokument. „Einschätzung“ heißt: meine Bewertung, kein Satz aus einer Quelle. „Offen“ heißt: nicht belegt. Ein Abrufwerkzeug hat die Seiten gelesen und mir berichtet. In der Spalte „Gelesen“ steht, ob mir der Wortlaut vorlag oder nur eine Zusammenfassung des Werkzeugs. Namen von Privatpersonen stehen hier nicht. Ausnahme sind `thorsten` und `Thorsten-Voice`: Das sind der Name der Stimme und des Projekts, und sie stehen schon im Repository (`deploy/setup-server.sh`). Die Adresse von Q31 enthält einen Personennamen und steht deshalb nicht in der Tabelle. Sie steht auf der Karte Q21.
+Die Quellen Q1 bis Q40 stehen am Ende, mit Abrufdatum, Lesestand und einem kurzen Zitat. Die Nummern gelten nur in diesem Dokument. „Einschätzung“ heißt: meine Bewertung, kein Satz aus einer Quelle. „Offen“ heißt: nicht belegt. Ein Abrufwerkzeug hat die Seiten gelesen und mir berichtet. In der Spalte „Gelesen“ steht, ob mir der Wortlaut vorlag oder nur eine Zusammenfassung des Werkzeugs. Namen von Privatpersonen stehen hier nicht. Ausnahme ist `thorsten`: Das ist der Name der Stimme, und er steht schon im Repository (`deploy/setup-server.sh`). `Thorsten-Voice` ist der Name des Projekts des Sprechers und steht in Adressen und Titeln der Quellen. Die Adresse von Q31 enthält einen Personennamen und steht deshalb nicht in der Tabelle. Sie steht auf der Karte Q21.
 
 OpenAI (Hersteller von Whisper) und Gemini (genannt auf einer Google-Seite) kommen hier nur als Gegenstand der Lizenzprüfung vor. Das Sprachmodell von Kunibert bleibt Claude.
 
@@ -12,7 +12,7 @@ OpenAI (Hersteller von Whisper) und Gemini (genannt auf einer Google-Seite) komm
 
 **Frage:** Darf Kunibert die übrigen Sprachbausteine in einem verkauften Produkt nutzen? Gemeint sind die Spracherkennung (`faster-whisper-small` über Speaches), die Rückfall-Stimme von Piper und die optionale Sprachausgabe von Google. Pocket TTS und die Stimme `stuart_bell` behandelt `stimme-lizenz.md`.
 
-**Antwort (Einschätzung):** Die Spracherkennung: ja, nach den gelesenen Seiten. Die Piper-Stimme `thorsten` aus der Kopie bei Speaches: nicht, solange die Lizenzkette offen ist. Google: nicht, solange die Altersgrenze der Cloud-Bedingungen nicht geklärt ist. Für Tests mit Erwachsenen ist beides offen.
+**Antwort (Einschätzung):** Die Spracherkennung: ja, nach den gelesenen Seiten. Die Piper-Stimme `thorsten` aus der Kopie bei Speaches: nicht, solange die Lizenzkette offen ist. Google: nicht, solange die Altersgrenze der Cloud-Bedingungen nicht geklärt ist. Auch für Tests mit Erwachsenen ist beides offen. Bis zur Klärung: Google aus, Piper nicht standardmäßig laden.
 
 | Baustein | Lizenz (Quelle) | Verkauf | Offen |
 | --- | --- | --- | --- |
@@ -101,7 +101,7 @@ OpenAI (Hersteller von Whisper) und Gemini (genannt auf einer Google-Seite) komm
 | 11.11.2026 | Das Piper-Projekt ergänzt die Liste der frei nutzbaren Stimmen (PR 357, zusammengeführt). | Q15 |
 
 - Widerspruch: Die Ordnerliste von `main` zeigte für die Karte (285 Byte) und die Modelldatei als letzte Änderung vor über drei Jahren (Q23). Die Seite der Karte auf `main` zeigt dagegen einen Commit von vor 16 Tagen und einen anderen Inhalt: `rdh` statt `lessac` (Q21). Beide Seiten habe ich am 26.11.2026 gelesen. Ich kann den Widerspruch nicht auflösen. Ob die Modelldatei neu trainiert wurde, steht damit nicht fest.
-- Hinweis zur Kopfzeile des Stimmen-Repos: Bei einer unabhängigen Prüfung dieses PRs am 26.11.2026 zeigte die Kopfzeile der Seite `rhasspy/piper-voices` (Adresse wie bei Q21) als Lizenz MIT, während die Karte der Stimme für die Aufnahmen CC0 nennt. Das habe nicht ich gelesen, sondern ein Prüfer. Die Seite steht nicht in der Quellentabelle. Es zählt nur als Hinweis. Nach Q12 vergibt das Piper-Projekt selbst keine Lizenz an Stimmenmodellen. Einschätzung: Die Kopfzeile gilt dann nicht für die einzelnen Stimmen. Offen: Was sie genau meint.
+- Hinweis zur Kopfzeile des Stimmen-Repos (Q40): Die Angaben zum Repository `rhasspy/piper-voices` auf der Seite von Q21 nennen als Lizenz MIT, während die Karte der Stimme für die Aufnahmen CC0 nennt. Der Hinweis wurde zuerst bei der Prüfung von PR #133 durch den Lauf „Planen & Bericht“ eingetragen (26.11.2026, gegen 18:20 Uhr). Ein Prüfer meines Laufs bestätigte ihn am selben Tag über das Abrufwerkzeug. Die Rohseite sah er nicht, und ich habe die Seite nicht selbst so gelesen. Es zählt deshalb nur als Hinweis. Nach Q12 vergibt das Piper-Projekt selbst keine Lizenz an Stimmenmodellen. Einschätzung: Die Angabe zum Repository gilt dann nicht für die einzelnen Stimmen. Offen: Was sie genau meint.
 
 **Einschätzung (vorläufig, 26.11.2026, 18:24 Uhr):**
 
@@ -180,7 +180,7 @@ Die Nummern L1 bis L5 gehören neben R1 bis R5 aus `stimme-lizenz.md`. Die Stufe
 | Claude | Die Punkte N1126-1600-a bis -c abarbeiten. Zuerst -b, dann -a. | Repo, `docs/autopilot/backlog.md` |
 | Betreiber | Optional, beschleunigt -b: im Browser die Seite `speaches-ai/piper-de_DE-thorsten-medium` öffnen, die Reiter „Model card“ und „Files and versions“ ansehen (Datum, Lizenzfeld) und Claude im Chat sagen, was dort steht. | im Browser auf huggingface.co |
 | Betreiber | Optional, beschleunigt -c: auf `cloud.google.com/terms/service-terms` den Abschnitt 20 über generative KI-Dienste öffnen. Steht in der Liste der Dienste „Text-to-Speech“ oder „Chirp“? Was sagt Unterabschnitt (d)? Das Ergebnis Claude im Chat sagen. | im Browser auf cloud.google.com |
-| Betreiber | Bis zur Klärung die Piper-Stimme nicht in einem verkauften Gerät einsetzen und Google nicht für Kinder einschalten. | Einrichtung des Servers |
+| Betreiber | Bis zur Klärung die Piper-Stimme nicht in einem verkauften Gerät einsetzen, Google nicht einschalten (auch nicht für Tests mit Erwachsenen) und das Einrichtungsskript Piper nicht mehr standardmäßig laden lassen (Punkt N1126-1600-a). | Einrichtung des Servers |
 | Betreiber | Vor Tests mit Kindern die „Freigabe-Checkliste vor dem ersten Kind“ im Doc „Datenschutz-Folgenabschätzung“ durchgehen. Dieses Dokument ändert daran nichts. | im Chat |
 | Claude | Ergebnis und Risiken L1 bis L5 in `claude/aufgaben.md` und ins Doc „Datenschutz-Folgenabschätzung“ vorschlagen (der Lauf „Planen & Bericht“). | Claude-Projekt |
 
@@ -229,3 +229,4 @@ Alle Quellen abgerufen am 26.11.2026. Ein Zitat je Quelle, höchstens 15 Wörter
 | Q37 | Google Cloud, Terms of Service (Übersicht der Vertragsdokumente), https://cloud.google.com/terms | Wörtlich nur die ersten 39 961 von 116 775 Zeichen (Menü), der Rest als Zusammenfassung | – (laut Zusammenfassung zuletzt geändert am 18.11.2026) |
 | Q38 | choosealicense.com, MIT License, https://choosealicense.com/licenses/mit/ | Wortlaut (5 517 Zeichen); Zusammenfassung der Lizenz, nicht der Lizenztext | – (Bedingung: „License and copyright notice“) |
 | Q39 | choosealicense.com, GNU GPL v3.0, https://choosealicense.com/licenses/gpl-3.0/ | Wortlaut (40 480 Zeichen); enthält auch den Lizenztext | „Mere interaction with a user through a computer network“ (Lizenztext, Abschnitt 0) |
+| Q40 | Dieselbe Karte wie Q21 (Karte der Stimme `thorsten` auf `main` bei `rhasspy/piper-voices`), zweite Lesung durch einen Prüfer, https://huggingface.co/rhasspy/piper-voices/blob/main/de/de_DE/thorsten/medium/MODEL_CARD | Zusammenfassung des Abrufwerkzeugs, Rohseite nicht gesehen; gelesen am 26.11.2026 | „License: mit“ (Angabe zum Repository, nicht zur Datei) |
