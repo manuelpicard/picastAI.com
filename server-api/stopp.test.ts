@@ -2,7 +2,10 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { cleanState, type StoryState } from './brain.js';
 import { STORY_CLOSING } from './prompts.js';
-import { heardUpTo, joinHeard, MAX_HEARD_CHARS, PART_HOLD_MS, PENDING_STOP_TTL_MS, speechParagraphs, StopPoints, TURN_ID_PATTERN, type SpokenPart } from './stopp.js';
+import {
+  heardUpTo, joinHeard, MAX_HEARD_CHARS, PART_HOLD_MS, PENDING_STOP_TTL_MS, speechParagraphs, StopPoints, TURN_ID_PATTERN, withEstimatedRest,
+  type SpokenPart,
+} from './stopp.js';
 
 // Ein Teil mit drei Absätzen und dem festen Abschluss. Alle Sätze sind gleich lang (20 Zeichen).
 const P1 = 'Kunibert stand auf. Er aß einen Brei.';
@@ -54,6 +57,23 @@ test('heardUpTo ohne Ton-Strom: Die Tonlänge verteilt sich nach der Länge des 
 test('heardUpTo: Sekunden je Absatz passen nicht zu den Absätzen: wie ohne Ton-Strom', () => {
   const mismatch: SpokenPart = { ...streamed, seconds: [10, 10] };
   assert.deepEqual(heardUpTo(mismatch, 12), heardUpTo({ ...streamed, seconds: null }, 12));
+});
+
+test('withEstimatedRest: Vertonung nach einem Stopp beendet, die gehörte Stelle bleibt genau (N1126-1338-f)', () => {
+  // Nur der erste Absatz ist vertont (10 s); der Rest wird nach der Länge des Texts geschätzt.
+  const seconds = withEstimatedRest([10], streamed.paragraphs);
+  assert.ok(seconds);
+  assert.equal(seconds.length, 4);
+  assert.equal(seconds[0], 10);
+  assert.ok(seconds.slice(1).every((value) => value > 0));
+  const partial: SpokenPart = { ...streamed, seconds };
+  for (const heardSeconds of [0, 4, 6, 10.5]) {
+    assert.deepEqual(heardUpTo(partial, heardSeconds), heardUpTo(streamed, heardSeconds), `gleiche Stelle bei ${heardSeconds} s`);
+  }
+  assert.equal(heardUpTo(partial, 10.9).complete, false, 'der Rest ist nicht gehört');
+  assert.equal(withEstimatedRest([1, 2, 3, 4, 5], streamed.paragraphs), null, 'mehr Sekunden als Absätze');
+  assert.deepEqual(withEstimatedRest([10, 10, 10, 4], streamed.paragraphs), [10, 10, 10, 4], 'alles vertont: unverändert');
+  assert.ok((withEstimatedRest([], streamed.paragraphs) ?? []).every((value) => value > 0), 'nichts vertont: nur Schätzung');
 });
 
 test('joinHeard: hängt an und kürzt vom Anfang her', () => {

@@ -10,7 +10,7 @@ import { EPISODE_CLOSING, STORY_CLOSING, STORY_CLOSING_FIRST, STORY_PAUSE_TEXT }
 import { StoryPrefetcher } from './server-api/prefetch.js';
 import { STORY_STATE_TTL_MS, StoryStateStore, startPurging } from './server-api/story-states.js';
 import { firstSound, PARAGRAPH_PAUSE_MS, PcmStream, StreamingSpeaker, StreamRegistry, streamingWavHeader, streamSynthesizer } from './server-api/audio-stream.js';
-import { MAX_HEARD_SECONDS, StopPoints, TURN_ID_PATTERN, speechParagraphs, type SpokenPart, type StopOutcome } from './server-api/stopp.js';
+import { MAX_HEARD_SECONDS, StopPoints, TURN_ID_PATTERN, speechParagraphs, withEstimatedRest, type SpokenPart, type StopOutcome } from './server-api/stopp.js';
 import { AudioError, decodeWavHeader, generateMelodyWav, isPcmFormat, isSilentPcm16 } from './server-api/audio.js';
 import { CONSENT_MISSING_DE, ELTERNTEXT_VERSION, ParentControls, ParentStateWriteError, SLEEPING_DE, isValidTime, pairingCodeSpeech, type BlockReason, type ConsentPath } from './server-api/eltern.js';
 import { ParentStateFile } from './server-api/eltern-datei.js';
@@ -22,7 +22,7 @@ import { VoicePipeline, VoiceProviderError } from './server-api/voice.js';
 import { FirestoreDeviceStore } from './server-api/firestore-service.js';
 import { buildAudioUrl, parentCookieSecure } from './server-api/http-utils.js';
 import { ERROR_RESPONSE_DE, SAFETY_RESPONSE_DE, UNCLEAR_RESPONSE_DE } from './server-api/safety.js';
-import { budgetTimeoutMs, NO_TIMER, ttsTimeoutMs, TurnTimer, type StageTimer } from './server-api/timing.js';
+import { budgetTimeoutMs, NO_TIMER, pendingWaitMs, settlesWithin, ttsTimeoutMs, TurnTimer, type StageTimer } from './server-api/timing.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -71,9 +71,20 @@ const voice = new VoicePipeline(config);
 // (vorläufig, Maßnahme M9; server-api/story-states.ts). Danach beginnt eine neue Folge.
 const deviceStoryStates = new StoryStateStore();
 // Ton-Strom (Punkt 71, server-api/audio-stream.ts): laufende Ströme und Antworten, die noch im
-// Hintergrund fertig werden. Eine neue Anfrage desselben Geräts wartet auf deren Stand.
+// Hintergrund fertig werden. Eine neue Anfrage desselben Geräts wartet auf deren Stand, aber nur
+// begrenzt (N1126-1338-f, `waitForPendingTurn`).
 const streams = new StreamRegistry(config.audioTtlSeconds * 1000);
-const pendingTurns = new Map<string, Promise<void>>();
+interface PendingTurn {
+  /** Kennung des Ton-Stroms (aus der audio_url); eine Stopp-Meldung dazu beendet seine Vertonung. */
+  turnId: string;
+  /** Erfüllt sich, wenn Stand und Vorbereitung gespeichert sind oder der Strom abbrach. */
+  done: Promise<void>;
+  /** Das Kind hat angehalten: nichts mehr vertonen; der Teil gilt mit dem Gesprochenen als ausgeliefert. */
+  stop(): void;
+  /** Eine neue Anfrage wartet nicht länger: nichts mehr vertonen, keinen Stand und keine Stelle speichern. */
+  drop(): void;
+}
+const pendingTurns = new Map<string, PendingTurn>();
 // Stopp per Taste (Punkt B2, server-api/stopp.ts): letzter Geschichtenteil je Gerät und, nach einer
 // Meldung des Geräts, bis wohin das Kind ihn gehört hat. Nur im Arbeitsspeicher, wie der Stand.
 const stops = new StopPoints();
@@ -240,10 +251,20 @@ function deviceResponse(
   return { body, turnId };
 }
 
-/** Wartet, bis eine im Hintergrund laufende Antwort desselben Geräts ihren Stand gespeichert hat. */
-async function waitForPendingTurn(deviceId: string): Promise<void> {
+/**
+ * Wartet, bis eine im Hintergrund laufende Antwort desselben Geräts ihren Stand gespeichert hat. Sonst
+ * baute diese Anfrage auf einem veralteten Stand auf, und der alte Teil überschriebe danach den neuen.
+ * Das Warten ist begrenzt (N1126-1338-f, `pendingWaitMs`): höchstens 30 s, und danach bleiben 45 s vom
+ * Budget für Claude und die Stimme. So reißt die Zeitkette 120/130/140 s nie. Ist der alte Strom dann
+ * nicht fertig, wird er verworfen (`drop`): Er vertont nichts mehr und speichert weder Stand noch Stelle.
+ * Diese Anfrage arbeitet mit dem gespeicherten Stand weiter, der alte Teil zählt nicht.
+ */
+async function waitForPendingTurn(deviceId: string, timer: StageTimer): Promise<void> {
   const pending = pendingTurns.get(deviceId);
-  if (pending) await pending.catch(() => undefined);
+  if (!pending) return;
+  if (await settlesWithin(pending.done, pendingWaitMs(timer))) return;
+  pending.drop();
+  if (pendingTurns.get(deviceId) === pending) pendingTurns.delete(deviceId);
 }
 
 /** Ton-Strom nur, wenn er eingeschaltet ist, eine Sprachausgabe läuft und das Gerät ihn anfragt. */
@@ -322,21 +343,39 @@ async function respondTurn(
     return refuse(req, res, deviceId, type, timer, refusal);
   }
   const turnId = streams.put(deviceId, speaker.stream);
-  const finishing = (async () => {
+  // Verworfen (N1126-1338-f, `waitForPendingTurn`): Eine neue Anfrage desselben Geräts hat zu lange auf
+  // diesen Strom gewartet. Dann zählt er nicht mehr: kein Stand, keine Stelle, keine Vorbereitung.
+  let dropped = false;
+  const pending: PendingTurn = {
+    turnId,
+    done: Promise.resolve(),
+    stop: () => speaker.stop(),
+    drop: () => {
+      dropped = true;
+      speaker.abort();
+    },
+  };
+  pending.done = (async () => {
     let ok = false;
     try {
       const result = await resultPromise;
       await speaker.finish();
-      // Erst wenn alles vertont ist, rückt die Folge vor (wie ohne Strom: kein Stand ohne Ton). Während
-      // des Stroms gesperrt: kein Stand und keine Vorbereitung, also nichts mehr an Claude (N1120-1610-b).
-      // Ohne Einwilligung oder im Schlafmodus auch keine Vorbereitung im Hintergrund.
+      if (dropped) return;
+      // Erst wenn alles vertont ist, rückt die Folge vor (wie ohne Strom: kein Stand ohne Ton), oder wenn
+      // das Kind vorher angehalten hat (B2, N1126-1338-f): Dann gilt der Teil mit dem Gesprochenen als
+      // ausgeliefert, und die Meldung legt die gehörte Stelle fest. Während des Stroms gesperrt: kein Stand
+      // und keine Vorbereitung, also nichts mehr an Claude (N1120-1610-b). Ohne Einwilligung oder im
+      // Schlafmodus auch keine Vorbereitung im Hintergrund.
       const late = refusalFor(req, deviceId);
       if (late !== 'gesperrt' && advanceStory(deviceId, result.story_state, generation, !late && preparesNext(deviceId, result))) {
-        // Für den Stopp per Taste (B2): Die Sekunden je Absatz sind hier genau bekannt.
+        // Für den Stopp per Taste (B2): Die Sekunden je Absatz sind hier genau bekannt. Nach einem Stopp
+        // fehlen die nicht mehr vertonten Absätze; sie liegen hinter der gehörten Stelle (Schätzung).
         const paragraphs = speechParagraphs(result.speech);
         noteDelivery(deviceId, turnId, result, {
           paragraphs,
-          seconds: speaker.segments.length === paragraphs.length ? [...speaker.segments] : null,
+          seconds: speaker.segments.length === paragraphs.length
+            ? [...speaker.segments]
+            : speaker.stopped && said.length === paragraphs.length ? withEstimatedRest(speaker.segments, paragraphs) : null,
           totalSeconds: speaker.stream.seconds,
           pauseSeconds: PARAGRAPH_PAUSE_MS / 1000,
         }, resumed);
@@ -344,23 +383,25 @@ async function respondTurn(
       ok = true;
     } catch (error) {
       speaker.abort();
-      // Ton war schon beim Kind (B2): Bei einem neu erzählten Teil kommt das Gesprochene zur gemerkten
-      // Stelle dazu; sonst gilt die alte Stelle nicht mehr (das Kind hat schon etwas Neues gehört).
-      if (speaker.stream.bytes > 0) {
-        if (resumed) stops.appendHeard(deviceId, turnId, spokenStory(said.slice(0, speaker.segments.length), speaker.segments, PARAGRAPH_PAUSE_MS / 1000));
-        else stops.delete(deviceId);
+      if (!dropped) {
+        // Ton war schon beim Kind (B2): Bei einem neu erzählten Teil kommt das Gesprochene zur gemerkten
+        // Stelle dazu; sonst gilt die alte Stelle nicht mehr (das Kind hat schon etwas Neues gehört).
+        if (speaker.stream.bytes > 0) {
+          if (resumed) stops.appendHeard(deviceId, turnId, spokenStory(said.slice(0, speaker.segments.length), speaker.segments, PARAGRAPH_PAUSE_MS / 1000));
+          else stops.delete(deviceId);
+        }
+        // Nur die Art des Fehlers, nie Text (CLAUDE.md).
+        console.warn('Ton-Strom abgebrochen:', (error as Error)?.name || 'Fehler');
       }
-      // Nur die Art des Fehlers, nie Text (CLAUDE.md).
-      console.warn('Ton-Strom abgebrochen:', (error as Error)?.name || 'Fehler');
     } finally {
       timer.noteAudioSeconds(speaker.stream.seconds);
       timer.mode = `${timer.mode}_strom`;
-      const line = timer.logLine(ok ? 200 : 'abgebrochen');
+      const line = timer.logLine(dropped ? 'verworfen' : ok ? 200 : 'abgebrochen');
       if (line) console.log(line);
-      if (pendingTurns.get(deviceId) === finishing) pendingTurns.delete(deviceId);
+      if (pendingTurns.get(deviceId) === pending) pendingTurns.delete(deviceId);
     }
   })();
-  pendingTurns.set(deviceId, finishing);
+  pendingTurns.set(deviceId, pending);
   return res.json({ type, audio_url: deviceAudioUrl(req, turnId), session_end: done, audio_stream: true });
 }
 
@@ -606,7 +647,7 @@ app.post(
       // Eine stumme Aufnahme geht nicht erst an die Spracherkennung: Sie ergibt den Hinweis
       // "nicht verstanden" (Whisper würde bei Stille eher etwas erfinden).
       if (!transcript && !isSilentPcm16(req.file.buffer)) transcript = await transcribeOrEmpty(req.file.buffer, timer);
-      await waitForPendingTurn(deviceId);
+      await waitForPendingTurn(deviceId, timer);
       // Während der Erkennung gesperrt oder von den Eltern angehalten? Dann nicht an das Sprachmodell.
       const refusal = refusalFor(req, deviceId);
       if (refusal) return await refuse(req, res, deviceId, 'answer', timer, refusal);
@@ -658,7 +699,7 @@ app.post(
       // Ohne Einwilligung, im Schlafmodus und in den Ruhezeiten: fester Satz, kein Sprachmodell.
       const blocked = blockReasonFor(deviceId);
       if (blocked) return await refuse(req, res, deviceId, 'kunibert_story', timer, blocked);
-      await waitForPendingTurn(deviceId);
+      await waitForPendingTurn(deviceId, timer);
       const waited = refusalFor(req, deviceId);
       if (waited) return await refuse(req, res, deviceId, 'kunibert_story', timer, waited);
       const state = deviceStoryStates.get(deviceId);
@@ -723,7 +764,14 @@ app.post('/v1/device/playback-stopped', requireDevice, (req: Request, res: Respo
   }
   // Ohne Einwilligung der Eltern merkt sich der Server nichts. Im Schlafmodus und in den Ruhezeiten
   // schon: Ein vorher begonnener Teil kann noch laufen, und danach geht die Geschichte dort weiter.
-  if (blockReasonFor(deviceId) !== 'einwilligung') logStop(stops.stopped(deviceId, turnId, seconds));
+  if (blockReasonFor(deviceId) !== 'einwilligung') {
+    logStop(stops.stopped(deviceId, turnId, seconds));
+    // Entsteht der angehaltene Teil noch (Ton-Strom), vertont der Server den Rest nicht mehr: Das Kind
+    // hört ihn nicht, und die nächste Anfrage muss nicht darauf warten (N1126-1338-f). Die Meldung gilt,
+    // sobald Claude den Teil fertig geschrieben hat.
+    const pending = pendingTurns.get(deviceId);
+    if (pending?.turnId === turnId) pending.stop();
+  }
   return res.status(204).end();
 });
 
