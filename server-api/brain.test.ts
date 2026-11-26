@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { screenOutput } from './safety.js';
 import test from 'node:test';
-import { Brain, remainingWords, likelyStoryTurn, storyCallFor, buildStoryPrompt, FALLBACK_VARIANTS, formatMetrics, hintFromPlan, usesHint, isBedtime, germanNumber, spellOutForSpeech, storyMetrics, cleanState, cleanText, extractWishKeyword, FALLBACK_ANSWER_DE, isLikelySttArtifact, lastSentences, MAX_UTTERANCE_CHARS, prepareStoryText, rememberMotif, storyPhase, trimWords } from './brain.js';
+import { Brain, remainingWords, likelyStoryTurn, storyCallFor, buildStoryPrompt, FALLBACK_VARIANTS, formatMetrics, hintFromPlan, usesHint, isBedtime, germanNumber, spellOutForSpeech, storyMetrics, cleanState, cleanText, extractWishKeyword, FALLBACK_ANSWER_DE, FEAR_COMFORT_DE, DRAGON_COMFORT_DE, fearComfortFor, isLikelySttArtifact, lastSentences, MAX_UTTERANCE_CHARS, prepareStoryText, rememberMotif, storyPhase, trimWords } from './brain.js';
 import type { LlmJsonRequest, LlmProvider } from './llm.js';
 import { BEDTIME_HINT, EPISODE_CLOSING, IDEA_HINT, PHASE_HINTS, RESUME_HINT, STORYTELLER_SYSTEM, EPISODE_SEEDS_BY_SEASON, seasonOf, STORY_CLOSING, STORY_CLOSING_FIRST, STORY_PAUSE_TEXT } from './prompts.js';
 import { SAFETY_RESPONSE_DE, UNCLEAR_RESPONSE_DE } from './safety.js';
@@ -711,8 +711,8 @@ test('Feste Antworten zu Kunibert und zum Drachen folgen den Erzählregeln vom 1
   assert.match(kunibert.speech, /bösen Drachen/);
   assert.match(dragon.speech, /böse/);
   assert.match(dragon.speech, /Angst/);
-  // Auch „Ich habe Angst vor dem Drachen“ oder ein Papierdrachen landen hier: Die Antwort sagt, dass es um den
-  // Drachen aus den Geschichten geht, und endet ruhig.
+  // Auch ein Papierdrachen landet hier: Die Antwort sagt, dass es um den Drachen aus den Geschichten geht, und
+  // endet ruhig. „Ich habe Angst vor dem Drachen“ bekommt seit Punkt N1120-1610-d die Beruhigung (Test unten).
   assert.match(dragon.speech, /^In den Geschichten von Ritter Kunibert/);
   assert.match(dragon.speech, /gibt nicht auf/);
   assert.match(dragon.speech, /besiegen/);
@@ -722,6 +722,110 @@ test('Feste Antworten zu Kunibert und zum Drachen folgen den Erzählregeln vom 1
       assert.ok(sentence.split(/\s+/).length <= 20, sentence);
     }
   }
+});
+
+// Punkt N1120-1610-d: Ohne Claude bekommt Angst eine feste Beruhigung statt der Drachen-Antwort.
+test('Ohne Claude: Angst vor dem Drachen bekommt die Beruhigung, nicht „alle haben Angst vor ihm“', async () => {
+  const brain = new Brain(null);
+  for (const text of [
+    'Ich habe Angst vor dem Drachen',
+    'Kommt der Drache heute Nacht zu mir',
+    'Kunibert, ich hab Angst vor dem Drachen',
+    'ich fürchte mich vor dem drachen',
+    'Der Drache ist so gruselig',
+    'Ich hab Albträume vom Drachen',
+    'Gibt es den Drachen wirklich?',
+    'Ist der Drache echt?',
+    'Frisst der Drache Kinder?',
+    'Kann der Drache in mein Zimmer fliegen?',
+    'Holt mich der Drache?',
+  ]) {
+    const result = await brain.handle('frage', text, {});
+    assert.equal(result.kind, 'frage', text);
+    assert.equal(result.fixed, 'ersatz', text);
+    assert.equal(result.speech, DRAGON_COMFORT_DE, text);
+    assert.equal(result.story_state.part, 0, `keine Folge begonnen: ${text}`);
+  }
+});
+
+test('Ohne Claude: Angst ohne den Drachen bekommt die allgemeine Beruhigung', async () => {
+  const brain = new Brain(null);
+  for (const text of [
+    'Ich habe Angst im Dunkeln',
+    'Ich fürchte mich vor Gespenstern',
+    'Das ist so gruselig',
+    'Die Geschichte ist so gruselig',
+    'Kunibert, mir ist das unheimlich',
+    'Ich hab Schiss vor dem Gewitter',
+    'Ich bin ängstlich',
+  ]) {
+    const result = await brain.handle('frage', text, {});
+    assert.equal(result.fixed, 'ersatz', text);
+    assert.equal(result.speech, FEAR_COMFORT_DE, text);
+    assert.equal(result.story_state.part, 0, `keine Folge begonnen: ${text}`);
+  }
+  // Ganze Wörter: „Angsthase“ ist keine Angst.
+  assert.equal((await brain.handle('frage', 'Bist du ein Angsthase', {})).speech, FALLBACK_ANSWER_DE);
+});
+
+test('Ohne Claude: Gegenproben zur Beruhigung (Fragen zum Drachen, keine Angst, ausdrückliche Bitte)', async () => {
+  const brain = new Brain(null);
+  // Fragen zum Drachen ohne Angst und Fragen nach der Angst von anderen: weiter die Drachen-Antwort.
+  for (const text of ['Wo wohnt der Drache?', 'Hast du Angst vor dem Drachen?', 'Ich habe keine Angst vor dem Drachen', 'Kommt der Drache wieder vor?', 'Kann der Drache fliegen?']) {
+    const result = await brain.handle('frage', text, {});
+    assert.match(result.speech, /^In den Geschichten von Ritter Kunibert wohnt der Drache/, text);
+  }
+  const kunibert = await brain.handle('frage', 'Hat Kunibert Angst vor dem Drachen?', {});
+  assert.match(kunibert.speech, /^Ritter Kunibert ist ein mutiger/);
+  assert.equal((await brain.handle('frage', 'Mama sagt, ich muss keine Angst haben', {})).speech, FALLBACK_ANSWER_DE);
+  // Eine ausdrückliche Bitte geht vor: „erzähl weiter“ erzählt, auch wenn es gruselig ist.
+  const more = await brain.handle('frage', 'Das ist gruselig, erzähl weiter', {});
+  assert.equal(more.kind, 'geschichte');
+  assert.equal(more.story_state.part, 1);
+});
+
+test('Ohne Claude: Angst-Sätze mit einer Notlage fängt vorher die Sicherheitsweiche ab', silent(async () => {
+  for (const text of ['Ich habe Angst vor Papa', 'Ich habe Angst vor meinem Papa', 'Ich hab Angst vor meinem Onkel', 'Ich bin ganz allein zu Hause und habe Angst']) {
+    const offline = await new Brain(null).handle('frage', text, {});
+    assert.equal(offline.fixed, 'sicherheit', text);
+    assert.equal(offline.speech, SAFETY_RESPONSE_DE, text);
+    // Mit Claude, das ausfallen würde: Die Weiche kommt vor dem Aufruf, Claude wird gar nicht gefragt.
+    const llm = new FakeLlm([new Error('HTTP 503')]);
+    const failing = await new Brain(llm).handle('frage', text, {});
+    assert.equal(failing.fixed, 'sicherheit', text);
+    assert.equal(llm.calls.length, 0, text);
+  }
+}));
+
+test('Ohne Claude: Beruhigung auch, wenn Claude ausfällt; die festen Sätze bestehen den Ausgabe-Check', silent(async () => {
+  const llm = new FakeLlm([new Error('HTTP 503')]);
+  const result = await new Brain(llm).handle('frage', 'Ich habe Angst vor dem Drachen', {});
+  assert.equal(result.speech, DRAGON_COMFORT_DE);
+  assert.equal(llm.calls.length, 1);
+  const sad = (await new Brain(null).handle('frage', 'ich muss immer weinen', {})).speech;
+  for (const text of [FEAR_COMFORT_DE, DRAGON_COMFORT_DE, sad]) {
+    assert.equal(screenOutput(text, 'answer'), false, text);
+    // Das Gerät spricht nicht als Mensch (Kanon, Abschnitt 2): kein „von uns“, kein „wir“.
+    assert.ok(!/von uns|\bwir\b/i.test(text), text);
+    // Der Drache bleibt böse: kein Sieg, nicht zahm, kein Freund (Erzählregeln vom 14.11.2026).
+    assert.ok(!DRAGON_DEFEATED_OR_TAME.test(text), text);
+    assert.match(text, /einem Erwachsenen, den du lieb hast/, 'Rat, mit einem Erwachsenen zu sprechen');
+    for (const sentence of text.split(/(?<=[.!?])\s+/)) assert.ok(sentence.split(/\s+/).length <= 20, sentence);
+  }
+  assert.match(sad, /Jeder Mensch fühlt sich ab und zu so/);
+  assert.match(DRAGON_COMFORT_DE, /^Den Drachen gibt es nur in den Geschichten von Ritter Kunibert\./);
+}));
+
+test('Beruhigung ohne Claude: fearComfortFor erkennt Angst, Verneinung und die Frage nach anderen', () => {
+  assert.equal(fearComfortFor('ich habe angst'), FEAR_COMFORT_DE);
+  assert.equal(fearComfortFor('ich habe gar keine angst'), '');
+  assert.equal(fearComfortFor('das ist nicht gruselig'), '');
+  assert.equal(fearComfortFor('hast du angst'), '');
+  assert.equal(fearComfortFor('hat papa angst vor spinnen'), '');
+  assert.equal(fearComfortFor('papa hat gesagt ich muss angst haben'), FEAR_COMFORT_DE, 'erste Person: das Kind');
+  assert.equal(fearComfortFor('wo wohnt der drache'), '');
+  assert.equal(fearComfortFor('der drachen kommt zu uns ins haus'), DRAGON_COMFORT_DE);
+  assert.equal(fearComfortFor(''), '');
 });
 
 test('Ersatzfolge: Drache bleibt böse und unbesiegt, auch im Stand für Claude (B4)', async () => {
