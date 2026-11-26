@@ -369,6 +369,8 @@ setup_pocket() {
     # hinterlässt sonst Reste. Die Umgebung gehört root; der Dienst darf sie nur lesen.
     [[ -n "$POCKET_DIR" && "$POCKET_DIR" != / ]] || die "POCKET_DIR ist leer"
     note "installiere Pocket TTS $POCKET_VERSION und PyTorch ohne Grafikkarte (dauert einige Minuten)"
+    # Ein laufender Dienst soll nicht aus einer halb gelöschten Umgebung weiterlesen.
+    if [[ -d "$POCKET_DIR" ]]; then systemctl stop "$POCKET_SERVICE" 2>/dev/null || true; fi
     rm -rf "$POCKET_DIR"
     python3 -m venv "$POCKET_DIR" || die "Python-Umgebung ließ sich nicht anlegen: $POCKET_DIR"
     "$POCKET_DIR/bin/pip" install --quiet --disable-pip-version-check --index-url "$TORCH_INDEX" 'torch>=2.5' \

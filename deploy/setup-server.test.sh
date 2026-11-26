@@ -289,6 +289,7 @@ vorher=$fails
   no  "andere Version: alte Umgebung weg"      test -e "$POCKET_DIR/rest"
   yes "andere Version: neu installiert"        grep -q "pocket-tts==$POCKET_VERSION" "$PIP_LOG"
   yes "andere Version: Neustart"               grep -qx "systemctl restart $POCKET_SERVICE" "$aufrufe"
+  eq  "andere Version: erst stoppen, dann löschen" "$(grep -m1 '^systemctl' "$aufrufe")" "systemctl stop $POCKET_SERVICE"
   gesund=0
   ausgabe=$( (setup_pocket) 2>&1 )
   yes "keine Antwort: Abbruch mit Fehler"      grep -q '^FEHLER: Die Stimme antwortet nicht' <<<"$ausgabe"
