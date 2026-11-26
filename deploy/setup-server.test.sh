@@ -77,7 +77,8 @@ eq "Token ist das erste"          "$(env_get "$f" PICASTAI_DEVICE_TOKEN)" erstes
 eq "ANTHROPIC_API_KEY unberührt"  "$(env_get "$f" ANTHROPIC_API_KEY)" ""
 
 # env-Zeilen wie systemd (Punkt N1126-1338-c): Einrückung und Leerzeichen oder Tabs um „=“ zählen
-# nicht, die letzte Zeile gilt. awk nur unter LC_ALL=C: U+3000 vor „=“ macht keinen Namen (wie systemd).
+# nicht, die letzte Zeile gilt. U+3000 vor „=“ macht keinen Namen (wie systemd). Mit mawk zeigt das wenig
+# (mawk kennt kein UTF-8); der awk-Vergleich weiter unten prüft es auch mit gawk.
 cp "$here/kunibert.env.example" "$f"; chmod 600 "$f"
 sed -i 's/^NODE_ENV=.*/  NODE_ENV = development/' "$f"
 printf 'PICASTAI_STT_MODEL\t=\tmodell-a\nPICASTAI_STT_MODEL = modell-b\n' >> "$f"
@@ -105,6 +106,38 @@ eq "env_normalize: Zeilenzahl gleich"             "$(wc -l < "$f")" "$(wc -l < "
 eq "env_normalize: Rechte bleiben 600"            "$(stat -c %a "$f")" 600
 no "env_normalize: zweiter Lauf ändert nichts"    env_normalize "$f"
 
+# Windows-Zeilenenden, Leerzeichen am Ende, „=“ im Wert, eingerückte Kommentare und leere Werte in
+# Anführungszeichen (Prüfung von PR #132, Befunde 2 und 4). systemd liest "" und '' als leer.
+printf 'A=eins\r\nB =  zwei \t\r\nC = ab = cd==\r\nD=\r\nE = ""\r\nF='"''"'\r\nG=" "\r\nH="x"\r\n' > "$f"
+printf '  # I=kommentar\r\n\t; J=kommentar\r\nK="\r\n' >> "$f"
+eq "env_get: CR am Zeilenende gehört nicht zum Wert"  "$(env_get "$f" A)" eins
+eq "env_get: Leerzeichen und Tab am Ende zählen nicht" "$(env_get "$f" B)" zwei
+eq "env_get: = im Wert bleibt"                         "$(env_get "$f" C)" "ab = cd=="
+eq "env_get: nur CR ist leer"                          "$(env_get "$f" D)" ""
+eq "env_get: Anführungszeichen bleiben stehen"         "$(env_get "$f" E)" '""'
+eq "env_get: eingerückter #-Kommentar ist kein Wert"   "$(env_get "$f" I)" ""
+eq "env_get: eingerückter ;-Kommentar ist kein Wert"   "$(env_get "$f" J)" ""
+yes "env_empty: nichts"                    env_empty ""
+yes 'env_empty: ""'                        env_empty '""'
+yes "env_empty: ''"                        env_empty "''"
+yes 'env_empty: " " (der Server schneidet Leerzeichen ab)' env_empty '" "'
+no  "env_empty: Wert"                      env_empty x
+no  'env_empty: "x"'                       env_empty '"x"'
+no  "env_empty: ein Anführungszeichen"     env_empty '"'
+no  "env_empty: '\"'"                      env_empty "'\"'"
+yes 'env_set_if_empty: "" gilt als leer'   env_set_if_empty "$f" E neu-e
+yes "env_set_if_empty: '' gilt als leer"   env_set_if_empty "$f" F neu-f
+yes "env_set_if_empty: nur CR gilt als leer" env_set_if_empty "$f" D neu-d
+no  'env_set_if_empty: "x" bleibt'         env_set_if_empty "$f" H neu-h
+no  "env_set_if_empty: ein Anführungszeichen bleibt" env_set_if_empty "$f" K neu-k
+eq "env_set_if_empty: neuer Wert für E"    "$(env_get "$f" E)" neu-e
+eq "env_set_if_empty: eine Zeile für D, E und F" "$(grep -cE '^(D|E|F)[[:blank:]]*=' "$f")" 3
+eq "env_set_if_empty: H unverändert"       "$(env_get "$f" H)" '"x"'
+yes "env_normalize: mit CRLF"              env_normalize "$f"
+yes "env_normalize: CR am Ende bleibt"     grep -qx $'B=zwei \t\r' "$f"
+yes "env_normalize: = im Wert bleibt"      grep -qx $'C=ab = cd==\r' "$f"
+yes "env_normalize: Kommentare bleiben"    grep -qx $'  # I=kommentar\r' "$f"
+
 # write_env mit Werten in der Schreibweise NAME = wert (mit umgelenkter Datei und Attrappen): Tokens und
 # Schlüssel bleiben, kein zweites Token wird angehängt, keines steht in der Ausgabe.
 vorher=$fails
@@ -126,13 +159,96 @@ vorher=$fails
   eq  "write_env: alter Eltern-Schlüssel bleibt" "$(env_get "$ENV_FILE" KUNIBERT_ELTERN_SCHLUESSEL)" alt-eltern-schluessel
   no  "write_env: kein neues Token erzeugt"   grep -qE 'erzeugt|neutoken' <<<"$ausgabe"
   no  "write_env: kein Token in der Ausgabe"  grep -qE 'alt-geraete-token|alt-admin-token|alt-eltern-schluessel|neutoken' <<<"$ausgabe"
-  yes "write_env: meldet das Angleichen"      grep -qF 'als NAME=wert geschrieben' <<<"$ausgabe"
+  yes "write_env: meldet das Angleichen"      grep -qF 'Schreibweise der Zeilen angeglichen' <<<"$ausgabe"
   eq  "write_env: keine Zeile mit Leerzeichen vor = mehr" "$(grep -cE '^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*[[:blank:]]+=' "$ENV_FILE")" 0
   ausgabe=$(write_env 2>&1)
-  no  "write_env: zweiter Lauf gleicht nichts mehr an" grep -qF 'als NAME=wert geschrieben' <<<"$ausgabe"
+  no  "write_env: zweiter Lauf gleicht nichts mehr an" grep -qF 'Schreibweise der Zeilen angeglichen' <<<"$ausgabe"
   yes "write_env: zweiter Lauf, Token bleibt" grep -qx 'PICASTAI_DEVICE_TOKEN="alt-geraete-token"' "$ENV_FILE"
   [[ $fails -eq $vorher ]]
 ) || fails=$((fails + 1))
+
+# write_env mit Windows-Zeilenenden und einem leeren Wert in Anführungszeichen: Tokens und Schlüssel werden
+# erzeugt (systemd läse sonst leere Werte), je genau eine Zeile, der Schlüssel für Claude bleibt leer.
+vorher=$fails
+(
+  ENV_FILE="$tmp/env-crlf/kunibert.env"; mkdir -p "$tmp/env-crlf"
+  APP_DIR="$here/.."; HOSTNAME_ARG=kunibert.picastai.com
+  install() { cp "${@: -2:1}" "${@: -1}"; chmod 600 "${@: -1}"; }
+  chown() { :; }
+  openssl() { printf 'neutoken%.0s' {1..8}; }
+  awk '{ printf "%s\r\n", $0 }' "$here/kunibert.env.example" > "$ENV_FILE"; chmod 600 "$ENV_FILE"
+  awk '/^PICASTAI_ADMIN_TOKEN=/ { printf "PICASTAI_ADMIN_TOKEN = \"\"\r\n"; next } { print }' "$ENV_FILE" > "$ENV_FILE.neu"
+  mv "$ENV_FILE.neu" "$ENV_FILE"
+  ausgabe=$(write_env 2>&1)
+  for k in PICASTAI_ADMIN_TOKEN PICASTAI_DEVICE_TOKEN KUNIBERT_ELTERN_SCHLUESSEL; do
+    eq "write_env (CRLF): genau eine Zeile $k" "$(grep -cE "^[[:space:]]*${k}[[:blank:]]*=" "$ENV_FILE")" 1
+    eq "write_env (CRLF): $k erzeugt"          "$(env_get "$ENV_FILE" "$k")" "$(openssl)"
+  done
+  eq  "write_env (CRLF): Schlüssel für Claude bleibt leer" "$(env_get "$ENV_FILE" ANTHROPIC_API_KEY)" ""
+  yes "write_env (CRLF): meldet das Geräte-Token"   grep -qF 'Geräte-Token erzeugt' <<<"$ausgabe"
+  no  "write_env (CRLF): kein Token in der Ausgabe" grep -q neutoken <<<"$ausgabe"
+  [[ $fails -eq $vorher ]]
+) || fails=$((fails + 1))
+
+# Schreibfehler (Platte voll, keine Zwischendatei): Das Skript bricht ab, und die env-Datei bleibt Byte für
+# Byte, wie sie war, auch wenn die Funktion in einem if läuft (dort greift set -e nicht; Prüfung von
+# PR #132, Befund 1). „attrappe“: awk gibt eine halbe Zeile aus und scheitert, auch beim Lesen (dann darf
+# env_set_if_empty kein Token ersetzen); „voll“: ulimit -f 0, das echte awk scheitert beim Schreiben;
+# „mktemp“: keine Zwischendatei. Ausgabe: Meldungen, zuletzt „weiter“, wenn die Funktion nicht abbrach.
+schreibfehler() { # Art Befehl …
+  local art=$1; shift
+  (
+    case $art in
+      attrappe) awk() { printf 'HALB'; return 2; } ;;
+      voll) ulimit -f 0 ;;
+      mktemp) mktemp() { return 1; } ;;
+    esac
+    if "$@"; then :; fi
+    echo weiter
+  ) 2>&1
+}
+cp "$here/kunibert.env.example" "$f"; chmod 600 "$f"
+printf 'PICASTAI_ADMIN_TOKEN = geheim-alt\nPICASTAI_DEVICE_TOKEN=""\n' >> "$f"
+cp "$f" "$tmp/vor-fehler.env"
+for art in attrappe voll mktemp; do
+  for befehl in "env_normalize $f" "env_set_if_empty $f PICASTAI_DEVICE_TOKEN neu-geheim" \
+      "env_set_if_empty $f KUNIBERT_ELTERN_SCHLUESSEL neu-geheim" "env_set $f NODE_ENV production"; do
+    read -r -a teile <<<"$befehl"   # Pfade ohne Leerzeichen
+    name=${teile[0]}
+    if [[ $name == env_set_if_empty ]]; then name+=" ${teile[2]}"; fi
+    meldung=$(schreibfehler "$art" "${teile[@]}")
+    yes "Schreibfehler ($art, $name): Datei unverändert" cmp -s "$f" "$tmp/vor-fehler.env"
+    no  "Schreibfehler ($art, $name): bricht ab"         grep -qx weiter <<<"$meldung"
+    yes "Schreibfehler ($art, $name): sagt es"           grep -qF '(sie ist unverändert)' <<<"$meldung"
+    no  "Schreibfehler ($art, $name): kein Wert in der Meldung" grep -qE 'geheim|neu-geheim' <<<"$meldung"
+    eq  "Schreibfehler ($art, $name): keine Zwischendatei bleibt" "$(compgen -G "$f.??????" || true)" ""
+    cp "$tmp/vor-fehler.env" "$f"
+  done
+done
+
+# Dieselben Ergebnisse mit mawk und gawk (Debian und Ubuntu bringen je nach Bild das eine oder das andere
+# mit). Läuft unter C.UTF-8, damit gawk dort Zeichen wie U+3000 als Leerzeichen kennen würde.
+awk_probe() {
+  local d; d=$(mktemp -d "$tmp/awk.XXXXXX")
+  printf '%s\n' '  A = 1' $'B\t=\t2 ' 'C = ab = cd==' $'D=\r' 'E = ""' '  # F=x' $'\t; G=x' \
+    $'H\xe3\x80\x80= u' $'\vI=x' 'B = 3' 'K=ä ö ü ß' > "$d/e.env"
+  local k
+  for k in A B C D E F G H I K; do printf '%s|' "$(env_get "$d/e.env" "$k")"; done
+  printf '\n'
+  env_normalize "$d/e.env" || true
+  env_set "$d/e.env" B 4
+  cat "$d/e.env"
+}
+awk_erwartet=$(printf '%s\n' '1|3|ab = cd==||""|||||ä ö ü ß|' 'A=1' 'B=4' 'C=ab = cd==' $'D=\r' 'E=""' '  # F=x' \
+  $'\t; G=x' $'H\xe3\x80\x80= u' $'\vI=x' 'K=ä ö ü ß')
+utf8_c=C
+if locale -a 2>/dev/null | grep -qiE '^c\.utf-?8$'; then utf8_c=C.UTF-8; fi
+eq "awk-Vergleich: $(readlink -f "$(command -v awk)") ($utf8_c)" "$(LC_ALL=$utf8_c awk_probe)" "$awk_erwartet"
+for impl in mawk gawk; do
+  if ! pfad=$(command -v "$impl"); then printf 'OFFEN awk-Vergleich: %s nicht installiert\n' "$impl"; continue; fi
+  mkdir -p "$tmp/awk-$impl"; ln -sf "$pfad" "$tmp/awk-$impl/awk"
+  eq "awk-Vergleich: $impl ($utf8_c)" "$(PATH="$tmp/awk-$impl:$PATH"; hash -r; LC_ALL=$utf8_c awk_probe)" "$awk_erwartet"
+done
 
 out=$(render_caddyfile "$here/Caddyfile" kunibert.picastai.com)
 yes "Caddyfile: Hostname eingesetzt"   grep -q '^kunibert.picastai.com {' <<<"$out"

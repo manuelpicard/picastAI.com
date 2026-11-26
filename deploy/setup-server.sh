@@ -5,8 +5,8 @@
 # bleiben. Bei jedem Lauf neu setzt es: die Zeilen für Betrieb, Hostname und Sprachmodelle in der env-Datei,
 # nach einem erfolgreichen Start der Stimme auch die drei Zeilen für Pocket TTS (nicht mit --skip-pocket),
 # und die eigene Datei für die Frist der Protokolle (eigene Werte: EINRICHTUNG.md, Betrieb).
-# Zeilen der env-Datei liest es wie systemd (auch eingerückt und mit Leerzeichen um „=“) und schreibt
-# sie als NAME=wert.
+# Zeilen der env-Datei liest es fast wie systemd (auch eingerückt, mit Leerzeichen um „=“ und mit
+# Windows-Zeilenenden) und schreibt sie als NAME=wert. Was es anders liest: bei env_get unten.
 #
 #   sudo bash setup-server.sh --hostname kunibert.example
 #
@@ -112,10 +112,17 @@ valid_hostname() (
 # Muster für [[ =~ ]] unter LC_ALL=C prüfen (Grund: siehe valid_hostname).
 matches_c() ( LC_ALL=C; [[ "$1" =~ $2 ]] )
 
-# env-Dateien lesen und schreiben, wie systemd sie liest: Einrückung und Leerzeichen oder Tabs um „=“
-# zählen nicht, die letzte Zeile eines Namens gilt. awk läuft unter LC_ALL=C: Nur Leerzeichen und
-# Tab zählen dann als [[:blank:]] (in UTF-8 träfe zum Beispiel grep auch U+3000, systemd nicht).
-# Dieselben Regeln wie merge_config in pi-client/install_raspberry_pi.sh.
+# env-Dateien lesen und schreiben, fast wie systemd sie liest: Leerzeichen, Tabs und CR am Zeilenanfang,
+# Leerzeichen oder Tabs um „=“ und Leerzeichen, Tabs und CR am Ende des Werts zählen nicht; die letzte Zeile
+# eines Namens gilt. Anders als systemd: Anführungszeichen bleiben im gelesenen Wert stehen (env_empty sieht
+# "" und '' trotzdem als leer), und Fortsetzungen mit \ am Zeilenende oder Werte in Anführungszeichen über
+# mehrere Zeilen kennen die Funktionen nicht (die Vorlage hat keine). awk läuft unter LC_ALL=C, und die
+# Zeichenklassen sind ausgeschrieben ([ \t]): Andere Leerzeichen wie U+3000, \v oder \f zählen für systemd
+# nicht und hier auch nicht.
+#
+# Schreiben nur über eine Zwischendatei daneben. Scheitert ein Schritt (Platte voll, keine Rechte), bricht
+# das Skript ab, und die env-Datei bleibt, wie sie war. Das gilt auch, wenn die Funktion in einem if
+# aufgerufen wird; dort greift set -e nicht (Prüfung von PR #132, Befund 1).
 
 # Liest den Wert eines Schlüssels aus einer env-Datei (leer, wenn nicht gesetzt). Gibt ihn nur
 # auf stdout aus, für eine Variable; Werte können Tokens sein.
@@ -124,13 +131,31 @@ env_get() { # Datei Schlüssel
   KEY="$2" LC_ALL=C awk '
     BEGIN { key = ENVIRON["KEY"]; value = "" }
     {
-      line = $0; sub(/^[[:space:]]+/, "", line)
-      if (index(line, key) == 1 && substr(line, length(key) + 1) ~ /^[[:blank:]]*=/) {
-        value = substr(line, index(line, "=") + 1); sub(/^[[:blank:]]+/, "", value)
+      line = $0; sub(/^[ \t\r]+/, "", line)
+      if (index(line, key) == 1 && substr(line, length(key) + 1) ~ /^[ \t]*=/) {
+        value = substr(line, index(line, "=") + 1); sub(/^[ \t]+/, "", value); sub(/[ \t\r]+$/, "", value)
       }
     }
     END { printf "%s", value }
   ' "$1"
+}
+
+# Leer, wie der Server den Wert sieht: nichts, "" oder '' (auch mit Leerzeichen oder Tabs zwischen den
+# Anführungszeichen). systemd nimmt die Anführungszeichen weg, der Server schneidet Leerzeichen ab
+# (trim in server-api/config.ts). Ein anderer Wert zählt als gesetzt, auch ein einzelnes Anführungszeichen.
+env_empty() { # Wert
+  local inner=$1
+  if (( ${#inner} >= 2 )) && [[ ( "$inner" == \"*\" ) || ( "$inner" == \'*\' ) ]]; then
+    inner=${inner:1:${#inner}-2}
+  fi
+  [[ -z "${inner//[$' \t']/}" ]]
+}
+
+# Ersetzt die env-Datei durch die fertige Zwischendatei (Rechte und Besitzer wie vorher).
+env_replace() { # Zwischendatei Datei
+  chmod --reference="$2" "$1" 2>/dev/null || chmod 600 "$1" 2>/dev/null || true
+  chown --reference="$2" "$1" 2>/dev/null || true
+  mv -f "$1" "$2" || { rm -f "$1"; die "env-Datei ließ sich nicht ersetzen: $2 (sie ist unverändert)"; }
 }
 
 # Setzt KEY=VALUE in einer env-Datei. Ersetzt die erste Zeile des Namens und lässt weitere Zeilen
@@ -138,12 +163,12 @@ env_get() { # Datei Schlüssel
 # Der Wert läuft nicht durch sed-Ersetzung (keine Probleme mit / & \).
 env_set() { # Datei Schlüssel Wert
   local file=$1 key=$2 value=$3 tmp
-  tmp=$(mktemp "${file}.XXXXXX")
-  KEY="$key" VALUE="$value" LC_ALL=C awk '
+  tmp=$(mktemp "${file}.XXXXXX") || die "env-Datei: keine Zwischendatei neben $file (sie ist unverändert)"
+  if ! KEY="$key" VALUE="$value" LC_ALL=C awk '
     BEGIN { done = 0; key = ENVIRON["KEY"]; value = ENVIRON["VALUE"] }
     {
-      line = $0; sub(/^[[:space:]]+/, "", line)
-      if (index(line, key) == 1 && substr(line, length(key) + 1) ~ /^[[:blank:]]*=/) {
+      line = $0; sub(/^[ \t\r]+/, "", line)
+      if (index(line, key) == 1 && substr(line, length(key) + 1) ~ /^[ \t]*=/) {
         if (!done) print key "=" value
         done = 1
         next
@@ -151,40 +176,47 @@ env_set() { # Datei Schlüssel Wert
       print
     }
     END { if (!done) print key "=" value }
-  ' "$file" > "$tmp"
-  chmod --reference="$file" "$tmp" 2>/dev/null || chmod 600 "$tmp"
-  chown --reference="$file" "$tmp" 2>/dev/null || true
-  mv "$tmp" "$file"
+  ' "$file" > "$tmp"; then
+    rm -f "$tmp"
+    die "env-Datei ließ sich nicht schreiben (Platte voll?): $file (sie ist unverändert)"
+  fi
+  env_replace "$tmp" "$file"
 }
 
 # Schreibt jede Zeile „NAME = wert“ (auch eingerückt) als „NAME=wert“. Der Wert und alle anderen
-# Zeilen bleiben, wie sie sind; systemd liest danach dieselben Werte. Einfache Befehle wie
-# grep ^NAME= (summary, Doku) und die Shell (set -a; . Datei) verstehen nur „NAME=wert“.
+# Zeilen bleiben, wie sie sind, auch ein CR am Ende. Für einfache Zeilen wie in der Vorlage liest systemd
+# danach dieselben Werte (nicht bei Fortsetzungen und mehrzeiligen Werten, siehe oben). Einfache Befehle wie
+# grep ^NAME= (summary, Doku) und die Shell (set -a; . Datei) verstehen nur „NAME=wert“. Fehlt nur das
+# Zeilenende der letzten Zeile, ergänzt awk es; auch das zählt als Änderung.
 # Rückgabe 0 = geändert, 1 = war schon so.
 env_normalize() { # Datei
   local file=$1 tmp
-  tmp=$(mktemp "${file}.XXXXXX")
-  LC_ALL=C awk '
+  tmp=$(mktemp "${file}.XXXXXX") || die "env-Datei: keine Zwischendatei neben $file (sie ist unverändert)"
+  if ! LC_ALL=C awk '
     {
-      line = $0; sub(/^[[:space:]]+/, "", line)
-      if (line ~ /^[A-Za-z_][A-Za-z0-9_]*[[:blank:]]*=/) {
-        name = substr(line, 1, index(line, "=") - 1); sub(/[[:blank:]]+$/, "", name)
-        value = substr(line, index(line, "=") + 1); sub(/^[[:blank:]]+/, "", value)
+      line = $0; sub(/^[ \t\r]+/, "", line)
+      if (line ~ /^[A-Za-z_][A-Za-z0-9_]*[ \t]*=/) {
+        name = substr(line, 1, index(line, "=") - 1); sub(/[ \t]+$/, "", name)
+        value = substr(line, index(line, "=") + 1); sub(/^[ \t]+/, "", value)
         print name "=" value
         next
       }
       print
     }
-  ' "$file" > "$tmp"
+  ' "$file" > "$tmp"; then
+    rm -f "$tmp"
+    die "env-Datei ließ sich nicht schreiben (Platte voll?): $file (sie ist unverändert)"
+  fi
   if cmp -s "$tmp" "$file"; then rm -f "$tmp"; return 1; fi
-  chmod --reference="$file" "$tmp" 2>/dev/null || chmod 600 "$tmp"
-  chown --reference="$file" "$tmp" 2>/dev/null || true
-  mv "$tmp" "$file"
+  env_replace "$tmp" "$file"
 }
 
-# Setzt KEY nur, wenn er fehlt oder leer ist. Rückgabe 0 = gesetzt, 1 = war schon da.
+# Setzt KEY nur, wenn er fehlt oder leer ist (env_empty). Rückgabe 0 = gesetzt, 1 = war schon da.
+# Scheitert das Lesen, bricht es ab: Ein halb gelesener Wert darf nie ein vorhandenes Token ersetzen.
 env_set_if_empty() { # Datei Schlüssel Wert
-  if [[ -z "$(env_get "$1" "$2")" ]]; then env_set "$1" "$2" "$3"; return 0; fi
+  local alt
+  alt=$(env_get "$1" "$2") || die "env-Datei ließ sich nicht lesen: $1 (sie ist unverändert)"
+  if env_empty "$alt"; then env_set "$1" "$2" "$3"; return 0; fi
   return 1
 }
 
@@ -393,7 +425,7 @@ write_env() {
     install -o root -g root -m 600 "$APP_DIR/deploy/kunibert.env.example" "$ENV_FILE"
     note "aus der Vorlage angelegt"
   fi
-  if env_normalize "$ENV_FILE"; then note "Zeilen wie NAME = wert als NAME=wert geschrieben (systemd liest beides gleich)"; fi
+  if env_normalize "$ENV_FILE"; then note "Schreibweise der Zeilen angeglichen (NAME=wert, Zeilenende); die Werte bleiben gleich"; fi
   env_set "$ENV_FILE" NODE_ENV production
   env_set "$ENV_FILE" HOST 127.0.0.1
   env_set "$ENV_FILE" PICASTAI_PUBLIC_BASE_URL "https://$HOSTNAME_ARG"
