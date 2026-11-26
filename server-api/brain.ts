@@ -439,6 +439,98 @@ export function hintFromPlan(plan: string): string {
   return match ? match[1].trim() : '';
 }
 
+/**
+ * Hängt einen Satz an die Zusammenfassung an. Wird sie zu lang, fallen vorn ganze Sätze weg:
+ * Was zuletzt geschah, braucht der nächste Teil am dringendsten.
+ */
+export function appendSummary(summary: string, note: string): string {
+  let sentences = cleanText(summary, 5000).split(/(?<=[.!?…][“”"]?)\s+/).filter(Boolean);
+  const tail = cleanText(note, STATE_LIMITS.summary);
+  let joined = [...sentences, tail].filter(Boolean).join(' ');
+  while (joined.length > STATE_LIMITS.summary && sentences.length) {
+    sentences = sentences.slice(1);
+    joined = [...sentences, tail].filter(Boolean).join(' ');
+  }
+  return joined.slice(0, STATE_LIMITS.summary);
+}
+
+// Ersatz mitten in einer Folge mit Plan von Claude (Punkt N1120-1610-e): nur Brücken, ohne eigenes
+// Geschenk und ohne Worte der festen Varianten. Die Teile folgen dem Aufbau, den Claude bekommt
+// (PHASE_HINTS): im vorletzten Teil die Idee, im letzten zuerst, wie die List ausgeht.
+const BRIDGE_FOREST =
+  'Kunibert ging vorsichtig in den düsteren Wald hinein. Tropfen perlten von den Farnen, und ' +
+  'im Dickicht knackte ein Zweig. Dann sah er die Hütte der Hexe. Aus dem Schornstein stieg blauer Rauch.';
+const BRIDGE_ONWARD =
+  'Kunibert verbeugte sich und ging weiter. Bald wurde der Weg steiler. ' +
+  'Die Bäume wurden weniger, und die Felsen des Berges kamen näher.';
+const MIDDLE_APPROACH =
+  `Der Weg am Berg war steil und steinig. Kleine Kiesel rollten unter Kuniberts Stiefeln ins Tal. ` +
+  `Je näher er der Höhle kam, desto wärmer wurde die Luft.\n\n` +
+  `Da grollte es tief im Berg. Der Drache schob seinen großen Kopf aus der Höhle. Rauch kam aus seinen Nüstern, ` +
+  `und seine goldenen Augen funkelten. Er brüllte so laut, dass die Steine bebten, und eine Feuerzunge sengte das Gras am Weg an. ` +
+  `Kunibert sprang schnell hinter einen Felsen und hielt den Atem an.\n\n` +
+  `Hinter dem Felsen atmete er tief durch. „Mit Kraft geht das heute nicht“, murmelte er.`;
+const BRIDGE_TRICK =
+  'Am späten Nachmittag stand Kunibert vor der Drachenhöhle. Der Drache lag im Eingang und ließ ihn nicht aus den Augen. ' +
+  'Schwarzer Rauch stieg aus seinen Nüstern, und sein Schwanz peitschte über die Steine.\n\n' +
+  'Kuniberts Herz klopfte laut. Er dachte an alles, was er an diesem Tag gesehen und gehört hatte. ' +
+  'Und plötzlich wusste er, was zu tun war.\n\n' +
+  'Leise trat er hinter dem Felsen hervor. Jetzt oder nie, dachte Kunibert.';
+const BRIDGE_OUTCOME =
+  'Kuniberts List gelang für heute. Der Drache brüllte vor Wut, dass die Steine bebten, ' +
+  'und zog sich tief in seine Höhle zurück. Besiegt war er nicht. Aber für heute ließ er das Dorf in Ruhe.';
+const FINALE_HOMEWARD =
+  `Mit leichten Schritten stieg Kunibert den Berg hinab. Im Wald winkte ihm die Hexe aus ihrem Fenster zu. ` +
+  `An der Brücke wartete wieder der Kutscher und nahm ihn mit zurück ins Dorf.\n\n` +
+  `Im Gasthaus stellte die Wirtin ihm eine dampfende Schale Gemüsesuppe hin. ` +
+  `Kunibert aß mit großem Hunger und bedankte sich. Dann stieg er die knarrende Treppe hinauf in sein Dachzimmer.\n\n` +
+  `Er legte sich unter den schiefen Balken und schloss die Augen. Draußen war es still. ` +
+  `Bald schlief er tief und fest.`;
+
+/**
+ * Brückentext für einen Teil der Ersatzfolge, wenn die Folge einen Plan von Claude hat. Fäden und Plan
+ * von Claude bleiben; die Zusammenfassung bekommt nur dazu, was die Brücke erzählt. Die Hexe sagt
+ * höchstens den Hinweis aus Claudes Plan (so, wie Claude ihn sagen soll), und nur, wenn er den
+ * Ausgabe-Check besteht. Exportiert für Tests.
+ */
+export function fallbackBridge(phase: StoryPhase, state: StoryState): { text: string; summary: string; threads: string; hook: string } {
+  const planHint = hintFromPlan(state.plan);
+  const hint = planHint && !screenOutput(planHint, 'story') ? planHint : '';
+  if (phase === 'weg') {
+    const witch = hint
+      ? `Die Hexe stand an ihrem Topf und rührte. „Du gehst zum Drachen“, sagte sie, ohne aufzusehen. „${hint}“, flüsterte sie.`
+      : 'Die Hexe stand an ihrem Topf und rührte. Sie sah kurz auf und nickte ihm zu, als wüsste sie schon, wohin er wollte.';
+    return {
+      text: `${BRIDGE_FOREST}\n\n${witch}\n\n${BRIDGE_ONWARD}`,
+      summary: appendSummary(
+        state.summary,
+        hint
+          ? `Im Wald sagte die Hexe zu Kunibert: „${hint}“ Sie gab ihm nichts mit, und sie erklärte nichts.`
+          : 'Im Wald kam Kunibert an der Hütte der Hexe vorbei. Sie nickte ihm nur zu und sagte nichts.'
+      ),
+      threads: state.threads,
+      hook: 'Kunibert erreicht den Aufstieg zur Drachenhöhle.',
+    };
+  }
+  if (phase === 'middle') {
+    return {
+      text: `${MIDDLE_APPROACH} Er brauchte eine List.`,
+      summary: appendSummary(state.summary, 'Am Berg zeigte sich der Drache. Kunibert versteckte sich hinter einem Felsen und merkte, dass er eine List braucht.'),
+      threads: state.threads,
+      hook: 'Kunibert überlegt sich eine List.',
+    };
+  }
+  if (phase === 'trick') {
+    return {
+      text: BRIDGE_TRICK,
+      summary: appendSummary(state.summary, 'Vor der Höhle bekam Kunibert eine Idee und begann, sie auszuführen. Wie sie ausgeht, ist noch nicht erzählt.'),
+      threads: state.threads,
+      hook: 'Kunibert führt seine List aus.',
+    };
+  }
+  return { text: `${BRIDGE_OUTCOME}\n\n${FINALE_HOMEWARD}`, summary: '', threads: '', hook: '' };
+}
+
 /** Kommt der Hinweis im Text vor? Mindestens die Hälfte seiner längeren Wörter (ab vier Buchstaben). */
 export function usesHint(text: string, hint: string): boolean {
   const words = (hint.toLowerCase().match(/\p{L}{4,}/gu) || []);
@@ -1271,6 +1363,8 @@ export class Brain {
   /**
    * Feste Ersatzgeschichte ohne Sprachmodell. Die Bausteine folgen der Rolle des Teils (Anfang,
    * Hexe, Berg, Wendung, Heimkehr), damit auch eine Folge mit drei oder acht Teilen sauber endet.
+   * Hat die laufende Folge einen Plan von Claude, kommen nur Brücken (`fallbackBridge`): ohne eigenes
+   * Geschenk und ohne Worte der festen Varianten, damit nichts springt.
    */
   private fallbackStory(newEpisode: boolean, state: StoryState, wish: string): TurnResult {
     const current = newEpisode ? this.startEpisode(state, wish) : { ...state };
@@ -1285,7 +1379,10 @@ export class Brain {
     let threads = '';
     let hook = '';
 
-    if (phase === 'start') {
+    if (!newEpisode && current.plan && phase !== 'start') {
+      // Die Folge hat einen Plan von Claude: Das Kind hat Claudes Handlung gehört (Punkt N1120-1610-e).
+      ({ text, summary, threads, hook } = fallbackBridge(phase, current));
+    } else if (phase === 'start') {
       text =
         `Kunibert erwachte im Dachzimmer des Gasthauses. ${mood}\n\n` +
         `Der schiefe Balken hing wie immer über seinem Bett. Durch das kleine Fenster sah er ` +
@@ -1314,14 +1411,7 @@ export class Brain {
       threads = `${variant.itemCap} der Hexe am Berg benutzen.`;
       hook = `Kunibert erreicht den Aufstieg zur Drachenhöhle.`;
     } else if (phase === 'middle') {
-      text =
-        `Der Weg am Berg war steil und steinig. Kleine Kiesel rollten unter Kuniberts Stiefeln ins Tal. ` +
-        `Je näher er der Höhle kam, desto wärmer wurde die Luft.\n\n` +
-        `Da grollte es tief im Berg. Der Drache schob seinen großen Kopf aus der Höhle. Rauch kam aus seinen Nüstern, ` +
-        `und seine goldenen Augen funkelten. Er brüllte so laut, dass die Steine bebten, und eine Feuerzunge sengte das Gras am Weg an. ` +
-        `Kunibert sprang schnell hinter einen Felsen und hielt den Atem an.\n\n` +
-        `Hinter dem Felsen atmete er tief durch. „Mit Kraft geht das heute nicht“, murmelte er. ` +
-        `Er tastete nach seiner Tasche. ${variant.itemCap} war noch da.`;
+      text = `${MIDDLE_APPROACH} Er tastete nach seiner Tasche. ${variant.itemCap} war noch da.`;
       summary = `Kunibert traf am Berg auf den Drachen und merkte, dass er eine List braucht.`;
       threads = `${variant.itemCap} der Hexe im richtigen Moment benutzen.`;
       hook = `Kunibert überlegt sich eine List.`;
@@ -1331,13 +1421,7 @@ export class Brain {
       threads = ``;
       hook = `Kunibert kehrt ins Dorf zurück.`;
     } else {
-      text =
-        `Mit leichten Schritten stieg Kunibert den Berg hinab. Im Wald winkte ihm die Hexe aus ihrem Fenster zu. ` +
-        `An der Brücke wartete wieder der Kutscher und nahm ihn mit zurück ins Dorf.\n\n` +
-        `Im Gasthaus stellte die Wirtin ihm eine dampfende Schale Gemüsesuppe hin. ` +
-        `Kunibert aß mit großem Hunger und bedankte sich. Dann stieg er die knarrende Treppe hinauf in sein Dachzimmer.\n\n` +
-        `Er legte sich unter den schiefen Balken und schloss die Augen. Draußen war es still. ` +
-        `Bald schlief er tief und fest.`;
+      text = FINALE_HOMEWARD;
     }
 
     const done = phase === 'finale';
