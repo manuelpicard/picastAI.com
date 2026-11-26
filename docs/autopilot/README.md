@@ -50,6 +50,8 @@ Sie sparen den Läufen Schritte und Limit. Die Regeln stehen im Auftrag der Läu
 | `python3 docs/autopilot/ap.py lauf <Rolle> start` / `… ende "<Ergebnis>"` | eine Zeile im Issue „Wochen-Autopilot: Laufprotokoll“ |
 | `python3 docs/autopilot/ap.py bericht <Datei>` | Bericht ins Issue „Wochen-Autopilot: Berichte“, wenn das Claude-Projekt nicht erreichbar ist |
 
+Abrufe im Lauf Recherche (gelernt am 25.11.2026, PR #118): Läuft die Aufgabe ohne Menschen, verlangt das Abrufwerkzeug für fast jede Adresse, die nicht aus der Websuche stammt, eine Freigabe (Fehler `PROVENANCE_REQUIRED`). Niemand beantwortet sie, der Abruf scheitert nach einigen Minuten. Darum: Seite zuerst über die Websuche holen (bei einem Händler mit `allowed_domains`), danach nur die gelieferten Adressen abrufen. Bei `PROVENANCE_REQUIRED` oder `client_error` nicht wiederholen und keinen Umweg nehmen (kein `curl`, kein Archiv). Die Seite als „nicht gelesen“ notieren. Das Werkzeug liefert nur die ersten etwa 40.000 Zeichen einer Seite wörtlich. Der Rest ist eine maschinelle Zusammenfassung, die sich mehrfach geirrt hat; sie zählt nur als Hinweis und wird so gekennzeichnet.
+
 Kommentare im Laufprotokoll und „Autopilot-Prüfung“-Kommentare zählen nur, wenn das Konto des Repo-Eigentümers sie geschrieben hat. Die Tests der Werkzeuge: `python3 -m unittest discover -s docs/autopilot -p "test_*.py"` (läuft in der CI).
 
 ## Wie die Läufe sich abstimmen
@@ -65,7 +67,7 @@ Kommentare im Laufprotokoll und „Autopilot-Prüfung“-Kommentare zählen nur,
 - Sind drei (im Endspurt sechs) Autopilot-PRs offen, macht ein Lauf erst einen davon fertig, bevor er Neues beginnt. Darf er keinen davon anfassen (frisch „in Arbeit“ oder „fertig“ und rot seit weniger als einer Stunde), beginnt er nichts Neues. Er macht dann nur Arbeit ohne eigenen Punkt (zum Beispiel Prüfungen) und berichtet.
 - Erledigt ist ein Punkt, wenn sein PR gemergt ist. Der PR setzt den Status in `backlog.md` selbst.
 - Braucht ein Punkt mehrere PRs, steht „Teil k von n“ im PR-Text. Ein Teil vor dem letzten setzt den Status auf „offen (Teil k von n erledigt, PR #x)“. Erst der letzte Teil setzt „erledigt“. Punkte mit „Nach …“ warten bis dahin.
-- Jeder PR wird vor dem Merge von einem unabhängigen Unteragenten (Opus) geprüft. Gemergt wird nur, wenn alle Checks des letzten Commits fertig und grün sind und mindestens `test`, `pi-audio`, `firestore-emulator` und `pi-installer` (seit PR #108) mit Erfolg gelaufen sind. Fehlt ein Check, wird nicht gemergt.
+- Jeder PR wird vor dem Merge von einem unabhängigen Unteragenten (Opus) geprüft. Gemergt wird nur, wenn alle Checks des letzten Commits fertig und grün sind und mindestens `test`, `pi-audio`, `firestore-emulator`, `pi-installer` (seit PR #108) und `caddy` (seit PR #117) mit Erfolg gelaufen sind. Fehlt ein Check, wird nicht gemergt.
 - Ist `main` rot, hat die Reparatur Vorrang vor allem anderen.
 - Branches löschen geht aus den Läufen bisher nicht: Die Cloud-Umgebung sperrt es (HTTP 403 am 20. und 21.11.2026). Scheitert das Löschen, keinen Umweg suchen. Der Bericht nennt Branch und letzten Commit-Hash, der Betreiber löscht ihn auf GitHub (Seite „Branches“). Den Branch eines gemergten PRs löscht GitHub selbst.
 

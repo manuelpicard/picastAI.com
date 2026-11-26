@@ -26,6 +26,8 @@ X-Device-ID: prototype-001
 Content-Type: multipart/form-data
 ```
 
+Erlaubte Zeichen (seit 25.11.2026, Punkt N1123-1937-a): im Token Buchstaben, Ziffern und `. _ ~ + / = : -` (so prüfen Installer und Pi-Client; die Tokens des Servers, `tok_` mit Base64url, und `openssl rand -hex 32` passen). In der Geräte-ID sichtbare ASCII-Zeichen ohne Leerzeichen; neue Geräte legt der Server nur mit Buchstaben, Ziffern, `-` und `_` an (höchstens 80 Zeichen). Der Pi-Client prüft beides beim Start und nennt den Wert nie. Die Firmware lehnt bisher nur Steuerzeichen und Leerzeichen ab (Punkt N1125-1338-a).
+
 Formularfelder:
 
 - `audio`: PCM-WAV, mono, 16 Bit, konfigurierte Abtastrate, maximal 2 MB
@@ -161,7 +163,15 @@ Seit 23.11.2026 (vorläufig, Punkt D2, `server-api/kopplungsschutz.ts`):
 - Insgesamt: höchstens 200 Fehlversuche aller Absender in 10 Minuten (`grund: "insgesamt"`). Darüber darf ein Absender nur noch den Code eines Geräts einlösen, das in den letzten 10 Minuten aus seinem Netz einen Code geholt hat (`POST /v1/device/pairing-code`). Ein anderer Code, auch ein gültiger, zählt dann wie ein falscher (400) und bleibt gültig. So sperrt ein Angriff mit vielen Adressen die Eltern im WLAN des Geräts nicht aus, und ein eigenes Gerät in vielen Netzen hilft nicht beim Raten fremder Codes. Die Ausnahme greift nur, wenn Handy und Gerät nach außen dieselbe IPv4-Adresse oder dasselbe IPv6-Netz zeigen: nicht, wenn das Handy über IPv6 kommt und das Gerät über IPv4 (möglich, sobald der Server einen AAAA-Eintrag hat) oder das Handy über Mobilfunk. Über die Betreiber-Route gibt es sie nicht.
 - Im Arbeitsspeicher liegen keine Adressen, nur Pseudonyme (HMAC-SHA-256 mit einem zufälligen Schlüssel, der bei jedem Start neu ist), die Zahl der Fehlversuche und der Zeitpunkt des letzten, für die Netze der Geräte dazu die Geräte-ID (bis 10 Minuten nach dem letzten Code, den das Gerät aus diesem Netz geholt hat, dazu bis zu 5 Minuten bis zum Aufräumen). Mit dem Schlüssel ließen sich die Pseudonyme durch Ausprobieren zurückrechnen: Es ist Pseudonymisierung, keine Anonymisierung. Ein Absender bleibt höchstens so viele mal 10 Minuten im Speicher, wie er Fehlversuche hat (bei einem Rater gut zwei Stunden), dazu bis zu 5 Minuten bis zum Aufräumen. Nichts davon kommt ins Protokoll; `GET /api/status` zeigt unter `kopplungsschutz` nur Zahlen.
 
-Ohne gültiges Cookie oder für ein gesperrtes Gerät: 401. Es gibt keinen Verlauf, keine Mitschriften und keine Statistik je Kind. Die Weboberfläche unter `/eltern` kommt später (Punkt D2). Hinter Caddy (`deploy/Caddyfile`) sind `/v1/eltern/*` und `/api/*` von außen gesperrt; bis D2 erreicht man sie nur auf dem Server selbst oder im eigenen WLAN.
+Ohne gültiges Cookie oder für ein gesperrtes Gerät: 401. Es gibt keinen Verlauf, keine Mitschriften und keine Statistik je Kind.
+
+### Seite für Eltern: `GET /eltern`
+
+Seit 24.11.2026 (vorläufig, Punkt D2, Teil 2 von 3; `server-api/eltern-seite.html`, `server-api/eltern-seite.ts`). Eine Seite für das Handy: mit dem Code koppeln, Einwilligung erteilen und widerrufen, den Stand sehen (Einwilligung, Schlafmodus, Ruhezeiten). Schlafmodus und Ruhezeiten ändern, „Geschichte neu“, „alles löschen“ und eine Infoseite kommen mit Teil 3; bis dahin gehen sie nur über die Routen oben. Bei `429` zeigt die Seite die Wartezeit (`warten_sekunden`, sonst `Retry-After`) und sperrt den Knopf so lange; bei `grund: "insgesamt"` rät sie, das Handy ins WLAN des Geräts zu bringen und einen neuen Code sagen zu lassen, und sagt, dass das nicht immer hilft. Ist die aktuelle Version des Elterntexts `"0"` (`ELTERNTEXT_VERSION` in `server-api/eltern.ts`), zeigt sie den Hinweis auf den Testbetrieb (nur Erwachsene).
+
+Die Seite ist eine Datei ohne fremde Dienste, ohne externe Schriften und ohne Bilder. Sie ruft nur `/v1/eltern/*` auf diesem Server auf; der Code geht nur im JSON-Inhalt mit, nie in der Adresse. Sie speichert nichts im Browser außer dem Cookie oben. Kopfzeilen: `Content-Security-Policy` mit `default-src 'none'`, Skript und Stil nur mit ihrem SHA-256-Hash (beim Start des Servers berechnet), `connect-src 'self'`, `form-action 'none'`, `frame-ancestors 'none'`; dazu `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, `X-Content-Type-Options: nosniff`, `Cache-Control: no-cache`. Die Seite setzt kein Cookie. Fehlt die Datei, startet der Server nicht.
+
+Hinter Caddy (`deploy/Caddyfile`) sind `/eltern` und `/v1/eltern/*` seit 24.11.2026 von außen erreichbar (Anfragen höchstens 16 KB); `/api/*` und die Weboberfläche bleiben gesperrt.
 
 Für Tests mit Erwachsenen, solange die Geräte den Code noch nicht sprechen: `POST /api/devices/:id/kopplungscode` (Betreiber-Token) gibt den Code als Text zurück: `{"code":"123456","expires_in":600}`. Das Skript `deploy/eltern-einwilligung.mjs` koppelt damit und willigt ein (einmal; ohne Datei der Eltern-Steuerung nach jedem Neustart des Servers; Aufruf in `deploy/EINRICHTUNG.md`, Abschnitt 5, und in `pi-client/README.md`). Eine so erteilte Einwilligung hat `weg: "betreiber"`.
 

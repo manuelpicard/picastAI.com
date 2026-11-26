@@ -11,7 +11,17 @@ Der Client läuft auf zwei Geräten, mit demselben Code:
 
 Das Skript `install_raspberry_pi.sh` installiert die Python-Laufzeit, GPIO-/Audio-Abhängigkeiten, ALSA-Grundpakete, ein Dienstkonto, eine geschützte Umgebungsdatei und einen systemd-Service. Es ist idempotent und kann nach einem abgebrochenen Lauf erneut ausgeführt werden.
 
-Auf dem Pi nach dem Kopieren oder Klonen des Repositories:
+**So kommt der Ordner auf den Pi:** am besten am Pi selbst mit `git clone`. Dann haben alle Dateien Linux-Zeilenenden (LF):
+
+```bash
+sudo apt update && sudo apt install -y git
+git clone https://github.com/manuelpicard/picastAI.com.git
+cd picastAI.com
+```
+
+Kopierst du den Ordner von einem Windows-Rechner (USB-Stick, `scp`), prüf vorher im Windows-Klon (PowerShell, im Repo-Ordner): `git ls-files --eol pi-client/install_raspberry_pi.sh` muss `w/lf` zeigen. Zeigt es `w/crlf`, den Ordner neu klonen. Seit dem 25.11.2026 legt `.gitattributes` fest, dass Git Skripte, Python-, systemd-, Umgebungs- und HTML-Dateien auch unter Windows mit LF auscheckt. Ein älterer Windows-Klon behält seine Windows-Zeilenenden aber auch nach `git pull`. Meldet der Installer `$'\r': command not found` oder `invalid option name`, hat die Kopie Windows-Zeilenenden: den Ordner am Pi mit `git clone` neu holen.
+
+Dann im Ordner des Repos:
 
 ```bash
 sudo bash pi-client/install_raspberry_pi.sh --device-id prototype-001
@@ -294,13 +304,21 @@ sudo -u kunibert bash -c 'cd /var/lib/kunibert && set -a && . /etc/kunibert/kuni
 
 Beim Start wartet der Client, bis der Server antwortet: Ist er nicht erreichbar (WLAN noch nicht da, Router startet noch), blinkt die LED schnell (Fehler), und der Client versucht es alle `KUNIBERT_CONNECT_RETRY` Sekunden (Standard 10) wieder. Er beendet sich dabei nicht.
 
+Vorher prüft der Client Adresse, Geräte-ID und Token. Leerzeichen und Zeilenenden am Rand lässt er weg, zum Beispiel ein Windows-Zeilenende, wenn die Shell `kunibert.env` einliest. Erlaubt sind:
+
+- Adresse: `http://` oder `https://` mit Rechnername, ohne Name und Passwort.
+- Geräte-ID: sichtbare ASCII-Zeichen ohne Leerzeichen (keine Umlaute).
+- Token: dieselben Zeichen wie beim Installer (siehe „Das Token“ oben).
+
+Fehlt die Geräte-ID oder das Token oder passt ein Wert nicht, startet der Client nicht, auch nicht mit `--once`. Ausnahme: `--dry-run` braucht keine Geräte-ID und kein Token; ist eines gesetzt, muss es aber passen. Der Client meldet dann eine Zeile wie „Kunibert kann nicht starten: PICASTAI_DEVICE_TOKEN enthält Zeichen, …“, ohne den Wert und ohne Traceback. Abhilfe: mit `sudoedit /etc/kunibert/kunibert.env` die genannte Zeile prüfen (`PICASTAI_DEVICE_TOKEN=`, `PICASTAI_DEVICE_ID=` oder `PICASTAI_API_BASE_URL=`). Oder den Installer noch einmal laufen lassen: mit `--ask-token` für ein neues Token, mit `--device-id` für die Geräte-ID. Scheitert eine Anfrage trotzdem an einem Wert in einer Kopfzeile, nennt die Meldung nur die Art des Fehlers („Anfrage nicht gesendet: ungültige Adresse oder Kopfzeile“), nie den Kopf.
+
 Nur Health prüfen (muss `OK` melden; prüft die Adresse aus `kunibert.env`, nicht die Standardadresse):
 
 ```bash
 sudo -u kunibert bash -c 'cd /var/lib/kunibert && set -a && . /etc/kunibert/kunibert.env && set +a && exec /opt/kunibert/.venv/bin/python /opt/kunibert/pi-client/kunibert_client.py --once health'
 ```
 
-Genau diesen Aufruf führt der Containertest aus (`install_raspberry_pi.test.sh`, gegen einen kleinen Test-Server unter der Adresse aus `kunibert.env`).
+Genau diesen Aufruf führt der Containertest aus (`install_raspberry_pi.test.sh`, gegen einen kleinen Test-Server unter der Adresse aus `kunibert.env`). [`test_anleitung.py`](test_anleitung.py) prüft, dass derselbe Aufruf auch in Schritt 5 von „Später: der Pi im selben WLAN“, in `deploy/CHECKLISTE.md`, Teil B, und in `deploy/EINRICHTUNG.md`, Abschnitt 8, steht. `--once health` greift nicht auf Taster und Ton zu; der Dienst darf dabei laufen.
 
 Ohne Pi-Hardware gibt es zwei Prüfungen:
 
@@ -383,7 +401,7 @@ py pi-client\kunibert_client.py --keyboard
 
 Danach: Fenster 1 schließen (der Schlüssel steht bis dahin in seinen Einstellungen) und `docker stop speaches`. Kommt später der Pi, kann der Server im selben WLAN auf diesem Rechner bleiben (Abschnitt „Später: der Pi im selben WLAN“ weiter unten).
 
-`--dry-run` startet den Zustandsautomaten mit Attrappen für Taster, Mikrofon, Lautsprecher und LED. Es sendet **keine** Anfrage an den Server (auch keinen Health-Check), und die Attrappen drücken nie eine Taste. Der Lauf zeigt nur, dass der Client startet und `READY` erreicht; Server-Adresse und Token spielen dabei keine Rolle:
+`--dry-run` startet den Zustandsautomaten mit Attrappen für Taster, Mikrofon, Lautsprecher und LED. Es sendet **keine** Anfrage an den Server (auch keinen Health-Check), und die Attrappen drücken nie eine Taste. Der Lauf zeigt nur, dass der Client startet und `READY` erreicht; Geräte-ID und Token braucht er nicht (sind sie gesetzt, prüft er ihre Zeichen wie unter „Manuell starten“):
 
 ```bash
 python3 pi-client/kunibert_client.py --dry-run --debug
@@ -450,9 +468,15 @@ Ohne `PICASTAI_PUBLIC_BASE_URL` baut der Server die `audio_url` aus der Adresse,
 New-NetFirewallRule -DisplayName "Kunibert-Server (Heimnetz)" -Direction Inbound -Protocol TCP -LocalPort 3000 -Profile Private -RemoteAddress LocalSubnet -Action Allow
 ```
 
-**5. Am Pi:** Installation wie oben („Automatische Installation“) mit `--api-url http://192.168.178.20:3000 --device-id prototype-001` (deine Adresse); das Token fragt der Installer verdeckt ab. Ob der Rechner vom Pi aus erreichbar ist, zeigt `curl -fsS http://192.168.178.20:3000/health` am Pi (deine Adresse; Antwort mit `"status":"ok"`). Danach `--once health` (muss `OK` melden), dann `deploy/CHECKLISTE.md`, Teil B bis D.
+**5. Am Pi:** Installation wie oben („Automatische Installation“) mit `--api-url http://192.168.178.20:3000 --device-id prototype-001` (deine Adresse); das Token fragt der Installer verdeckt ab. Ob der Rechner vom Pi aus erreichbar ist, zeigt `curl -fsS http://192.168.178.20:3000/health` am Pi (deine Adresse; Antwort mit `"status":"ok"`). Danach Health mit den Einstellungen aus `/etc/kunibert/kunibert.env` prüfen, als Dienstkonto wie in „Manuell starten“. Er muss `OK` melden. Ohne diese Einstellungen fehlt das Token, und der Client bricht ab; steht in der Shell ein Token, prüft er die Standardadresse `https://picastAI.com`, nicht deinen Rechner. Was eine andere Ausgabe bedeutet, steht in `deploy/CHECKLISTE.md`, Teil B.
 
-**Grenzen:** Zwischen Pi und Rechner läuft http, also unverschlüsselt im eigenen WLAN (das WLAN selbst ist verschlüsselt). Für Tests mit Erwachsenen im eigenen Netz in Ordnung (Einschätzung); für Geräte außerhalb deines WLANs braucht es HTTPS (Tailscale Funnel oder ein Server, siehe Projektliste, Punkt 65). Ohne Caddy ist im WLAN mehr erreichbar als nur die Geräte-Routen: die Eltern-Routen (`/v1/eltern/…`, nur mit Kopplungscode), die Betreiber-Routen (`/api/…`, nur mit Betreiber-Token) und die Entwicklungsseiten (`/`, `/hoerproben`; ohne Daten). Der Rechner muss laufen, solange der Pi arbeiten soll. Aufräumen: Fenster 1 und das Fenster der Stimme schließen, `docker stop speaches`; die Firewall-Regel entfernst du mit `Remove-NetFirewallRule -DisplayName "Kunibert-Server (Heimnetz)"` (als Administrator).
+```bash
+sudo -u kunibert bash -c 'cd /var/lib/kunibert && set -a && . /etc/kunibert/kunibert.env && set +a && exec /opt/kunibert/.venv/bin/python /opt/kunibert/pi-client/kunibert_client.py --once health'
+```
+
+Dann `deploy/CHECKLISTE.md`, Teil B bis D.
+
+**Grenzen:** Zwischen Pi und Rechner läuft http, also unverschlüsselt im eigenen WLAN (das WLAN selbst ist verschlüsselt). Für Tests mit Erwachsenen im eigenen Netz in Ordnung (Einschätzung); für Geräte außerhalb deines WLANs braucht es HTTPS (Tailscale Funnel oder ein Server, siehe Projektliste, Punkt 65). Ohne Caddy ist im WLAN mehr erreichbar als hinter Caddy: die Betreiber-Routen (`/api/…`, nur mit Betreiber-Token) und die Entwicklungsseiten (`/`, `/hoerproben`; ohne Daten). Wie hinter Caddy sind auch die Eltern-Seite und die Eltern-Routen erreichbar (`/eltern`, `/v1/eltern/…`, nur mit Kopplungscode). Der Rechner muss laufen, solange der Pi arbeiten soll. Aufräumen: Fenster 1 und das Fenster der Stimme schließen, `docker stop speaches`; die Firewall-Regel entfernst du mit `Remove-NetFirewallRule -DisplayName "Kunibert-Server (Heimnetz)"` (als Administrator).
 
 ## systemd
 

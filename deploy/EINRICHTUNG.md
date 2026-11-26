@@ -26,6 +26,8 @@ Gesamt bis zum ersten Pi-Durchlauf grob **2 bis 3 Stunden** reine Arbeitszeit (S
 
 Die Schritte 5, 6 und 8 und die Vorbereitung von Schritt 7 erledigt [`setup-server.sh`](setup-server.sh) in einem Lauf (Pakete, Node.js 22, Docker, Caddy, Benutzer, Frist für Protokolle, Code, Build, env-Datei, Sprachserver mit Modellen, Dienst, Caddyfile). Es ist mehrfach ausführbar. **Stand: auf keinem echten Server gelaufen.** Geprüft sind `bash -n`, `shellcheck` und die Hilfsfunktionen (`bash deploy/setup-server.test.sh`). Bricht es ab, geht es von Hand mit den Abschnitten 1 bis 6 weiter.
 
+**Unter Windows vorher die Zeilenenden prüfen** (PowerShell, im Repo-Ordner): `git ls-files --eol deploy/setup-server.sh deploy/smoke-test.sh` muss bei beiden `w/lf` zeigen. Bei `w/crlf` bricht das Skript sofort ab (`$'\r': command not found`). Dann den Ordner neu klonen: Seit dem 25.11.2026 checkt Git Skripte über `.gitattributes` auch unter Windows mit LF aus, aber ein älterer Klon behält seine Windows-Zeilenenden auch nach `git pull`.
+
 ```bash
 # von deinem Rechner (im Repo-Ordner; unter Windows in PowerShell mit OpenSSH)
 scp deploy/setup-server.sh root@<IPv4>:
@@ -47,7 +49,7 @@ Pi --HTTPS :443--> Caddy --HTTP lokal--> 127.0.0.1:3000 Kunibert-Server
                       Sprachserver (Speaches, nur lokal) und Claude (Sprachmodell)
 ```
 
-Öffentlich ist nur Caddy, und Caddy reicht nur `/health` und `/v1/device/*` durch. Admin-Routen (`/api/*`) und die Weboberfläche sind von außen nicht erreichbar.
+Öffentlich ist nur Caddy, und Caddy reicht nur `/health`, `/v1/device/*`, die Seite für Eltern (`/eltern`) und die Eltern-Routen (`/v1/eltern/*`) durch (seit 24.11.2026, Punkt D2). Admin-Routen (`/api/*`) und die Weboberfläche sind von außen nicht erreichbar (offen: Pfade mit `%2F` oder `//` liest Caddy anders als der Server, Punkt N1124-1338-d). Solange das Gerät den Kopplungscode noch nicht sagt (Punkt D1), kommt der Code nur über die Betreiber-Route auf dem Server; deshalb erteilt der Betreiber die Einwilligung für das Testgerät dort (Abschnitt 5).
 
 ## 1. Voraussetzungen
 
@@ -64,8 +66,8 @@ sudo useradd --system --home-dir /var/lib/kunibert --shell /usr/sbin/nologin kun
 sudo install -d -o root -g root -m 755 /opt/kunibert
 sudo install -d -o root -g root -m 700 /etc/kunibert
 
-# Code: geprüften Stand von main (oder einem Tag) holen. Das Repo ist privat: einen
-# read-only Deploy-Key verwenden, kein persönliches Token auf dem Server.
+# Code: geprüften Stand von main (oder einem Tag) holen. Das Repo ist öffentlich; wie
+# setup-server.sh einen read-only Deploy-Key verwenden, kein persönliches Token auf dem Server.
 sudo git clone git@github.com:manuelpicard/picastAI.com.git /opt/kunibert/app
 cd /opt/kunibert/app
 sudo npm ci             # genau die Versionen aus package-lock.json; tsx (devDependency) wird zur Laufzeit gebraucht
@@ -88,6 +90,9 @@ Mindestens setzen: `PICASTAI_PUBLIC_BASE_URL`, `PICASTAI_ADMIN_TOKEN`, `PICASTAI
 - `PICASTAI_PUBLIC_BASE_URL` bestimmt die `audio_url`. Der Pi lehnt eine Adresse mit anderem Schema oder Host ab. Gleiche Schreibweise wie auf dem Pi (`PICASTAI_API_BASE_URL`).
 - Ein Gerät aus `PICASTAI_DEVICE_ID`/`PICASTAI_DEVICE_TOKEN` überlebt Neustarts. Über `/api/devices` angelegte Geräte nur mit `PICASTAI_DEVICE_STORE=firestore`.
 - Eltern-Steuerung dauerhaft (seit 23.11.2026, Punkt E2): `KUNIBERT_ELTERN_DATEI=/var/lib/kunibert/eltern.json` und `KUNIBERT_ELTERN_SCHLUESSEL` (mindestens 32 Zeichen, `openssl rand -hex 32`). Dann überstehen Einwilligung, Schlafmodus, Ruhezeiten und die Kopplung der Eltern-Handys einen Neustart. Die Datei muss unter `/var/lib/kunibert` liegen: Nur dort darf der Dienst schreiben (`StateDirectory=kunibert` mit `ProtectSystem=strict` in `deploy/kunibert-server.service`). Den Schlüssel nicht ändern und nicht verlieren: Sonst passen die Pseudonyme nicht mehr, und der Server startet nicht, bis der alte Schlüssel wieder eingetragen oder die Datei beiseitegelegt ist (dann müssen alle Eltern neu koppeln und einwilligen). Fehlt eins von beiden, startet der Server mit der Warnung `Eltern-Steuerung nur im Arbeitsspeicher`. Was in der Datei steht: `docs/picastAI-Pi-API.md`, Abschnitt „Dauerhaft: Datei der Eltern-Steuerung“. `setup-server.sh` setzt beides, wenn es fehlt.
+- Ton-Strom (Punkt 71): Die Vorlage setzt `PICASTAI_AUDIO_STREAM=1`. Dann beginnt eine Geschichte nach dem ersten Absatz, während Claude den Rest noch schreibt. Ohne die Zeile liefert der Server nur ganze Dateien, auch wenn der Pi den Strom anfragt (der Pi-Client tut das standardmäßig, die ESP32-Firmware noch nicht). Im Caddyfile gibt `flush_interval -1` jedes Stück sofort weiter; das steht schon in der Vorlage. Vorläufig entschieden am 24.11.2026, 11:58: an, wie in Teil A1 der Checkliste; im Code ist der Standard aus (`server-api/config.ts`, Feld `audioStream`). Abschalten mit `PICASTAI_AUDIO_STREAM=0`. Zwei Grenzen des Stroms: Jeder Absatz geht einzeln durch den Ausgabe-Check, am Ende noch einmal der ganze Teil; schlägt ein Treffer erst über mehrere Absätze hinweg an, sind die früheren Absätze schon gesprochen (`docs/picastAI-Pi-API.md`, „Ton-Strom“). Und das Zeitbudget der Anfrage gilt nicht für die Vertonung der Absätze (Zeitkette, Punkt N1124-1153-b). Prüfen: In der Zeile `Zeitmessung` der ersten Geschichte hat `erster_ton_ms` eine Zahl (`docs/Zeitmessung.md`, „Ton-Strom“). `setup-server.sh` ändert diese Zeile nicht: Eine ältere env-Datei bekommt sie nur von Hand (`sudoedit`).
+- Weitere Einstellungen mit Standardwert stehen in der Vorlage als Kommentar; ein Wert wirkt erst, wenn das `#` weg ist: `PICASTAI_ANTHROPIC_MODEL`, `PICASTAI_ANTHROPIC_WORKSPACE_ID` (nur bei Schlüsseln, die an eine Person gebunden sind), `PICASTAI_LLM_PRICES`, `PICASTAI_STT_API_KEY` und `PICASTAI_TTS_API_KEY` (nur für einen Sprachserver auf einem anderen Rechner), `PICASTAI_POCKET_TTS_TEMPO`, `PICASTAI_POCKET_TTS_PAUSE_MS`, `PICASTAI_STORY_PREFETCH` (Standard an), `KUNIBERT_EINORDNUNG_PARALLEL` (Standard aus; Punkt B1, aus lassen, bis die Güte belegt ist) und die Länge von Folge, Teil und Antwort (`KUNIBERT_PARTS_PER_EPISODE`, `KUNIBERT_STORY_MIN_WORDS`, `KUNIBERT_STORY_MAX_WORDS`, `KUNIBERT_ANSWER_MAX_WORDS`; das ändert, was Kinder hören).
+- Absichtlich **nicht** in der Vorlage: `KUNIBERT_EMERGENCY_NUMBER_PRIMARY` und `KUNIBERT_EMERGENCY_NUMBER_KUMMER` (die Notrufnummern, so wie Kunibert sie ausspricht: „Eins Eins Zwei“ und „Eins Eins Sechs, Eins Eins Eins“; nur für ein anderes Land ändern), `KUNIBERT_AUDIO_SAMPLE_RATE` (Standard 16000; der Pi braucht 16000 Hz, `server-api/ansagen.ts`), `PICASTAI_CORS_ORIGINS` (Freigabe für Browser anderer Adressen; leer lassen, der Pi und Caddy brauchen sie nicht), `KUNIBERT_EINWILLIGUNG_PRUEFEN` (wirkt mit `NODE_ENV=production` nie), `ANTHROPIC_BASE_URL` (nur für die Attrappe im Trockenlauf `deploy/dryrun/`; wer sie setzt, schickt den erkannten Text und den Schlüssel für Claude an die dort genannte Adresse), `EVAL_SEED` und `EVAL_MODELS` (nur für `npm run eval:llm`), `KUNIBERT_DEVICE_ID` und `KUNIBERT_DEVICE_TOKEN` (alte Namen; zuerst gelten die Namen mit `PICASTAI_`, `server-api/devices.ts`) und `GEMINI_API_KEY`, `PICASTAI_GEMINI_MODEL` (Gemini gibt es nicht mehr; der Server warnt beim Start, wenn sie noch gesetzt sind).
 
 ## 4. Sprachserver (Speaches)
 
@@ -113,6 +118,7 @@ uvx speaches-cli model download Systran/faster-whisper-small      # Beispiel aus
 uvx speaches-cli registry ls --task text-to-speech                # verfügbare Stimmenmodelle (Piper, Kokoro)
 ```
 
+- **Kuniberts Stimme (Pocket TTS, `stuart_bell`, seit 13.11.2026):** Dieser Abschnitt und `setup-server.sh` richten sie auf dem gemieteten Server noch **nicht** ein (offen, Punkt N1124-1153-a der Arbeitsliste). Hier läuft vorerst Piper. Der Befehl für den eigenen Rechner steht in `CHECKLISTE.md`, Teil A1; die Zeilen für die env-Datei stehen in der Vorlage als Kommentar.
 - **Erkennung:** `Systran/faster-whisper-small` ist das Beispiel der Dokumentation und klein. In der Studie [Kid-Whisper](https://arxiv.org/html/2309.07927) erkennt ein größeres Whisper-Modell Kinderstimmen etwas besser, kostet aber mehr Rechenzeit. Schritt 12 der Checkliste prüft die Erkennung mit erwachsenen Sprechern. Ob ein Modell für Kinderstimmen reicht, zeigt erst ein Test nach der „Freigabe-Checkliste vor dem ersten Kind“. Das Modell ist über die Umgebungsvariable `PICASTAI_STT_MODEL` wählbar (`server-api/config.ts`, Feld `sttModel`); es muss vorher in Speaches heruntergeladen sein (siehe unten). Ein Wechsel (zum Beispiel auf `Systran/faster-whisper-base`) braucht also keine Codeänderung. Gemessen ist das nicht.
 - **Stimme:** Piper hat deutsche Stimmen (`eva_k`, `karlsson`, `kerstin`, `mls`, `pavoque`, `ramona`, `thorsten`, `thorsten_emotional`). Am 11.11.2026 gegen die Speaches-Registry geprüft (Image `latest-cpu`): Das Modell heißt z. B. `speaches-ai/piper-de_DE-thorsten-medium` und die Stimme darin `thorsten` (also `PICASTAI_TTS_MODEL=speaches-ai/piper-de_DE-thorsten-medium`, `PICASTAI_TTS_VOICE=thorsten`). Es gibt dieselbe Stimme auch als `-low` und `-high`. Die Namen der anderen Stimmen: `registry ls` oder `curl -s "http://127.0.0.1:8000/v1/registry?task=text-to-speech"`. Jede Stimme hat eine eigene Lizenz: vor dem Einsatz mit Kindern prüfen.
 - **Ohne `uv`:** Die Modelle lassen sich auch direkt über die Schnittstelle laden (so im Trockenlauf getestet): `curl -X POST http://127.0.0.1:8000/v1/models/Systran/faster-whisper-small` und `curl -X POST http://127.0.0.1:8000/v1/models/speaches-ai/piper-de_DE-thorsten-medium`. Antwort: `Model '…' downloaded`. Der Cache liegt im Volume `hf-hub-cache` (Pfad im Container `/home/ubuntu/.cache/huggingface/hub`, geprüft) und übersteht ein Neuanlegen des Containers.
@@ -159,7 +165,23 @@ sudo caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
 sudo systemctl reload caddy
 ```
 
-Die Vorlage erzwingt HTTPS, reicht nur `/health` und `/v1/device/*` durch, begrenzt den Body auf 3 MB und schreibt keine Zugriffsprotokolle. In der env-Datei steht dazu `PICASTAI_TRUST_PROXY=loopback` (Vorlage und `setup-server.sh`): Der Server glaubt nur Caddy auf demselben Rechner und sieht so die echte Adresse der Eltern beim Koppeln. Ohne die Einstellung warten alle Eltern zusammen, wenn irgendwer falsche Codes rät; der Server warnt dann einmal im Journal. Steht noch ein weiterer Proxy vor Caddy (zum Beispiel ein CDN), braucht es `trusted_proxies` im Caddyfile und dieselben Adressbereiche in `PICASTAI_TRUST_PROXY` (siehe [`docs/picastAI-Pi-API.md`](../docs/picastAI-Pi-API.md), „Betrieb hinter einem Proxy“; nicht getestet).
+Die Vorlage erzwingt HTTPS (mit HSTS, ein Jahr), reicht nur `/health`, `/v1/device/*`, `/eltern` und `/v1/eltern/*` durch, begrenzt den Body auf 3 MB (Eltern: 16 KB) und schreibt keine Zugriffsprotokolle. Fehlerzeilen schreibt Caddy trotzdem, aber gefiltert (unten, „Protokoll von Caddy“). In der env-Datei steht dazu `PICASTAI_TRUST_PROXY=loopback` (Vorlage und `setup-server.sh`): Der Server glaubt nur Caddy auf demselben Rechner und sieht so die echte Adresse der Eltern beim Koppeln. Ohne die Einstellung warten alle Eltern zusammen, wenn irgendwer falsche Codes rät; der Server warnt dann einmal im Journal. Steht noch ein weiterer Proxy vor Caddy (zum Beispiel ein CDN), braucht es `trusted_proxies` im Caddyfile und dieselben Adressbereiche in `PICASTAI_TRUST_PROXY` (siehe [`docs/picastAI-Pi-API.md`](../docs/picastAI-Pi-API.md), „Betrieb hinter einem Proxy“; nicht getestet).
+
+### Protokoll von Caddy
+
+Stand 25.11.2026, 00:50, vorläufig (Punkt N1123-0037-c; Einschätzung, keine Rechtsberatung).
+
+Zugriffsprotokolle schreibt Caddy nicht: Im Block der Seite steht keine `log`-Direktive. Bei Fehlern schreibt Caddy aber eine Zeile ins Journal, zum Beispiel bei 502 (der Kunibert-Server läuft nicht) oder 504 (er antwortet nicht in 130 s). Ohne Filter stünde darin die ganze Anfrage: Adresse und Port des Absenders (Haushalt oder Eltern), alle Kopfzeilen mit `X-Device-ID` (Geräte-ID) und Browserkennung; `Authorization` und `Cookie` sind leer (2.6.2) oder `REDACTED` (neuere Fassungen). Belegt am 25.11.2026 mit Caddy 2.6.2 und der alten Vorlage. Bricht ein Ton-Strom ab, schreibt Caddy eine weitere Zeile („aborting with incomplete response“). In ihrem Fehlertext können Adressen stehen; neuere Fassungen wie 2.11.9 hängen auch die Anfrage an (im Quelltext nachgelesen). Nachgestellt hat der Test den Abbruch durch den Server, nicht den durch das Gerät (zum Beispiel Stopp per Taste).
+
+Der globale Block oben im Caddyfile filtert jede Zeile, die Caddy schreibt. Er nimmt heraus: alle Kopfzeilen, Adresse und Port des Absenders (`remote_ip`, `remote_port`, `client_ip`), die Kennung im Pfad einer Antwort (aus `/v1/device/audio/t_…` wird `/v1/device/audio/REDACTED`) und Adressen im Fehlertext (`error`, IPv4 und IPv6 in eckigen Klammern). Es bleiben Zeit, Stufe, Nachricht, Methode, Pfad, Status und Dauer. Das reicht, um zu sehen, was fehlschlug. Geprüft wird das mit `bash deploy/caddy.test.sh` (Caddy vor einem Server, der nicht läuft, und vor einer Attrappe, die mitten in der Antwort abbricht); die CI prüft bei jedem PR und jedem Push auf `main` Caddy aus Ubuntu 24.04 (2.6.2) und die jeweils neueste 2.x aus dem offiziellen Image (Job `caddy`, Pflicht vor dem Merge).
+
+Grenzen (offen):
+
+- Den Text der Nachricht (`msg`) filtert Caddy nicht. Meist steht dort nur die Adresse des Kunibert-Servers (`dial tcp 127.0.0.1:3000: connect: connection refused`). Bricht die Verbindung des Geräts mitten im Hochladen ab, kann dort die Adresse des Haushalts stehen. Stürzt Caddy bei einer Anfrage ab (ein Fehler in Caddy, selten), schreiben neuere Fassungen die Adresse ebenfalls in die Nachricht (`http: panic serving …`). Beides nach dem Quelltext, nicht nachgestellt. Für das Journal gilt die Frist von 14 Tagen (Abschnitt „Betrieb“).
+- Mit der globalen Option `debug` schreibt Caddy viel mehr, auch Adressen im Text. Nur kurz zur Fehlersuche einschalten.
+- Der Filter schwärzt Adressen in jedem Fehlertext, auch bei Zertifikaten. Bei der Fehlersuche zum Zertifikat fehlt dann die Adresse des eigenen Servers; sie steht in `dig +short <Hostname>`.
+- Benennt eine neue Fassung von Caddy die Felder um, greift der Filter dort nicht mehr. Dann wird der Job `caddy` rot, auch ohne Änderung im Repo, aber erst beim nächsten PR oder Push (ohne festen Zeitplan). Zuerst den Filter anpassen. Nach einem Update von Caddy auf dem Server: `sudo journalctl -u caddy -n 20` ansehen.
+- Ein Server, der vor dem 25.11.2026 eingerichtet wurde, hat das Caddyfile ohne Filter. Es wie oben neu einspielen (Abschnitt „Betrieb“, „Update“).
 
 ### Zeitkette
 
@@ -167,24 +189,26 @@ Frage und Geschichte laufen durch Spracherkennung, Sprachmodell und Sprachausgab
 
 | Stelle | Grenze | Einstellung |
 | --- | --- | --- |
-| Server (gemeinsames Zeitbudget der ganzen Anfrage) | 120 s | fest im Code (`TURN_BUDGET_MS`, `server-api/timing.ts`); die Grenzen je Aufruf `PICASTAI_VOICE_TIMEOUT_MS` (Spracherkennung und Sprachausgabe, 45 s) und `PICASTAI_LLM_TIMEOUT_MS` (30 s) gelten zusätzlich |
+| Server (gemeinsames Zeitbudget der ganzen Anfrage) | 120 s | fest im Code (`TURN_BUDGET_MS`, `server-api/timing.ts`); die Grenzen je Aufruf `PICASTAI_VOICE_TIMEOUT_MS` (Spracherkennung und Sprachausgabe, Standard 90 s, seit 14.11.2026) und `PICASTAI_LLM_TIMEOUT_MS` (30 s) gelten zusätzlich |
 | Caddy | 130 s | `response_header_timeout` im Caddyfile |
 | Pi-Client | 140 s | `KUNIBERT_PIPELINE_TIMEOUT` |
 
-Die 120 s gelten **für die ganze Anfrage zusammen** (Entscheidung vom 11.11.2026, vorläufig). Ohne gemeinsames Budget wären es bei einem Geschichtenwunsch bis zu 45 + 30 + 30 + 45 = 150 s gewesen, denn dann fragt der Server Claude **zweimal** (erst die Einordnung, dann die Geschichte; siehe `docs/Zeitmessung.md`, Feld `sprachmodell_aufrufe`). Das wäre mehr als Caddy (130 s) und Pi (140 s) gewesen. So arbeitet der Server jetzt:
+Die 120 s gelten **für die ganze Anfrage zusammen** (Entscheidung vom 11.11.2026, vorläufig). Ohne gemeinsames Budget wären es bei einem Geschichtenwunsch bis zu 90 + 30 + 30 + 90 = 240 s (mit den Standardgrenzen je Aufruf; bei der Entscheidung lag die Grenze je Sprachaufruf noch bei 45 s, also 150 s), denn dann fragt der Server Claude **zweimal** (erst die Einordnung, dann die Geschichte; siehe `docs/Zeitmessung.md`, Feld `sprachmodell_aufrufe`). Das wäre mehr als Caddy (130 s) und Pi (140 s) gewesen. So arbeitet der Server jetzt:
 
 - Die Frist beginnt, wenn die Anfrage beim Server ankommt und angemeldet ist (`startTurnTimer` in `server.ts`). Die Aufnahme liest der Server erst danach (`upload.single` bei `/v1/device/question` und `/v1/turn`). Das Hochladen zählt also mit (berichtigt am 22.11.2026). Zwischen 120 s und den 130 s von Caddy liegt ein Puffer.
 - Jeder Sprachmodell-Aufruf bekommt höchstens den Rest des Budgets **minus 15 s für die Sprachausgabe** (`TTS_RESERVE_MS`), und höchstens seine eigenen 30 s.
 - Bleiben für einen Aufruf weniger als 3 s, wird er nicht mehr gestartet. Dann greift der feste Fallback-Text (derselbe Weg wie bei einem Fehler des Sprachmodells), und die Sprachausgabe läuft wie gewohnt.
-- Die Sprachausgabe bekommt den Rest des Budgets, mindestens 5 s. Läuft sie in die Frist, antwortet der Server mit 503 `voice_provider_failed` (`retryable: true`), wie bisher bei einem Sprachdienst-Fehler. Die Erkennung kann nur die 45 s je Aufruf überschreiten, nicht das Budget; auch ihr Timeout ergibt 503.
+- Die Sprachausgabe bekommt den Rest des Budgets, mindestens 5 s. Läuft sie in die Frist, antwortet der Server mit 503 `voice_provider_failed` (`retryable: true`), wie bisher bei einem Sprachdienst-Fehler. Auch die Erkennung bekommt höchstens den Rest des Budgets und ihre eigene Grenze (Standard 90 s); ein Timeout dort ergibt ebenfalls 503.
 - Die Sicherheitsweiche läuft vor dem Sprachmodell, braucht keinen Aufruf und wird vom Budget nicht berührt.
-- Obergrenze: höchstens 120 s plus die 5 s Mindestzeit für die Sprachausgabe, also unter den 130 s von Caddy.
+- Obergrenze: höchstens 120 s plus die 5 s Mindestzeit für die Sprachausgabe, also unter den 130 s von Caddy. **Das gilt nur ohne Ton-Strom.** Mit `PICASTAI_AUDIO_STREAM=1` ruft der Server die Sprachausgabe je Absatz ohne Zeitbudget auf (`StreamingSpeaker` in `server-api/audio-stream.ts`); es gilt nur die Grenze je Aufruf (Standard 90 s), und die Antwort wartet auf den ersten vertonten Absatz. Hängt die Sprachausgabe, kann die Antwort die 130 s von Caddy überschreiten. Offen: Punkt N1124-1153-b der Arbeitsliste.
 
 Offen: ob 120 s die richtige Größe sind, und die echten Zeiten auf der CCX13 (Schritt 10 oben).
 
 Wer die Server-Grenzen ändert, passt die beiden anderen an. Quellen (ohne Zeilennummern, die veralten): `server-api/timing.ts` (`TURN_BUDGET_MS`, `TTS_RESERVE_MS`, `MIN_LLM_MS`, `MIN_TTS_MS`), `server-api/brain.ts` (Frist je Sprachmodell-Aufruf), `server.ts` (Erkennung und Sprachausgabe), `server-api/config.ts` (`llmTimeoutMs` und `voiceTimeoutMs`, Grenzen je Aufruf, 3 bis 120 s), `deploy/Caddyfile` (`response_header_timeout 130s`), `pi-client/kunibert_client.py` (`KUNIBERT_PIPELINE_TIMEOUT`, Standard 140 s).
 
 ## 7. Abnahme von außen
+
+Unter Windows (WSL) vorher die Zeilenenden des Skripts prüfen, wie unter „Kürzer mit dem Skript“ beschrieben.
 
 Alle Prüfungen dieses Abschnitts (und mehr: Zertifikat, falscher Token gibt 401, zu große Datei gibt 413) macht das Skript `deploy/smoke-test.sh`. Es läuft auf deinem Rechner (Linux oder macOS mit `bash`, `curl` und `openssl`; unter Windows in WSL, in Git Bash mit dem Windows-`curl` ging es im Test nicht), ruft weder Spracherkennung noch Sprachmodell auf und liest Adresse und Gerätetoken nur aus der Umgebung:
 
@@ -199,6 +223,8 @@ Ausgang 0 heißt: alles bestanden. Einzelne Prüfungen von Hand:
 curl -i https://kunibert.example/health        # 200
 curl -i https://kunibert.example/              # 404
 curl -i https://kunibert.example/api/status    # 404, Admin-Routen sind nicht erreichbar
+curl -i https://kunibert.example/eltern        # 200, Seite für Eltern
+curl -i https://kunibert.example/v1/eltern/status   # 401 ohne Anmeldung
 curl -i http://kunibert.example/health         # Weiterleitung auf https
 ```
 
@@ -206,11 +232,17 @@ Von innen mit Admin-Token (nur auf dem Server): `curl -H "Authorization: Bearer 
 
 ## 8. Pi anbinden
 
-Auf dem Pi (siehe [`pi-client/README.md`](../pi-client/README.md)) `PICASTAI_API_BASE_URL=https://kunibert.example`, dieselbe `PICASTAI_DEVICE_ID` und das Geräte-Token eintragen, dann `--once health` und `--once story` prüfen. Weiter mit der Checkliste.
+Auf dem Pi (siehe [`pi-client/README.md`](../pi-client/README.md)) `PICASTAI_API_BASE_URL=https://kunibert.example`, dieselbe `PICASTAI_DEVICE_ID` und das Geräte-Token eintragen (der Installer schreibt sie auf dem Pi nach `/etc/kunibert/kunibert.env`). Dann am Pi, nicht auf dem Server, Health prüfen, als Dienstkonto mit den Einstellungen aus dieser Datei. Er muss `OK` melden. Ohne diese Einstellungen fehlt das Token, und der Client bricht ab; steht in der Shell ein Token, prüft er die Standardadresse `https://picastAI.com`, nicht diesen Server. Was eine andere Ausgabe bedeutet, steht in der Checkliste, Teil B.
+
+```bash
+sudo -u kunibert bash -c 'cd /var/lib/kunibert && set -a && . /etc/kunibert/kunibert.env && set +a && exec /opt/kunibert/.venv/bin/python /opt/kunibert/pi-client/kunibert_client.py --once health'
+```
+
+Eine Geschichte prüft danach die Checkliste, Teil C, mit der Erzähltaste (vorher die Einwilligung erteilen, Abschnitt 5, „Einwilligung für Tests mit Erwachsenen“). `--once story` hier besser nicht: Es holt Teil 1 der Folge ungehört ab, dann beginnt Teil C, Schritt 3, bei Teil 2. Ohne Einwilligung kommt nur der feste Hinweis, und der Client meldet trotzdem „Story-Audio empfangen“. Weiter mit der Checkliste.
 
 ## Betrieb
 
-- **Update:** neuen Stand holen (`git pull`), `npm ci`, `npm run build`, `sudo systemctl restart kunibert-server`, Abnahme wiederholen. Hat sich `deploy/kunibert-server.service` geändert (zum Beispiel `SyslogIdentifier=` seit 23.11.2026), die Datei wie in Abschnitt 5 neu installieren und `sudo systemctl daemon-reload` vor dem Neustart. Seit 23.11.2026 gehört `PICASTAI_TRUST_PROXY=loopback` in die env-Datei (Abschnitt 6); beim Update von Hand bekommt eine ältere Datei sie nicht von selbst: nachtragen mit `sudoedit /etc/kunibert/kunibert.env`. Fehlt sie, warnt der Server einmal im Journal („PICASTAI_TRUST_PROXY ist nicht gesetzt“). Einfacher: `setup-server.sh` noch einmal starten, es trägt auch diese Zeile nach. Ein Neustart verwirft laufende Folgen und nicht abgeholtes Audio (nur im Arbeitsspeicher).
+- **Update:** neuen Stand holen (`git pull`), `npm ci`, `npm run build`, `sudo systemctl restart kunibert-server`, Abnahme wiederholen. Hat sich `deploy/kunibert-server.service` geändert (zum Beispiel `SyslogIdentifier=` seit 23.11.2026), die Datei wie in Abschnitt 5 neu installieren und `sudo systemctl daemon-reload` vor dem Neustart. Hat sich `deploy/Caddyfile` geändert, es wie in Abschnitt 6 neu einspielen (Hostname ersetzen, `caddy validate`, `systemctl reload caddy`) oder `setup-server.sh` noch einmal laufen lassen. Das gilt für Server, die vor dem 24.11.2026 eingerichtet wurden (sonst geben `/eltern` und `/v1/eltern/status` 404, und HSTS fehlt), und für Server von vor dem 25.11.2026 (sonst fehlt der Filter für das Protokoll von Caddy). Seit 23.11.2026 gehört `PICASTAI_TRUST_PROXY=loopback` in die env-Datei (Abschnitt 6); beim Update von Hand bekommt eine ältere Datei sie nicht von selbst: nachtragen mit `sudoedit /etc/kunibert/kunibert.env`. Fehlt sie, warnt der Server einmal im Journal („PICASTAI_TRUST_PROXY ist nicht gesetzt“). Einfacher: `setup-server.sh` noch einmal starten, es trägt auch diese Zeile nach. Das gilt nicht für `PICASTAI_AUDIO_STREAM=1` (Abschnitt 3): Diese Zeile trägt das Skript bei einer bestehenden env-Datei nicht nach, sie kommt von Hand dazu. Ein Neustart verwirft laufende Folgen und nicht abgeholtes Audio (nur im Arbeitsspeicher).
 - **Gerät sperren:** bei Umgebungs-Gerät Token in der env-Datei ändern und neu starten; bei Geräten aus der Admin-API `POST /api/devices/<id>/revoke` von lokal.
 - **Schlüssel tauschen:** env-Datei ändern, Dienst neu starten, alten Schlüssel beim Anbieter widerrufen. Ausnahme `KUNIBERT_ELTERN_SCHLUESSEL`: Mit einem neuen Schlüssel startet der Server nicht, bis die Datei der Eltern-Steuerung beiseitegelegt ist; dann müssen alle Eltern neu koppeln und einwilligen (Abschnitt 3).
 - **Eltern-Steuerung** (`/var/lib/kunibert/eltern.json`, Rechte 600): Beim Start steht im Journal nur die Anzahl der Geräte und der gelöschten Einträge. Was die Meldungen heißen:
@@ -219,7 +251,7 @@ Auf dem Pi (siehe [`pi-client/README.md`](../pi-client/README.md)) `PICASTAI_API
   - `Speichern fehlgeschlagen` während des Betriebs: Die Änderung der Eltern gilt, steht aber noch nicht in der Datei. `GET /api/status` zeigt dann `eltern.ungespeichert: true`. Platz oder Rechte beheben und warten, bis dort `eltern.ungespeichert: false` steht (spätestens fünf Minuten); erst dann stoppen oder neu starten. Startet der Server vorher neu, gelten alle Einwilligungen als widerrufen (Meldung `Beim letzten Lauf ließ sich eine Änderung nicht speichern`), außer auch die Markierung `eltern.json.offen` ließ sich nicht anlegen (Restrisiko, `docs/picastAI-Pi-API.md`).
   - Der Dienst startet nicht, `Kein Eintrag der Datei passt zu einem angemeldeten Gerät`: `KUNIBERT_ELTERN_SCHLUESSEL` oder `PICASTAI_DEVICE_ID` stimmen nicht mehr, oder nur Geräte aus `/api/devices` hatten Stand und sind nach dem Neustart weg (ohne `PICASTAI_DEVICE_STORE=firestore`, Abschnitt 3). Einen geänderten Wert wieder zurückstellen und neu starten. War der Wechsel Absicht (neuer Schlüssel, Gerät ersetzt), die Datei beiseitelegen wie oben; danach müssen alle Eltern neu koppeln und einwilligen.
   - Backups des Servers enthalten die Datei.
-- **Logs:** Das Journal enthält Fehlermeldungen und die Zeilen `Zeitmessung`, aber keine Aufnahmen und keine Antworttexte (`KUNIBERT_DIAGNOSTIC_TEXT` wirkt in Produktion nicht).
+- **Logs:** Das Journal enthält Fehlermeldungen und die Zeilen `Zeitmessung`, aber keine Aufnahmen und keine Antworttexte (`KUNIBERT_DIAGNOSTIC_TEXT` wirkt in Produktion nicht). Von Caddy stehen dort Meldungen zu Start und Zertifikaten und Fehlerzeilen, ohne Kopfzeilen und in der Regel ohne Adresse des Absenders (Grenzen: Abschnitt 6, „Protokoll von Caddy“).
 - **Frist für Protokolle** (vorläufig, 23.11.2026, 01:10, Punkt E1; Einschätzung, keine Rechtsberatung): 14 Tage für alles im Journal dieses Servers, also Kunibert-Dienst, Sprachserver, Caddy und System. Grund: Die Zeilen zeigen, wann ein Gerät benutzt wurde. Für die Auswertung eines Tests reichen 14 Tage. Für die Fehlersuche nach einem Vorfall ist das kurz; wer mehr braucht, legt eine eigene Datei an (unten, „Eigener Wert“).
   - `setup-server.sh` legt `/etc/systemd/journald.conf.d/50-kunibert-frist.conf` an: `MaxRetentionSec=14day` und `MaxFileSec=1day`. journald löscht nur ganze Dateien. Weil jeden Tag eine neue Datei beginnt, weicht die Frist höchstens etwa einen Tag ab (nach der Beschreibung von `journald.conf`; auf einem Server nicht geprüft).
   - Der Container des Sprachservers schreibt ins Journal (Abschnitt 4). Ein älterer Container ohne diese Einstellung bekommt beim Skript einen Hinweis. Dann einmal neu anlegen: `sudo docker rm -f speaches` und das Skript noch einmal starten. Die Modelle bleiben im Volume `hf-hub-cache`.

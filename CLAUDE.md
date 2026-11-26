@@ -14,7 +14,7 @@ Vernetztes Sprach-Spielzeug für Kinder von 6 bis 10 Jahren: Sprechtaste (Frage)
 
 | Ordner | Inhalt |
 | --- | --- |
-| `server.ts`, `server-api/` | Node-Server (Express, TypeScript über tsx): Routen, Sicherheitsweiche (`safety.ts`), Erzähler (`brain.ts`, `prompts.ts`), Claude-Anbindung (`llm.ts`), Sprachdienste (`voice.ts`), Geräteliste (`devices.ts`), Eltern-Steuerung (`eltern.ts`), Zeitbudget (`timing.ts`) |
+| `server.ts`, `server-api/` | Node-Server (Express, TypeScript über tsx): Routen, Sicherheitsweiche (`safety.ts`), Erzähler (`brain.ts`, `prompts.ts`), Claude-Anbindung (`llm.ts`), Sprachdienste (`voice.ts`), Geräteliste (`devices.ts`), Eltern-Steuerung (`eltern.ts`) und Seite für Eltern (`eltern-seite.html`), Zeitbudget (`timing.ts`) |
 | `pi-client/` | Python-Client für den Pi 5 und Installationsskript |
 | `firmware/esp32-s3/` | ESP-IDF-Firmware (Entwurf, auf keinem Gerät gelaufen) |
 | `deploy/` | Einrichtung des Servers (Caddy, systemd, Skripte), Checkliste, Trockenlauf und Ende-zu-Ende-Test |
@@ -30,9 +30,10 @@ npm ci
 npm test                 # Server-Tests (node:test)
 npm run lint             # tsc --noEmit
 npm run build
-npm run test:e2e         # echter Pi-Client gegen echten Server, Dienste als Attrappen
+npm run test:e2e         # echter Pi-Client gegen echten Server, Dienste als Attrappen; Eltern-Seite im Browser (nur mit Playwright, sonst übersprungen)
 python3 -m unittest discover -s pi-client -p "test_*.py"   # mit sounddevice und libportaudio2 auch gegen die echte Audio-Bibliothek (CI: ALSA-Nullgerät)
 bash deploy/setup-server.test.sh
+bash deploy/caddy.test.sh         # Fehlerzeilen von Caddy ohne Geräte-ID und Adresse; nur mit Caddy (Paket caddy), sonst übersprungen; CI: Job caddy
 shellcheck -S warning deploy/*.sh pi-client/*.sh docs/autopilot/*.sh
 python3 -m unittest discover -s docs/autopilot -p "test_*.py"   # Werkzeuge des Wochen-Autopiloten
 # Pi-Installer als root in einem Wegwerf-Container (ändert sonst das System; CI: Job pi-installer). pruefen.sh macht es nur
@@ -51,6 +52,7 @@ cd firmware/esp32-s3 && cc -std=c11 -Wall -Wextra -Werror -pedantic -fsanitize=a
 - Kunibert spricht nie nach, was das Kind gesagt hat, ohne Ausgabe-Check (`screenOutput`).
 - Änderungen an `safety.ts` immer mit Sätzen in beiden Listen von `safety.test.ts` (muss anschlagen, darf nicht anschlagen). Lieber ein Fehlalarm als eine Lücke.
 - Server, Pi-Client und Firmware müssen zur Schnittstellen-Doku passen; Zeitkette Server 120 s, Caddy 130 s, Gerät 140 s.
+- Was auf Pi oder Server läuft oder dort gelesen wird (Skripte, Python, systemd, Umgebungsvorlagen, HTML), hat LF. Neue Dateiarten in `.gitattributes` eintragen; `server-api/zeilenenden.test.ts` prüft es.
 - Keine Schlüssel, Tokens oder Passwörter in Code, Tests, Doku oder Commits. Nie danach fragen.
 - Arbeit nur auf einem eigenen Branch mit Pull Request. Nie direkt auf `main` pushen, kein Force-Push. Seit 14.11.2026, 10:51 (Wort des Betreibers) mergt Claude PRs selbst, sobald die CI grün ist; Schließen und Löschen ebenso. Bestellen und Bezahlen nur nach Bestätigung des einzelnen Kaufs.
 - Seit 14.11.2026, 10:51 ist nichts mehr geparkt (Wort des Betreibers); auch Stimme, Recht und die PRs dazu dürfen bearbeitet werden. Offene Punkte stehen in `claude/aufgaben.md`.
