@@ -9,6 +9,7 @@ import {
 import { DEFAULT_POCKET_VOICE, isValidPauseMs, isValidPocketUrl, isValidPocketVoice, isValidTempo } from './pocket-speech.js';
 import { normalizePublicBaseUrl, parseTrustProxy, type TrustProxySetting } from './http-utils.js';
 import { isValidParentKey } from './eltern-datei.js';
+import { PENDING_WAIT_MAX_MS } from './timing.js';
 import path from 'path';
 
 export type TtsProviderName = 'openai-compatible' | 'google' | 'pocket';
@@ -105,6 +106,8 @@ export interface KunibertConfig {
   testTranscript: boolean;
   /** Ohne Einwilligung der Eltern keine Spracherkennung und kein Sprachmodell, siehe isConsentRequired. */
   requireConsent: boolean;
+  /** Höchstens so lange wartet eine Anfrage auf einen alten Ton-Strom desselben Geräts, siehe pendingWaitLimitMs. */
+  pendingWaitMaxMs: number;
   /**
    * Eltern-Steuerung dauerhaft (Punkt E2, server-api/eltern-datei.ts): Datei (KUNIBERT_ELTERN_DATEI) und
    * Schlüssel für die Pseudonyme (KUNIBERT_ELTERN_SCHLUESSEL, nur wenn gültig; nie ausgeben). Fehlt eins
@@ -149,6 +152,20 @@ export function isConsentRequired(
 ): boolean {
   if (env.NODE_ENV === 'production') return true;
   return env.KUNIBERT_EINWILLIGUNG_PRUEFEN?.trim() !== '0';
+}
+
+/**
+ * Grenze für das Warten auf einen alten Ton-Strom desselben Geräts (N1126-1338-f, `pendingWaitMs` in timing.ts).
+ * Im Betrieb (NODE_ENV=production) immer PENDING_WAIT_MAX_MS (30 s). Nur außerhalb davon lässt sie sich für Tests
+ * mit KUNIBERT_TEST_STROM_WARTEN_MS kürzer stellen (100 ms bis 30 s), nie länger: Sonst risse die Zeitkette.
+ * So prüft ein Test am echten Server das Verwerfen, ohne 30 s zu warten (Prüfung von PR #134, Befund 2).
+ */
+export function pendingWaitLimitMs(
+  env: { NODE_ENV?: string; KUNIBERT_TEST_STROM_WARTEN_MS?: string } = process.env
+): number {
+  const raw = env.KUNIBERT_TEST_STROM_WARTEN_MS?.trim();
+  if (env.NODE_ENV === 'production' || !raw || !/^\d+$/.test(raw)) return PENDING_WAIT_MAX_MS;
+  return Math.min(PENDING_WAIT_MAX_MS, Math.max(100, Number(raw)));
 }
 
 /**
@@ -414,6 +431,7 @@ export function loadConfig(): KunibertConfig {
     diagnosticText: isDiagnosticTextEnabled(),
     testTranscript: isTestTranscriptEnabled(),
     requireConsent: isConsentRequired(),
+    pendingWaitMaxMs: pendingWaitLimitMs(),
     parentStateFile: parentStateSettings().file,
     parentStateKey: parentStateSettings().key,
     deviceStore: process.env.PICASTAI_DEVICE_STORE?.trim() === 'firestore' ? 'firestore' : 'memory',
@@ -454,6 +472,8 @@ export function getSafeConfigSummary(config: KunibertConfig) {
     diagnosticText: config.diagnosticText,
     testTranscript: config.testTranscript,
     requireConsent: config.requireConsent,
+    // Grenze für das Warten auf einen alten Ton-Strom (N1126-1338-f): im Betrieb immer 30000 ms.
+    pendingWaitMaxMs: config.pendingWaitMaxMs,
     // Nur ob, nie der Pfad oder der Schlüssel.
     elternDauerhaft: Boolean(config.parentStateFile && config.parentStateKey),
     deviceStore: config.deviceStore,

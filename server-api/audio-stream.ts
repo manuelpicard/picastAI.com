@@ -115,6 +115,10 @@ export class StreamingSpeaker {
   private rejectFirst!: (error: unknown) => void;
   readonly firstAudio: Promise<void>;
   private error: unknown = null;
+  private halted = false;
+  /** Erfüllt sich bei `stop` und `abort`: `finish` wartet dann nicht mehr auf einen laufenden Aufruf. */
+  private release!: () => void;
+  private readonly released = new Promise<void>((resolve) => { this.release = resolve; });
 
   constructor(private readonly synthesize: Synthesize, sampleRate: number, private readonly onSynth?: (ms: number) => void) {
     this.stream = new PcmStream(sampleRate);
@@ -126,13 +130,21 @@ export class StreamingSpeaker {
     return this.said > 0;
   }
 
+  /** true nach `stop`: Ein Teil des Texts ist nicht vertont (`segments` ist dann kürzer). */
+  get stopped(): boolean {
+    return this.halted;
+  }
+
   say(text: string): void {
     const index = this.said++;
     this.queue = this.queue.then(async () => {
-      if (this.error) return;
+      if (this.error || this.halted) return;
       try {
         const started = performance.now();
         const wav = await this.synthesize(text, index);
+        // Nach `stop` oder `abort` kommt nichts mehr in den Strom, auch nicht ein Absatz, der schon
+        // unterwegs war (`segments` zählt nur, was das Gerät bekommen kann).
+        if (this.halted || this.error) return;
         this.onSynth?.(performance.now() - started);
         const info = parseWav(wav);
         if (!isPcmFormat(info.formatTag) || info.channels !== 1 || info.bitsPerSample !== 16 || info.sampleRate !== this.stream.sampleRate) {
@@ -144,6 +156,7 @@ export class StreamingSpeaker {
         this.segments[index] = pcm.length / (this.stream.sampleRate * 2);
         if (index === 0) this.resolveFirst();
       } catch (error) {
+        if (this.halted) return;
         this.error = error;
         this.stream.fail();
         this.rejectFirst(error);
@@ -151,11 +164,25 @@ export class StreamingSpeaker {
     });
   }
 
-  /** Wartet, bis alles vertont ist, und schließt den Strom. Wirft, wenn die Sprachausgabe ausfiel. */
+  /**
+   * Wartet, bis alles vertont ist, und schließt den Strom. Wirft, wenn die Sprachausgabe ausfiel. Nach
+   * `stop` oder `abort` wartet es nicht auf einen Aufruf, der noch läuft.
+   */
   async finish(): Promise<void> {
-    await this.queue;
+    await Promise.race([this.queue, this.released]);
     if (this.error) throw this.error;
     this.stream.end();
+  }
+
+  /**
+   * Das Kind hat angehalten, solange der Teil noch entsteht (N1126-1338-f): Der Rest wird nicht mehr
+   * vertont, `finish` endet sofort mit dem schon Gesprochenen, und der Strom schließt sauber. Ein Fehler
+   * davor zählt weiter; einer danach nicht mehr.
+   */
+  stop(): void {
+    if (this.halted) return;
+    this.halted = true;
+    this.release();
   }
 
   /** Bricht ab (zum Beispiel, wenn Brain mit einem Fehler endet). */
@@ -163,6 +190,7 @@ export class StreamingSpeaker {
     this.error = this.error ?? new Error('abgebrochen');
     this.stream.fail();
     this.rejectFirst(this.error);
+    this.release();
   }
 }
 
