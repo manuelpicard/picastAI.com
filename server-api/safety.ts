@@ -725,7 +725,7 @@ const PATTERNS_REVIEW: RegExp[] = [
 // keine ältere wird enger. Ausnahmen (Spiele, „aus Versehen“, Verneinung) gelten nur in diesen neuen Schablonen und wie bei
 // den älteren derselben Zeitform. Beispiele in beiden Listen von safety.test.ts und in docs/Sicherheitsweiche-Pruefung.md,
 // Abschnitt 14.
-const WANT = '(will|möchte|möcht|mag|wollte|mochte)';
+const WANT = '(will|möchte|möcht|mag|wollte|wollt|mochte)';
 // Füllwörter wie FILL, dazu „eh“, „sowieso“, „eigentlich“ und Zeitwörter („Ich will eh nicht mehr leben“). Nur in V15.
 const FILL2 =
   '(einfach|nur|noch|lieber|am|liebsten|jetzt|gleich|endlich|auch|bald|schon|mal|halt|echt|wirklich|so|ganz|' +
@@ -750,11 +750,14 @@ const HIT_PRESENT =
   'schlug|schlugen|haute|hauten|trat|traten|würgte|würgten|verprügelte|prügelt|prügeln|prügelte|verhaute|misshandelte|boxte|ohrfeigte)';
 const HIT_PAST = '(gehauen|gehaut|gehaun|getreten|gewürgt|verhauen|verprügelt|geohrfeigt|eingesperrt|misshandelt|verdroschen|verkloppt|vermöbelt|geboxt)';
 // „geschlagen“ heißt auch „im Spiel besiegt“: dieselbe enge Ausnahme wie im Perfekt („…, dass er mich beim Memory geschlagen hat“)
-const NOT_GAME_WORD = `(?!((beim|im|bei|in) ${GAME}|knapp|haushoch|zu ${NUM}|noch nie|${NEG_WORD})${R})`;
+// Nach der Prüfung von PR #135: auch „zum Ritter geschlagen“ (Ritterschlag, wie in Abschnitt 12 der Prüfunterlage)
+const NOT_GAME_WORD = `(?!((beim|im|bei|in) ${GAME}|knapp|haushoch|zu ${NUM}|zum ritter|zur ritterin|zu rittern|noch nie|${NEG_WORD})${R})`;
 const NOT_ACCIDENT_WORD = `(?!(aus versehen|ausversehen|noch nie|${NEG_WORD})${R})`;
 // Wie bei „Papa hat mir wehgetan“ (ältere Schablone)
 const NOT_ACCIDENT_SENTENCE = `(?!.*${L}(aus versehen|ausversehen|beim spielen|beim spiel|im spiel|beim schach|beim rennen|beim wettrennen|beim fußball|beim sport)${R})`;
-const PASSIVE_PART = '(gehauen|verhauen|verprügelt|getreten|gewürgt|eingesperrt|angefasst|missbraucht|misshandelt|geohrfeigt)';
+const PASSIVE_PART =
+  '(gehauen|verhauen|verprügelt|getreten|gewürgt|eingesperrt|angefasst|missbraucht|misshandelt|geohrfeigt|' +
+  'verdroschen|verkloppt|vermöbelt|geprügelt|vergewaltigt|zusammengeschlagen|gequält)';
 const SLAP = '(ohrfeige|ohrfeigen|backpfeife|backpfeifen|watsche|watschen)';
 const SECRET_VERB = '(sagen|erzählen|verraten|weitersagen|weitererzählen|weiter sagen|weiter erzählen)';
 const TOUCH_PART = '(angefasst|an gefasst|begrapscht|begrabscht|befummelt|angegrapscht|angegrabscht|betatscht|angetatscht)';
@@ -791,23 +794,74 @@ const HIT_ANY_3 =
   'boxt|boxen|boxte|geboxt|ohrfeigt)';
 const HIT_TARGET =
   '(ins gesicht|in das gesicht|in den bauch|auf den kopf|auf die finger|auf den po|auf den popo|auf die hand|auf die hände|' +
-  'in die rippen|gegen den kopf|an den kopf|auf den mund|in den rücken|in die seite|auf die ohren|zwischen die beine)';
+  'in die rippen|gegen den kopf|an den kopf|auf den mund|in den rücken|in die seite|auf die ohren|zwischen die beine|' +
+  'auf den hintern|auf meinen hintern|in den hintern|auf den arsch|auf meinen po|auf meinen popo)';
 const HAIR = '(an den haaren|an meinen haaren|an den ohren|am ohr|an meinem ohr|an den zöpfen|an meinen zöpfen)';
 const PULL = '(zieht|ziehen|zog|zogen|gezogen|reißt|reißen|riss|rissen|gerissen|zerrt|zerren|zerrte|gezerrt)';
 const NOT_COMB = `(?!.*${L}(kämmt|kämmen|gekämmt|kämmte|bürstet|bürsten|gebürstet|bürstete|flechten|flicht|geflochten|frisiert|frisieren)${R})`;
 const PUSH = '(schubst|schubsen|schubste|geschubst|stößt|stoßen|stieß|gestoßen|wirft|werfen|warf|geworfen|schmeißt|geschmissen)';
 const LOCK_PLACE =
   '(keller|zimmer|kinderzimmer|schrank|kammer|abstellkammer|bad|badezimmer|klo|toilette|dachboden|garage|kofferraum)';
+// Nach der Prüfung von PR #135: „mein Onkel“, „mein Nachbar“, „der Lehrer“, „der Hausmeister“, „ein Junge“ (ein Name darf
+// folgen, frisst aber kein Verb); „Herr Doktor“ und andere Berufe aus CARE nicht
 const UNDRESS_AGENT =
-  `(er|der mann|ein mann|der typ|ein typ|ein fremder|der fremde|jemand|einer|der nachbar|der trainer|der babysitter|onkel ${WORD}|herr ${WORD})`;
+  `(er|jemand|einer|irgendwer|irgendjemand|ein fremder|der fremde|eine fremde|die fremde|` +
+  `((der|die|ein|eine|dieser|diese|mein|meine|unser|unsere|sein|seine) )?((${WORD} )?(mann|typ|junge)|nachbar|nachbarin|trainer|trainerin|` +
+  `babysitter|babysitterin|onkel|lehrer|hausmeister|stiefvater|stiefpapa|cousin)` +
+  `( (?!(${CARE}|will|wollte|möchte|sagt|sagte|hat|hatte|befiehlt|befahl|zwingt|zwang|zieht|zog|guckt|schaut|reibt|legt)${R})${WORD})?|` +
+  `herr (?!${CARE}${R})${WORD})`;
 const UNDRESS = '(ausziehe|ausziehen|auszuziehen|nackt mache|nackt machen|nackt auszuziehen)';
 // Sprungturm im Schwimmbad („Im Schwimmbad will ich vom Turm springen“)
 const NOT_POOL = `(?!.*${L}(schwimmbad|freibad|hallenbad|sprungturm|sprungbrett|ins wasser|ins becken|beim schwimmen)${R})`;
 // „Ich hab Angst, dass ich mich verletze, wenn ich allein klettere“
 const NOT_CAREFUL = `(?!.*${L}(angst|aufpassen|pass auf|passe auf|vorsichtig|aufgepasst)${R})`;
 // „Ich hab mich selber am Ofen verbrannt“, „Ich hab mir selbst eine Scheibe Wurst geschnitten“
-const NOT_SELF_ACCIDENT = `(?!.*${L}(aus versehen|ausversehen|beim (spielen|spiel|kochen|backen|basteln|schnitzen|klettern|rennen|fußball|sport|turnen)|am (ofen|herd|grill|bügeleisen)|an der (heizung|kerze))${R})`;
-const NOT_CUT_OBJECT = `(${NOT_TRIM.slice(1, -1)}|wurst|käse|kuchen|scheibe|scheiben|stück|stücke|gurke|tomate|obst|melone|pizza|zwiebel|karotte|möhre|bild|bilder|stern|sterne|figur|figuren|schuhe|haar)`;
+const NOT_SELF_ACCIDENT = `(?!.*${L}(aus versehen|ausversehen|beim (spielen|spiel|kochen|backen|basteln|schnitzen|klettern|rennen|fußball|sport|turnen)|am (ofen|herd|grill|bügeleisen|messer|papier)|an der (heizung|kerze|schere)|hingefallen|gestolpert|ausgerutscht|gestürzt|runtergefallen|umgefallen)${R})`;
+const NOT_CUT_OBJECT = `(${NOT_TRIM.slice(1, -1)}|wurst|käse|kuchen|scheibe|scheiben|stück|stücke|gurke|tomate|obst|melone|pizza|zwiebel|karotte|möhre|bild|bilder|stern|sterne|figur|figuren|schuhe|haar|finger|daumen)`;
+
+// Nach der unabhängigen Prüfung von PR #135 (26.11.2026, abends): weitere Wortstellungen und fehlende Wörter in denselben
+// vier Bereichen („Ich bin traurig und hab mich geritzt“, „Mich hat Papa gehauen“, „Er hat mich missbraucht“, „Ich will nich
+// mehr leben“). Nur zusätzliche Schablonen; Beispiele in beiden Listen von safety.test.ts und in Abschnitt 14 der Prüfunterlage.
+const LIFE_CORE_WIDE =
+  `(${LIFE_CORE.slice(1, -1)}|(nich|net) mehr leben|nimmer leben|nimmer (weiterleben|weiter leben)|` +
+  '(nich|net) mehr (da|hier|auf der welt|am leben) sein|nimmer (da|hier|auf der welt|am leben) sein|(nich mehr|nimmer) aufwachen|' +
+  'für immer (einschlafen|schlafen|weg sein|tot sein))';
+// Orte für Sprung und Sturz wie BODY_DANGER_PLACE, dazu Bahnen und Gleise (nur in V15)
+const DANGER2 =
+  `(${BODY_DANGER_PLACE.slice(1, -1)}|u bahn|ubahn|s bahn|sbahn|straßenbahn|tram|bahn|lastwagen|traktor|klippe|felsen|parkhaus|` +
+  'kirchturm|aussichtsturm)';
+// Haushaltsgifte („Ich trink jetzt das Putzmittel“); Tabletten nur mit Menge oder fremden Tabletten (eigene Medikamente nicht)
+const POISON_HOUSE =
+  '(putzmittel|reiniger|spülmittel|waschmittel|chlor|gift|giftiges|rattengift|mäusegift|schneckengift|benzin|spiritus|bleiche|' +
+  'abflussreiniger|weichspüler|lampenöl|frostschutzmittel|nagellackentferner|insektenspray|unkrautvernichter|klostein|' +
+  'giftpilz|giftpilze|fliegenpilz|tollkirsche|tollkirschen|giftbeeren)';
+const TABLET_QTY = '(alle|die ganzen|ganz viele|viele|eine ganze packung|die ganze packung|die ganze schachtel|eine ganze schachtel|eine handvoll|eine hand voll)';
+const TABLETS = '(tabletten|pillen|medikamente|schlaftabletten)';
+const SWALLOWED2 = '(genommen|getrunken|gegessen|geschluckt|verschluckt|aufgegessen|ausgetrunken|runtergeschluckt|weggeschluckt|eingenommen)';
+// Empfänger beim Schweigegebot („Ich darf meinen Eltern nichts sagen“, „… Mama und Papa …“, „… zu Hause …“)
+const RECIP =
+  `(${POSS}${PERSON_WIDE}( und ${POSS}${PERSON_WIDE})?|(meinen|den|unseren) eltern|zu hause|zuhause|daheim|` +
+  `der ${WORD}|dem ${WORD}|meiner ${WORD}|meinem ${WORD})`;
+const SECRET_NEG = '(nichts|nix|nicht|niemals|nie)';
+// Intime Stellen („da unten“, „am Pipi“)
+const INTIMATE_SPOT =
+  `(da unten|untenrum|unten rum|am po|am popo|am hintern|zwischen den beinen|zwischen meinen beinen|an der brust|an meiner brust|` +
+  `an der muschi|an meiner muschi|an meinem ${KID_BODY}|am ${KID_BODY})`;
+const KID_BODY2 = `(${KID_BODY.slice(1, -1)}|ding|willi|lulu|piephahn|pillemann|puller)`;
+// Selbst schlagen: Kopf und Gesicht
+const SELF_HIT_SPOT = '((gegen|auf|an|in) (den|meinen|das|mein|die|meine) (kopf|gesicht|stirn)|ins gesicht|in mein gesicht)';
+const SELF_HIT = '(haue|hau|schlage|schlag|schlug|boxe|box|knalle|knall)';
+// Tiere als Täter sind keine Notlage („Die Katze reibt sich an mir“)
+const NOT_ANIMAL = '(?!.*(?<![a-zäöüß])(hund|hunde|hündchen|welpe|katze|katzen|kater|kätzchen|pferd|pony|hase|meerschweinchen|tier|tiere|kuh|ziege|schaf|dackel)(?![a-zäöüß]))';
+const WEAPON = '(stock|gürtel|kochlöffel|holzlöffel|schuh|hausschuh|lineal|kabel|stecken|rute|peitsche|besen|teppichklopfer|ledergürtel|riemen|ast|kleiderbügel)';
+
+// „…, weil er mir wehtut“ über den Zahnarzt, eine Spritze oder eine Jacke: still nur, wenn so ein Wort fällt und keine Person
+const NOT_THING_HURTS =
+  `(?!(?!.*${L}(${PERSON_WIDE}|mann|typ|frau)${R}).*${L}[a-zäöüß]*(${CARE}|spritze|impfung|zahnspange|pflaster|jacke|schuh|schuhe|hose|mütze|helm)(e|en|n|s)?${R})`;
+// Fahrzeuge, vor die man sich legt („Ich will mich vor den Zug legen“), nicht „vor das Fenster“
+const VEHICLE = '(zug|auto|bus|lkw|laster|u bahn|s bahn|straßenbahn|bahn|tram|lastwagen|traktor)';
+// „Ich schlag mich mit meinem Bruder“ ist eine Rauferei
+const NOT_FIGHT_WITH = `(?<!(schlage|schlag|haue|hau) (ich )?mich(?= mit (${POSS}${PERSON_WIDE}|(dem|der|den) (${WORD} )?(jungen|jungs|kindern|kind|mädchen))${R}))`;
 
 const PATTERNS_WORD_ORDER: RegExp[] = [
   // Nicht mehr leben wollen: Verb vor „ich“, Verb am Ende, „ob ich noch leben will“, „und will sterben“, Wünsche, Wert
@@ -816,7 +870,7 @@ const PATTERNS_WORD_ORDER: RegExp[] = [
   new RegExp(`${L}ich (wollte|mochte) (${FILL} ){0,4}(sterben|tot sein)${R}`),
   // „Würde ich sterben, wenn …?“ ist eine Sachfrage: „würde“ nur mit Füllwort, wie bei „ich würde einfach sterben“
   new RegExp(`${L}würde ich (${FILL} ){1,4}(sterben|tot sein|nicht mehr leben)${R}`),
-  new RegExp(`${L}(am liebsten|am besten|lieber) würde ich (${FILL} ){0,3}(sterben|tot sein|nicht mehr leben)${R}`),
+  new RegExp(`${L}(am liebsten|am besten|lieber) würde ich (${FILL} ){0,3}(sterben|tot sein|nicht mehr leben)${R}${NOT_BEFORE_LAUGH}`),
   new RegExp(`${L}ob ich (${FILL} ){0,3}(noch|überhaupt noch|überhaupt|weiter) (leben|weiterleben|weiter leben) (will|möchte|mag|wollte|soll|kann)${R}`),
   new RegExp(`^(?=.*${L}ich${R}).*${L}(und|aber) (${FILL} ){0,2}${WANT} (${FILL} ){0,4}(sterben|tot sein|(nie mehr|nie wieder|nicht mehr) aufwachen)${R}`),
   new RegExp(`${L}(wäre|wär) ich (${FILL} ){0,2}(lieber|besser|am liebsten) (${FILL} ){0,2}${NOT_DEAD_WISH}${R}`),
@@ -868,14 +922,14 @@ const PATTERNS_WORD_ORDER: RegExp[] = [
   new RegExp(`${L}(ich|wir) ((?!${NEG_WORD}${R})${WORD} ){0,3}${PASSIVE_PART} (werde|werd|wurde|werden|wurden)${R}`),
   new RegExp(`${L}(kriege|krieg|kriegen|bekomme|bekomm|bekommen|kriegte|bekam) (ich|wir) ((?!${NEG_WORD}${R})${WORD} ){0,2}(schläge|prügel|haue|dresche)${R}`),
   new RegExp(`${L}(ich|wir) ((?!${NEG_WORD}${R})${WORD} ){0,2}(schläge|prügel|haue|dresche) (kriege|krieg|kriegen|bekomme|bekomm|bekommen|kriegte|bekam|gekriegt)${R}`),
-  new RegExp(`${L}(habe|hab|hatte|kriege|krieg|bekomme|bekomm|kriegte|bekam) ich ((?!${NEG_WORD}${R})${WORD} ){0,2}${SLAP}${R}`),
+  new RegExp(`${L}(habe|hab|hatte|kriege|krieg|bekomme|bekomm|kriegte|bekam) ich ((?!${NEG_WORD}${R})${WORD} ){0,2}${SLAP}${R}(?! (gesehen|im film|im fernsehen)${R})`),
   new RegExp(`${L}ich ((?!${NEG_WORD}${R})${WORD} ){0,2}${SLAP} (gekriegt|bekommen|kriege|krieg|bekomme|bekomm|kriegte|bekam)${R}`),
   new RegExp(`${L}mir ((?!${NEG_WORD}${R})${WORD} ){0,2}${SLAP} (gegeben|verpasst|gehauen|gibt|gab|geben)${R}`),
   new RegExp(`${L}(tut|tat) ${WHO} mir (${WORD} ){0,2}weh${R}`),
   new RegExp(`${L}(tut|tat) mir ${WHO} (${WORD} ){0,2}weh${R}`),
   new RegExp(`^${NOT_ACCIDENT_SENTENCE}.*${L}(hat|hatte) ${WHO} mir (${WORD} ){0,3}(weh getan|wehgetan)${R}`),
   new RegExp(`^${NOT_ACCIDENT_SENTENCE}.*${L}${WHO} mir ((?!${NEG_WORD}${R})${WORD} ){0,3}(weh getan|wehgetan) (hat|hatte)${R}`),
-  new RegExp(`^${NOT_ACCIDENT_SENTENCE}.*${L}${CLAUSE} ${WHO} mir ((?!${NEG_WORD}${R})${WORD} ){0,2}(weh tut|wehtut)${R}`),
+  new RegExp(`^${NOT_ACCIDENT_SENTENCE}${NOT_THING_HURTS}.*${L}${CLAUSE} ${WHO} mir ((?!${NEG_WORD}${R})${WORD} ){0,2}(weh tut|wehtut)${R}`),
   new RegExp(`${L}vor ${POSS}${PERSON_WIDE} (habe|hab|hatte) ich ((?!${NEG_WORD}${R})${WORD} ){0,2}angst${R}`),
   new RegExp(`${L}(habe|hab|hatte) ich ((?!${NEG_WORD}${R})${WORD} ){0,2}angst vor ${POSS}${PERSON_WIDE}${R}`),
   new RegExp(`${L}ich ((?!${NEG_WORD}${R})${WORD} ){0,2}vor ${POSS}${PERSON_WIDE} ((?!${NEG_WORD}${R})${WORD} ){0,2}angst (habe|hab|hatte)${R}`),
@@ -884,7 +938,7 @@ const PATTERNS_WORD_ORDER: RegExp[] = [
   // Geheimhaltung: „…, dass ich es niemandem sagen darf“, „Niemandem darf ich das sagen“ (wie die ältere Schablone
   // „ich darf es niemandem sagen“ auch bei einer Überraschung)
   new RegExp(`${L}(niemandem|niemand|keinem|keiner) ((menschen|erwachsenen) )?(was |etwas |davon |das |es )?${SECRET_VERB} (darf|soll|dürfen|sollen|durfte|sollte|durften|sollten)${R}`),
-  new RegExp(`${L}(niemandem|niemand|keinem|keiner) (darf|soll|dürfen|sollen|durfte|sollte) (ich|wir) (es |das |davon |was |etwas )?${SECRET_VERB}${R}`),
+  new RegExp(`${L}(niemandem|niemand|keinem|keiner) ((menschen|erwachsenen) )?(darf|soll|dürfen|sollen|durfte|sollte) (ich|wir) (es |das |davon |was |etwas )?${SECRET_VERB}${R}`),
   // Übergriff: „Da fasst er mich immer an“, „Gestern hat er mich angefasst“, „…, weil er mich anfasst“, „Dann fasst er mir
   // an den Po“, „Dann zeigt er mir seinen Pimmel“, „Manchmal küsst er mich, obwohl ich das nicht will“. Täter wie bei V14
   // (Figuren, Tiere und Berufe wie Arzt ausgenommen)
@@ -901,7 +955,8 @@ const PATTERNS_WORD_ORDER: RegExp[] = [
   new RegExp(`${L}ich (will|möchte|mag|wollte|möcht) (${FILL2} ){1,4}(sterben|tot sein|nicht mehr leben)${R}`),
   new RegExp(`^${NOT_POOL}.*${L}(${WANT}|werde|werd|würde) ich (${FILL2} ){0,3}(${JUMP_FROM}|${JUMP_BEFORE}) (${WORD} )?${BODY_DANGER_PLACE} (springen|runterspringen|hinunterspringen|stürzen|laufen|rennen)${R}`),
   new RegExp(`^${NOT_POOL}.*${L}ich (${FILL2} ){0,3}(${JUMP_FROM}|${JUMP_BEFORE}) (${WORD} )?${BODY_DANGER_PLACE} (springen|runterspringen|hinunterspringen|stürzen) (will|möchte|wollte|werde|würde)${R}`),
-  new RegExp(`${L}mich (${FILL2} ){0,3}${JUMP_BEFORE} (${WORD} )?${BODY_DANGER_PLACE} (werfen|schmeißen|schmeissen|legen|stürzen|zu werfen|zu legen)${R}`),
+  new RegExp(`${L}mich (${FILL2} ){0,3}${JUMP_BEFORE} (${WORD} )?${BODY_DANGER_PLACE} (werfen|schmeißen|schmeissen|stürzen|zu werfen)${R}`),
+  new RegExp(`${L}mich (${FILL2} ){0,3}${JUMP_BEFORE} (${WORD} )?${VEHICLE} (legen|zu legen)${R}`),
   new RegExp(`${L}mich (${FILL2} ){0,3}${JUMP_FROM} (${WORD} )?${BODY_DANGER_PLACE} (stürzen|werfen|schmeißen|fallen lassen|zu stürzen)${R}`),
   new RegExp(`${L}(ich (${WANT}|werde|werd|würde) (${FILL2} ){0,3}|${WANT} ich (${FILL2} ){0,3}|(versucht|versuche|versuch|versuchte) )mich (${FILL2} ){0,2}(selbst |selber )?${SELF_KILL}${R}`),
   new RegExp(`${L}mich (${FILL2} ){0,2}(selbst |selber )?(aufzuhängen|umzubringen|zu töten|zu erhängen|zu vergiften|zu erschießen|totzumachen|zu ertränken)${R}`),
@@ -917,8 +972,9 @@ const PATTERNS_WORD_ORDER: RegExp[] = [
   // meinen Kopf gegen die Wand“, „…, kratze ich mich, bis es blutet“, „Ich hab mich selber verletzt“, „…, mir wehzutun“
   new RegExp(`^(?=.*${L}ich${R})${NOT_CUT_ACCIDENT}.*${L}(schneide|schneid|ritze|ritz) (ich )?(mich|mir) ((?!${NOT_TRIM}${R})${WORD} ){0,4}(in|an) (den|die|das|meinen|meine|mein|beide) (${WORD} )?${CUT_BODY}${R}`),
   new RegExp(`^${NOT_CUT_ACCIDENT}.*${L}((habe|hab|hatte) ich|ich (habe|hab|hatte)) (mich|mir) ((?!${NOT_TRIM}${R})${WORD} ){0,5}(in|an) (den|die|das|meinen|meine|mein|beide) (${WORD} )?${CUT_BODY} (geschnitten|aufgeschnitten|geritzt)${R}`),
-  new RegExp(`^(?=.*${L}${EMOTION}${R})${NOT_CAREFUL}.*${L}${SELF_HURT_EMO} (ich )?mich${R}(?!( ${WORD}){0,3} (nicht|nie|am kopf|hin|durch|ins bett|aufs bett|aufs sofa|auf das sofa|auf die couch|aufs ohr)${R})`),
-  new RegExp(`^(?=.*${L}${EMOTION}${R})${NOT_CAREFUL}.*${L}ich mich ((?!(nicht|nie)${R})${WORD} ){0,3}(verletze|schneide|ritze|verbrenne|schlage|haue)${R}`),
+  new RegExp(`^(?=.*${L}${EMOTION}${R})${NOT_CAREFUL}${NOT_SELF_ACCIDENT}.*${L}${SELF_HURT_EMO} (ich )?mich${R}(?!( ${WORD}){0,3} (nicht|nie|am kopf|hin|durch|ins bett|aufs bett|auf mein bett|auf das bett|auf die matratze|aufs kissen|aufs sofa|auf das sofa|auf die couch|aufs ohr)${R})${NOT_FIGHT_WITH}`),
+  new RegExp(`^(?=.*${L}${EMOTION}${R})${NOT_CAREFUL}${NOT_SELF_ACCIDENT}.*${L}ich mich ((?!(nicht|nie)${R})${WORD} ){0,3}(verletze|schneide|ritze|verbrenne)${R}`),
+  new RegExp(`^(?=.*${L}${EMOTION}${R})${NOT_CAREFUL}${NOT_SELF_ACCIDENT}.*${L}ich mich ((?!(nicht|nie|mit)${R})${WORD} ){0,3}(schlage|haue)${R}`),
   new RegExp(`${L}(schlage|schlag|haue|hau|schlägt|haut|schlug|haute) (ich |er |sie )?(meinen|mein|seinen|ihren|den) kopf (${WORD} ){0,2}${HEAD_HIT_PLACE}${R}`),
   new RegExp(`${L}(schlage|schlag|haue|hau) (ich )?mit (dem|meinem) kopf (${WORD} ){0,2}${HEAD_HIT_PLACE}${R}`),
   new RegExp(`${L}(meinen|mein) kopf (${WORD} ){0,2}${HEAD_HIT_PLACE} (geschlagen|gehauen)${R}`),
@@ -939,8 +995,8 @@ const PATTERNS_WORD_ORDER: RegExp[] = [
   new RegExp(`^${NOT_ACCIDENT_SENTENCE}(?=.*${L}${HIT_ANY_3}${R})(?=.*${L}(${SUBJ}|${PERP}|${WHO})${R}).*${L}(mir|mich|uns) ((?!${NEG_WORD}${R})${WORD} ){0,3}${HIT_TARGET}${R}`),
   new RegExp(`^${NOT_COMB}(?=.*${L}${PULL}${R}).*${L}(mich|uns|mir) ((?!${NEG_WORD}${R})${WORD} ){0,3}${HAIR}${R}`),
   new RegExp(`^(?=.*${L}(runter|hinunter|herunter)?${PUSH}${R}).*${L}(mich|uns) ((?!${NEG_WORD}${R})${WORD} ){0,3}(die treppe|die treppen|die stufen|von der treppe) (runtergeschubst|hinuntergeschubst|runtergestoßen|hinuntergestoßen|runtergeworfen|hinuntergeworfen|runtergeschmissen|geschubst|gestoßen|runter|hinunter)${R}`),
-  new RegExp(`${L}(ich|wir) (wurde|wurden|werde|werd|werden) ((?!(${NEG_WORD}|beim|im|bei|in|knapp|haushoch)${R})${WORD} ){0,4}(geschlagen|${PASSIVE_PART})${R}`),
-  new RegExp(`${L}((ich|wir) (bin|sind|war|waren)|(bin|sind|war|waren) (ich|wir)) ((?!(${NEG_WORD}|beim|im|bei|in|knapp|haushoch)${R})${WORD} ){0,4}(geschlagen|${PASSIVE_PART}) worden${R}`),
+  new RegExp(`${L}(ich|wir) (wurde|wurden|werde|werd|werden) ((?!(${NEG_WORD}|beim|im|bei|in|knapp|haushoch|zum ritter|zur ritterin|zu rittern|zu ${NUM})${R})${WORD} ){0,4}(geschlagen|${PASSIVE_PART})${R}`),
+  new RegExp(`${L}((ich|wir) (bin|sind|war|waren)|(bin|sind|war|waren) (ich|wir)) ((?!(${NEG_WORD}|beim|im|bei|in|knapp|haushoch|zum ritter|zur ritterin|zu rittern|zu ${NUM})${R})${WORD} ){0,4}(geschlagen|${PASSIVE_PART}) worden${R}`),
   new RegExp(`^(?!.*${L}((habe|hab|hatte) ich|ich (habe|hab|hatte)) mich${R}).*${L}(mich|uns) ((?!${NEG_WORD}${R})${WORD} ){0,3}(in|im|ins) ((den|das|die|der|mein|meinem|meinen|ein|einen) )?(${WORD} )?${LOCK_PLACE} (gesperrt|eingesperrt|sperrt|sperren|sperrte|einsperrt|einsperren)${R}`),
   new RegExp(`${L}(sperrt|sperren|sperrte|sperrten) ((${SUBJ}|${PERP}) )?(mich|uns) ((${SUBJ}|${PERP}) )?((?!${NEG_WORD}${R})${WORD} ){0,2}(in|ins) ((den|das|die|mein|meinen|ein|einen) )?(${WORD} )?${LOCK_PLACE}${R}`),
   // Übergriff und Geheimhaltung: „Gestern hat mich ein Mann am Spielplatz angefasst“, „Der Trainer hat mich begrapscht“,
@@ -958,18 +1014,157 @@ const PATTERNS_WORD_ORDER: RegExp[] = [
   new RegExp(`${L}(gezwungen|zwingt|zwang|zwingen) ((?!${NEG_WORD}${R})${WORD} ){0,3}(ihn|ihm|seinen ${WORD}|sein ${WORD}|seine ${WORD}) ((?!${NEG_WORD}${R})${WORD} ){0,2}(anzufassen|zu berühren|zu streicheln|zu küssen)${R}`),
   new RegExp(`${L}((darf|soll|durfte|sollte) (ich|wir)|(ich|wir) (darf|soll|durfte|sollte|dürfen|sollen)) (${POSS}${PERSON_WIDE}|der ${WORD}|dem ${WORD}|meiner ${WORD}|meinem ${WORD}) (nichts|nix) (davon |darüber |was |etwas )?${SECRET_VERB}${R}`),
   new RegExp(`${L}(${TOUCH_SUBJ_WIDE} (hat|hatte)|(hat|hatte) ${TOUCH_SUBJ_WIDE}) mich( ${WORD}){0,4} (geküsst|gestreichelt|berührt|angefasst|ausgezogen|befummelt|begrapscht|betatscht) ${UNWANTED}${R}`),
-  new RegExp(`${L}(legt|legte|kommt|kam|kriecht|kroch|steigt|stieg) (${WORD} ){0,3}(zu mir ins bett|zu mir in mein bett|in mein bett|unter meine decke|zu mir unter die decke)( ${WORD}){0,4} ${UNWANTED}${R}`),
+  new RegExp(`^${NOT_ANIMAL}.*${L}(legt|legte|kommt|kam|kriecht|kroch|steigt|stieg) (${WORD} ){0,3}(zu mir ins bett|zu mir in mein bett|in mein bett|unter meine decke|zu mir unter die decke)( ${WORD}){0,4} ${UNWANTED}${R}`),  // Nach der unabhängigen Prüfung von PR #135 (26.11.2026, abends). Nicht mehr leben wollen: „Gestern wollt ich nicht mehr
+  // leben“, „Ich will nich mehr leben“, „Ich wär gern tot“, „Ich hab kein Bock mehr zu leben“, „Ich denk immer ans Sterben“,
+  // „…, damit ich nicht mehr aufwache“, „Manchmal will ich für immer weg“, „Ich bin traurig und möchte nicht mehr auf der
+  // Welt sein“, „…, weil ich mir wünsche, dass ich tot wäre“, „Würde ich sterben, wenn ich vom Dach springe?“
+  new RegExp(`${L}${WANT} ich (${FILL2} ){0,4}${LIFE_CORE_WIDE}${R}`),
+  new RegExp(`${L}ich ${WANT} (${FILL2} ){0,4}${LIFE_CORE_WIDE}${R}`),
+  new RegExp(`${L}((wäre|wär) ich|ich (wäre|wär)) (${FILL2} ){0,2}(gern|gerne) (${FILL2} ){0,2}${WISH_CORE}${R}`),
+  new RegExp(`${L}(kein|keinen|keine) (bock|lust|kraft) mehr (zu leben|auf (mein|das) leben|aufs leben|zum leben|am leben zu sein)${R}`),
+  new RegExp(`${L}(denke|denk|dachte) (${FILL2} ){0,3}((daran|dran|darüber|drüber) (${FILL2} ){0,2}(zu sterben|mich umzubringen|tot zu sein|nicht mehr zu leben|mich zu töten|mich aufzuhängen)|(ans|an das|übers|über das) sterben)${R}`),
+  new RegExp(`${L}(damit|sodass|so dass) ich (${FILL2} ){0,2}(sterbe|tot bin|tot umfalle|nicht mehr lebe|nie mehr aufwache|nie wieder aufwache|nicht mehr aufwache|nimmer aufwache)${R}`),
+  new RegExp(`${L}wenn ich (${FILL2} ){0,2}(tot|nicht mehr (da|hier|auf der welt)|nie geboren) (wäre|wär|bin|sein würde) (${WORD} ){0,2}(wäre|wär|wären|ist|sind|würde|würden|hätten|hätte) (${WORD} ){0,3}(besser|leichter|schöner|einfacher|egal|froh|glücklich|ruhe)${R}`),
+  new RegExp(`${L}((besser|schöner|leichter|einfacher) (wäre|wär|ist) (es|das)|es (wäre|wär|ist) (${FILL2} )?(besser|schöner|leichter|einfacher)|es (${FILL2} )?(besser|schöner|leichter|einfacher) (wäre|wär|ist))( für (alle|alle anderen|${WORD}))? (wenn|falls) ich (${FILL2} ){0,2}(nicht|nich) mehr (leben würde|leben täte|lebe|leben)${R}`),
+  new RegExp(`${L}((will|möchte|möcht|wollte|wollt) ich|ich (will|möchte|möcht|wollte|wollt)) (${FILL2} ){0,2}für immer (weg|einschlafen|schlafen)${R}`),
+  new RegExp(`${L}ich (bring|bringe) mich (${FILL} ){1,2}(selbst |selber )?um${R}${UM_NOT_TIME}${NOT_BEFORE_LAUGH}`),
+  new RegExp(`^(?=.*${L}(ich|mich|mir)${R})${NOT_POOL}.*${L}((überlegt|überlege|überleg|nachgedacht|gedacht|vor|vorgehabt|versucht|versuche|probiert|vorgenommen)|(denke|denk|dachte) (${FILL2} ){0,2}(daran|dran)) (${WORD} ){0,3}(${JUMP_FROM}|${JUMP_BEFORE}) (${WORD} )?${DANGER2} (zu springen|runterzuspringen|hinunterzuspringen|zu stürzen|zu laufen)${R}`),
+  new RegExp(`^${NOT_POOL}.*${L}ich (${WANT}|werde|werd|würde) (${FILL2} ){0,3}(${JUMP_FROM}|${JUMP_BEFORE}) (${WORD} )?${DANGER2} (springen|runterspringen|hinunterspringen|stürzen|laufen|rennen)${R}`),
+  new RegExp(`${L}mich (${FILL2} ){0,3}${JUMP_BEFORE} (${WORD} )?${DANGER2} (werfen|schmeißen|schmeissen|legen|stürzen|zu werfen|zu legen)${R}`),
+  new RegExp(`${L}mich (${FILL2} ){0,3}(auf|vor) (die|das|den) (gleise|gleis|schienen) (legen|werfen|stellen|zu legen|zu werfen)${R}`),
+  new RegExp(`${L}würde ich (${FILL2} ){0,2}(sterben|tot sein) (wenn|falls) ich (${WORD} ){0,3}(${JUMP_FROM}|${JUMP_BEFORE}) (${WORD} )?${DANGER2} (springe|springen würde|falle|stürze|laufe|renne)${R}`),
+  new RegExp(`${L}ich mir (${FILL2} ){0,2}(wünsche|wünschte|wünsch) (dass ich|ich wäre|ich wär) (${FILL2} ){0,2}${WISH_CORE}${R}`),
+  new RegExp(`${L}(weil|dass|wenn|da) ich (${FILL2} ){0,2}nicht mehr (will|wollte)(?= *$)`),
+  // „und“ ohne neues Subjekt: „Ich bin traurig und bring mich um“, „… und hasse mein Leben“, „… und wäre lieber tot“, „… und bin
+  // nichts wert“, „… und will vom Dach springen“, „… und will nicht mehr“
+  new RegExp(`^(?=.*${L}ich${R}).*${L}(und|aber) (${FILL2} ){0,2}${WANT} (${FILL2} ){0,4}${LIFE_CORE_WIDE}${R}`),
+  new RegExp(`^(?=.*${L}ich${R}).*${L}(und|aber) (dann |da |jetzt )?(bring|bringe) mich (${FILL} ){0,2}um${R}${UM_NOT_TIME}${NOT_BEFORE_LAUGH}`),
+  new RegExp(`^(?=.*${L}ich${R}).*${L}(und|aber) (${FILL2} ){0,2}(hasse|hass) (mich|mein leben|das leben)${R}`),
+  new RegExp(`^(?=.*${L}ich${R}).*${L}(und|aber) (${FILL2} ){0,2}(wäre|wär) (${FILL2} ){0,2}(lieber|besser|am liebsten|gern|gerne) ${NOT_DEAD_WISH}${R}`),
+  new RegExp(`^(?=.*${L}ich${R}).*${L}(und|aber) (${FILL2} ){0,2}(bin|war) (${WORD} ){0,2}((nichts|gar nichts|überhaupt nichts|nix) wert|wertlos|nutzlos)${R}`),
+  new RegExp(`^(?=.*${L}ich${R})${NOT_POOL}.*${L}(und|aber) (${FILL2} ){0,2}(will|möchte|wollte) (${FILL2} ){0,3}(${JUMP_FROM}|${JUMP_BEFORE}) (${WORD} )?${DANGER2} (springen|runterspringen|stürzen|laufen)${R}`),
+  new RegExp(`^(?=.*${L}ich${R})(?=.*${L}(${EMOTION}|weine|heule|hasse)${R}).*${L}(und|aber) (${FILL2} ){0,2}(will|wollte) (${FILL2} ){0,2}nicht mehr(?= *$)`),
+  // Verb am Ende im Nebensatz: „…, dass ich mich aufhängen will“, „…, weil ich mein Leben hasse“
+  new RegExp(`${L}${CLAUSE} ich mich (${FILL2} ){0,2}(selbst |selber )?(aufhängen|umbringen|töten|erhängen|vergiften|erschießen|ertränken|totmachen|tot machen) (will|möchte|werde|wollte|würde|muss|soll)${R}`),
+  new RegExp(`${L}${CLAUSE} ich (mich|mein leben|das leben) (${FILL2} ){0,2}(hasse|hass)${R}`),
+  // Sich selbst verletzen: „Wenn ich traurig bin, tu ich mir weh“, „…, beiß ich mich“, „Dann hau ich mir gegen den Kopf“,
+  // „Ich schlag mir ins Gesicht, wenn ich sauer bin“, „Ich reiß mir die Haare aus, wenn ich traurig bin“, „…, bis es geblutet
+  // hat“, „Ich trink das Putzmittel“, „Ich schluck alle Tabletten“, „Mit Absicht hab ich mich gebissen“, „Ich hab mich
+  // geschnitten, weil ich traurig war“, „Manchmal tu ich mir selber was an“, „Ich bin traurig und hab mich geritzt“
+  new RegExp(`^(?=.*${L}${EMOTION}${R})${NOT_CAREFUL}.*${L}(((tue|tu|mache|mach) ich|ich (tue|tu|mache|mach)) mir ((?!${NEG_WORD}${R})${WORD} )?weh|ich mir ((?!${NEG_WORD}${R})${WORD} )?(wehtue|weh tue|wehtu|weh tu|weh mache|wehmache))${R}`),
+  new RegExp(`^(?=.*${L}${EMOTION}${R})${NOT_CAREFUL}.*${L}(beiße|beiß|beisse|beiss|kratze|kratz|kneife|kneif|zwicke|zwick) (ich )?mich${R}(?!( ${WORD}){0,3} (nicht|nie|am kopf|hinter dem ohr|auf die lippe|auf die lippen|auf die zunge)${R})`),
+  new RegExp(`${L}(${SELF_HIT} ich|ich ${SELF_HIT}) mir ((?!${NEG_WORD}${R})${WORD} ){0,4}${SELF_HIT_SPOT}${R}`),
+  new RegExp(`${L}(${CLAUSE}|und|aber) (dann |da )?(ich )?mir ((?!${NEG_WORD}${R})${WORD} ){0,3}${SELF_HIT_SPOT} ${SELF_HIT}${R}`),
+  new RegExp(`^(?=.*${L}ich${R}).*${L}(und|aber) (dann |da |immer )?${SELF_HIT} mir ((?!${NEG_WORD}${R})${WORD} ){0,4}${SELF_HIT_SPOT}${R}`),
+  new RegExp(`^(?=.*${L}${EMOTION}${R}).*${L}((reiße|reiß|reisse|reiss|rupfe|rupf) (ich )?mir|ich mir) ((?!${NEG_WORD}${R})${WORD} ){0,2}(die )?haare (aus|ausreiße|ausreiß|ausrupfe)${R}`),
+  new RegExp(`${L}(mich|mir) ((?!(nicht|nie)${R})${WORD} ){0,4}(gekratzt|gebissen|geschnitten|geritzt|gehauen|geschlagen|gekniffen|gezwickt) (${WORD} ){0,2}bis (es|ich|das) (${WORD} )?(geblutet hat|geblutet hatte|geblutet habe|blutete|geblutet)${R}`),
+  new RegExp(`${L}${SMALL_PERSON} (habe|hab|hat|hatte) (${WORD} ){0,3}(${POISON}|${POISON_HOUSE}) (${WORD} ){0,2}${SWALLOWED2}${R}`),
+  new RegExp(`${L}(habe|hab|hat|hatte) ${SMALL_PERSON} (${WORD} ){0,3}(${POISON}|${POISON_HOUSE}) (${WORD} ){0,2}${SWALLOWED2}${R}`),
+  new RegExp(`${L}(ich (trinke|trink|esse|ess|schlucke|schluck|nasche|nasch)|(trinke|trink|esse|ess|schlucke|schluck) ich) ((?!${NEG_WORD}${R})${WORD} ){0,3}${POISON_HOUSE}${R}`),
+  new RegExp(`${L}(ich (schlucke|schluck|nehme|nehm|esse|ess)|(schlucke|schluck|nehme|nehm|esse|ess) ich) (${FILL2} ){0,2}(${TABLET_QTY} (${WORD} )?${TABLETS}|die ${TABLETS} (von|vom) ${POSS}${PERSON_WIDE}|(die )?schlaftabletten)${R}`),
+  new RegExp(`${L}ich (${WANT}|werde|werd) (${FILL2} ){0,2}(${TABLET_QTY} (${WORD} )?${TABLETS}|(das |die )?${POISON_HOUSE}|die ${TABLETS} (von|vom) ${POSS}${PERSON_WIDE}|(die )?schlaftabletten) (${WORD} ){0,3}(schlucken|nehmen|trinken|essen)${R}`),
+  new RegExp(`^(?=.*${L}(mit absicht|absichtlich|extra)${R}).*${L}(habe|hab|hatte) ich (mich|mir) ((?!${NOT_TRIM}${R})${WORD} ){0,6}(gebissen|geschnitten|geritzt|verletzt|wehgetan|weh getan|verbrannt|gekratzt|geschlagen|gehauen)${R}`),
+  new RegExp(`^${NOT_SELF_ACCIDENT}(?=.*${L}(weil|wenn|da|als) ich (${WORD} ){0,2}(${EMOTION}|mich hasse|mich hass|mein leben hasse)${R}).*${L}(((habe|hab|hatte) ich|ich (habe|hab|hatte)) (mich|mir) ((?!${NOT_TRIM}${R})${WORD} ){0,4}(geschnitten|geritzt|verletzt|verbrannt|gebissen)|(schneide|schneid|ritze|ritz|verletze|verletz) (ich )?mich)${R}`),
+  new RegExp(`${L}((tue|tu|tat) ich|ich (tue|tu|tat)) mir (${FILL2} ){0,2}(selbst|selber) (etwas|was) an${R}`),
+  // „Ich tu mir was an“ ohne Ergänzung danach (mit Ergänzung heißt es im Süden auch „anziehen“)
+  new RegExp(`${L}((tue|tu|tat) ich|ich (tue|tu|tat)) mir (${FILL2} ){0,2}(etwas|was) an(?= *$| (und|aber|weil|wenn|dann|sonst)${R})`),
+  new RegExp(`${L}((habe|hab|hatte) ich|ich (habe|hab|hatte)) (mich|mir) ((?!${SCRATCH_OBJECT}${R})${WORD} ){0,6}(rumgeritzt|herumgeritzt)${R}`),
+  new RegExp(`${L}(knalle|knall|ramme|ramm|donnere|donner) (ich |er |sie )?(meinen|mein|seinen|ihren|den) kopf (${WORD} ){0,2}${HEAD_HIT_PLACE}${R}`),
+  new RegExp(`^(?=.*${L}(mit absicht|absichtlich|extra)${R}).*${L}(meine|die|meinen|den) (hand|finger|arm) (${WORD} ){0,2}(auf|an|in) (die|den|das) (herdplatte|herd|ofen|kerze|flamme|feuer|bügeleisen|heizung) (gelegt|gehalten|getan|gedrückt)${R}`),
+  new RegExp(`^(?=.*${L}ich${R}).*${L}(und|aber) (dann |da |jetzt )?(hab|habe) (mich|mir) ((?!${NEG_WORD}${R})${WORD} ){0,4}(geritzt|aufgeritzt|rumgeritzt)${R}`),
+  new RegExp(`^(?=.*${L}ich${R})(?=.*${L}(mit absicht|absichtlich|extra)${R}).*${L}(und|aber) (dann |da )?(hab|habe) (mich|mir) ((?!${NOT_TRIM}${R})${WORD} ){0,6}(geschnitten|geritzt|verletzt|wehgetan|weh getan|verbrannt|gekratzt|gebissen)${R}`),
+  new RegExp(`^(?=.*${L}ich${R}).*${L}(und|aber) (dann |da )?((hab|habe) mir (${WORD} )?(selbst|selber) (weh getan|wehgetan)|(tu|tue) mir (${WORD} )?(selbst|selber) weh)${R}`),
+  // Gewalt: „Mich hat Papa gehauen“, „Dann gibt er mir eine Ohrfeige“, „…, krieg ich eine gescheuert“, „Ich krieg jeden Tag
+  // Dresche“, „Wenn ich frech bin, gibt's Schläge“, „Papa versohlt mir den Hintern“, „Er drückt mir den Hals zu“, „Papa schubst
+  // mich gegen die Wand“, „Er schlägt mir mit dem Stock auf den Rücken“, „… hat mich ganz doll geschüttelt“, „Papa sperrt mich
+  // draußen aus“, „Ich bin traurig und werde geschlagen“, „Papa ist betrunken und tut mir weh“, „…, weil ich Angst vor Papa habe“
+  new RegExp(`${L}mich (hat|hatte|haben|hatten) (${SUBJ}|${PERP}|(die|ein paar|zwei|drei|andere|anderen|größere|großen) (${WORD} )?(jungs|jungen|kinder|mädchen|schüler)) (${NOT_GAME_WORD}${WORD} ){0,4}geschlagen${R}`),
+  new RegExp(`${L}mich (hat|hatte|haben|hatten) (${SUBJ}|${PERP}|(die|ein paar|zwei|drei|andere|anderen|größere|großen) (${WORD} )?(jungs|jungen|kinder|mädchen|schüler)) (${NOT_ACCIDENT_WORD}${WORD} ){0,4}(${HIT_PAST}|${TOUCH_PART}|geprügelt|missbraucht|vergewaltigt)${R}`),
+  new RegExp(`${L}(gibt|gab|geben|gaben) (${SUBJ}|${PERP}) mir (${WORD} ){0,2}${SLAP}${R}`),
+  new RegExp(`${L}((kriege|krieg|bekomme|bekomm|kriegte|bekam) ich|ich (kriege|krieg|bekomme|bekomm|kriegte|bekam)) ((?!${NEG_WORD}${R})${WORD} ){0,2}(eine|einen|ne|nen|eins|was) (gescheuert|geklebt|geknallt|reingehauen|gelangt|gedonnert|auf die finger|hinter die ohren|auf den hintern|auf den po|aufs maul|auf die fresse)${R}`),
+  new RegExp(`${L}(ich|wir) (kriege|krieg|kriegen|bekomme|bekomm|bekommen|kriegte|bekam) ((?!${NEG_WORD}${R})${WORD} ){0,3}(schläge|prügel|haue|dresche|keile)${R}`),
+  new RegExp(`^(?=.*${L}(ich|mich|mir|uns|wir|zuhause|zu hause|daheim)${R})(?!.*${L}(boxen|beim boxen|im film|im fernsehen|karate|judo|kampfsport|boxkampf|beim kämpfen|ritter|drache|drachen)${R}).*${L}(gibt s|gibts|gibt es|gabs|gab s|gab es|setzt s|setzts|setzt es) ((?!${NEG_WORD}${R})${WORD} ){0,2}(schläge|prügel|haue|dresche|keile|ohrfeigen|eine ohrfeige|was hinter die ohren|eins hinter die ohren)${R}`),
+  new RegExp(`${L}(versohlt|versohlen|versohlte|versohle) (${SUBJ} |${PERP} )?mir (${WORD} )?(den|meinen) (hintern|po|popo|arsch)${R}`),
+  new RegExp(`${L}(mir|mich) ((?!${NEG_WORD}${R})${WORD} ){0,2}(den|meinen) (hintern|po|popo|arsch) (${WORD} )?(versohlt|versohlen|versohlte)${R}`),
+  new RegExp(`${L}((${SUBJ}|${PERP}) ${VADV}(drückt|drückte|presst|presste)|(drückt|drückte|presst|presste) (${SUBJ}|${PERP}) ${VADV}) (mir|mich) (${WORD} ){0,2}(den hals|die kehle|die gurgel) (zu|ab)${R}`),
+  new RegExp(`^(?=.*${L}(${POSS}${PERSON_WIDE}|er|sie|jemand|der mann|ein mann|der typ)${R}).*${L}(mir|mich) ((?!${NEG_WORD}${R})${WORD} ){0,2}(den hals|die gurgel) (${WORD} )?(zugedrückt|abgedrückt|zugehalten)${R}`),
+  new RegExp(`${L}${PUSH} ((${SUBJ}|${PERP}) )?${VADV}(mich|uns) ((?!${NEG_WORD}${R})${WORD} ){0,3}(gegen|an) (die|den|das) (wand|tür|schrank|heizung|boden|tisch|fenster|treppe)${R}`),
+  new RegExp(`${L}(mich|uns) ((?!${NEG_WORD}${R})${WORD} ){0,3}(gegen|an) (die|den|das) (wand|tür|schrank|heizung|boden|tisch|fenster|treppe) (geschubst|gestoßen|geworfen|geschmissen|geknallt|geschleudert)${R}`),
+  new RegExp(`^(?=.*${L}${HIT_ANY_3}${R}).*${L}(mir|mich|uns) ((?!${NEG_WORD}${R})${WORD} ){0,2}mit (dem|einem|nem|seinem|ihrem|meinem) ${WEAPON}${R}`),
+  new RegExp(`${L}((hat|hatte) (${SUBJ}|${PERP}) (mich|uns)|(${SUBJ}|${PERP}) (mich|uns)) ${VADV}(ganz |so |sehr |total )?(doll|fest|feste|heftig|stark|brutal) (geschüttelt|gerüttelt)${R}`),
+  new RegExp(`${L}(schüttelt|schüttelte|rüttelt|rüttelte) (${SUBJ}|${PERP}) (mich|uns) ${VADV}(ganz |so |sehr |total )?(doll|fest|feste|heftig|stark|brutal)${R}`),
+  new RegExp(`${L}(sperrt|sperren|sperrte|sperrten) ((${SUBJ}|${PERP}) )?(mich|uns) ((?!${NEG_WORD}${R})${WORD} ){0,2}(draußen|vor der tür|aus dem haus|aus der wohnung) aus${R}`),
+  new RegExp(`^(?=.*${L}ich${R}).*${L}(und|aber) (${FILL2} ){0,2}(werde|werd|wurde) ((?!(${NEG_WORD}|beim|im|bei|in|zum|zur|knapp|haushoch)${R})${WORD} ){0,3}(geschlagen|${PASSIVE_PART})${R}`),
+  new RegExp(`^(?=.*${L}ich${R}).*${L}(und|aber) (dann |da )?(krieg|kriege|bekomme|bekomm|kriegte|bekam) ((?!${NEG_WORD}${R})${WORD} ){0,2}(schläge|prügel|haue|dresche|keile)${R}`),
+  new RegExp(`${L}${POSS}${PERSON_WIDE} (${WORD} ){0,3}(und|aber) (dann |jetzt |da |immer |manchmal |oft )?(tut|tat) mir ((?!${NEG_WORD}${R})${WORD} ){0,2}weh${R}`),
+  new RegExp(`${L}(er|sie|jemand) (kommt|kam|ist betrunken|war betrunken|wird (sauer|wütend|böse)|wurde (sauer|wütend|böse)|trinkt|trank|schreit|schrie|brüllt|brüllte|packt mich|packte mich|hält mich fest|hielt mich fest) (${WORD} ){0,3}(und|aber) (dann |jetzt |da |immer )?(tut|tat) mir ((?!${NEG_WORD}${R})${WORD} ){0,2}weh${R}`),
+  new RegExp(`${L}${CLAUSE} ich ((?!${NEG_WORD}${R})${WORD} ){0,2}angst vor ${ART}${PERSON_WIDE} (habe|hab|hatte)${R}`),
+  // Geheimhaltung: „Ich darf meinen Eltern nichts sagen“, „Mama darf ich nichts davon sagen“, „Das darf ich Mama nicht sagen“,
+  // „Ich darf nicht sagen, was Onkel Peter mit mir macht“, „…, sonst kommt Papa ins Gefängnis“, „Wenn ich was verrate, bringt er
+  // Mama um“, „Er hat gesagt, das darf keiner wissen“
+  new RegExp(`${L}((darf|soll|durfte|sollte) (ich|wir)|(ich|wir) (darf|soll|durfte|sollte|dürfen|sollen)) (es |das |davon |darüber )?${RECIP} (es |das )?${SECRET_NEG} (davon |darüber |was |etwas )?${SECRET_VERB}${R}`),
+  new RegExp(`${L}${RECIP} (darf|soll|durfte|sollte) (ich|wir) (es |das )?${SECRET_NEG} (davon |darüber |was |etwas )?${SECRET_VERB}${R}`),
+  new RegExp(`${L}(das|es|davon) (darf|soll|durfte|sollte) (ich|wir) ${RECIP} ${SECRET_NEG} ${SECRET_VERB}${R}`),
+  new RegExp(`${L}(darf|soll|durfte|sollte) (ich )?(es |das )?(niemandem |keinem )?(nicht|nichts|nix) (${WORD} )?(sagen|erzählen|verraten) (was|wie|wo|dass) (${WORD} ){1,3}mit mir (macht|gemacht hat|tut|getan hat|spielt|gespielt hat)${R}`),
+  new RegExp(`${L}(sagen|erzählen|verraten|petzen) sonst (kommt|muss|geht|passiert|bringt|schlägt|haut|tötet|tut) (${WORD} ){0,3}(ins gefängnis|in den knast|ins heim|was|etwas|was schlimmes|um|tot|weh)${R}`),
+  new RegExp(`^(?=.*${L}(wenn|falls) ich (es |das |was |etwas |davon )?(verrate|sage|erzähle|erzähl|sag|petze|petz)${R}).*${L}((bringt|tötet|schlägt|haut|tut) (er|sie) (${WORD} ){0,2}(um|tot|weh)|passiert (${POSS}${PERSON_WIDE}|dir|mir|uns|ihr|ihm) (was|etwas|was schlimmes|etwas schlimmes))${R}`),
+  new RegExp(`${L}${UNDRESS_AGENT} (hat gesagt|sagt|sagte|meint|meinte) (${WORD} ){0,3}(unter uns (bleiben|bleibt)|unser geheimnis|ein geheimnis (zwischen uns|unter uns)|darf keiner wissen|darf niemand wissen|muss geheim bleiben)${R}`),
+  // Übergriff: „Er hat mich missbraucht“, „Er macht Sex mit mir“, „Er macht Nacktfotos von mir“, „Ich muss sein Ding anfassen“,
+  // „Er steckt mir den Finger in die Muschi“, „Er guckt immer, wenn ich nackt bin“, „Er will, dass ich mich nackt auf ihn
+  // setze“, „Er reibt sich an mir“, „Manchmal küsst mich Onkel Peter mit Zunge“, „Er hat mich da unten geleckt“, „Da unten
+  // berührt er mich“, „…, dass er mir seinen Pimmel zeigt“, „…, weil er mich auszieht“, „…, weil ich ihn anfassen muss“
+  new RegExp(`${L}(missbraucht|missbrauchen|missbrauchte|vergewaltigt|vergewaltigen|vergewaltigte) (${SUBJ} |${PERP} )?(mich|uns)${R}`),
+  new RegExp(`${L}(mich|uns) ((?!${NEG_WORD}${R})${WORD} ){0,3}(missbraucht|vergewaltigt|geprügelt|versohlt|grün und blau geschlagen)${R}`),
+  new RegExp(`${L}sex mit (mir|uns)${R}`),
+  new RegExp(`^(?=.*${L}(mir|mich|ich|uns)${R}).*${L}nackt(foto|fotos|bild|bilder|video|videos|film|filme|selfie|selfies)${R}`),
+  new RegExp(`^(?=.*${L}(mir|mich|ich|uns)${R}).*${L}(fotos|foto|bilder|bild|videos|video) (von )?(seinem|seinen|ihrem|ihren|einem) ${KID_BODY2}${R}`),
+  new RegExp(`${L}((muss|soll|musste|sollte) ich|ich (muss|soll|musste|sollte)) (${WORD} ){0,2}((seinen|sein|seine|ihren|ihr|ihre) ${KID_BODY2}|(den|das|die) ${KID_BODY}) ((?!${NEG_WORD}${R})${WORD} ){0,2}(anfassen|streicheln|berühren|küssen|lecken|reiben|in den mund nehmen)${R}`),
+  new RegExp(`^(?=.*${L}(mir|mich)${R}).*${L}(steckt|steckte|stecken|schiebt|schob|bohrt) (${WORD} ){0,4}(in|an) (den|die|das|meinen|meine|mein|meinem) (${KID_BODY}|po|popo|poloch|hintern|mumu|scheide)${R}`),
+  new RegExp(`${L}(mir|mich) ((?!${NEG_WORD}${R})${WORD} ){0,3}(in|an) (den|die|das|meinen|meine|mein|meinem) (${KID_BODY}|po|popo|poloch|hintern|mumu|scheide) (gesteckt|geschoben|gebohrt|reingesteckt|reingeschoben)${R}`),
+  new RegExp(`${L}${UNDRESS_AGENT} ${VADV}(guckt|schaut|sieht|starrt|glotzt|filmt|fotografiert|beobachtet) (mich |mir )?${VADV}(zu |an |dabei |hin )?(wenn|während|wie|als) ich (${WORD} ){0,2}(nackt|ausgezogen|ohne kleidung|ohne sachen|ohne unterhose)${R}`),
+  new RegExp(`${L}${UNDRESS_AGENT} (will|wollte|möchte|sagt|sagte|hat gesagt|zwingt|zwang|hat mich gezwungen) (mir )?(dass )?(ich )?((soll|muss|sollte|musste) )?(mich )?((?!${NEG_WORD}${R})${WORD} ){0,2}nackt${R}`),
+  new RegExp(`${L}(will|wollte|möchte) (${UNDRESS_AGENT} )?mich (${WORD} )?nackt (sehen|fotografieren|filmen|anschauen|angucken|anfassen)${R}`),
+  new RegExp(`^(?=.*${L}(muss|soll|musste|sollte) ich mich ((?!${NEG_WORD}${R})${WORD} ){0,2}(ausziehen|nackt machen)${R}).*${L}(und|dann|da) ${UNDRESS_AGENT} (${WORD} )?(guckt|schaut|sieht|filmt|fotografiert) (${WORD} )?zu${R}`),
+  new RegExp(`^${NOT_ANIMAL}.*${L}(${UNDRESS_AGENT} ${VADV}(reibt|rieb) sich (${WORD} ){0,2}an (mir|mich|uns)|${UNDRESS_AGENT} ${VADV}(legt|legte) sich ${VADV}(auf mich|auf uns|über mich)|(reibt|rieb|legt|legte) sich ${UNDRESS_AGENT} ${VADV}(an mir|an mich|auf mich|über mich))${R}`),
+  new RegExp(`^(?=.*${L}(mich|mir|uns)${R}).*${L}(küsst|küsste|küssen|geküsst|knutscht|knutschte|geknutscht) (${WORD} ){0,4}(mit (der )?zunge|zungenkuss|zungenküsse)${R}`),
+  new RegExp(`${L}(${TOUCH_SUBJ_WIDE} (hat|hatte)|(hat|hatte) ${TOUCH_SUBJ_WIDE}) mich ((?!${NEG_WORD}${R})${WORD} ){0,3}${INTIMATE_SPOT} (geleckt|abgeleckt|geküsst|berührt|gestreichelt|angefasst|befummelt|begrapscht)${R}`),
+  new RegExp(`${L}(da unten|untenrum|zwischen den beinen|zwischen meinen beinen) (berührt|streichelt|küsst|leckt|fasst|fummelt|befummelt|grapscht|begrapscht|berührte|streichelte|fasste) ${TOUCH_SUBJ_WIDE} (mich|mir)${R}`),
+  new RegExp(`${L}${CLAUSE} ${TOUCH_SUBJ_WIDE} mich (${WORD} ){0,2}${INTIMATE_SPOT} (berührt|streichelt|küsst|anfasst|befummelt|begrapscht|leckt|ableckt)${R}`),
+  new RegExp(`${L}${CLAUSE} ${TOUCH_SUBJ_WIDE} mir (${WORD} ){0,2}(seinen|sein|seine|ihren|ihr|ihre) ${KID_BODY2} (zeigt|zeigte|gezeigt hat|gezeigt hatte)${R}`),
+  new RegExp(`${L}${CLAUSE} ${TOUCH_SUBJ_WIDE} mich ((?!${NEG_WORD}${R})${WORD} ){0,2}(auszieht|auszog|ausgezogen hat|ausgezogen hatte)${R}`),
+  new RegExp(`${L}${CLAUSE} ich (ihn|ihm) ((?!${NEG_WORD}${R})${WORD} ){0,2}(anfassen|küssen|berühren|streicheln) (muss|soll|musste|sollte)${R}`),
+  new RegExp(`${L}${CLAUSE} ${TOUCH_SUBJ_WIDE} mich (${WORD} ){0,3}(küsst|küsste|streichelt|streichelte|berührt|berührte|anfasst|anfasste|auszieht) ${UNWANTED}${R}`),
+  new RegExp(`${L}ich (mag|will|möchte) (das|es) (gar )?nicht (${WORD} ){0,2}(weil|wenn|dass) ${TOUCH_SUBJ_WIDE} mich (${WORD} ){0,3}(küsst|streichelt|berührt|anfasst|auszieht)${R}`),
 ];
 
 const ALL_PATTERNS: RegExp[] = [...PATTERNS, ...PATTERNS_EXTRA, ...PATTERNS_2026_11, ...PATTERNS_2026_11_B, ...PATTERNS_2026_11_C, ...PATTERNS_2026_11_D, ...PATTERNS_REVIEW, ...PATTERNS_WORD_ORDER];
 
-export function screen(transcript: string): boolean {
-  if (!transcript) return false;
+/** Die Schablonen V15 (Punkt N1122-2323-a). Exportiert für Tests: Jede muss mindestens einen Muss-Satz treffen. */
+export const V15_PATTERNS: readonly RegExp[] = PATTERNS_WORD_ORDER;
+
+// Füllwörter der Spracherkennung und direkte Wiederholungen („Ich will äh nicht mehr leben“, „Manchmal will ich ich nicht
+// mehr leben“; Prüfung von PR #135, Befund 3)
+const HESITATION = /(?<![a-zäöüß])(äh|ähm|ähh|ähem|öh|öhm|ehm|hm|hmm|hmmm)(?![a-zäöüß]) /g;
+const REPEAT = /(?<![a-zäöüß])([a-zäöüß]+) (\1 )+/g;
+
+/** Alle Lesarten, die die Weiche prüft. Exportiert für Tests. */
+export function screenReadings(transcript: string): string[] {
+  if (!transcript) return [];
   const readings = [normalize(transcript)];
   // „€“ zusätzlich als Satzzeichen lesen, wie vor PR #115: Als Wort trennt es Wortketten („Ich möchte € sterben“).
   // Beide Lesarten zählen, damit weder „zehn € gegeben“ noch „€ sterben“ still wird (Prüfung von PR #115 und #122).
   if (transcript.includes('€')) readings.push(normalize(transcript.replace(/€+/g, ' ')));
-  return readings.some((normalized) => ALL_PATTERNS.some((pattern) => pattern.test(normalized)));
+  // Zusätzlich ohne „äh“, „ähm“ und Wortwiederholungen. Nur weitere Lesarten: Sie können Treffer hinzufügen, keinen wegnehmen.
+  for (const reading of [...readings]) {
+    const tidy = reading.replace(HESITATION, '').replace(REPEAT, '$1 ');
+    if (tidy.trim() && !readings.includes(tidy)) readings.push(tidy);
+  }
+  return readings;
+}
+
+export function screen(transcript: string): boolean {
+  if (!transcript) return false;
+  return screenReadings(transcript).some((normalized) => ALL_PATTERNS.some((pattern) => pattern.test(normalized)));
 }
 
 export function getSafetyResponse(): string {

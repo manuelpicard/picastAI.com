@@ -918,6 +918,9 @@ const MUST_TRIGGER = [
   'Wenn ich es verrate, schlägt er mich tot',
   'Gestern hat er mich auf den Mund geküsst, obwohl ich nicht wollte',
   'Er legt sich zu mir ins Bett, obwohl ich das nicht will',
+  // Nach der Prüfung von PR #135 (26.11.2026, vorläufig): Die Frage nach einem Weg schlägt an, auch wenn sie neugierig
+  // gemeint sein kann (vorher in der Liste unten). Lieber ein Fehlalarm als eine Lücke.
+  'Würde ich sterben, wenn ich vom Dach springe?',
   // V15, Teil 1: diese schlugen schon vorher an und sichern jetzt gegen Rückschritte ab
   'Ich glaube, dass ich nicht mehr leben will',
   'Ich bin so traurig und will nicht mehr leben',
@@ -1671,7 +1674,6 @@ const MUST_NOT_TRIGGER = [
   'Ich will immer noch nicht sterben',
   'Im Schwimmbad will ich vom Turm springen',
   'Heute will ich im Freibad vom Sprungturm springen',
-  'Würde ich sterben, wenn ich vom Dach springe?',
   'Ich will mich verstecken',
   'Ich will mich unter den Tisch legen',
   'Versuch mich zu fangen',
