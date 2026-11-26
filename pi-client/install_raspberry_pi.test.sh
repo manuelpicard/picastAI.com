@@ -309,7 +309,9 @@ no_token "Lauf 5c Probelauf: Token nicht in der Ausgabe" "$work/lauf5c-probe.txt
 run "$work/lauf5c.txt" --non-interactive
 eq "Lauf 5c: Rückgabe 0" "$rc" 0
 no_token "Lauf 5c: Token nicht in der Ausgabe" "$work/lauf5c.txt"
-eq "Lauf 5c: Zeitkette wieder 140 s" "$(val KUNIBERT_PIPELINE_TIMEOUT)" 140
+# Wert wie systemd: die letzte Zeile des Namens, Leerzeichen um „=“ zählen nicht (val sähe nur NAME=).
+eq "Lauf 5c: Zeitkette wieder 140 s (letzte Zeile des Namens, wie systemd)" \
+  "$(grep -E '^[[:space:]]*KUNIBERT_PIPELINE_TIMEOUT[[:blank:]]*=' "$env_file" | tail -n 1 | sed -E 's/^[^=]*=[[:blank:]]*//')" 140
 has "Lauf 5c: warnt wegen der Zeitkette" "$work/lauf5c.txt" "KUNIBERT_PIPELINE_TIMEOUT stand in"
 eq "Lauf 5c: genau eine Zeile für KUNIBERT_PIPELINE_TIMEOUT" \
   "$(grep -cE '^[[:space:]]*KUNIBERT_PIPELINE_TIMEOUT[[:blank:]]*=' "$env_file")" 1
@@ -329,6 +331,20 @@ snapshot > "$work/stand5c.txt"
 run "$work/lauf5d.txt" --non-interactive
 if snapshot | cmp -s - "$work/stand5c.txt"; then ok "Lauf 5d ändert nichts (nach dem Angleichen)"; else bad "Lauf 5d hat etwas geändert: $(snapshot | diff "$work/stand5c.txt" - | tail -n 6)"; fi
 hasnt "Lauf 5d: keine Warnung zur Zeitkette mehr" "$work/lauf5d.txt" "KUNIBERT_PIPELINE_TIMEOUT stand in"
+
+echo "== Lauf 5e: U+3000 vor dem Gleichheitszeichen macht keinen Namen (wie bei systemd), auch in UTF-8"
+u3000=$'\xe3\x80\x80'
+sed -i "s/^PICASTAI_DEVICE_TOKEN=/PICASTAI_DEVICE_TOKEN${u3000}= /" "$env_file"
+LC_ALL=C.UTF-8 run "$work/lauf5e.txt" --non-interactive
+eq "Lauf 5e: Rückgabe 0" "$rc" 0
+has "Lauf 5e: warnt, dass kein Token gesetzt ist" "$work/lauf5e.txt" "Kein API-Token gesetzt"
+hasnt "Lauf 5e: meldet nicht, das Token bleibe" "$work/lauf5e.txt" "Das Token in $env_file bleibt."
+no_token "Lauf 5e: Token nicht in der Ausgabe" "$work/lauf5e.txt"
+eq "Lauf 5e: Token in kunibert.env leer, wie systemd es läse" "$(val PICASTAI_DEVICE_TOKEN)" '""'
+sed -i "/^PICASTAI_DEVICE_TOKEN${u3000}=/d" "$env_file"
+run "$work/lauf5f.txt" --non-interactive --api-token-file "$work/token"
+eq "Lauf 5f: Rückgabe 0" "$rc" 0
+token_is "Lauf 5f: Token wieder gesetzt" "$token"
 
 echo "== Token nie auf der Befehlszeile"
 snapshot > "$work/stand5.txt"

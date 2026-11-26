@@ -38,7 +38,8 @@ shellcheck -S warning deploy/*.sh pi-client/*.sh docs/autopilot/*.sh
 python3 -m unittest discover -s docs/autopilot -p "test_*.py"   # Werkzeuge des Wochen-Autopiloten
 # Pi-Installer als root in einem Wegwerf-Container (ändert sonst das System; CI: Job pi-installer). pruefen.sh macht es nur
 # mit laufendem Docker. Hinter einem Proxy mit eigener Zertifizierungsstelle (Cloud-Sitzung) PIP_CERT=<CA-Datei> setzen:
-# pruefen.sh gibt die Datei dann in den Container weiter. Von Hand dafür -e PIP_CERT=/ca.crt -v "$PIP_CERT":/ca.crt:ro ergänzen.
+# pruefen.sh gibt die Datei dann in den Container weiter. Von Hand dafür vor debian:trixie -e PIP_CERT=/ca.crt
+# -v "$PIP_CERT":/ca.crt:ro einfügen (PIP_CERT als absoluter Pfad; hinten angehängt gingen die Schalter ans Testskript).
 docker run --rm -e KUNIBERT_INSTALLER_TEST=1 -v "$PWD":/src:ro debian:trixie bash /src/pi-client/install_raspberry_pi.test.sh
 # Firmware-Logik auf dem Rechner (der ESP-IDF-Build läuft nur in der CI):
 cd firmware/esp32-s3 && cc -std=c11 -Wall -Wextra -Werror -pedantic -fsanitize=address,undefined -I main \

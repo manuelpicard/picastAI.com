@@ -55,7 +55,9 @@ trim() { local v="$1"; v="${v#"${v%%[![:space:]]*}"}"; v="${v%"${v##*[![:space:]
 existing_token_set() {
   [[ -f "$CONFIG_FILE" ]] || return 1
   local line value
-  line="$(grep -E '^[[:space:]]*PICASTAI_DEVICE_TOKEN[[:blank:]]*=' "$CONFIG_FILE" | tail -n 1)" || return 1
+  # LC_ALL=C: Nur Leerzeichen und Tab zählen als [[:blank:]], wie bei systemd und in merge_config.
+  # In UTF-8 träfe grep sonst auch Zeichen wie U+3000, die mawk und systemd nicht so lesen.
+  line="$(LC_ALL=C grep -E '^[[:space:]]*PICASTAI_DEVICE_TOKEN[[:blank:]]*=' "$CONFIG_FILE" | tail -n 1)" || return 1
   # Bis zum ersten „=“: Der Name enthält keines, das Token vielleicht (Base64).
   value="${line#*=}"
   value="${value//\"/}"; value="${value//\'/}"; value="${value//[[:space:]]/}"
@@ -75,7 +77,8 @@ merge_config() {
   local given=" " forced=" " key
   for key in "${!GIVEN[@]}"; do given+="$key "; done
   for key in "${FORCED_KEYS[@]}"; do forced+="$key "; done
-  awk -v oldfile="$2" -v given="$given" -v forced="$forced" -v keptfile="$3" -v resetfile="$4" '
+  # LC_ALL=C: Zeichenklassen und -bereiche nur für ASCII, gleich in mawk und gawk (siehe oben).
+  LC_ALL=C awk -v oldfile="$2" -v given="$given" -v forced="$forced" -v keptfile="$3" -v resetfile="$4" '
     function is_key(l) { return l ~ /^[A-Za-z_][A-Za-z0-9_]*[[:blank:]]*=/ }
     function key_of(l,   name) {
       name = substr(l, 1, index(l, "=") - 1)
@@ -292,7 +295,7 @@ if ! [[ "$SAMPLE_RATE" =~ ^[0-9]+$ ]] || (( SAMPLE_RATE < 8000 || SAMPLE_RATE > 
 fi
 # Wert für den Probelauf: Fehlt die Angabe und steht der Schlüssel schon in kunibert.env, bleibt er.
 shown() {
-  if [[ -z "${GIVEN[$1]:-}" && -f "$CONFIG_FILE" ]] && grep -qE "^[[:space:]]*$1[[:blank:]]*=" "$CONFIG_FILE"; then
+  if [[ -z "${GIVEN[$1]:-}" && -f "$CONFIG_FILE" ]] && LC_ALL=C grep -qE "^[[:space:]]*$1[[:blank:]]*=" "$CONFIG_FILE"; then
     printf 'bleibt wie in kunibert.env'
   else
     printf '%s' "$2"
