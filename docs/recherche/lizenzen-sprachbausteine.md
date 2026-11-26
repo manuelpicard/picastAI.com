@@ -166,6 +166,7 @@ Die Nummern L1 bis L5 gehören neben R1 bis R5 aus `stimme-lizenz.md`. Die Stufe
 - Karte, Lizenzfeld und Dateien der Kopie `speaches-ai/piper-de_DE-thorsten-medium` und der anderen Stimmen im Konto `speaches-ai`. Der Inhalt der `.onnx`-Dateien und die Unterschiede zwischen den Fassungen.
 - Das Image 0.8.3 von Speaches (Pakete und Versionen). Gelesen ist nur `pyproject.toml` auf `master`.
 - Die Lizenz der Wörterbuchdaten von espeak-ng (die Seite nennt keine eigene Angabe) und ob OpenSLR 95 vom selben Sprecher stammt wie die anderen Aufnahmen.
+- Die Lizenz des `lessac`-Korpus bei den Rechteinhabern selbst. Ich kenne sie nur aus der Wiedergabe durch das Piper-Projekt (Q12).
 - Lizenzen von Kokoro (Kunibert nutzt es nicht) und der anderen deutschen Piper-Stimmen (`kerstin`, `karlsson`, `eva_k`, `pavoque`, `ramona`, `mls`, `thorsten_emotional`).
 - Google: den Wortlaut von Abschnitt 20 der Service Specific Terms (Definition, Liste der Dienste, Unterabschnitt (d)). Dazu die Additional Product Terms, das Cloud Data Processing Addendum, die Acceptable Use Policy und die Richtlinie für generative KI. Ob der Endpunkt `eu-texttospeech` zur Region `eu` gehört.
 - Die Herkunft der Whisper-Trainingsdaten und die LICENSE-Datei von Whisper.
