@@ -1,19 +1,19 @@
 # Lizenz der Stimme stuart_bell und von Pocket TTS
 
-Stand: 22.11.2026, ergänzt am 26.11.2026 (Abschnitt „Herkunft von `stuart_bell`“, Punkt N1122-1825-c, Teil 1) · Punkt H5 der Arbeitsliste · Wochen-Autopilot, Rolle Recherche.
+Stand: 22.11.2026, ergänzt am 26.11.2026 (Abschnitt „Herkunft von `stuart_bell`“, Punkt N1122-1825-c, Teil 1; Schlüsse an die Belege angepasst, Punkt N1122-2323-f, 19:30 Uhr) · Punkt H5 der Arbeitsliste · Wochen-Autopilot, Rolle Recherche.
 
 **Keine Rechtsberatung.** Ein Anwalt war bewusst nicht beteiligt. Das ist als Restrisiko festgehalten.
 
-Die Quellen Q1 bis Q21 stehen am Ende, mit Abrufdatum und einem kurzen Zitat. „Einschätzung“ heißt: meine Bewertung, kein Satz aus einer Quelle. Namen von Sprechern stehen hier nur so, wie Kyutai sie veröffentlicht (`stuart_bell`). Nach den Personen hinter den Stimmen habe ich nicht gesucht (Einzelheiten unter „Nicht geprüft“).
+Die Quellen Q1 bis Q24 stehen am Ende, mit Abrufdatum und einem kurzen Zitat. „Einschätzung“ heißt: meine Bewertung, kein Satz aus einer Quelle. Namen von Sprechern stehen hier nur so, wie Kyutai sie veröffentlicht (`stuart_bell`). Nach den Personen hinter den Stimmen habe ich nicht gesucht (Einzelheiten unter „Nicht geprüft“). Die Adresse von Q17 enthält einen Kontonamen und steht deshalb nicht in der Tabelle.
 
 ## Kurzfassung
 
 **Frage:** Darf Kunibert die Pocket-Stimme `stuart_bell` und das Modell Pocket TTS in einem verkauften Produkt nutzen?
 
-**Antwort (Einschätzung):** Ja für das Programm und die Gewichte, nach den Quellen, die ich lesen konnte. Bei der Stimme `stuart_bell` nennt Kyutai CC0 als Lizenz. Offen ist die Einwilligung des Sprechers (R1, Stand 26.11.2026). Für Tests mit Erwachsenen reicht die Lage nach meiner Einschätzung. Für den Verkauf ist die Stimme offen. Es gelten drei Pflichten. Die erste lässt sich bei `stuart_bell` heute nicht bestätigen.
+**Antwort (Einschätzung):** Ja für das Programm, nach den Quellen, die ich lesen konnte. Bei den Gewichten nennt die Karte CC BY 4.0 (Q1). Ob das auch für die deutschen Gewichte gilt, die Kunibert nutzt, ist nicht belegt (R6, Stand 26.11.2026). Bei der Stimme `stuart_bell` nennt Kyutai CC0 als Lizenz. Offen ist die Einwilligung des Sprechers (R1, Stand 26.11.2026). Für Tests mit Erwachsenen reicht die Lage nach meiner Einschätzung. Für den Verkauf sind die deutschen Gewichte (R6) und die Stimme (R1) offen. Es gelten drei Pflichten. Die erste lässt sich bei `stuart_bell` heute nicht bestätigen.
 
 - **Programm** `pocket-tts` 4.0.1: MIT-Lizenz. Verkauf erlaubt.
-- **Gewichte** des Modells (auch das deutsche): CC BY 4.0. Der Lizenztext kennt keine Beschränkung auf nicht-kommerzielle Nutzung. Dazu kommt eine Verbotsliste („Prohibited use“) von Kyutai.
+- **Gewichte** des Modells: Die Karte `kyutai/pocket-tts` nennt in der Kopfzeile CC BY 4.0 (Q1). Der Lizenztext kennt keine Beschränkung auf nicht-kommerzielle Nutzung. Für die deutschen Gewichte, die Kunibert nutzt, ist das nicht belegt (R6, Abschnitt „Gewichte (Modell)“). Dazu kommt eine Verbotsliste („Prohibited use“) von Kyutai.
 - **Stimme** `stuart_bell`: Kyutai führt sie im Ordner `voice-zero` unter CC0. Die Aufnahmen stammen laut Kyutai von LibriVox (Q4). CC0 erlaubt jede Nutzung, auch geschäftlich, aber nur für die Rechte, die der Erklärende selbst hält. Rechte anderer Personen, zum Beispiel des Sprechers, klärt CC0 nicht (Q10).
 
 **Die drei Pflichten:**
@@ -45,6 +45,9 @@ Die Quellen Q1 bis Q21 stehen am Ende, mit Abrufdatum und einem kurzen Zitat. �
 ### Gewichte (Modell)
 
 - Die Modellkarte zeigt in der Kopfzeile die Lizenz `cc-by-4.0`. Dieselbe Zeile steht bei der Variante „ohne Stimmklonen“ (Q1, Q7). Warum es diese Variante gibt, steht dort nicht.
+- Deutsch: Die Karte nennt sechs Sprachen, darunter Deutsch (Q1). Die Release-Notiz zu Version 2.0.0 nennt zwei deutsche Modelle: `german` (6 Schichten) und `german_24l` (24 Schichten, noch nicht destilliert) (Q23). Die CLI-Doku nennt dieselben Werte für `--language` (Q24).
+- Nicht belegt: Wo die deutschen Gewichte liegen und unter welcher Lizenz. README, Release-Notiz und CLI-Doku nennen weder einen Fundort noch eine Lizenz für sie (Q22 bis Q24). Die CLI-Doku verweist auf Konfigurationsdateien im Ordner `pocket_tts/config` mit den Einträgen `weights_path` und `weights_path_without_voice_cloning` (Q24). Die Datei für Deutsch habe ich nicht gelesen. Die Dateiliste des Modell-Repositories war nicht Teil des Abrufs: Die Seite verlangt Anmeldung und Zustimmung (Q1).
+- Die Karte sagt nicht, dass die Kopfzeile für alle Sprachen und Dateien des Repositories gilt (Q1, zweite Lesung am 26.11.2026). Einschätzung: Dass Deutsch auf der Karte steht und die Kopfzeile CC BY 4.0 nennt, spricht dafür, dass die Lizenz auch für die deutschen Gewichte gilt. Belegt ist es nicht (R6).
 - Der Rechtstext von CC BY 4.0 enthält keine Beschränkung auf nicht-kommerzielle Nutzung. „NonCommercial“ kommt nicht vor (Q11). Einschätzung: Verkauf ist erlaubt.
 - Namensnennung (CC BY 4.0, Abschnitt 3(a)): Wer das Material „teilt“, behält mitgelieferte Angaben bei (Urheber, Copyright-Hinweis, Lizenzhinweis, Haftungsausschluss, Link). Er verweist auf die Lizenz und gibt Änderungen an. Das darf auf jede angemessene Art geschehen, passend zum Medium. Oft genügt ein Link (Q11).
 - „Teilen“ heißt: Material der Öffentlichkeit bereitstellen, zum Beispiel durch Vervielfältigen, öffentliches Zeigen oder Vorführen, Verbreiten oder öffentliches Bereitstellen (Q11).
@@ -53,7 +56,7 @@ Die Quellen Q1 bis Q21 stehen am Ende, mit Abrufdatum und einem kurzen Zitat. �
 - CC BY 4.0 lizenziert Persönlichkeitsrechte nicht (Q11, Abschnitt 2(b)(1)). Einschätzung: Rechte von Menschen an ihrer Stimme gibt diese Lizenz also nicht frei.
 - Das Repository ist „gated“: Die Karte verlangt, die Bedingungen zu akzeptieren, bevor man Dateien erhält. Die Bedingung ist die Verbotsliste (Q1).
 - Die Verbotsliste (Q1, gleicher Wortlaut im README des Pakets, Q3): Die Nutzung muss die Gesetze einhalten. Sie darf nichts Rechtswidriges, Schädliches, Täuschendes, Betrügerisches oder Unbefugtes bewirken oder erleichtern. Verboten ist unter anderem, Stimmen ohne ausdrückliche und rechtmäßige Einwilligung nachzuahmen oder zu klonen. Verboten sind auch Falschmeldungen und Täuschung, zum Beispiel Erzeugtes als echte Aufnahme echter Menschen auszugeben. Verboten sind rechtswidrige, beleidigende, belästigende, diskriminierende, hasserfüllte und private Rechte verletzende Inhalte. Kyutai schließt die Haftung für Verstöße aus.
-- Einschätzung: Kunibert erzeugt Geschichten aus Claude-Text. Er klont selbst keine Stimme: `stuart_bell` liefert Kyutai als fertige Stimme aus. Ob für die Aufnahme dahinter eine Einwilligung des Sprechers vorliegt, ist nicht belegt (R1, Abschnitt „Herkunft von `stuart_bell`“). Ob die Verbotsliste damit eingehalten ist, ist offen. Dass die Stimme als KI-Stimme kenntlich sein muss, klärt Punkt H3.
+- Einschätzung: Kunibert erzeugt Geschichten aus Claude-Text. Er klont selbst keine Stimme: `stuart_bell` liefert Kyutai als fertige Stimme aus. Ob für die Aufnahme dahinter eine Einwilligung des Sprechers vorliegt, ist nicht belegt (R1, Abschnitt „Herkunft von `stuart_bell`“). Ob die Verbotsliste damit eingehalten ist, ist offen. Dass die Stimme als KI-Stimme kenntlich sein muss, hat Punkt H3 untersucht (`ki-hinweis.md`).
 
 ### Stimme `stuart_bell`
 
@@ -146,6 +149,8 @@ Lizenz je Ordner laut Karte des Stimmenkatalogs (Q4). Die Zuordnung der Pocket-N
 | `ears` | CC BY-NC 4.0 (laut Karte nur nicht-kommerziell) | `jean` | **nein** |
 | Modell-Repo, Branch `add_lang_not_documented` | nicht angegeben | `juergen` (de), `giovanni`, `lola`, `rafael` | **unklar, nicht verwenden** |
 
+Ohne den Schalter `--default-voice` nimmt Pocket TTS für Deutsch die Stimme `juergen` (Q24). Kunibert setzt `--default-voice stuart_bell` und umgeht das. Wer den Schalter weglässt, nutzt `juergen` mit nicht angegebener Lizenz (Einschätzung).
+
 Spender-Stimmen (`voice-donations`):
 
 - Die Bedingungen des Spendenprojekts (Q6, Fassung vom 26.6.2025) sagen: Spender geben Kyutai eine dauerhafte, nicht ausschließliche Lizenz. Sie stimmen zu, dass ihre Stimme für Sprache genutzt werden kann, die sie nicht selbst gesprochen haben (Zitat in Q6). Die Nutzer des veröffentlichten Datensatzes dürfen ihn auch geschäftlich nutzen, nach Kyutais „Acceptable Use Policy“. Deren Text steht in den Bedingungen nicht, und ich habe ihn nicht gelesen.
@@ -158,7 +163,8 @@ Spender-Stimmen (`voice-donations`):
 - Das Paper zur Methode (Q12) trainiert sein TTS-Modell auf 88 000 Stunden „öffentlicher Datensätze“. Anhang D nennt: AMI, EARNINGS22, GigaSpeech, SPGISpeech, TED-LIUM, VoxPopuli, LibriHeavy und Emilia. Lizenzen der Datensätze nennt das Paper nicht. Der Eintrag zu Emilia im Literaturverzeichnis ist ein Platzhalter.
 - Pocket TTS beschreibt das Paper nur kurz: 100 Millionen Parameter, aus einem größeren Modell herausdestilliert (Anhang F). Die Daten für Pocket TTS und für die deutschen Gewichte nennt es nicht (Q12).
 - Der technische Bericht von Kyutai lieferte eine leere Seite. `training/README.md` war gesperrt. Beide konnte ich nicht lesen.
-- Einschätzung: Für Kunibert ist das Risiko wahrscheinlich klein, aber nicht null. Wer wofür haftet, ist ungeprüft. Die Lizenzen der Datensätze habe ich nicht geprüft.
+- Die Modellkarte hat keinen Abschnitt zu Trainingsdaten, auch nicht für andere Sprachen als Englisch (Q1, zweite Lesung am 26.11.2026). README und CLI-Doku nennen keine Datensätze für die Sprachmodelle (Q22, Q24). Sie verweisen auf `training/README.md` und auf Berichte von Kyutai, die ich nicht lesen konnte.
+- Einschätzung: Wie groß das Risiko durch die Trainingsdaten ist, kann ich nicht sagen (offen, R4). Die Lizenzen der Datensätze und die Daten der deutschen Gewichte kenne ich nicht. Wer wofür haftet, ist ungeprüft.
 
 ### Verwechslungsgefahr
 
@@ -170,10 +176,12 @@ Eine Suche nach der Lizenz von Pocket TTS lieferte die Kennung arXiv 2603.25551.
 2. **Kyutai nennen.** Textvorschlag unten. Nach dem Lizenztext nötig, sobald die Gewichte oder die damit gerechneten Stimm-Vektoren an Geräte oder Kunden gehen.
 3. **Hugging-Face-Bedingungen akzeptiert haben.** Wer das Konto hat, hat zugestimmt. Wer, wann und mit welchem Konto, steht nirgends im Repo. Das weiß nur der Betreiber. Kein Token ins Repo oder in den Chat.
 4. **Nur freie Stimmen wählen.** Nicht `cosette` und `jean` (nicht-kommerziell), nicht `juergen`, `giovanni`, `lola` und `rafael` (Lizenz nicht angegeben). Nur Stimmen aus der Tabelle mit „ja“.
-5. **KI-Stimme kenntlich machen** (KI-Verordnung, Art. 50). Das klärt Punkt H3.
+5. **KI-Stimme kenntlich machen** (KI-Verordnung, Art. 50). Das hat Punkt H3 am 26.11.2026 untersucht. Nach der Einschätzung in [`ki-hinweis.md`](ki-hinweis.md) (Abschnitt 1, Quellen dort) gilt Art. 50 für ein neues Gerät schon jetzt: ein gesprochener Hinweis, dass es eine KI ist (Abs. 1 und 5), und eine maschinenlesbare Marke an der künstlichen Stimme (Abs. 2). Ob Pocket TTS selbst markiert, ist dort offen. Ich habe es hier nicht noch einmal an den Quellen geprüft.
 6. **Nachweis sichern.** Version `pocket-tts@4.0.1`, Stand der Karten (22.11.2026, die Karte des Stimmenkatalogs noch einmal am 26.11.2026), Dateiname der Stimme (`voice-zero/stuart_bell.wav`), Commit `323332d` und SHA256 der Datei laut Seite von Hugging Face (`00c7baeb2fb7a8c1c6198e045b5e853a7ccc04002a51a09b4be3dd7c96994f73`, Q16; ich habe die Datei nicht geladen und die Summe nicht selbst gerechnet). Dieses Dokument ist der Nachweis.
 
 ### Textvorschlag für die Nennung (Entwurf, nichts veröffentlichen)
+
+Vorbehalt: Der Text nennt CC BY 4.0 nach der Kopfzeile der Karte (Q1). Für die deutschen Gewichte ist das nicht belegt (R6). Erst einbauen, wenn R6 geklärt ist, oder mit dem Zusatz „laut Karte“.
 
 > Sprachausgabe: Pocket TTS von Kyutai (https://huggingface.co/kyutai/pocket-tts), Lizenz CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/). Das Programm steht unter der MIT-Lizenz. Die Stimme stammt aus dem frei nutzbaren Stimmenkatalog von Kyutai (CC0). Kyutai hat dieses Produkt weder geprüft noch empfohlen.
 
@@ -184,22 +192,25 @@ Den Namen des Sprechers nennen wir dabei nicht. CC0 und LibriVox verlangen keine
 Diese Punkte gehören in die Liste der Restrisiken:
 
 - **R1 (offen, Stand 26.11.2026):** Einwilligung des Sprechers von `stuart_bell` zur KI-Stimme nicht belegt. Auch die Herkunft der einzelnen Aufnahme ist nicht bis zur Quelle gelesen. Die Verbotsliste von Kyutai untersagt, Stimmen ohne Einwilligung nachzuahmen oder zu klonen (Q1). Ob für diese Aufnahme eine Einwilligung vorliegt, ist offen (Abschnitt „Herkunft von `stuart_bell`“).
-- **R2:** Eine falsch gesetzte Stimme (`cosette`, `jean`) wäre ein Lizenzverstoß. Der Server prüft nur die Form.
+- **R2:** Eine falsch gesetzte Stimme (`cosette`, `jean`) wäre ein Lizenzverstoß. Der Server prüft nur die Form. Fehlt `--default-voice`, nimmt Pocket TTS für Deutsch `juergen` (Lizenz nicht angegeben, Q24).
 - **R3:** Die Zustimmung zur Verbotsliste ist an ein Konto gebunden und nirgends festgehalten.
 - **R4:** Die Lizenzen der Trainingsdaten sind ungeprüft.
 - **R5:** Der Server nimmt `hf://`- und `https://`-Adressen als Stimme an. Jede Aufnahme wäre dann eine Vorlage zum Klonen. Das ist eine Einstellung des Betreibers, nichts, was ein Kind auslösen kann. Trotzdem: Klonen ohne Einwilligung steht auf der Verbotsliste.
+- **R6 (offen, Stand 26.11.2026):** Die Lizenz der deutschen Gewichte ist nicht belegt. Die Karte nennt CC BY 4.0 und Deutsch als Sprache, sagt aber nicht, dass die Kopfzeile für alle Sprachen gilt (Q1). Fundort und Lizenz der Gewichte stehen in keiner gelesenen Quelle (Q22 bis Q24). Das klärt Punkt N1126-1927-a.
 
 ## Folgerungen für Kunibert (neue Punkte in `docs/autopilot/backlog.md`)
 
 - **N1122-1825-a** (Bauen, Prio 2): Lizenz-Hinweise für Pocket TTS in die Doku, mit dem Textvorschlag oben. Nur Doku.
-- **N1122-1825-b** (Bauen, Prio 3, ändert, was Kinder hören): Der Server warnt bei nicht freier Stimme und schaltet die Sprachausgabe im Betrieb ab. Heute heißt „aus“: eine leere Audiodatei, das Kind hört nichts (`server.ts`, `server-api/voice.ts`). Darum ist es ein eigener PR mit „(ändert, was Kinder hören)“. Das schließt R2 und R5.
+- **N1122-1825-b** (Bauen, Prio 3, ändert, was Kinder hören): Der Server warnt bei nicht freier Stimme und schaltet die Sprachausgabe im Betrieb ab. Heute heißt „aus“: Der Server legt ein leeres Audio ab. Die Antwort auf die Frage nennt trotzdem eine `audio_url`. Ruft das Gerät sie ab, antwortet die Audio-Route mit 404, der Pi meldet einen Fehler, und das Kind hört nichts (im Code gelesen am 26.11.2026: `server.ts`, `server-api/devices.ts`, `pi-client/kunibert_client.py`; nicht ausgeführt). Darum ist es ein eigener PR mit „(ändert, was Kinder hören)“. Das schließt R2 und R5.
 - **N1122-1825-c** (Recherche, Prio 2): Herkunft von `stuart_bell` bis zum Ursprung (Voice-Zero, LibriVox). Teil 1 ist am 26.11.2026 erledigt (Abschnitt „Herkunft von `stuart_bell`“). Teil 2 fehlt noch: die README im Unterordner von Voice-Zero. Er kann die Herkunft klären. Ob er auch die Einwilligung belegt, ist offen.
 - **N1122-1825-d** (Recherche, Prio 3): Lizenzen der acht Trainings-Datensätze und Trainingsdaten der deutschen Gewichte. Das schließt R4.
 - **N1122-1825-e** (Recherche, Prio 2): Lizenzen der übrigen Sprachbausteine (Spracherkennung, Rückfall-Stimme Piper, Speaches). H5 deckt sie nicht ab.
+- **N1126-1927-a** (Recherche, Prio 2, blockiert): Fundort und Lizenz der deutschen Gewichte von Pocket TTS. Das klärt R6. Der Betreiber kann zwei Seiten im Browser lesen (siehe Nächste Schritte).
+- Zu N1122-1825-a (Lizenz-Hinweise in die Doku) kommt eine Stand-Zeile: Der Textvorschlag nennt CC BY 4.0 nur nach der Karte, für die deutschen Gewichte ist das nicht belegt (R6).
 
 ## Nebenbefund (nicht Teil der Lizenzfrage)
 
-Das README von Pocket TTS nennt für andere Sprachen größere Varianten mit 24 Schichten. Sie haben laut README höhere Qualität, sind aber langsamer. Als Beispiel steht `italian_24l` (Q3). Ob es `german_24l` gibt und ob der Server sie schnell genug spielt, ist offen.
+Das README von Pocket TTS nennt für andere Sprachen größere Varianten mit 24 Schichten. Sie haben laut README höhere Qualität, sind aber langsamer. Als Beispiel steht `italian_24l` (Q3). Die Release-Notiz und die CLI-Doku nennen `german_24l` (24 Schichten, noch nicht destilliert, laut CLI-Doku nur als Vorschau; Q23, Q24). Ob der Server sie schnell genug spielt, ist offen. Ihre Lizenz ist so wenig belegt wie die von `german` (R6).
 
 ## Nicht geprüft
 
@@ -213,28 +224,32 @@ Das README von Pocket TTS nennt für andere Sprachen größere Varianten mit 24 
 - Die **Lizenzen der Datensätze** hinter dem Training (AMI, EARNINGS22, GigaSpeech, SPGISpeech, TED-LIUM, VoxPopuli, LibriHeavy, Emilia).
 - Kyutais „Acceptable Use Policy“ und ihre Datenschutzerklärung (nicht verlinkt, leere Seite).
 - Die Dateien selbst: Ich habe weder die Stimmdatei noch die Gewichte geladen oder gehört.
+- Die deutschen Gewichte: Fundort, Dateiname, Lizenzfeld und die Konfigurationsdatei für Deutsch im Ordner `pocket_tts/config` (Q1, Q22 bis Q24). Mehrere Suchen lieferten die Adresse der Konfigurationsdatei nicht. Die Dateiliste von `kyutai/pocket-tts` verlangt Anmeldung und Zustimmung.
+- Die Doku-Seite `kyutai-labs.github.io/pocket-tts`, die Datei `training/README.md` und die Berichte von Kyutai zum Training. Q22 nennt sie, ich habe sie nicht gelesen.
+- Die Adresse von Q17 steht nicht in der Quellentabelle, weil sie den Kontonamen des Eigentümers des Voice-Zero-Repositories enthält. Der Link steht auf der Karte des Stimmenkatalogs (Q4). Sonst hilft auf github.com die Suche nach „Voice-Zero“.
 - Ob der Download der Gewichte auf dem Server ein Hugging-Face-Konto braucht. Die Karte sagt: Zustimmung nötig.
 - Recht: Stimm- und Persönlichkeitsrechte nach deutschem und EU-Recht, Wirkung von CC0 und „public domain“ in Deutschland. Hier steht keine Quelle dazu.
 - Nicht Teil von H5: Piper-Stimme `thorsten`, Whisper-Modell, Speaches und die Google-Stimme (Punkt N1122-1825-e).
-- Die Quellen habe ich über den Abruf-Dienst dieser Sitzung gelesen (Unteragenten mit Claude Sonnet). Ich gebe ihren Wortlaut gekürzt wieder. Auch Q14 bis Q21 (26.11.2026) kenne ich nur aus den Berichten solcher Unteragenten, nicht aus den Rohseiten.
+- Die Quellen habe ich über den Abruf-Dienst dieser Sitzung gelesen (Unteragenten mit Claude Sonnet). Ich gebe ihren Wortlaut gekürzt wieder. Auch Q14 bis Q24 (26.11.2026) und die zweite Lesung von Q1 kenne ich nur aus den Berichten solcher Unteragenten, nicht aus den Rohseiten.
 
 ## Nächste Schritte
 
 | Wer | Was | Wo |
 | --- | --- | --- |
 | Betreiber | Prüfen, ob sein Hugging-Face-Konto die Bedingungen von `kyutai/pocket-tts` akzeptiert hat, und ob der Server-Download dieses Konto braucht. Datum notieren. Kein Token in Repo oder Chat. | im Browser auf huggingface.co |
-| Betreiber | Optional, wenn die Herkunft geklärt werden soll: im Voice-Zero-Repository (Adresse in Q17) den Ordner `voices` öffnen und dort die README.md lesen. Die Zeile zu `stuart_bell` suchen (der Dateiname kann dort anders heißen). Claude im Chat sagen, welcher Sprecher und welche Aufnahme dort stehen. Claude liest dann die Seite der Aufnahme bei LibriVox. | im Browser auf github.com |
+| Betreiber | Optional, wenn die Herkunft geklärt werden soll: im Voice-Zero-Repository (Link auf der Karte des Stimmenkatalogs, Q4; sonst auf github.com nach „Voice-Zero“ suchen) den Ordner `voices` öffnen und dort die README.md lesen. Die Zeile zu `stuart_bell` suchen (der Dateiname kann dort anders heißen). Claude im Chat sagen, welcher Sprecher und welche Aufnahme dort stehen. Claude liest dann die Seite der Aufnahme bei LibriVox. | im Browser auf github.com |
+| Betreiber | Optional (Punkt N1126-1927-a): auf GitHub im Repository `kyutai-labs/pocket-tts` den Ordner `pocket_tts/config` öffnen, die Datei für Deutsch lesen (der Name kann anders lauten als `german.yaml`) und den Eintrag `weights_path` im Chat nennen. Dazu auf Hugging Face (angemeldet, Bedingungen akzeptiert) bei `kyutai/pocket-tts` den Reiter „Files and versions“ öffnen, die Datei zu Deutsch suchen und ein Lizenzfeld dazu ablesen. Claude im Chat sagen, was dort steht. | im Browser auf github.com und huggingface.co |
 | Betreiber | Entscheiden: bleibt `stuart_bell` für den Verkauf, oder Hörtest mit `javert` und `marius`? | im Chat |
-| Claude | Punkte N1122-1825-a bis -e abarbeiten. Bei -c fehlt nur Teil 2 (README im Unterordner von Voice-Zero). | Repo, `docs/autopilot/backlog.md` |
-| Claude | Ergebnis und Risiken R1 bis R5 in `claude/aufgaben.md` und ins Doc „Datenschutz-Folgenabschätzung“ vorschlagen (der Lauf „Planen & Bericht“). | Claude-Projekt |
+| Claude | Punkte N1122-1825-a bis -e abarbeiten. Bei -c fehlt nur Teil 2 (README im Unterordner von Voice-Zero). Punkt N1126-1927-a (deutsche Gewichte) wartet auf den Betreiber. | Repo, `docs/autopilot/backlog.md` |
+| Claude | Ergebnis und Risiken R1 bis R6 in `claude/aufgaben.md` und ins Doc „Datenschutz-Folgenabschätzung“ vorschlagen (der Lauf „Planen & Bericht“). | Claude-Projekt |
 
 ## Quellen
 
-Q1 bis Q13 abgerufen am 22.11.2026, Q14 bis Q21 am 26.11.2026 (Q4 zusätzlich am 26.11.2026). Ein Zitat je Quelle, höchstens 15 Wörter.
+Q1 bis Q13 abgerufen am 22.11.2026, Q14 bis Q24 am 26.11.2026 (Q1 und Q4 zusätzlich am 26.11.2026). Ein Zitat je Quelle, höchstens 15 Wörter.
 
 | Nr. | Quelle | Gelesen | Zitat |
 | --- | --- | --- | --- |
-| Q1 | Modellkarte Pocket TTS, https://huggingface.co/kyutai/pocket-tts | ganz | „voice impersonation or cloning without explicit and lawful consent“ (Abschnitt „Prohibited use“) |
+| Q1 | Modellkarte Pocket TTS, https://huggingface.co/kyutai/pocket-tts | ganz; am 26.11.2026 noch einmal gelesen (34 808 Zeichen, Wortlaut als Markdown, ohne Dateiliste: Die Seite verlangt Anmeldung und Zustimmung) | „voice impersonation or cloning without explicit and lawful consent“ (Abschnitt „Prohibited use“) |
 | Q2 | GitHub-Seite, https://github.com/kyutai-labs/pocket-tts | zu etwa drei Vierteln wörtlich | – (zeigt „MIT license“) |
 | Q3 | Paket `pocket-tts` 4.0.1, Wheel von PyPI (https://pypi.org/project/pocket-tts/) mit `pip download pocket-tts==4.0.1 --no-deps` geladen, nichts ausgeführt | Lizenzdatei ganz; README in den Teilen zu Sprachen, Stimmen, Modellen und Verbotsliste | „The pre-made voices listed above are embeddings precomputed with our released weights“ |
 | Q4 | Karte des Stimmenkatalogs, https://huggingface.co/kyutai/tts-voices | 22.11.2026: nur die Karte (Dateiliste gesperrt). 26.11.2026: die Karte ganz (11 397 Zeichen, Wortlaut) | „A couple of voices from Voice-Zero, a curated selection of voices from LibriVox.“ |
@@ -250,8 +265,11 @@ Q1 bis Q13 abgerufen am 22.11.2026, Q14 bis Q21 am 26.11.2026 (Q4 zusätzlich am
 | Q14 | Stimmenkatalog, Ordner `voice-zero`, https://huggingface.co/kyutai/tts-voices/tree/main/voice-zero | Wortlaut (5 177 Zeichen) | – (vier WAV-Dateien, 2,97 MB, keine README, keine Lizenzdatei) |
 | Q15 | Stimmenkatalog, Commit `323332d`, https://huggingface.co/kyutai/tts-voices/commit/323332d33f997de8394f24a193e1a76df720e01a | Wortlaut (20 201 Zeichen); nur die Änderungen dieses Commits, nicht die heutige README | „Add a few voices from Voice-Zero“ (Commit-Nachricht) |
 | Q16 | Stimmenkatalog, Datei `voice-zero/stuart_bell.wav`, https://huggingface.co/kyutai/tts-voices/blob/main/voice-zero/stuart_bell.wav | Wortlaut (4 725 Zeichen); die Datei selbst nicht geladen | – (zeigt Größe, SHA256 und letzten Commit; keine Quelle, keine Lizenz) |
-| Q17 | Voice-Zero, GitHub-Seite (Hauptverzeichnis), https://github.com/OwenTyme/voice-zero | Wortlaut (21 485 Zeichen); Unterordner nicht | „Unless otherwise noted, all files in this repository are under the CC0 license.“ (Abschnitt „License“) |
+| Q17 | Voice-Zero, GitHub-Seite (Hauptverzeichnis); die Adresse enthält einen Kontonamen und steht deshalb nicht hier (Link auf der Karte des Stimmenkatalogs, Q4) | Wortlaut (21 485 Zeichen); Unterordner nicht | „Unless otherwise noted, all files in this repository are under the CC0 license.“ (Abschnitt „License“) |
 | Q18 | Hugging-Face-Forum, Beitrag „Policy for LibriVox audio data“ vom 13.7.2023, https://discuss.huggingface.co/t/policy-for-librivox-audio-data/46707 | Wortlaut des ersten Beitrags; Antworten nicht enthalten | „I am concerned as this involves using someone's voice without expressed consent.“ |
 | Q19 | LibriVox-Forum, Thread eines Unternehmens, das Sprecher für KI-Training sucht, https://forum.librivox.org/viewtopic.php?p=2328172 | weitgehend Wortlaut (6 824 Zeichen); Forum, keine Richtlinie | – (kein Satz von LibriVox zu KI-Training, Zustimmung oder Rücknahme) |
 | Q20 | LibriVox-Forum, Thread zu TTS-Dateien, https://forum.librivox.org/viewtopic.php?p=1940025 | Wortlaut (3 231 Zeichen) | „LibriVox is not a platform for creating and sharing TTS audiobooks“ |
 | Q21 | Paper „LibriQuote“ (Datensatz aus LibriVox-Hörbüchern), arXiv 2509.04072, Fassung 1, https://arxiv.org/pdf/2509.04072v1 | 39 956 von 71 364 Zeichen wörtlich (bis zur Referenzliste); Anhang nur als Zusammenfassung | „read by volunteered speakers“ |
+| Q22 | README von Pocket TTS auf GitHub (Rohtext), https://raw.githubusercontent.com/kyutai-labs/pocket-tts/main/README.md | Wortlaut (32 797 Zeichen), laut Abrufkopf nichts abgeschnitten | „Non-english languages have also biggers 24 layers variants that are higher quality but slower.“ (Schreibweise wie im Original) |
+| Q23 | Release 2.0.0 von Pocket TTS („New models!“), Spiegelseite, https://newreleases.io/project/github/kyutai-labs/pocket-tts/release/v2.0.0 | Wortlaut (10 847 Zeichen), laut Abrufkopf nichts abgeschnitten; Datum nur relativ angezeigt (vor etwa 7 Monaten) | „The pre-defined voices are all english.“ |
+| Q24 | CLI-Doku „generate“ von Pocket TTS auf GitHub, https://github.com/kyutai-labs/pocket-tts/blob/main/docs/CLI%20Commands/generate.md | Wortlaut (102 Zeilen), laut Abruf vollständig | – (Werte für `--language`, Standard-Stimme je Sprache, Verweis auf `pocket_tts/config`; kein Fundort der Gewichte, keine Lizenz) |
