@@ -249,12 +249,14 @@ Angelegt am 17.11.2026, 20:15, von Claude (Chat). Gepflegt von den Läufen des W
 - Ziel: Ohne Claude (kein Schlüssel, Ausfall) sucht `fallbackQuestion` in `server-api/brain.ts` nur nach Wörtern. „bitte nicht weitererzählen“, „ich will keine geschichte“ und „hör auf zu erzählen“ beginnen deshalb eine Geschichte (am 20.11.2026 mit dem Code ausprobiert). Verneinte Wünsche („nicht“, „kein“, „keine“, „aufhören“, „stopp“) sollen keine Geschichte starten. Stattdessen ein kurzer fester Satz oder die allgemeine Antwort.
 - Fertig, wenn: Tests in `server-api/brain.test.ts` für verneinte und bejahte Wünsche. Eigener PR mit „(ändert, was Kinder hören)“.
 - Gefunden bei E3 (PR #71, 20.11.2026).
+- Dazu (PR #145, 27.11.2026): `explicitStoryRequest` in `server-api/brain.ts` erkennt schon verneinte Bitten, Aufhören („hör auf“, „stopp“) und Nebensätze, mit Tests. Bisher nutzt sie nur der Zweig für Angst; ohne Angst beginnen diese Sätze weiter eine Geschichte. Dieser Punkt kann sie für alle Wünsche nehmen.
 
 ### N1120-1610-a · Sicherheitsweiche: Schreibweisen der echten Spracherkennung
 - Rolle: Prüfen · Prio: 3 · Status: blockiert (braucht den laufenden Sprachserver und Aufnahmen von Erwachsenen, also einen Probelauf des Betreibers; 22.11.2026, Planung) · Bezug: E3, Nr. 22
 - Ziel: Die Muster in `server-api/safety.ts` setzen Umlaute und ß voraus. Schreibt die Spracherkennung „ae“, „oe“, „ue“ oder „ss“ (zum Beispiel „Süssigkeiten“), rutschen Sätze durch („Ein Mann hat mir Süssigkeiten angeboten“). Mit dem eigenen Sprachserver und Aufnahmen von Erwachsenen prüfen, welche Schreibweisen wirklich vorkommen (auch Zahlen, Zusammen- und Getrenntschreibung). Erst dann die Muster anpassen. `normalize()` nicht blind umschreiben (sonst wird aus „feuer“ etwas anderes). Braucht den laufenden Sprachserver.
 - Fertig, wenn: Ergebnis mit Beispielen in `docs/Sicherheitsweiche-Pruefung.md`; gefundene Lücken mit Sätzen in beiden Listen von `server-api/safety.test.ts`. Keine Aufnahmen von Kindern.
 - Gefunden bei der Prüfung von PR #71 (20.11.2026).
+- Dazu (PR #145, 27.11.2026): Dasselbe gilt für die Angst-Wörter ohne Claude (`fearComfortFor` in `server-api/brain.ts`). Sie setzen ebenfalls Umlaute voraus („fürchte“, „ängstlich“, „Albträume“). Beim Probelauf mitprüfen.
 
 ### N1120-1610-b · Nach dem Sperren nichts mehr an Claude geben
 - Rolle: Bauen · Prio: 1 · Status: erledigt (PR #91, 22.11.2026) · Bezug: Maßnahme M9, PR #63, A1 Teil 2
@@ -271,10 +273,11 @@ Angelegt am 17.11.2026, 20:15, von Claude (Chat). Gepflegt von den Läufen des W
 - Gefunden bei der Prüfung von PR #63 (20.11.2026).
 
 ### N1120-1610-d · Ohne Claude: Angst ernst nehmen (Kinder)
-- Rolle: Bauen · Prio: 2 · Status: offen · Bezug: B4, PR #66
+- Rolle: Bauen · Prio: 2 · Status: erledigt (PR #145, 27.11.2026) · Bezug: B4, PR #66
 - Ziel: Ohne Claude landen Angst-Sätze bei der festen Drachen-Antwort in `fallbackQuestion` (`server-api/brain.ts`). „Ich habe Angst vor dem Drachen“ oder „Kommt der Drache heute Nacht zu mir“ bekommen: „Er ist böse, brüllt und spuckt Feuer, und alle haben Angst vor ihm.“ Vor dem Drachen-Zweig kommt ein Zweig für Angst („angst“, „fürchte“, „gruselig“) mit Beruhigung: Angst haben ist in Ordnung. Den Drachen gibt es nur in den Geschichten, zu dir kommt er nicht. Sag es einem Erwachsenen, den du lieb hast. „Ich habe Angst im Dunkeln“ bekommt bisher die allgemeine Antwort. Dazu „Jeder von uns fühlt sich ab und zu so“ ändern in „Jeder Mensch …“: Das Gerät spricht nicht wie ein Mensch (Kanon, Abschnitt 2).
 - Fertig, wenn: Tests mit den genannten Sätzen; Ausgabe-Check grün; in den Geschichten bleibt der Drache böse (Erzählregeln vom 14.11.). Eigener PR mit „(ändert, was Kinder hören)“.
 - Gefunden bei der Prüfung von PR #66 (20.11.2026).
+- Stand 27.11.2026 (PR #145): zwei feste Beruhigungen (`FEAR_COMFORT_DE`, `DRAGON_COMFORT_DE` in `server-api/brain.ts`), erkannt von `fearComfortFor`. Eine klare Bitte ums Erzählen geht vor (`explicitStoryRequest`), Aufhören und Verneinung nicht. Der Rat zum Erwachsenen heißt in allen Trostsätzen „dem du vertraust“, ohne „oder Kuscheltier“; die Himmel-Antwort sagt nicht mehr „wir“. Bewusst hingenommen: Eine Verneinung nach dem Wort („Angst hab ich keine“) bringt die Beruhigung. Angst-Sätze mit Gefahr, die die Weiche nicht kennt: N1126-2323-e.
 
 ### N1120-1610-e · Ersatz mitten in einer Claude-Folge ohne Sprung (Kinder)
 - Rolle: Bauen · Prio: 2 · Status: offen · Bezug: Erzählregel „Ideen springen nicht“
@@ -950,3 +953,9 @@ Angelegt am 17.11.2026, 20:15, von Claude (Chat). Gepflegt von den Läufen des W
 - Rolle: Recherche · Prio: 3 · Status: offen · Bezug: N1126-1153-c
 - Ziel: Nur lesen, nichts anfragen: Lizenz der Gewichte von SilentCipher (Hugging Face, Releases); ob c2pa-rs WAV schreiben kann; wie Signaturzertifikat und Vertrauensliste für C2PA aussehen.
 - Fertig, wenn: Ergebnis mit Quelle und Abrufdatum in `docs/recherche/kennzeichnung-sprache.md`; Unklares bleibt „offen“.
+
+### N1126-2323-e · Sicherheitsweiche: Angst-Sätze mit Gefahr, die Stufe 1 nicht kennt
+- Rolle: Bauen · Prio: 2 · Status: offen · Bezug: N1120-1610-d (PR #145, unabhängige Prüfung, Befund 3)
+- Ziel: Ohne Claude bekommen Angst-Sätze, die die Weiche nicht kennt, seit PR #145 die feste Beruhigung (`FEAR_COMFORT_DE` in `server-api/brain.ts`, mit „Sag es am besten einem Erwachsenen, dem du vertraust.“). Vorher kam die allgemeine Antwort. Manche davon klingen nach einer Notlage und sollen die Hilfe-Ansage bekommen. Bei der Prüfung von PR #145 mit dem Code nachgestellt: „Ich fürchte mich vor Papa“ (dagegen trifft „Ich habe Angst vor Papa“ ein Muster in `server-api/safety.ts`), „Mir ist das unheimlich, was der Onkel macht“, „Ich hab Angst vor dem Mann, der mich immer anspricht“, „Ich habe Angst vor dem Mann, der mir Süßigkeiten gibt“, „Ich hab Angst, da ist ein fremder Mann an der Tür“, „Ich hab Angst, dass mich jemand mitnimmt“, „Ich habe Angst, dass mir jemand wehtut“, „Ich habe Angst, dass der Mann wiederkommt“ (das Muster trifft nur „der Mann kommt wieder“) und „ich habe angst papa schreit mich immer an“. Die Weiche läuft auch mit Claude immer zuerst. Lieber ein Fehlalarm als eine Lücke.
+- Fertig, wenn: gemergt; die Sätze oben und ähnliche in der Liste „muss anschlagen“ von `server-api/safety.test.ts`, Gegenproben in „darf nicht anschlagen“ (zum Beispiel „Ich fürchte mich vor dem Gewitter“, „Ich hab Angst vor dem Mann im Film“); `docs/Sicherheitsweiche-Pruefung.md` nennt die neuen Muster und bewusst hingenommene Fehlalarme; der Test „Angst mit möglicher Gefahr“ in `server-api/brain.test.ts` erwartet dann nur noch die Hilfe-Ansage.
+- Dazu (27.11.2026, 00:01, vorläufig): angelegt aus der unabhängigen Prüfung von PR #145; die Weiche in einem eigenen PR ändern, nicht im PR zur Beruhigung.
