@@ -217,6 +217,6 @@ Alle Seiten wurden am 26.11.2026 durch Unteragenten (Claude Sonnet) über das Ab
 | Wer | Was | Wo |
 | --- | --- | --- |
 | Claude (Lauf Recherche) | N1126-1153-c: Verfahren zur Kennzeichnung von Sprache vergleichen. Maßstab sind die Anforderungen aus den Abschnitten 3.2 bis 3.5 (zwei Schichten, Robustheit gegen Wiedergabe und Aufnahme, kostenloses Erkennungsmittel). Jede Adresse zuerst aus der Websuche. | `docs/recherche/kennzeichnung-sprache.md` |
-| Claude (Lauf Recherche) | Neuer Punkt: Produkthaftungsrichtlinie (EU) 2024/2853 und ihre Folgen für ein KI-Spielzeug aus Originalquellen lesen. | `docs/recherche/` |
+| Claude (Lauf Recherche) | N1126-2105-a (neu in der Arbeitsliste): Produkthaftungsrichtlinie (EU) 2024/2853 und ihre Folgen für ein KI-Spielzeug aus Originalquellen lesen. | `docs/recherche/produkthaftung-ki-spielzeug.md` |
 | Betreiber | Entscheiden, ob Kunibert Teil 1 des Kodex unterzeichnen soll. Es eilt nicht. Vorschlag: erst nach N1126-1153-c. Eine Anmeldung wäre eine Nachricht an Dritte. Claude schickt sie nicht, nur mit deinem Okay im Chat. | im Chat |
 | Betreiber | Vor Tests mit Kindern die „Freigabe-Checkliste vor dem ersten Kind“ im Doc „Datenschutz-Folgenabschätzung“ mit Claude durchgehen. Bis dahin testen nur Erwachsene. | im Chat |
