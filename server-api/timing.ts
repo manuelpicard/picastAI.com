@@ -22,6 +22,16 @@ export const TTS_RESERVE_MS = 15_000;
 export const MIN_LLM_MS = 3_000;
 /** So viel Zeit bekommt die Sprachausgabe mindestens, auch wenn das Budget schon aufgebraucht ist. */
 export const MIN_TTS_MS = 5_000;
+/**
+ * Warten auf einen alten Ton-Strom desselben Geräts (N1126-1338-f): höchstens so lange. Ein Gerät fragt
+ * erst wieder, wenn es nicht mehr spielt; ein Strom, der dann noch entsteht, hört niemand mehr.
+ */
+export const PENDING_WAIT_MAX_MS = 30_000;
+/**
+ * Nach dem Warten bleibt so viel vom Budget mindestens übrig: ein Sprachmodell-Aufruf (Standardgrenze
+ * 30 s, PICASTAI_LLM_TIMEOUT_MS) und die Reserve für die Sprachausgabe (TTS_RESERVE_MS).
+ */
+export const PENDING_WAIT_RESERVE_MS = 30_000 + TTS_RESERVE_MS;
 
 /** Das, was die Pipeline zum Messen braucht. Brain bekommt nur diese Schnittstelle zu sehen. */
 export interface StageTimer {
@@ -63,6 +73,29 @@ export function budgetTimeoutMs(timer: StageTimer, reserveMs = 0): number | unde
 export function ttsTimeoutMs(timer: StageTimer, minMs = MIN_TTS_MS): number | undefined {
   const left = budgetTimeoutMs(timer);
   return left === undefined ? undefined : Math.max(minMs, left);
+}
+
+/**
+ * So lange darf eine Anfrage auf einen alten Ton-Strom desselben Geräts warten (N1126-1338-f): höchstens
+ * PENDING_WAIT_MAX_MS und nur so lange, dass PENDING_WAIT_RESERVE_MS vom Budget übrig bleiben (nie weniger
+ * als 0). So reißt die Zeitkette nicht, und Claude hat danach noch Zeit.
+ */
+export function pendingWaitMs(timer: StageTimer): number {
+  return Math.min(PENDING_WAIT_MAX_MS, budgetTimeoutMs(timer, PENDING_WAIT_RESERVE_MS) ?? Number.POSITIVE_INFINITY);
+}
+
+/**
+ * true, wenn `promise` innerhalb von `timeoutMs` endet (erfüllt oder abgelehnt), sonst false. Die Frist
+ * wird danach gelöscht; `promise` läuft weiter und wird nicht abgebrochen.
+ */
+export async function settlesWithin(promise: Promise<unknown>, timeoutMs: number): Promise<boolean> {
+  let timeout: NodeJS.Timeout | undefined;
+  const expired = new Promise<false>((resolve) => { timeout = setTimeout(() => resolve(false), Math.max(0, timeoutMs)); });
+  try {
+    return await Promise.race([promise.then(() => true, () => true), expired]);
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 /** Länge einer WAV-Datei in Sekunden; null, wenn es keine auswertbare WAV-Datei ist. */
