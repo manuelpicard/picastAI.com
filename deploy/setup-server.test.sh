@@ -26,6 +26,26 @@ no  "Hostname mit Leerzeichen"    valid_hostname "x .example"
 no  "Hostname mit Semikolon"      valid_hostname "x.example;rm"
 no  "Hostname mit Doppelpunkt"    valid_hostname x..example
 no  "Hostname leer"               valid_hostname ""
+no  "Hostname mit Umlaut"         valid_hostname kunibert.bücher.example
+# Zeichenbereiche nur unter LC_ALL=C (Punkt N1126-1338-c): In de_DE.UTF-8 (und wohl auch en_US.UTF-8)
+# träfe [A-Za-z0-9] in bash sonst auch Umlaute. Fehlen beide Sprachumgebungen, sagt der Test es.
+utf8=""
+for loc in de_DE.UTF-8 en_US.UTF-8; do
+  if locale -a 2>/dev/null | grep -qiE "^${loc%%.*}\.utf-?8$"; then utf8=$loc; break; fi
+done
+if [[ -n "$utf8" ]]; then
+  # shellcheck disable=SC2016
+  no "Hostname mit Umlaut in $utf8" env LC_ALL="$utf8" bash -c 'source "$1"; valid_hostname kunibert.bücher.example' _ "$here/setup-server.sh"
+  # shellcheck disable=SC2016
+  no "Hostname mit ß in $utf8"      env LC_ALL="$utf8" bash -c 'source "$1"; valid_hostname straße.example' _ "$here/setup-server.sh"
+  if env LC_ALL="$utf8" bash -c '[[ ü =~ ^[A-Za-z]$ ]]'; then
+    ok "$utf8: [A-Za-z] trifft dort ü, die Prüfung unter LC_ALL=C ist nötig"
+  else
+    printf 'Hinweis: In %s trifft [A-Za-z] kein ü; der Test zeigt dort nur, dass kein Umlaut durchgeht.\n' "$utf8"
+  fi
+else
+  printf 'OFFEN Hostname mit Umlaut in de_DE.UTF-8 oder en_US.UTF-8: keine der beiden Sprachumgebungen ist installiert (locale -a).\n'
+fi
 
 cp "$here/kunibert.env.example" "$f"; chmod 600 "$f"
 eq "Vorlage: NODE_ENV"            "$(env_get "$f" NODE_ENV)" production
@@ -55,6 +75,64 @@ yes "Token wird gesetzt, wenn leer"   env_set_if_empty "$f" PICASTAI_DEVICE_TOKE
 no  "Token bleibt, wenn gesetzt"      env_set_if_empty "$f" PICASTAI_DEVICE_TOKEN zweites
 eq "Token ist das erste"          "$(env_get "$f" PICASTAI_DEVICE_TOKEN)" erstes
 eq "ANTHROPIC_API_KEY unberührt"  "$(env_get "$f" ANTHROPIC_API_KEY)" ""
+
+# env-Zeilen wie systemd (Punkt N1126-1338-c): Einrückung und Leerzeichen oder Tabs um „=“ zählen
+# nicht, die letzte Zeile gilt. awk nur unter LC_ALL=C: U+3000 vor „=“ macht keinen Namen (wie systemd).
+cp "$here/kunibert.env.example" "$f"; chmod 600 "$f"
+sed -i 's/^NODE_ENV=.*/  NODE_ENV = development/' "$f"
+printf 'PICASTAI_STT_MODEL\t=\tmodell-a\nPICASTAI_STT_MODEL = modell-b\n' >> "$f"
+printf 'KUNIBERT_PROBE_U3000\xe3\x80\x80= wert\n' >> "$f"
+eq "env_get: eingerückt, Leerzeichen um ="        "$(env_get "$f" NODE_ENV)" development
+eq "env_get: Tab um =, die letzte Zeile gilt"     "$(env_get "$f" PICASTAI_STT_MODEL)" modell-b
+eq "env_get: Anfang eines Namens zählt nicht"      "$(env_get "$f" NODE)" ""
+eq "env_get: U+3000 vor = macht keinen Namen"     "$(LC_ALL=C.UTF-8 env_get "$f" KUNIBERT_PROBE_U3000)" ""
+eq "env_get: fehlende Datei ist leer"             "$(env_get "$tmp/gibt-es-nicht.env" NODE_ENV)" ""
+env_set "$f" NODE_ENV production
+eq "env_set: Zeile mit Leerzeichen ersetzt"       "$(env_get "$f" NODE_ENV)" production
+eq "env_set: genau eine Zeile NODE_ENV"           "$(grep -cE '^[[:space:]]*NODE_ENV[[:blank:]]*=' "$f")" 1
+yes "env_set: als NAME=wert"                      grep -qx 'NODE_ENV=production' "$f"
+env_set "$f" PICASTAI_STT_MODEL modell-c
+eq "env_set: weitere Zeilen des Namens weg"       "$(grep -cE '^[[:space:]]*PICASTAI_STT_MODEL[[:blank:]]*=' "$f")" 1
+eq "env_set: der neue Wert gilt"                  "$(env_get "$f" PICASTAI_STT_MODEL)" modell-c
+yes "env_set: Kommentarzeile bleibt"              grep -q '^# PICASTAI_TTS_PROVIDER=google' "$f"
+printf '  HOST = 0.0.0.0\nKEIN NAME = x\n' >> "$f"
+cp "$f" "$tmp/vor-normalize.env"
+yes "env_normalize: ändert Zeilen mit Leerzeichen" env_normalize "$f"
+yes "env_normalize: als NAME=wert"                grep -qx 'HOST=0.0.0.0' "$f"
+yes "env_normalize: Zeile ohne gültigen Namen bleibt" grep -qx 'KEIN NAME = x' "$f"
+yes "env_normalize: U+3000-Zeile bleibt"          grep -qF $'KUNIBERT_PROBE_U3000\xe3\x80\x80= wert' "$f"
+eq "env_normalize: Zeilenzahl gleich"             "$(wc -l < "$f")" "$(wc -l < "$tmp/vor-normalize.env")"
+eq "env_normalize: Rechte bleiben 600"            "$(stat -c %a "$f")" 600
+no "env_normalize: zweiter Lauf ändert nichts"    env_normalize "$f"
+
+# write_env mit Werten in der Schreibweise NAME = wert (mit umgelenkter Datei und Attrappen): Tokens und
+# Schlüssel bleiben, kein zweites Token wird angehängt, keines steht in der Ausgabe.
+vorher=$fails
+(
+  ENV_FILE="$tmp/env-leerzeichen/kunibert.env"; mkdir -p "$tmp/env-leerzeichen"
+  APP_DIR="$here/.."; HOSTNAME_ARG=kunibert.picastai.com
+  install() { cp "${@: -2:1}" "${@: -1}"; chmod 600 "${@: -1}"; }
+  chown() { :; }
+  openssl() { printf 'neutoken%.0s' {1..8}; }
+  cp "$here/kunibert.env.example" "$ENV_FILE"; chmod 600 "$ENV_FILE"
+  sed -i 's/^PICASTAI_DEVICE_TOKEN=.*/PICASTAI_DEVICE_TOKEN = "alt-geraete-token"/' "$ENV_FILE"
+  sed -i 's/^PICASTAI_ADMIN_TOKEN=.*/\tPICASTAI_ADMIN_TOKEN\t=\talt-admin-token/' "$ENV_FILE"
+  sed -i 's/^KUNIBERT_ELTERN_SCHLUESSEL=.*/KUNIBERT_ELTERN_SCHLUESSEL = alt-eltern-schluessel/' "$ENV_FILE"
+  ausgabe=$(write_env 2>&1)
+  eq  "write_env: genau eine Zeile für das Geräte-Token" "$(grep -cE '^[[:space:]]*PICASTAI_DEVICE_TOKEN[[:blank:]]*=' "$ENV_FILE")" 1
+  yes "write_env: altes Geräte-Token bleibt, als NAME=wert" grep -qx 'PICASTAI_DEVICE_TOKEN="alt-geraete-token"' "$ENV_FILE"
+  eq  "write_env: genau eine Zeile für das Admin-Token" "$(grep -cE '^[[:space:]]*PICASTAI_ADMIN_TOKEN[[:blank:]]*=' "$ENV_FILE")" 1
+  eq  "write_env: altes Admin-Token bleibt"   "$(env_get "$ENV_FILE" PICASTAI_ADMIN_TOKEN)" alt-admin-token
+  eq  "write_env: alter Eltern-Schlüssel bleibt" "$(env_get "$ENV_FILE" KUNIBERT_ELTERN_SCHLUESSEL)" alt-eltern-schluessel
+  no  "write_env: kein neues Token erzeugt"   grep -qE 'erzeugt|neutoken' <<<"$ausgabe"
+  no  "write_env: kein Token in der Ausgabe"  grep -qE 'alt-geraete-token|alt-admin-token|alt-eltern-schluessel|neutoken' <<<"$ausgabe"
+  yes "write_env: meldet das Angleichen"      grep -qF 'als NAME=wert geschrieben' <<<"$ausgabe"
+  eq  "write_env: keine Zeile mit Leerzeichen vor = mehr" "$(grep -cE '^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*[[:blank:]]+=' "$ENV_FILE")" 0
+  ausgabe=$(write_env 2>&1)
+  no  "write_env: zweiter Lauf gleicht nichts mehr an" grep -qF 'als NAME=wert geschrieben' <<<"$ausgabe"
+  yes "write_env: zweiter Lauf, Token bleibt" grep -qx 'PICASTAI_DEVICE_TOKEN="alt-geraete-token"' "$ENV_FILE"
+  [[ $fails -eq $vorher ]]
+) || fails=$((fails + 1))
 
 out=$(render_caddyfile "$here/Caddyfile" kunibert.picastai.com)
 yes "Caddyfile: Hostname eingesetzt"   grep -q '^kunibert.picastai.com {' <<<"$out"

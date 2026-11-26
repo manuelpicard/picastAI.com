@@ -5,6 +5,8 @@
 # bleiben. Bei jedem Lauf neu setzt es: die Zeilen für Betrieb, Hostname und Sprachmodelle in der env-Datei,
 # nach einem erfolgreichen Start der Stimme auch die drei Zeilen für Pocket TTS (nicht mit --skip-pocket),
 # und die eigene Datei für die Frist der Protokolle (eigene Werte: EINRICHTUNG.md, Betrieb).
+# Zeilen der env-Datei liest es wie systemd (auch eingerückt und mit Leerzeichen um „=“) und schreibt
+# sie als NAME=wert.
 #
 #   sudo bash setup-server.sh --hostname kunibert.example
 #
@@ -107,24 +109,74 @@ valid_hostname() (
   [[ "$1" =~ ^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$ ]] && [[ "$1" == *.* ]] && [[ "$1" != *..* ]]
 )
 
-# Liest den Wert eines Schlüssels aus einer env-Datei (leer, wenn nicht gesetzt).
+# Muster für [[ =~ ]] unter LC_ALL=C prüfen (Grund: siehe valid_hostname).
+matches_c() ( LC_ALL=C; [[ "$1" =~ $2 ]] )
+
+# env-Dateien lesen und schreiben, wie systemd sie liest: Einrückung und Leerzeichen oder Tabs um „=“
+# zählen nicht, die letzte Zeile eines Namens gilt. awk läuft unter LC_ALL=C: Nur Leerzeichen und
+# Tab zählen dann als [[:blank:]] (in UTF-8 träfe zum Beispiel grep auch U+3000, systemd nicht).
+# Dieselben Regeln wie merge_config in pi-client/install_raspberry_pi.sh.
+
+# Liest den Wert eines Schlüssels aus einer env-Datei (leer, wenn nicht gesetzt). Gibt ihn nur
+# auf stdout aus, für eine Variable; Werte können Tokens sein.
 env_get() { # Datei Schlüssel
-  local line
-  line=$(grep -E "^$2=" "$1" | tail -n 1 || true)
-  printf '%s' "${line#*=}"
+  [[ -f "$1" ]] || return 0
+  KEY="$2" LC_ALL=C awk '
+    BEGIN { key = ENVIRON["KEY"]; value = "" }
+    {
+      line = $0; sub(/^[[:space:]]+/, "", line)
+      if (index(line, key) == 1 && substr(line, length(key) + 1) ~ /^[[:blank:]]*=/) {
+        value = substr(line, index(line, "=") + 1); sub(/^[[:blank:]]+/, "", value)
+      }
+    }
+    END { printf "%s", value }
+  ' "$1"
 }
 
-# Setzt KEY=VALUE in einer env-Datei. Ersetzt die erste Zeile "KEY=...", sonst hängt es an.
+# Setzt KEY=VALUE in einer env-Datei. Ersetzt die erste Zeile des Namens und lässt weitere Zeilen
+# desselben Namens weg (systemd nähme sonst die letzte); fehlt der Name, hängt es die Zeile an.
 # Der Wert läuft nicht durch sed-Ersetzung (keine Probleme mit / & \).
 env_set() { # Datei Schlüssel Wert
   local file=$1 key=$2 value=$3 tmp
   tmp=$(mktemp "${file}.XXXXXX")
-  KEY="$key" VALUE="$value" awk '
+  KEY="$key" VALUE="$value" LC_ALL=C awk '
     BEGIN { done = 0; key = ENVIRON["KEY"]; value = ENVIRON["VALUE"] }
-    !done && index($0, key "=") == 1 { print key "=" value; done = 1; next }
-    { print }
+    {
+      line = $0; sub(/^[[:space:]]+/, "", line)
+      if (index(line, key) == 1 && substr(line, length(key) + 1) ~ /^[[:blank:]]*=/) {
+        if (!done) print key "=" value
+        done = 1
+        next
+      }
+      print
+    }
     END { if (!done) print key "=" value }
   ' "$file" > "$tmp"
+  chmod --reference="$file" "$tmp" 2>/dev/null || chmod 600 "$tmp"
+  chown --reference="$file" "$tmp" 2>/dev/null || true
+  mv "$tmp" "$file"
+}
+
+# Schreibt jede Zeile „NAME = wert“ (auch eingerückt) als „NAME=wert“. Der Wert und alle anderen
+# Zeilen bleiben, wie sie sind; systemd liest danach dieselben Werte. Einfache Befehle wie
+# grep ^NAME= (summary, Doku) und die Shell (set -a; . Datei) verstehen nur „NAME=wert“.
+# Rückgabe 0 = geändert, 1 = war schon so.
+env_normalize() { # Datei
+  local file=$1 tmp
+  tmp=$(mktemp "${file}.XXXXXX")
+  LC_ALL=C awk '
+    {
+      line = $0; sub(/^[[:space:]]+/, "", line)
+      if (line ~ /^[A-Za-z_][A-Za-z0-9_]*[[:blank:]]*=/) {
+        name = substr(line, 1, index(line, "=") - 1); sub(/[[:blank:]]+$/, "", name)
+        value = substr(line, index(line, "=") + 1); sub(/^[[:blank:]]+/, "", value)
+        print name "=" value
+        next
+      }
+      print
+    }
+  ' "$file" > "$tmp"
+  if cmp -s "$tmp" "$file"; then rm -f "$tmp"; return 1; fi
   chmod --reference="$file" "$tmp" 2>/dev/null || chmod 600 "$tmp"
   chown --reference="$file" "$tmp" 2>/dev/null || true
   mv "$tmp" "$file"
@@ -185,12 +237,12 @@ write_pocket_env() { # Datei
   local alt
   alt=$(env_get "$1" PICASTAI_TTS_PROVIDER)
   if [[ -n "$alt" && "$alt" != pocket ]]; then
-    if [[ "$alt" =~ ^[a-z-]{1,30}$ ]]; then alt="'$alt'"; else alt="ein anderer Wert"; fi
+    if matches_c "$alt" '^[a-z-]{1,30}$'; then alt="'$alt'"; else alt="ein anderer Wert"; fi
     note "PICASTAI_TTS_PROVIDER war $alt, jetzt 'pocket'. Eigene Wahl behalten: Zeile zurückstellen, Skript nur mit --skip-pocket."
   fi
   alt=$(env_get "$1" PICASTAI_POCKET_TTS_VOICE)
   if [[ -n "$alt" && "$alt" != "$POCKET_VOICE" ]]; then
-    if [[ "$alt" =~ ^[a-z][a-z0-9_]{0,39}$ ]]; then alt="'$alt'"; else alt="eine Adresse"; fi
+    if matches_c "$alt" '^[a-z][a-z0-9_]{0,39}$'; then alt="'$alt'"; else alt="eine Adresse"; fi
     note "PICASTAI_POCKET_TTS_VOICE war $alt, jetzt '$POCKET_VOICE'. Eigene Stimme behalten: Zeile zurückstellen, Skript nur mit --skip-pocket."
   fi
   alt=$(env_get "$1" PICASTAI_POCKET_TTS_URL)
@@ -341,6 +393,7 @@ write_env() {
     install -o root -g root -m 600 "$APP_DIR/deploy/kunibert.env.example" "$ENV_FILE"
     note "aus der Vorlage angelegt"
   fi
+  if env_normalize "$ENV_FILE"; then note "Zeilen wie NAME = wert als NAME=wert geschrieben (systemd liest beides gleich)"; fi
   env_set "$ENV_FILE" NODE_ENV production
   env_set "$ENV_FILE" HOST 127.0.0.1
   env_set "$ENV_FILE" PICASTAI_PUBLIC_BASE_URL "https://$HOSTNAME_ARG"
