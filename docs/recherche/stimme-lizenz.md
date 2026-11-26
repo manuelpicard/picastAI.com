@@ -1,6 +1,6 @@
 # Lizenz der Stimme stuart_bell und von Pocket TTS
 
-Stand: 22.11.2026, ergänzt am 26.11.2026 (Abschnitt „Herkunft von `stuart_bell`“, Punkt N1122-1825-c, Teil 1; Schlüsse an die Belege angepasst, Punkt N1122-2323-f, 19:40 Uhr) · Punkt H5 der Arbeitsliste · Wochen-Autopilot, Rolle Recherche.
+Stand: 22.11.2026, ergänzt am 26.11.2026 (Abschnitt „Herkunft von `stuart_bell`“, Punkt N1122-1825-c, Teil 1; Schlüsse an die Belege angepasst, Punkt N1122-2323-f, 19:42 Uhr) · Punkt H5 der Arbeitsliste · Wochen-Autopilot, Rolle Recherche.
 
 **Keine Rechtsberatung.** Ein Anwalt war bewusst nicht beteiligt. Das ist als Restrisiko festgehalten.
 
@@ -201,7 +201,7 @@ Diese Punkte gehören in die Liste der Restrisiken:
 ## Folgerungen für Kunibert (neue Punkte in `docs/autopilot/backlog.md`)
 
 - **N1122-1825-a** (Bauen, Prio 2): Lizenz-Hinweise für Pocket TTS in die Doku, mit dem Textvorschlag oben. Nur Doku.
-- **N1122-1825-b** (Bauen, Prio 3, ändert, was Kinder hören): Der Server warnt bei nicht freier Stimme und schaltet die Sprachausgabe im Betrieb ab. Heute heißt „aus“: Der Server schickt statt Sprache einen kurzen Platzhalter-Ton (Glockenton bei Fragen, Melodie bei Hinweisen, Fanfare bei Geschichten; `synthesizeWav` in `server-api/brain.ts`). Das Gerät holt ihn wie jede Antwort ab. Das Kind hört nach meiner Einschätzung einen Ton ohne Worte und es gibt keinen Fehler am Gerät (im Code gelesen am 26.11.2026: `server.ts`, `server-api/brain.ts`, `server-api/voice.ts`, `pi-client/kunibert_client.py`; nicht ausgeführt). Darum ist es ein eigener PR mit „(ändert, was Kinder hören)“. Das schließt R2 und R5.
+- **N1122-1825-b** (Bauen, Prio 3, ändert, was Kinder hören): Der Server warnt bei nicht freier Stimme und schaltet die Sprachausgabe im Betrieb ab. Heute heißt „aus“: Der Server schickt statt Sprache einen kurzen Platzhalter-Ton (Glockenton bei Fragen, Melodie bei Hinweisen, Fanfare bei Geschichten; `synthesizeWav` in `server-api/brain.ts`, bei den festen Hinweisen und beim Koppeln `generateMelodyWav` in `server.ts`). Das Gerät holt ihn wie jede Antwort ab. Das Kind hört nach meiner Einschätzung einen Ton ohne Worte und es gibt keinen Fehler am Gerät (im Code gelesen am 26.11.2026: `server.ts`, `server-api/brain.ts`, `server-api/voice.ts`, `pi-client/kunibert_client.py`; nicht ausgeführt). Darum ist es ein eigener PR mit „(ändert, was Kinder hören)“. Das schließt R2 und R5.
 - **N1122-1825-c** (Recherche, Prio 2): Herkunft von `stuart_bell` bis zum Ursprung (Voice-Zero, LibriVox). Teil 1 ist am 26.11.2026 erledigt (Abschnitt „Herkunft von `stuart_bell`“). Teil 2 fehlt noch: die README im Unterordner von Voice-Zero. Er kann die Herkunft klären. Ob er auch die Einwilligung belegt, ist offen.
 - **N1122-1825-d** (Recherche, Prio 3): Lizenzen der acht Trainings-Datensätze und Trainingsdaten der deutschen Gewichte. Das schließt R4.
 - **N1122-1825-e** (Recherche, Prio 2): Lizenzen der übrigen Sprachbausteine (Spracherkennung, Rückfall-Stimme Piper, Speaches). H5 deckt sie nicht ab.
