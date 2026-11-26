@@ -16,7 +16,7 @@
 
 | Verfahren | Schicht | Lizenz (Code / Gewichte) | 16 kHz mono 16 Bit | Robustheit (laut Quellen) | Qualität, Aufwand | Erkennung öffentlich und kostenlos? |
 | --- | --- | --- | --- | --- | --- | --- |
-| AudioSeal | Wasserzeichen | MIT / MIT (Q1) | ja, auf 16 kHz trainiert (Q1, Q2) | Neukomprimierung, Abtastratenwandlung gut; Tempo 1,25 gut; Hochpass schwach; Angriff mit Detektorzugriff wirksam; Lautsprecher: nicht geprüft (Q2, Q4, Q8) | PESQ 4,47; 7 ms je Beispiel auf GPU (Q2); CPU-Wert offen | ja: Detektor liegt im selben Paket (Q1) |
+| AudioSeal | Wasserzeichen | MIT / MIT (Q1) | ja, auf 16 kHz trainiert (Q1, Q2) | Neukomprimierung, Abtastratenwandlung gut; Tempo 1,25 gut; Hochpass schwach; Angriff mit Detektorzugriff wirksam; Lautsprecher: nicht geprüft (Q2, Q8) | PESQ 4,47; 7 ms je Beispiel auf GPU (Q2); CPU-Wert offen | ja: Detektor liegt im selben Paket (Q1) |
 | WavMark | Wasserzeichen | MIT / MIT (Q3, Q8) | ja, nur 16 kHz (Q3) | MP3 gut; Tempo und Neuerzeugung (Vocoder, Codec) schwach (Q2, Q8); Lautsprecher: nicht geprüft | PESQ 4,3 (Q2); etwa 6 bis 7 mal langsamer als AudioSeal (Q8) | ja, im Paket (Q3) |
 | SilentCipher | Wasserzeichen | MIT / **Gewichte ohne genannte Lizenz** (Q5, Q6, Q8) | ja, eigenes 16-kHz-Modell (Q7) | viele Angriffe gut; Lautsprecher: nicht geprüft (Q7) | sehr hohe Qualität; schnell (Q7) | Code ja; Nutzung der Gewichte offen |
 | C2PA (signierte Angaben) | Metadaten | c2pa-rs: MIT oder Apache 2.0 (Q9) | für WAV und MP3 gelistet (Q10); gilt für Dateien | Angaben gehen verloren, wenn man sie entfernt oder neu kodiert (Q11) | kein Einfluss auf den Klang; Zertifikat nötig (offen) | ja: c2patool und Bibliothek (Q9) |
