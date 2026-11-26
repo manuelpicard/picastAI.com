@@ -1,10 +1,10 @@
 # Lieferbarkeit und Preise der Hardware
 
-**Zuletzt geprüft: 25.11.2026** (Abrufe zwischen 11:56 und 12:23 Uhr, nach den Zeitstempeln der Abruf-Läufe; die Seiten nennen selbst keinen Zeitpunkt) · Punkt H1 der Arbeitsliste · Wochen-Autopilot, Rolle Recherche. Der Stand vom 22.11.2026 steht im Vergleich unten. Der Autopilot prüft neu, sobald dieser Stand älter als 3 Tage ist (also ab 28.11.2026).
+**Zuletzt geprüft: Boards 25.11.2026, Zubehör 26.11.2026** (Boards: Abrufe zwischen 11:56 und 12:23 Uhr, nach den Zeitstempeln der Abruf-Läufe; Zubehör: Abrufe zwischen 12:00 und 12:18 Uhr, nach Start und Bericht der Abruf-Läufe; die Seiten nennen selbst keinen Zeitpunkt) · Punkte H1 und N1122-1941-a der Arbeitsliste · Wochen-Autopilot, Rolle Recherche. Der Stand vom 22.11.2026 steht im Vergleich unten. Der Autopilot prüft neu, sobald der Stand der Boards älter als 3 Tage ist (also ab 28.11.2026). Das Zubehör gehört seit dem 26.11.2026 zu dieser Prüfung.
 
 Es wurde nichts bestellt, nichts angefragt, kein Konto angelegt und kein Formular benutzt (auch keine Benachrichtigungsfelder). Preise und Bestand ändern sich. Die Angaben gelten nur für den Abruf. Preise sind Endpreise mit MwSt. (brutto), wenn nichts anderes dabeisteht. Ausnahmen: RS zeigt beide Preise; Farnell siehe Tabelle; Schukat nennt nur netto und im Text keinen Betrag; bei buyzero und Soldered nennt die Seite die MwSt. nicht; bei Botland steht der Preis nur in den Meta-Angaben (eigene Rechnung: er passt zu 19 % MwSt.). Der Versand kommt meist dazu.
 
-„Einschätzung“ heißt: meine Bewertung, kein Satz aus einer Quelle. „Eigene Rechnung“ heißt: aus den Preisen der Seiten errechnet, so steht es auf keiner Seite. Die Quellen Q1 bis Q36 stehen vor „Nicht geprüft“, mit Abrufdatum und einem kurzen Zitat. Im Text stehen keine Zitate, nur dort.
+„Einschätzung“ heißt: meine Bewertung, kein Satz aus einer Quelle. „Eigene Rechnung“ heißt: aus den Preisen der Seiten errechnet, so steht es auf keiner Seite. Die Quellen Q1 bis Q63 stehen vor „Nicht geprüft“, mit Abrufdatum und einem kurzen Zitat. Im Text stehen keine Zitate, nur dort.
 
 ## Kurzfassung
 
@@ -21,7 +21,6 @@ Es wurde nichts bestellt, nichts angefragt, kein Konto angelegt und kein Formula
 - **4 GB: nicht lieferbar** bei BerryBase (123,90 €), Welectron (118,00 €), RS (144,58 € brutto; nur Vorbestellung, Versand ab 8.3.2027), Pollin (179,90 €, nur Zusammenfassung) und Soldered (108,95 €). **Lieferbar laut Seite: Galaxus.de** (151,71 €, mehr als 10 Stück, Lieferung 26. bis 27.11.). Bei buyzero (118,89 €, nur Zusammenfassung) steht kein Status.
 - Der Aufpreis für 4 GB bei Galaxus.de gegenüber dem BerryBase-Preis beträgt 27,81 € (eigene Rechnung). Bei Völkner und Conrad wären es nach Check24 etwa 11 € (eigene Rechnung), aber deren Lagerstatus ist nicht geprüft.
 - Der Mehrpreis für 8 GB liegt (eigene Rechnung) bei etwa 65 bis 73 € (BerryBase, Welectron, buyzero).
-- Nebenbefund Zubehör, nur aus den Empfehlungsleisten der BerryBase-Seite (Q1), nicht gezielt geprüft: offizieller Active Cooler 5,90 €, offizielles Netzteil 27 W 12,40 €, microSD-Karte SanDisk Ultra 32 GB 17,90 € und Extreme 32 GB 23,50 €. Alle standen als lieferbar (1 bis 3 Tage) in der Leiste. Punkt N1122-1941-a (Zubehör) bleibt offen.
 
 **ESP32-S3-BOX-3**
 
@@ -37,25 +36,34 @@ Es wurde nichts bestellt, nichts angefragt, kein Konto angelegt und kein Formula
 - **M5Stack CoreS3 SE** (Botland 41,90 €, nur Meta: unklar): ein Mikrofon, Lautsprecher eingebaut, Touchscreen.
 - **Waveshare ESP32-S3-AUDIO-Board** (BerryBase 23,90 €, Art. WS-32184: nicht lieferbar; Eckstein 20,76 €, Art. 32185: im Lieferland nicht verfügbar; Eckstein 32184 am 22.11. ebenso): zwei Mikrofone, aber nur ein Anschluss für einen Lautsprecher, keiner im Lieferumfang genannt.
 
+**Zubehör für den Pi-Aufbau (neu geprüft am 26.11.2026)**
+
+- **Bei BerryBase lieferbar** (Seite ganz oder im Anfang wörtlich gelesen): Netzteil 27 W (12,40 €), USB-Mikrofon (3,50 €) und die Kleinteile: Breadboard 1,60 €, Jumper-Set 4,90 €, Taster 0,13 €, LED 0,35 €, Widerstand 330 Ω 0,05 €. Der Active Cooler (5,90 €) steht nur in einer Liste, die ganz gelesen wurde; seine Produktseite wurde nicht gelesen.
+- **USB-Lautsprecher:** Der Adafruit 3369 ist bei Opencircuit (Niederlande) lieferbar (20,25 €), aber erst in 10 bis 12 Tagen. Der Lautsprecher von BerryBase (6,80 €) ist nicht lieferbar. Die Werte von DigiKey Deutschland stammen nur aus der Zusammenfassung des Abrufwerkzeugs.
+- **microSD-Karte 32 GB (A2):** bei Welectron und buyzero ausverkauft. Bei BerryBase steht Preis und Status der Karte selbst in keinem gelesenen Text (unklar).
+- **Summe** (eigene Rechnung, ohne Versand): Zubehör 59,81 €. Mit dem 8-GB-Pi bei BerryBase 248,81 €, mit dem 4-GB-Pi bei BerryBase (nicht lieferbar) 183,71 €, mit dem 4-GB-Pi von Galaxus.de 211,52 €. Am 7.11.2026 waren es 184,60 € und 249,70 €. Die microSD-Karte ist dabei mit einem nicht belegten Preis (10,20 €) gerechnet.
+- Das Projekt-Kit von BerryBase (5,90 €), das alle Kleinteile enthielte, ist nicht lieferbar.
+
 **Lücken und Vorbehalte**
 
 - Das BOX-3 ist in dieser Prüfung nur bei Völkner und Schukat lieferbar. Schukat verkauft nur an Gewerbe. Völkner bietet auf der Seite einen Modus „Privatkunde“ mit Preis inklusive MwSt. an. Ob die Lieferung an Privatkunden im gewünschten Land klappt, ist nicht geprüft.
 - Den Firmensitz habe ich bei Völkner, Welectron, Pollin, RS und Galaxus nicht geprüft. Bei BerryBase nennt Q18 als Verantwortliche Person für die EU die Sertronics GmbH in Berlin (mit der Adresse berrybase.de); ob sie der Verkäufer ist, ist nicht geprüft.
 - Die Seiten widersprechen sich zum Teil (Abschnitt „Widersprüche“), und keine nennt einen Stand mit Datum (Ausnahme: zwei Preisvergleichsseiten, beide veraltet). Vor jedem Kauf im Browser prüfen.
-- Mehrere Angaben stammen nur aus der maschinellen Zusammenfassung des Abrufwerkzeugs (buyzero, Pollin, Farnell). Sie sind als „Zusammenfassung“ markiert und nur ein Hinweis.
+- Mehrere Angaben stammen nur aus der maschinellen Zusammenfassung des Abrufwerkzeugs (buyzero, Pollin, Farnell, DigiKey und die Versandkosten von BerryBase). Sie sind als „Zusammenfassung“ markiert und nur ein Hinweis.
 
 **Einschätzung:** Für den Pi 5 mit 4 GB gibt es einen lieferbaren, aber teureren Weg (Galaxus.de, Verkäufer unbekannt). Der 8-GB-Pi ist bei BerryBase und RS lieferbar (wörtlich gelesen); bei Farnell nur laut Zusammenfassung (am 22.11. wörtlich: lieferbar). Pi 5 mit 1, 2 und 16 GB wurde nicht gezielt gesucht. Der erste Aufbau in `pi-client/README.md` ist mit 4 GB beschrieben.
 
 ## So wurde gelesen
 
-- Die Händlerseiten hat jeweils ein Abruf-Agent (Unteragent mit Webzugriff, Modell Sonnet) mit dem Abrufwerkzeug geladen und berichtet. Die Rohtexte der Abrufe liegen nur im Lauf vor, nicht im Repo. Danach habe ich Preise, Status, Zeichenzahlen und die Zitate der heute gelesenen Quellen gegen diese Rohtexte abgeglichen. Eine unabhängige Prüfung (Opus-Agent) hat Stichproben gegen die Rohtexte gelesen; ihre Befunde sind eingearbeitet (Bericht in PR #118).
+- Die Händlerseiten hat jeweils ein Abruf-Agent (Unteragent mit Webzugriff, Modell Sonnet) mit dem Abrufwerkzeug geladen und berichtet. Die Rohtexte der Abrufe liegen nur im Lauf vor, nicht im Repo. Danach habe ich Preise, Status, Zeichenzahlen und die Zitate der am 25.11. gelesenen Quellen (Q1 bis Q36) gegen diese Rohtexte abgeglichen. Bei den Quellen vom 26.11. (Q37 bis Q63) lagen mir nur die Berichte der Abruf-Agenten vor, die Rohtexte nicht (siehe den Absatz „Zubehör“ unten). Eine unabhängige Prüfung (Opus-Agent) hat Stichproben gegen die Rohtexte gelesen; ihre Befunde sind eingearbeitet (Bericht in PR #118).
 - **Freigabe im unbeaufsichtigten Lauf (neu am 25.11.2026).** In der ersten Runde verlangte das Abrufwerkzeug für fast alle Adressen aus dieser Datei eine Freigabe (Fehler `PROVENANCE_REQUIRED`, die Anfrage sei nicht rechtzeitig beantwortet worden). Nur die BerryBase-Seite des 4-GB-Pi ging in dieser Runde durch. Im Lauf ohne Menschen kann sie niemand beantworten. Diese Adressen habe ich nicht wiederholt und keinen Umweg genutzt (kein curl, kein Archiv). Stattdessen habe ich die Seiten über die Websuche gesucht, auch mit Domänenfilter je Händler, und danach nur Adressen abgerufen, die die Suche selbst geliefert hat. Das ging bei den meisten Seiten durch. Wo die Suche die Adresse nicht lieferte, wurde nichts abgerufen (siehe „Nicht geprüft“).
-- **Umfang der Seite.** Das Werkzeug liefert den Seitentext wörtlich bis etwa 40.000 Zeichen. Für den Rest hängt es eine maschinelle Zusammenfassung an (ein zweiter Abruf liefert dieselbe Aufteilung). Diese Zusammenfassungen sind nicht verlässlich: Sie haben mehrfach ein anderes Produkt als Hauptprodukt beschrieben und behauptet, Name, Preis und Status stünden nicht auf der Seite (Welectron, BerryBase BOX-3 und BOX-3B). Deshalb gelten wie am 22.11. nur wörtlich gelesene Teile. Ausnahmen sind mit „Zusammenfassung“ markiert (buyzero, Pollin, Farnell) und nur ein Hinweis.
+- **Umfang der Seite.** Das Werkzeug liefert den Seitentext wörtlich bis etwa 40.000 Zeichen. Für den Rest hängt es eine maschinelle Zusammenfassung an (ein zweiter Abruf liefert dieselbe Aufteilung). Diese Zusammenfassungen sind nicht verlässlich: Sie haben mehrfach ein anderes Produkt als Hauptprodukt beschrieben und behauptet, Name, Preis und Status stünden nicht auf der Seite (Welectron, BerryBase BOX-3 und BOX-3B). Deshalb gelten wie am 22.11. nur wörtlich gelesene Teile. Ausnahmen sind mit „Zusammenfassung“ markiert (buyzero, Pollin, Farnell, DigiKey) und nur ein Hinweis.
 - Die Spalte „Gelesen“ bei den Quellen sagt, wie viel wörtlich vorlag: „ganz“ (die Seite lag komplett als Text vor; Listen und Leisten können dabei nur als Überschrift erscheinen), „Anfang wörtlich (x von y Zeichen)“ (mit Name, Preis und Status) oder „nur Zusammenfassung“ (wörtlich lag nur Navigation oder ein Meta-Preis vor).
 - **Einordnung** (lieferbar, nicht lieferbar, unklar) ist meine Zuordnung nach dem Seitentext. Wo die Seite keinen Status nennt oder sich widerspricht, steht „unklar“.
 - **Meta** heißt: Der Wert stand nur in den Meta-Angaben der Seite, nicht im sichtbaren Text.
 - Bei mehreren Angaben zum selben Artikel zählt die eigene Produktseite des Händlers. Empfehlungsleisten auf anderen Seiten stehen nur bei den Widersprüchen oder als Nebenbefund.
-- **Kurz erklärt** (allgemeines Wissen, nicht aus den Quellen): Ein Codec ist ein Chip, der Ton zwischen analog und digital wandelt. I2S ist eine Schnittstelle für digitalen Ton. Flash ist der Speicher für das Programm, PSRAM zusätzlicher Arbeitsspeicher. Ein MEMS-Mikrofon ist ein winziges Chip-Mikrofon. Eine Staffel ist ein Mengenrabatt. Netto heißt ohne MwSt. KW 01/2027 ist die erste Kalenderwoche 2027. Ω (Ohm) und W (Watt) beschreiben Widerstand und Leistung eines Lautsprechers. Ein Richtpreis ist ein Preis, der sich ändern kann.
+- **Zubehör (26.11.2026).** Die Adressen kamen wie am 25.11. aus der Websuche (mit Domänenfilter je Händler); abgerufen wurde nur, was die Suche lieferte. Sechs Abruf-Agenten (Modell Sonnet) haben 28 Seiten geladen (27 Adressen, die microSD-Seite von BerryBase zweimal) und berichtet. Eine Adresse scheiterte (Reichelt, Fehler `client_error`), eine wurde nicht abgerufen, weil sie nicht nötig war (B2B-Seite von BerryBase). Die Rohtexte lagen mir nicht vor, nur diese Berichte. Bei sieben BerryBase-Seiten (Q41, Q45, Q47, Q50, Q52, Q53, Q57) nannte die Zusammenfassung des Werkzeugs ein falsches Hauptprodukt (einen Artikel aus der Empfehlungsleiste statt der Seite). Bei fünf weiteren (Q37, Q40, Q42, Q48, Q49) widersprach sie dem wörtlichen Teil, zum Beispiel mit der Behauptung, der Hinweis „Versand frei ab“ fehle, obwohl er dort stand. Darum gilt auch hier nur der wörtlich gelesene Teil. Bei den BerryBase-Produktseiten stand der ganze Kaufbereich jeweils im wörtlichen Anfang. Eine Ausnahme ist die Produktseite der microSD-Karte (Q39): Sie kam beide Male als reiner Text (`text/plain`) ohne Kaufbereich.
+- **Kurz erklärt** (allgemeines Wissen, nicht aus den Quellen): Ein Codec ist ein Chip, der Ton zwischen analog und digital wandelt. I2S ist eine Schnittstelle für digitalen Ton. Flash ist der Speicher für das Programm, PSRAM zusätzlicher Arbeitsspeicher. Ein MEMS-Mikrofon ist ein winziges Chip-Mikrofon. Eine Staffel ist ein Mengenrabatt. Netto heißt ohne MwSt. KW 01/2027 ist die erste Kalenderwoche 2027. Ω (Ohm) und W (Watt) beschreiben Widerstand und Leistung eines Lautsprechers. Ein Richtpreis ist ein Preis, der sich ändern kann. Female heißt Buchse und male heißt Stift (bei Kabeln der Steckertyp). GPIO sind die frei nutzbaren Anschlüsse des Pi, an denen Taster und LED hängen; sie arbeiten mit 3,3 V. Ein Vorwiderstand begrenzt den Strom durch die LED.
 
 ## Raspberry Pi 5
 
@@ -118,6 +126,85 @@ Nebenbefund aus der BerryBase-Liste der M5Stack-Boards (Q36, nur Seite 1 von 3, 
 - **Tasten und LED.** Kunibert braucht zwei Bedientasten (Sprechtaste, Erzähltaste, `CLAUDE.md`) und eine LED (`firmware/esp32-s3/README.md`). Beim EchoS3R, beim CoreS3 SE und beim Waveshare-Board nennen die Seiten keine Zahl von Tasten. Beim CoreS3 stehen Power und Reset, kein Bedienknopf. Ob zwei Taster angeschlossen werden können, ist nicht geprüft.
 - **Verfügbarkeit.** Nur der EchoS3R war bei den gelesenen Händlern sicher lieferbar. Er ist der billigste Kandidat (17,90 €). Die Seite nennt ein Mikrofon und weder Display noch Tasten. Der Aufbau in `firmware/esp32-s3/README.md` hat kein Display.
 
+## Zubehör für den Pi-Aufbau
+
+Stand 26.11.2026 (Abrufe zwischen 12:00 und 12:18 Uhr; die Seiten nennen selbst keinen Zeitpunkt) · Punkt N1122-1941-a. Gesucht waren die Teile der Stückliste in `docs/Ritter Kunibert_ Hardware für den ersten Audiogeräte-Prototyp.md` und der Einkaufsliste vom 7.11.2026 (Claude-Projekt, nicht im Repo): Netzteil (offiziell, 27 W), Active Cooler, microSD-Karte 32 GB (A2), USB-Mikrofon, USB-Lautsprecher und Kleinteile (Breadboard, Jumper-Kabel, zwei Taster, zwei LEDs, Widerstände). Hauptquelle ist BerryBase, weil die Werte vom 7. bis 11.11. von dort stammen. Für Netzteil, Kühler, microSD-Karte und Lautsprecher kommen Vergleichsangebote dazu. Preise sind brutto, wenn die Spalte „Preis“ nichts anderes sagt. Der Versand kommt dazu. Es wurde nichts bestellt, nichts angefragt, kein Warenkorb und kein Formular benutzt.
+
+| Teil | Händler | Preis | Einordnung | Hinweise | Quelle |
+| --- | --- | --- | --- | --- | --- |
+| Netzteil, offiziell, 27 W, schwarz | BerryBase | 12,40 € | lieferbar | Bestand 100 oder mehr, 1 bis 3 Tage; Art.-Nr. RPI5NT5AB; Ausgang 5,1 V mit 5 A (dazu 9, 12 und 15 V mit Power Delivery); Kabel 1,2 m, USB-C; Titel und Eigenschaften sagen schwarz, der Lieferumfang nennt ein weißes Netzteil (Widerspruch 12) | Q37 |
+| Netzteil, offiziell, 27 W, schwarz | Welectron | 11,90 € (10,00 € netto) | lieferbar | die Seite meldet Bestand, nennt aber nicht, für welche der fünf Varianten er gilt (EU, UK und US ohne Zusatz; AU und IN ausverkauft); die Adresse endet auf EU; Lieferzeit 1 bis 3 Werktage; Versand kommt dazu, der Betrag steht nicht im Text; höchstens 1000 Stück; gleiche EAN wie bei BerryBase | Q59 |
+| Netzteil, offiziell, 27 W, schwarz | Pollin | 12,90 € (Meta) | unklar | der Preis steht wörtlich nur in den Meta-Angaben; der Status stammt nur aus der Zusammenfassung und widerspricht sich (Widerspruch 15); Art.-Nr. 811648 | Q58 |
+| Active Cooler, offiziell, für den Pi 5 | BerryBase | 5,90 € | lieferbar | nur aus der Liste „Kühlkörper / Lüfter“ (31 Treffer, ganz gelesen): Bestand 100 oder mehr, 1 bis 3 Tage; Art.-Nr. RPI5-ACOOL; die Produktseite wurde nicht gelesen; der Waveshare-Kühler (WS-26044) kostet gleich viel und ist nicht lieferbar (Verwechslungsgefahr) | Q38 |
+| Active Cooler, offiziell, für den Pi 5 | Welectron | 4,90 € (4,12 € netto) | lieferbar | Bestand 100 oder mehr; 1 bis 3 Werktage; Versand kommt dazu, der Betrag steht nicht im Text; höchstens 500 Stück; 5 V über den Lüfteranschluss des Pi 5, Drehzahlregelung (PWM), höchstens 8.000 Umdrehungen je Minute (±15 %); der Hersteller rät laut Seite, den Kühler nach dem Anbringen nicht wieder abzunehmen | Q61 |
+| Active Cooler, offiziell, für den Pi 5 | buyzero | 5,90 € | unklar | kein Bestandstext; Lieferzeit 1 bis 2 Tage und ein Warenkorb-Knopf; Versand wird an der Kasse berechnet; MwSt. nicht genannt; die Sicherheitsangaben der Seite nennen eine Eignung erst ab 10 Jahren | Q60 |
+| microSD-Karte 32 GB, A2 (Raspberry Pi, SC1628) | BerryBase | Preis der Karte selbst nicht gelesen | unklar | Art.-Nr. RPI-MSD-32; die Produktseite kam als reiner Text ohne Kaufbereich, ein zweiter Abruf ebenso; in der Liste „Speicherkarten“ (43 Treffer, Seite 1 gelesen) steht die Karte nicht; eine Leiste auf der Produktseite führt die Variante mit vorinstalliertem Raspberry Pi OS (RPI-MSD-32-OS) mit 10,20 € und als lieferbar, diese Seite zeigt aber für andere Artikel andere Preise als die Seiten mit Kaufbereich (Widerspruch 14) | Q39, Q40 |
+| microSD-Karte 32 GB (Bulk) | Welectron | 9,90 € (8,32 € netto) | nicht lieferbar | alle Varianten ausverkauft, auch die vorprogrammierten; Benachrichtigung angeboten (nicht benutzt); „Bulk“ erklärt die Seite nicht; Klassen C10, U3, V30, A2 | Q62 |
+| microSD-Karte 32 GB, A2, leer (Konfigurator) | buyzero | 17,80 € | nicht lieferbar | für die vorgewählte Variante steht die Schaltfläche auf ausverkauft, und die Lieferzeit-Zeile sagt, die Karte sei nicht auf Lager und werde nachbestellt (ohne Datum); mit vorinstalliertem Betriebssystem 20,80 € (Status dieser Varianten steht nicht im Text); MwSt. nicht genannt | Q63 |
+| USB-Mikrofon („USB mini microphone“) | BerryBase | 3,50 € | lieferbar | 74 Stück, 1 bis 3 Tage; Art.-Nr. 125147; Frequenzbereich 100 bis 16.000 Hz; mit Betriebs-LED; laut Seite für Windows, Mac, Linux und Raspberry Pi, die Eigenschaften nennen Pi 5, 4B, 3B+, 3B und 3A+ | Q41 |
+| USB-Lautsprecher Adafruit „Mini External USB Stereo Speaker“ (Nr. 3369) | Opencircuit (Niederlande) | 20,25 € (daneben steht 16,75 € mit dem Zusatz ohne MwSt. (NL)) | lieferbar, Lieferzeit 10 bis 12 Tage | 100 Stück im externen Lager; Versand ab 3,50 € (dort mit „NL“ als Land), frei ab 100 €; ob für Lieferung nach Deutschland diese MwSt. und dieser Versandpreis gelten, steht nicht im Text (Widerspruch 16); Leistung, Maße und Lieferumfang stehen nicht im Text | Q54 |
+| USB-Lautsprecher Adafruit 3369 | DigiKey Deutschland | 13,21 € brutto (11,10 € netto), nur Zusammenfassung | unklar | wörtlich nur Kopf- und Meta-Daten; Preis, Bestand (laut Zusammenfassung 1.454, die Zahl ist mehrdeutig, weil die Seite den Punkt sonst als Dezimalzeichen nutzt) und Lieferzeiten stehen nur in der Zusammenfassung; danach Versand nach Deutschland frei ab 75 €, darunter 25 € (nicht belegt); mehrere Zeitangaben nebeneinander (heute versandt, 4 Wochen Herstellerlieferzeit, 48 Stunden nach Deutschland) | Q55 |
+| USB-Lautsprecher Adafruit 3369 | Adafruit (Hersteller, USA) | 12,50 $ (1 bis 9 Stück) | lieferbar laut Seite | Status lieferbar, ohne Stückzahl; Preis in US-Dollar, ohne Angabe zu MwSt., Zoll und Versand nach Deutschland; 5 V, 2 × 2 W, 4 Ω, Kabel 1,17 m, 84 × 43 × 32 mm, 73,6 g; nur USB, keine 3,5-mm-Buchse nötig | Q56 |
+| USB-Lautsprecher „externer USB Mini Lautsprecher, schwarz“ (Art.-Nr. 125174) | BerryBase | 6,80 € | nicht lieferbar | 5 V, 2 × 0,5 W, 4 Ω, Kabel etwa 1,1 m; Maße 84 × 43 × 32 mm und Gewicht 73,6 g wie beim Adafruit-Lautsprecher (Einschätzung: vielleicht dasselbe Gehäuse, die Leistung ist niedriger angegeben); die Seite zeigt zugleich den Status nicht lieferbar und eine Warenkorb-Schaltfläche (ob sie aktiv ist, zeigt der Text nicht); Abtastraten stehen nicht im Text | Q57 |
+
+**Kleinteile (alle bei BerryBase)**
+
+| Teil | Preis | Einordnung | Hinweise | Quelle |
+| --- | --- | --- | --- | --- |
+| Breadboard mit 400 Kontakten (BB-400P) | 1,60 € | lieferbar | Bestand 100 oder mehr, 1 bis 3 Tage; 83 × 55 mm, Raster 2,54 mm; die zweite Adresse für denselben Artikel nennt 1,50 € und nicht lieferbar (Widerspruch 13) | Q43, Q44 |
+| Jumper-/Dupont-Kabel-Set, je 1× F-F, M-M und F-M, 20 cm (DUPK-SET-20) | 4,90 € | lieferbar | Bestand 100 oder mehr, 1 bis 3 Tage; 3 Kabel zu je 40 Adern, einzeln trennbar; Raster 2,54 mm; Leiter AWG 28 | Q45 |
+| Jumper-Kabel-Kit mit 65 Kabeln für Breadboards (JUMPER-WIRE-65) | 1,40 € | nicht lieferbar | eigene Seite: nicht lieferbar, Benachrichtigung angeboten (nicht benutzt); 65 Kabel in vier Längen (12 bis 24 cm); die Steckertypen stehen nicht im gelesenen Text; Leisten anderer Seiten führen ihn als lieferbar (Widerspruch 13) | Q46 |
+| Taster 6 × 6 mm, Höhe 4,3 mm, Printmontage (KHT66PV43) | 0,13 € | lieferbar | Bestand 100 oder mehr, 1 bis 3 Tage; Schaltkraft 1,6 N; Belastung 0,05 A bei 12 V Gleichspannung; ein kleiner Taster, kein großer Taster für Kinderhände (Einschätzung) | Q48 |
+| Taster, gleiche Bauform, Höhe 5,0 mm (KHT66PV5) | 0,09 € | nicht lieferbar | Benachrichtigung angeboten (nicht benutzt) | Q49 |
+| LED 5 mm, rot, „Low Current“ (Kingbright L-53LID) | 0,35 € | lieferbar | 83 Stück, 1 bis 3 Tage; Diodenstrom 2 mA, Betriebsspannung 2 bis 2,5 V, Helligkeit 0,8 bis 5 mcd, Leuchtwinkel 60°. Eigene Rechnung (Pin mit 3,3 V, Vorwiderstand 330 Ω): etwa 2,4 bis 3,9 mA, also über den 2 mA der Seite. Ob das dauerhaft passt, steht nicht auf der Seite | Q50 |
+| LED-Set 5 mm, 70 Stück (LED-KIT) | 3,90 € | nicht lieferbar | je 10 LEDs in Weiß, Gelb, Rot, Blau und Grün, dazu je 10 Duo-LEDs rot/grün und RGB-LEDs; Benachrichtigung angeboten (nicht benutzt) | Q51 |
+| Metallschichtwiderstand 330 Ω, 1/4 W, ±1 %, axial (MSW330R.25) | 0,05 € | lieferbar | Bestand 100 oder mehr, 1 bis 3 Tage; Bauform 0207 | Q52 |
+| Widerstands-Sortiment, 525 Stück (RESKIT-5) | 7,90 € | lieferbar | 17 Werte; 330 Ω ist nicht dabei (220 Ω und 470 Ω sind dabei) | Q53 |
+| Elektronik-Projekt-Kit mit Breadboard, Jumpern, LEDs, Tastern, Buzzer und Widerständen (RPI-PKIT1) | 5,90 € | nicht lieferbar | enthielte Breadboard mit 400 Kontakten, je 10 Jumper-Kabel F-F, F-M und M-M (20 cm), 15 LEDs (rot, gelb, grün), 4 Taster mit Kappen, 30 Widerstände 330 Ω, einen Buzzer (5 V) und ein Etui (Hardcase); Benachrichtigung angeboten (nicht benutzt); Sicherheitshinweis siehe „Hinweise der Händler zur Sicherheit“ | Q47 |
+
+**Versand bei BerryBase:** Die Kopfzeile der meisten gelesenen Seiten nennt Versand frei ab 200 €. Zwei Seiten (zweite Breadboard-Adresse Q44, Jumper-Kit Q46) nennen 150 € (Widerspruch 13). Die Versandkosten darunter stehen nur in der Zusammenfassung der Versandseite (Q42): Danach kostet DHL bis 199,99 € Bestellwert 4,95 €, UPS Standard 5,90 € (frei erst ab 250 €). Das ist nicht wörtlich belegt. Die Meta-Beschreibung der Liste „Speicherkarten“ (Q40) nennt sogar Versand frei ab 29 €, die sichtbare Kopfzeile derselben Seite 200 €.
+
+**Summe (eigene Rechnung, ohne Versand)**
+
+| Posten | Teil und Händler | Preis |
+| --- | --- | --- |
+| 1 | Netzteil 27 W, BerryBase | 12,40 € |
+| 2 | Active Cooler, BerryBase | 5,90 € |
+| 3 | microSD-Karte 32 GB, BerryBase (Preis der Variante mit Raspberry Pi OS aus einer Leiste, nicht belegt, Widerspruch 14) | 10,20 € |
+| 4 | USB-Mikrofon, BerryBase | 3,50 € |
+| 5 | USB-Lautsprecher Adafruit 3369, Opencircuit | 20,25 € |
+| 6 | Kleinteile, BerryBase: Breadboard 1,60 € + Jumper-Set 4,90 € + 2 Taster 0,26 € + 2 LEDs 0,70 € + 2 Widerstände 0,10 € | 7,56 € |
+| | **Summe Zubehör** | **59,81 €** |
+| | plus Pi 5 mit 4 GB bei BerryBase (123,90 €, nicht lieferbar) | 183,71 € |
+| | plus Pi 5 mit 4 GB bei Galaxus.de (151,71 €, lieferbar) | 211,52 € |
+| | plus Pi 5 mit 8 GB bei BerryBase (189,00 €, lieferbar) | 248,81 € |
+
+- Ohne die microSD-Karte (Preis nicht belegt) beträgt die Summe des Zubehörs 49,61 €. Mit den drei Pi-Preisen sind es dann 173,51 €, 201,32 € und 238,61 €.
+- Günstiger als bei BerryBase sind in dieser Prüfung nur das Netzteil (Welectron 11,90 €, 0,50 € weniger) und der Active Cooler (Welectron 4,90 €, 1,00 € weniger). Dafür käme eine zweite Bestellung mit Versand (Betrag steht nicht im Text).
+- BerryBase-Teile ohne den Lautsprecher: 39,56 € (Posten 1 bis 4 und 6). Mit dem 8-GB-Pi sind das 228,56 € (über 200 €), mit dem 4-GB-Pi 163,46 € (unter 200 €). Ob die Grenze für Versand frei für diese Summe und für jede Versandart gilt, ist offen.
+
+**Vergleich mit den Werten vom 7. bis 11.11.2026** (Claude-Projekt, `claude/stand-2026-11-07-anfragen-und-hosting.md`; dort stand alles bei BerryBase außer dem Lautsprecher; die Werte wurden hier nicht neu belegt)
+
+| Teil | 7.11. (11.11. wo angegeben) | 26.11. (diese Prüfung) |
+| --- | --- | --- |
+| Netzteil 27 W | 12,40 €, lieferbar (11.11. ebenso) | 12,40 €, lieferbar |
+| Active Cooler | 5,90 €, lieferbar (11.11. ebenso) | 5,90 €, lieferbar (nur Liste) |
+| microSD-Karte 32 GB, A2 | 10,20 €, lieferbar; ob das Betriebssystem vorinstalliert ist, war offen | Preis der Karte nicht gelesen; die Variante mit Betriebssystem steht in einer Leiste mit 10,20 € |
+| USB-Mikrofon | 3,50 €, lieferbar | 3,50 €, lieferbar (74 Stück) |
+| USB-Lautsprecher (Opencircuit) | 20,00 €, 10 bis 12 Tage | 20,25 €, 10 bis 12 Tage |
+| Kleinteile | 8,70 € zusammen (Breadboard, Jumper-Set, 2 Taster, 2 LEDs, 2 Widerstände 330 Ω), lieferbar; keine Links notiert | 7,56 € (eigene Rechnung aus Einzelteilen, andere Auswahl möglich) |
+| Summe Zubehör | 60,70 € (eigene Rechnung aus den Zeilen) | 59,81 € |
+| Summe mit Pi 5, 4 GB (BerryBase) | 184,60 € | 183,71 € |
+| Summe mit Pi 5, 8 GB (BerryBase) | 249,70 € | 248,81 € |
+
+- Die Summe sinkt um 0,89 €: Die Kleinteile sind 1,14 € günstiger (andere Auswahl), der Lautsprecher 0,25 € teurer.
+
+**Einschätzung zum Zubehör:**
+
+- **Kabel.** Das Jumper-Set DUPK-SET-20 enthält Kabel mit Buchse und Stift in allen drei Paarungen. Ob der Pi 5 eine aufgelötete Stiftleiste hat, wurde nicht geprüft; die Hardware-Doku und `pi-client/README.md` gehen von Tastern und LED an den GPIO-Pins aus.
+- **Taster.** Die Taster mit 6 × 6 mm reichen nur für den ersten Aufbau am Tisch. Die Hardware-Doku nennt „2 große Taster“. Große Taster, Mikrofon-Aus-Schalter und Gehäuse wurden nicht gesucht (Punkt N1126-1153-a).
+- **Lautsprecher.** Er bestimmt die Wartezeit des Aufbaus (10 bis 12 Tage bei Opencircuit). Die BerryBase-Seite des billigeren Modells ist nicht lieferbar.
+
 ## Vergleich mit früheren Prüfungen (8. bis 25.11.2026)
 
 Die Werte bis 13.11. stammen aus Notizen früherer Läufe im Claude-Projekt (nicht im Repo): `claude/stand-2026-11-07-anfragen-und-hosting.md` (8. und 11.11.), `claude/stand-2026-11-11-nachtschicht.md` (11.11., 21:54) und `claude/nachtrag-2026-11-13-restlimit-nacht.md` (13.11., gegen 17:04). Sie wurden hier nicht neu belegt. Die Tabelle zeigt nur BerryBase, weil nur dort Werte an mehreren Tagen vorliegen.
@@ -148,14 +235,21 @@ Die Werte bis 13.11. stammen aus Notizen früherer Läufe im Claude-Projekt (nic
 9. **Soldered, Pi 5 mit 4 GB.** Die Seite zeigt ausverkauft und demnächst verfügbar. Ein Hinweisblock derselben Seite nennt ein Lager in der EU und Versand aus Kroatien. Er wirkt wie ein Standardtext des Shops (Einschätzung). Beide Aussagen stehen auf der Seite. Neben dem Preis steht ein Zusatz mit dem Datum 10.09.2026 und demselben Betrag; was das heißt, erklärt die Seite nicht.
 10. **Waveshare-Board.** BerryBase nennt einen Akku im Lieferumfang (eine Kundenbewertung nennt ihn praktisch nutzlos), Eckstein 32185 nennt ihn optional. Die BerryBase-Seite trägt die Nummer WS-32184. Das passt zu Eckstein 32184, nicht zu 32185; die Seite von 32185 verlinkt 32184 als eigenen Artikel. Einschätzung: Der Akku-Unterschied und der Preisunterschied (23,90 € zu 20,76 €) können daher zwei verschiedene Artikel betreffen. Eckstein führt 32184 und 32185 mit verschiedenen Preisen, EAN und Zolltarifnummern (22.11.). Was die beiden Artikel unterscheidet, steht auf keiner gelesenen Seite; der Akku wäre eine mögliche Erklärung (Einschätzung). Die Seite 32185 zeigt weiter den Hinweis, der Artikel sei im Lieferland nicht verfügbar; welches Land eingestellt war, ist nicht erkennbar. Die Seite 32184 wurde heute nicht gelesen.
 11. **RS Components.** Der Produkttext nennt bei der 4-GB-Seite und bei der 8-GB-Seite beide „2 GB“ (ein Textbaustein). Titel und Eigenschaft sagen 4 GB und 8 GB.
+12. **BerryBase, Netzteil 27 W (neu am 26.11.).** Titel und Eigenschaften nennen das Netzteil schwarz (Art.-Nr. RPI5NT5AB), der Lieferumfang auf derselben Seite ein weißes (Q37). Eine Leiste auf der Mikrofon-Seite (Q41) führt die weiße Ausführung als eigenen Artikel mit gleichem Preis. Einschätzung: Der Lieferumfang ist ein Textbaustein; die Seite zeigt das schwarze Netzteil.
+13. **BerryBase, Breadboard und Jumper-Kit (neu am 26.11.).** Das Breadboard hat zwei Adressen für denselben Artikel (gleiche Art.-Nr. und EAN; das canonical-Tag der zweiten verweist auf die erste). Die erste (Q43) nennt 1,60 €, lieferbar und Versand frei ab 200 €, die zweite (Q44) 1,50 €, nicht lieferbar und Versand frei ab 150 €. Dasselbe Muster beim Jumper-Kit JUMPER-WIRE-65: Die eigene Seite (Q46) nennt es nicht lieferbar und Versand frei ab 150 €, die Leisten anderer Seiten führen es mit 1,40 € als lieferbar. Auch einzelne Leisten widersprechen sich (zum Beispiel ein Bauteil mit 51 gegen 100 oder mehr Stück). Einschätzung: Die Seiten mit der Grenze 150 € zeigen vermutlich einen älteren Stand; belegt ist es nicht. Hier zählt beim Breadboard die erste Adresse, beim Jumper-Kit die eigene Seite.
+14. **BerryBase, microSD-Karte (neu am 26.11.).** Die Produktseite der Karte (Q39) kam bei beiden Abrufen als reiner Text (`text/plain`), ohne Kaufbereich, Kopf- und Fußzeile. Preis und Status der Karte stehen nicht im Text. Auf dieser Seite weichen die Preise anderer Artikel stark von den Seiten mit Kaufbereich ab (SanDisk Extreme 32 GB: 9,90 € gegen 23,50 € auf Q37, Q40 und Q41; SanDisk Ultra 32 GB: 7,90 € gegen 17,90 €). Die Liste „Speicherkarten“ (Q40) zeigt die Karte nicht. Einschätzung: Q39 ist keine verlässliche Preisquelle (anderer Stand oder andere Fassung der Seite). Der Preis der Variante mit Raspberry Pi OS (10,20 €), der nur dort steht, gilt deshalb nicht als belegt.
+15. **Pollin, Netzteil 27 W (neu am 26.11.).** Wie am 22.11. beim 8-GB-Pi: Die Zusammenfassung meldet, der Artikel sei nicht in ausreichender Stückzahl verfügbar, und nennt zugleich 1 bis 3 Werktage Lieferzeit (Q58). Wörtlich liegt nur der Meta-Preis vor. Einschätzung: Status unklar.
+16. **Opencircuit, USB-Lautsprecher (neu am 26.11.).** Der Preis steht doppelt: 20,25 € und 16,75 € mit dem Zusatz Excl. VAT (NL), also ohne niederländische MwSt.; die Warenkorb-Zeile und die Staffeln nennen nur Beträge um 20 € (Q54). Einschätzung: 20,25 € ist der Preis mit niederländischer MwSt. (eigene Rechnung: 16,75 € × 1,21 ≈ 20,27 €). Welche MwSt. bei Lieferung nach Deutschland gilt, steht nicht im Text. Ein Banner nennt Versand am selben Tag bei Bestellung bis 23:59 Uhr, die Seite nennt aber 10 bis 12 Tage Lieferzeit (Lager extern).
 
 ## Hinweise der Händler zur Sicherheit (für die Rechtsprüfung)
 
-Gelesen am 22.11.2026. Am 25.11.2026 stehen die BerryBase- und Botland-Sätze unten (außer BOX-3 bei Botland) sinngemäß wieder in den Rohtexten von Q1, Q2, Q11, Q12, Q18, Q19, Q20, Q21 und Q22; buyzero wurde heute nicht wörtlich gelesen. Keine Rechtsberatung. Es sind nur Aussagen von Händlerseiten, keine Bewertung.
+Gelesen am 22.11.2026. Am 25.11.2026 stehen die BerryBase- und Botland-Sätze unten (außer BOX-3 bei Botland) sinngemäß wieder in den Rohtexten von Q1, Q2, Q11, Q12, Q18, Q19, Q20, Q21 und Q22; buyzero wurde heute nicht wörtlich gelesen. Keine Rechtsberatung. Es sind nur Aussagen von Händlerseiten, keine Bewertung. Die beiden letzten Aussagen (Zubehör) kamen am 26.11.2026 dazu.
 
 - BerryBase (BOX-3, BOX-3B, CoreS3, Atom EchoS3R, Waveshare-Board): für Kinder unerreichbar aufbewahren oder Kleinteile von Kindern fernhalten. Bei den Pi-Seiten: den Pi nicht unbeaufsichtigt lassen, wenn Kinder Zugriff haben.
 - buyzero (Pi 5): Die Sicherheitsangaben nennen eine Eignung erst ab 10 Jahren (Stand 22.11.).
 - Botland: Die Seiten von BOX-3 (Stand 22.11.), CoreS3 und CoreS3 SE stufen das Produkt als Komponente ein, nicht als Fertigprodukt im Sinne der Produktsicherheitsvorschriften. Das Rückgaberecht gilt laut den Seiten von CoreS3 und CoreS3 SE nur für Verbraucher.
+- buyzero (Active Cooler, Q60): Die Sicherheitsangaben der Seite nennen eine Eignung erst ab 10 Jahren (Stand 26.11.).
+- BerryBase (Projekt-Kit RPI-PKIT1, Q47): Kleinteile außer Reichweite von Kindern aufbewahren, Erstickungsgefahr (Stand 26.11.).
 - Einschätzung: Die Händler führen die Boards als Entwicklerboards, Kits oder Bauteile. Kunibert richtet sich an Kinder von 6 bis 10 Jahren. Für ein verkauftes Kinder-Spielzeug sind Gehäuse, Prüfungen und Kennzeichnung Sache des Produkts selbst. Das gehört zu Punkt H2 der Arbeitsliste (Vorgaben für ein Serienprodukt). Bis zur Rechtsprüfung testen nur Erwachsene.
 
 ## Einschätzung
@@ -165,10 +259,11 @@ Gelesen am 22.11.2026. Am 25.11.2026 stehen die BerryBase- und Botland-Sätze un
 3. **BOX-3.** Völkner ist das einzige lieferbare Angebot, das Privatkunden ausdrücklich nennt (60,99 €): Die Seite hat einen Privatkunden-Modus. Ob die Lieferung an Privatkunden im gewünschten Land klappt, ist nicht geprüft. BerryBase hat BOX-3 und BOX-3B nicht lieferbar. Schukat verkauft nur an Gewerbe. Botland war heute nicht lesbar.
 4. **Alternativen.** Nur der EchoS3R ist lieferbar. Ob er für Sprechtaste, Erzähltaste und LED taugt, ist nicht geprüft. CoreS3, CoreS3 SE und Waveshare-Board sind nirgends sicher lieferbar; CoreS3 und Waveshare-Board haben laut den Seiten zwei Mikrofone.
 5. **Wie sicher sind die Zahlen?** Sie sind nur so gut wie die Seiten und die Berichte der Abruf-Agenten. Die Seiten widersprechen sich zum Teil, nennen kein Datum und zeigen den Bestand oft nur in Worten. Darum wurde jede Aussage nur aus der eigenen Produktseite des Händlers genommen. Zahlen aus der Zusammenfassung des Werkzeugs sind nur Hinweise. Vor einem Kauf im Browser prüfen.
+6. **Zubehör.** Netzteil, Mikrofon und Kleinteile sind bei BerryBase lieferbar (wörtlich gelesen); der Active Cooler steht dort nur in einer Liste. Der Lautsprecher bestimmt die Wartezeit: Der Adafruit 3369 ist bei Opencircuit lieferbar, aber erst in 10 bis 12 Tagen (20,25 €). Die Angaben von DigiKey Deutschland (13,21 € brutto, Versand unter 75 € laut Zusammenfassung 25 €) und von Adafruit (12,50 $, Versand und Zoll unklar) sind nicht belegt oder nicht auf Deutschland bezogen. Der BerryBase-Lautsprecher (6,80 €) ist nicht lieferbar. Bei der microSD-Karte ist nur sicher, dass Welectron und buyzero ausverkauft sind; ob BerryBase die Karte hat, ist offen. Wer den 4-GB-Pi bei Galaxus.de und das Zubehör bei BerryBase kauft, braucht zwei Bestellungen. Mit dem 8-GB-Pi läge eine BerryBase-Bestellung ohne Lautsprecher bei 228,56 € (eigene Rechnung) und damit über der Grenze für Versand frei. Ob die Teile für den Aufbau reichen (Taster und LED an GPIO 17, 27 und 23 nach `pi-client/README.md`), wurde nicht geprüft. Jeder einzelne Kauf braucht die Bestätigung des Betreibers im Chat.
 
 ## Quellen
 
-Abgerufen am 25.11.2026 (zwischen 11:56 und 12:23 Uhr), wo „Stand 22.11.“ dabeisteht, am 22.11.2026. Ein Zitat je Quelle, höchstens 15 Wörter. „ganz“ und „Anfang wörtlich“ erklärt der Abschnitt „So wurde gelesen“. Bei Zitaten mit dem Zusatz „(Zusammenfassung)“ lag der Satz nicht wörtlich vor.
+Abgerufen am 25.11.2026 (zwischen 11:56 und 12:23 Uhr), wo „Stand 22.11.“ dabeisteht, am 22.11.2026. Q37 bis Q63: abgerufen am 26.11.2026 (zwischen 12:00 und 12:18 Uhr). Ein Zitat je Quelle, höchstens 15 Wörter. „ganz“ und „Anfang wörtlich“ erklärt der Abschnitt „So wurde gelesen“. Bei Zitaten mit dem Zusatz „(Zusammenfassung)“ lag der Satz nicht wörtlich vor.
 
 | Nr. | Quelle | Gelesen | Zitat |
 | --- | --- | --- | --- |
@@ -208,6 +303,33 @@ Abgerufen am 25.11.2026 (zwischen 11:56 und 12:23 Uhr), wo „Stand 22.11.“ da
 | Q34 | Geizhals (Ansicht Österreich), Variantenübersicht Pi 5, https://geizhals.at/raspberry-pi-5-modell-b-v141523.html | ganz (20.353 Zeichen) | „Preise in Euro inkl. MwSt. zzgl. Versandkosten.“ |
 | Q35 | Geizhals (Ansicht Österreich), Pi 5 8 GB mit Zubehör, https://geizhals.at/raspberry-pi-5-modell-b-a3096144.html | Anfang wörtlich (39.934 von 112.921 Zeichen); veraltet, nicht verwendet | „Letztes Preisupdate: 25.10.2026, 20:30“ |
 | Q36 | BerryBase, Liste „M5Stack“, https://www.berrybase.de/en/development-boards/m5stack/ | Anfang wörtlich (39.936 von 57.736 Zeichen, nur Seite 1 von 3) | „Showing 95 results“ |
+| Q37 | BerryBase, Netzteil 27 W schwarz, https://www.berrybase.de/en/raspberry-pi-27w-usb-c-power-supply-power-supply-unit-black | Anfang wörtlich (39.904 von 64.261 Zeichen, mit dem ganzen Kaufbereich) | „Available · 100+ piece · 1-3 days“ |
+| Q38 | BerryBase, Liste „Kühlkörper / Lüfter“, https://www.berrybase.de/en/raspberry-pi/raspberry-pi-computer/heat-sink-fan/ | ganz (46.934 Zeichen; 31 Treffer) | „Raspberry Pi Active Cooler, fan for Raspberry Pi 5“ |
+| Q39 | BerryBase, microSD-Karte 32 GB A2, https://www.berrybase.de/en/raspberry-pi-microsdhc-speicherkarte-a2-class-10-u3-32gb | ganz (14.195 Zeichen), aber als reiner Text (`text/plain`) ohne Kaufbereich; zwei Abrufe gleich | „Product ID: RPI-MSD-32“ |
+| Q40 | BerryBase, Liste „Raspberry Pi Memory Cards“, https://www.berrybase.de/en/raspberry-pi/raspberry-pi-computer/memory-cards/ | Anfang wörtlich (39.915 von 49.769 Zeichen; 43 Treffer, Seite 2 nicht gelesen) | „Showing 43 results“ |
+| Q41 | BerryBase, USB-Mikrofon, https://www.berrybase.de/en/usb-mini-microphone | Anfang wörtlich (39.944 von 63.564 Zeichen, mit dem ganzen Kaufbereich) | „Available · 74 piece · 1-3 days“ |
+| Q42 | BerryBase, Versand und Zahlung, https://www.berrybase.de/en/footer/information/payment-dispatch/ | Anfang wörtlich (39.927 von 79.326 Zeichen), nur Kopfzeile und Navigation; die Versandsätze nur als Zusammenfassung | „Free shipping from €200“ |
+| Q43 | BerryBase, Breadboard 400 Kontakte (erste Adresse), https://www.berrybase.de/en/breadboard-with-400-contacts | Anfang wörtlich (39.935 von 60.095 Zeichen, mit dem ganzen Kaufbereich) | „Available · 100+ piece · 1-3 days“ |
+| Q44 | BerryBase, Breadboard 400 Kontakte (zweite Adresse), https://www.berrybase.de/en/breadboard-mit-400-kontakten | Anfang wörtlich (39.935 von 68.957 Zeichen, mit dem ganzen Kaufbereich) | „Currently not available“ |
+| Q45 | BerryBase, Dupont-Kabel-Set DUPK-SET-20, https://www.berrybase.de/en/40pin-jumper-dupont-cable-set-1x-f-f-m-m-f-m-each-20cm | Anfang wörtlich (39.909 von 65.725 Zeichen, mit dem ganzen Kaufbereich) | „Available · 100+ piece · 1-3 days“ |
+| Q46 | BerryBase, Jumper-Kabel-Kit mit 65 Kabeln, https://www.berrybase.de/en/jumper-kabel-kit-set-mit-65-kabeln-in-4-laengen-fuer-breadboards | Anfang wörtlich (39.899 von 67.009 Zeichen, mit dem ganzen Kaufbereich) | „Currently not available“ |
+| Q47 | BerryBase, Elektronik-Projekt-Kit RPI-PKIT1, https://www.berrybase.de/en/elektronik-projekt-kit-mit-breadboard-jumperkabeln-leds-tastern-buzzer-widerstaenden-tasche | Anfang wörtlich (39.872 von 67.560 Zeichen, mit dem ganzen Kaufbereich) | „Currently not available“ |
+| Q48 | BerryBase, Taster 6x6 mm, Höhe 4,3 mm, https://www.berrybase.de/en/short-stroke-pushbutton-vertical-pcb-mounting-6x6mm-h-4.3mm | Anfang wörtlich (39.904 von 60.770 Zeichen, mit dem ganzen Kaufbereich) | „Available · 100+ piece · 1-3 days“ |
+| Q49 | BerryBase, Taster 6x6 mm, Höhe 5,0 mm, https://www.berrybase.de/en/short-stroke-pushbutton-vertical-pcb-mounting-6x6mm-h-5.0mm | Anfang wörtlich (39.904 von 61.653 Zeichen, mit dem ganzen Kaufbereich) | „Currently not available“ |
+| Q50 | BerryBase, LED Kingbright Low Current 5 mm rot, https://www.berrybase.de/kingbright-low-current-led-5mm-rot | Anfang wörtlich (39.932 von 74.855 Zeichen, mit dem ganzen Kaufbereich) | „Sofort verfügbar · 83 Stück · 1-3 Tage“ |
+| Q51 | BerryBase, LED-Set 5 mm, 70 Stück, https://www.berrybase.de/en/5mm-led-set-70-pieces | ganz (27.648 Zeichen) | „Currently not available“ |
+| Q52 | BerryBase, Metallschichtwiderstand 330 Ω, https://www.berrybase.de/en/metal-film-resistor-330.0-ohm-1-4w-1-0207-axial-through-hole-mounting | Anfang wörtlich (39.894 von 61.530 Zeichen, mit dem ganzen Kaufbereich) | „Available · 100+ piece · 1-3 days“ |
+| Q53 | BerryBase, Widerstands-Sortiment 525 Stück, https://www.berrybase.de/en/525-piece-metal-layer-resistor-assortment-in-plastic-box | Anfang wörtlich (39.907 von 65.242 Zeichen, mit dem ganzen Kaufbereich) | „525-piece metal film resistor assortment in plastic box“ |
+| Q54 | Opencircuit, Adafruit Mini External USB Stereo Speaker, https://opencircuit.shop/product/mini-external-usb-stereo-speaker | ganz (12.370 Zeichen) | „100 in external warehouse“ |
+| Q55 | DigiKey Deutschland, Adafruit 3369, https://www.digikey.de/en/products/detail/adafruit-industries-llc/3369/6623862 | nur Zusammenfassung (wörtlich nur Kopf- und Meta-Daten; 39.913 von 101.432 Zeichen) | „Buy now, ships today.“ (Meta-Beschreibung) |
+| Q56 | Adafruit (Hersteller), Mini External USB Stereo Speaker, https://www.adafruit.com/products/3369 | ganz (17.528 Zeichen) | „In stock“ |
+| Q57 | BerryBase, externer USB Mini Lautsprecher schwarz, https://www.berrybase.de/en/external-usb-mini-speaker-black | Anfang wörtlich (39.932 von 65.108 Zeichen, mit allen Daten des Lautsprechers) | „Currently not available“ |
+| Q58 | Pollin, Netzteil 27 W schwarz, https://www.pollin.de/p/raspberry-pi-netzteil-usb-c-27-w-schwarz-811648 | nur Zusammenfassung (wörtlich nur Meta-Preis und Navigation; 39.920 von 97.155 Zeichen) | „meta-product:price:amount: 12.9“ |
+| Q59 | Welectron, Netzteil 27 W schwarz (EU), https://www.welectron.com/Official-Raspberry-Pi-27W-USB-C-Power-Supply-Black-EU | ganz (40.663 Zeichen) | „On stock“ |
+| Q60 | buyzero, Pi 5 Active Cooler, https://buyzero.de/en/products/pi-5-active-cooler | ganz (29.884 Zeichen) | „Delivery time: 1-2 days“ |
+| Q61 | Welectron, Active Cooler, https://www.welectron.com/Official-Raspberry-Pi-Active-Cooler-Cooler-for-Pi-5 | ganz (41.300 Zeichen) | „100+ On stock“ |
+| Q62 | Welectron, microSD-Karte 32 GB (Bulk), https://www.welectron.com/Official-Raspberry-Pi-microSD-Card-32-GB-Bulk | ganz (41.016 Zeichen) | „Out of stock“ |
+| Q63 | buyzero, microSD A2 (Konfigurator), https://buyzero.de/en/products/konfigurator-raspberry-pi-a2-clas-sd-karte | ganz (43.025 Zeichen) | „Currently not in stock, will be reordered for you“ |
 
 ## Nicht geprüft
 
@@ -222,7 +344,13 @@ Abgerufen am 25.11.2026 (zwischen 11:56 und 12:23 Uhr), wo „Stand 22.11.“ da
 - Ob Farnell, Völkner, RS, Galaxus oder andere an Privatkunden und an welche Länder liefern, Versandkosten (meist nicht genannt), Zoll bei Lieferung aus Polen oder Kroatien: nicht geprüft. Kein Warenkorb benutzt.
 - Hersteller-Datenblätter und Herstellerseiten (Espressif, M5Stack, Waveshare, Raspberry Pi): nicht gelesen. Die Ausstattung steht nach den Händlerseiten.
 - Ob eines der Boards zur Firmware passt: nichts getestet, nichts gebaut.
-- Zubehör (Netzteil, Kühler, microSD-Karte, USB-Mikrofon, Lautsprecher): nicht gezielt geprüft, nur der Nebenbefund aus den Leisten von Q1 (Punkt N1122-1941-a). Die älteren Werte vom 7. bis 11.11.2026 stehen nur im Claude-Projekt.
+- **Zubehör (26.11.2026):**
+  - Nicht gelesen: Reichelt (microSD-Karte, Fehler `client_error`), die BerryBase-Produktseite des Active Cooler (nur die Liste Q38), die B2B-Seite von BerryBase, Seite 2 der BerryBase-Liste „Speicherkarten“, weitere Händler für Mikrofon, Kleinteile und Lautsprecher (zum Beispiel Pollin, Welectron, Conrad, Elektor), die zweite Welectron-Seite des Netzteils (ohne „EU“ im Namen).
+  - Nur als Zusammenfassung gelesen: alle Preis-, Bestands- und Versandangaben von DigiKey Deutschland, der Status des Pollin-Netzteils und die Versandkosten von BerryBase (Q42).
+  - Preis und Status der BerryBase-microSD-Karte RPI-MSD-32 stehen in keinem gelesenen Text. Der Preis von 10,20 € gehört zur Variante mit Raspberry Pi OS und steht nur auf Q39 (Widerspruch 14).
+  - Versand und Zoll: Die Versandseiten von Welectron, buyzero, Opencircuit, Adafruit und DigiKey wurden nicht gelesen. Ob Opencircuit und Adafruit nach Deutschland liefern, was es kostet und welche MwSt. gilt, ist offen.
+  - Nicht getestet: ob die Teile zusammenpassen und am Pi 5 laufen (USB-Audio, Taster und LED an den GPIO-Pins). Datenblätter wurden nicht gelesen. Ob der Pi 5 eine aufgelötete Stiftleiste hat, ist nicht geprüft.
+  - Nicht gesucht: Mikrofon-Aus-Schalter, große Taster (Arcade-Taster), Gehäuse, SD-Kartenleser und Kabel für den Aufbau (Punkt N1126-1153-a). Die älteren Werte vom 7. bis 11.11.2026 stehen nur im Claude-Projekt.
 - Rechtliches (Verbraucher oder Gewerbe, Rückgabe, Produktsicherheit): nicht geprüft, nur wiedergegeben.
 - **Rohtext statt Browser.** Alle Angaben stammen aus dem Text, den das Abrufwerkzeug lieferte. Wie die Seiten im Browser aussehen (nachgeladene Preise, ein- und ausgeblendete Elemente, Zustand von Schaltflächen), wurde nicht gesehen.
 
@@ -234,6 +362,8 @@ Abgerufen am 25.11.2026 (zwischen 11:56 und 12:23 Uhr), wo „Stand 22.11.“ da
 | Betreiber | Entscheiden, ob er weiter auf BerryBase 4 GB wartet (Entscheidung vom 9.11.), den 8-GB-Pi nimmt (bei BerryBase 65,10 € mehr, eigene Rechnung) oder den 4-GB-Pi bei einem anderen Händler zu höherem Preis (Galaxus.de 151,71 €; Völkner und Conrad laut Check24 134,99 €, Lagerstatus dort ungeprüft). | Chat |
 | Betreiber | Optional im Browser ansehen: die Angebotsliste bei Galaxus (wer verkauft den 4-GB-Pi?), die Pi-5-Seiten von Völkner und Conrad, die Welectron-Seite RP1-151800-P (8 GB), Farnell (netto oder brutto), dazu Conrad, Elektor, Rasppishop, Mouser und sha256systems, die sich hier nicht lesen ließen. | Browser |
 | Claude (Lauf Recherche) | Diese Datei neu prüfen, sobald der Stand älter als 3 Tage ist (ab 28.11.2026). Vorgehen: Adressen aus dieser Datei nicht direkt an das Abrufwerkzeug geben (im Lauf ohne Menschen verlangt es dafür eine Freigabe), sondern jede Seite zuerst über die Websuche mit Domänenfilter holen und nur die gelieferten Adressen abrufen. Zuerst die Seiten, die heute fehlten (Abschnitt „Nicht geprüft“), dann BerryBase 4 GB, BOX-3 und EchoS3R. Hinweise aus der Suche vom 25.11. (müssen im neuen Lauf wieder über die Suche kommen): Elektor `www.elektor.com/raspberry-pi-5-4-gb-ram`, `www.elektor.com/raspberry-pi-5-8-gb-ram` und `elektor.com/esp32-s3-box-3`. | `docs/recherche/lieferbarkeit.md` |
-| Claude (Lauf Recherche) | N1122-1941-a: Zubehör neu prüfen (Netzteil, Kühler, microSD, Mikrofon, Lautsprecher, Kleinteile). | `docs/recherche/lieferbarkeit.md` |
+| Claude (Lauf Recherche) | Das Zubehör bei der nächsten Prüfung von H1 mitprüfen. Zuerst die Lücken: BerryBase-Produktseite des Active Cooler, microSD-Karte RPI-MSD-32 (Liste „Speicherkarten“ Seite 2, Reichelt), Versandkosten von BerryBase, Versand von Opencircuit nach Deutschland. Jede Adresse wieder zuerst über die Websuche holen. | `docs/recherche/lieferbarkeit.md` |
+| Betreiber | Der Lautsprecher bestimmt die Wartezeit (Opencircuit: 10 bis 12 Tage). Vor einem Kauf die Händlerseiten im Browser prüfen (besonders die microSD-Karte bei BerryBase und Versand und MwSt. bei Opencircuit). Jeden einzelnen Kauf im Chat bestätigen. | Browser, Chat |
+| Claude (Lauf Recherche) | N1126-1153-a: Mikrofon-Aus-Schalter, große Taster, SD-Kartenleser und Gehäuse für den Aufbau recherchieren. | `docs/recherche/lieferbarkeit.md` |
 | Claude (Lauf Recherche) | N1122-1941-b: Hersteller-Datenblätter der Boards lesen (Pins für Tasten und LED, Codec-Treiber). | `docs/recherche/zielboard.md` |
 | Betreiber | Danach entscheiden, welches Board die Firmware bekommt (BOX-3, Atom EchoS3R, CoreS3, CoreS3 SE, Waveshare-Board oder einzelne Bauteile). | Chat |
