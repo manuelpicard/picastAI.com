@@ -55,6 +55,16 @@ export function budgetTimeoutMs(timer: StageTimer, reserveMs = 0): number | unde
   return Number.isFinite(left) ? Math.max(0, Math.floor(left)) : undefined;
 }
 
+/**
+ * Zeit in ms für einen Aufruf der Sprachausgabe, auf den die Antwort an das Gerät wartet: der Rest des
+ * Budgets, mindestens `minMs` (auch wenn das Budget schon aufgebraucht ist). Ohne Budget undefined; dann
+ * gilt nur die eigene Grenze des Aufrufs (PICASTAI_VOICE_TIMEOUT_MS).
+ */
+export function ttsTimeoutMs(timer: StageTimer, minMs = MIN_TTS_MS): number | undefined {
+  const left = budgetTimeoutMs(timer);
+  return left === undefined ? undefined : Math.max(minMs, left);
+}
+
 /** Länge einer WAV-Datei in Sekunden; null, wenn es keine auswertbare WAV-Datei ist. */
 export function wavSeconds(wav: Buffer | null | undefined): number | null {
   if (!wav || wav.length === 0) return null;

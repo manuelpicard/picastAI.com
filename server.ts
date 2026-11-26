@@ -9,7 +9,7 @@ import { Brain, FALLBACK_ANSWER_DE, StoryState, type StorySink, type TurnResult 
 import { EPISODE_CLOSING, STORY_CLOSING, STORY_CLOSING_FIRST, STORY_PAUSE_TEXT } from './server-api/prompts.js';
 import { StoryPrefetcher } from './server-api/prefetch.js';
 import { STORY_STATE_TTL_MS, StoryStateStore, startPurging } from './server-api/story-states.js';
-import { PARAGRAPH_PAUSE_MS, PcmStream, StreamingSpeaker, StreamRegistry, streamingWavHeader } from './server-api/audio-stream.js';
+import { firstSound, PARAGRAPH_PAUSE_MS, PcmStream, StreamingSpeaker, StreamRegistry, streamingWavHeader, streamSynthesizer } from './server-api/audio-stream.js';
 import { MAX_HEARD_SECONDS, StopPoints, TURN_ID_PATTERN, speechParagraphs, type SpokenPart, type StopOutcome } from './server-api/stopp.js';
 import { AudioError, decodeWavHeader, generateMelodyWav, isPcmFormat, isSilentPcm16 } from './server-api/audio.js';
 import { CONSENT_MISSING_DE, ELTERNTEXT_VERSION, ParentControls, ParentStateWriteError, SLEEPING_DE, isValidTime, pairingCodeSpeech, type BlockReason, type ConsentPath } from './server-api/eltern.js';
@@ -22,7 +22,7 @@ import { VoicePipeline, VoiceProviderError } from './server-api/voice.js';
 import { FirestoreDeviceStore } from './server-api/firestore-service.js';
 import { buildAudioUrl, parentCookieSecure } from './server-api/http-utils.js';
 import { ERROR_RESPONSE_DE, SAFETY_RESPONSE_DE, UNCLEAR_RESPONSE_DE } from './server-api/safety.js';
-import { budgetTimeoutMs, MIN_TTS_MS, NO_TIMER, TurnTimer, type StageTimer } from './server-api/timing.js';
+import { budgetTimeoutMs, NO_TIMER, ttsTimeoutMs, TurnTimer, type StageTimer } from './server-api/timing.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -287,7 +287,10 @@ async function respondTurn(
   // der Strom ab, kommt das schon Gesprochene zur gemerkten Stelle dazu.
   let resumed = false;
   const said: string[] = [];
-  const speaker = new StreamingSpeaker((text) => timer.time('sprachausgabe', () => voice.synthesize(text)), config.audioSampleRate);
+  // Der erste Absatz bekommt höchstens den Rest des Zeitbudgets (die Antwort wartet auf ihn), spätere
+  // nur die Grenze je Aufruf (N1124-1153-b, streamSynthesizer). Genau so lassen: `voice` direkt, ohne
+  // eigene Funktion darum, sonst geht die Frist verloren (server-api/audio-stream.test.ts prüft die Zeile).
+  const speaker = new StreamingSpeaker(streamSynthesizer(voice, timer), config.audioSampleRate);
   const sink: StorySink = {
     begin: (info) => { done = info.done; resumed = Boolean(info.resumed); },
     say: (text) => { said.push(text); speaker.say(text); },
@@ -296,10 +299,7 @@ async function respondTurn(
   resultPromise.catch(() => undefined);
   let first: 'ton' | 'fertig';
   try {
-    first = await timer.time('erster_ton', () => Promise.race([
-      speaker.firstAudio.then(() => 'ton' as const),
-      resultPromise.then((result) => (result.streamed ? speaker.firstAudio.then(() => 'ton' as const) : 'fertig' as const)),
-    ]));
+    first = await timer.time('erster_ton', () => firstSound(speaker, resultPromise));
   } catch (error) {
     speaker.abort();
     throw error;
@@ -554,8 +554,7 @@ async function synthesizeIfConfigured(result: Awaited<ReturnType<Brain['handle']
   // ersten Mal aus dem Speicher: schneller, billiger, und der Sicherheitshinweis bleibt
   // auch bei einem Anbieter-Ausfall hörbar, wenn er vorher aufgewärmt wurde.
   // Zeit für die Sprachausgabe: der Rest des Zeitbudgets, mindestens MIN_TTS_MS (auch wenn es schon aufgebraucht ist).
-  const left = budgetTimeoutMs(timer);
-  const timeoutMs = left === undefined ? undefined : Math.max(MIN_TTS_MS, left);
+  const timeoutMs = ttsTimeoutMs(timer);
   result.wav = result.fixed
     ? await voice.synthesizeCached(result.speech, timeoutMs)
     : await voice.synthesize(result.speech, timeoutMs);
