@@ -1,9 +1,13 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import http from 'node:http';
+import type { AddressInfo } from 'node:net';
 import test from 'node:test';
 import { encodeWav, parseWav } from './audio.js';
 import { firstSound, PARAGRAPH_PAUSE_MS, PcmStream, StreamingSpeaker, StreamRegistry, streamingWavHeader, streamSynthesizer } from './audio-stream.js';
+import { loadConfig } from './config.js';
 import { MIN_TTS_MS, TURN_BUDGET_MS, TurnTimer } from './timing.js';
-import { VoiceProviderError } from './voice.js';
+import { VoicePipeline, VoiceProviderError } from './voice.js';
 
 const RATE = 16000;
 const tone = (samples: number, value = 1000) => {
@@ -85,23 +89,34 @@ test('StreamingSpeaker: anderes Format als der Strom wird abgelehnt', async () =
 // wie die echten Anbieter (server-api/voice.ts, withTimeout): Sie brechen nach der kleineren Grenze ab, der
 // eigenen je Aufruf oder der mitgegebenen, und werfen dann VoiceProviderError('TTS-Timeout', retryable).
 
-test('Ton-Strom: hängt die Sprachausgabe beim ersten Absatz, endet das Warten auf den ersten Ton mit dem Budget (Zeiten verkürzt)', async () => {
+test('Ton-Strom: hängt die Sprachausgabe beim ersten Absatz, endet das Warten auf den ersten Ton mit dem Budget (echte VoicePipeline, Zeiten verkürzt)', async () => {
   // Verkürzt: Budget 300 ms statt 120 s, Mindestzeit 50 ms statt 5 s, Grenze je Aufruf 4 s statt 90 s.
   // Die Schranke unten lässt 1 s Spielraum für eine langsame CI und liegt weit unter der Grenze je Aufruf.
+  // Die Sprachausgabe ist die echte VoicePipeline wie in server.ts; nur der Sprachserver ist eine Attrappe,
+  // die nie antwortet. Die Frist muss also bis zur HTTP-Anfrage durchkommen (Befund 1 der Prüfung von PR #127).
   const BUDGET_MS = 300;
   const MIN_MS = 50;
   const PER_CALL_MS = 4_000;
+  let requests = 0;
+  const hanging = http.createServer((req) => {
+    requests++;
+    req.resume(); // liest die Anfrage und antwortet nie
+  });
+  const port = await new Promise<number>((resolve) => hanging.listen(0, '127.0.0.1', () => resolve((hanging.address() as AddressInfo).port)));
+  const voice = new VoicePipeline({
+    ...loadConfig(),
+    ttsProvider: 'openai-compatible',
+    ttsUrl: `http://127.0.0.1:${port}`,
+    ttsApiKey: null,
+    ttsModel: 'test-tts',
+    ttsVoice: 'test-stimme',
+    voiceTimeoutMs: PER_CALL_MS,
+    audioSampleRate: RATE,
+  });
   const timers: NodeJS.Timeout[] = [];
-  const asked: Array<number | undefined> = [];
-  const hanging = (_text: string, timeoutMs?: number) => {
-    asked.push(timeoutMs);
-    return new Promise<Buffer>((_resolve, reject) => {
-      timers.push(setTimeout(() => reject(new VoiceProviderError('TTS-Timeout', true)), Math.min(PER_CALL_MS, timeoutMs ?? Infinity)));
-    });
-  };
   const timer = new TurnTimer(undefined, 'a1b2c3d4', BUDGET_MS);
   const started = performance.now();
-  const speaker = new StreamingSpeaker(streamSynthesizer(hanging, timer, MIN_MS), RATE);
+  const speaker = new StreamingSpeaker(streamSynthesizer(voice, timer, MIN_MS), RATE);
   // Wie Brain mit Ton-Strom: Der erste Absatz geht an den Sprecher, Claude schreibt danach noch weiter.
   const result = new Promise<{ streamed: boolean }>((resolve) => {
     timers.push(setTimeout(() => speaker.say('Erster Absatz.'), 20));
@@ -110,15 +125,26 @@ test('Ton-Strom: hängt die Sprachausgabe beim ersten Absatz, endet das Warten a
   try {
     const error = await firstSound(speaker, result).then(() => null, (caught: unknown) => caught);
     const elapsed = performance.now() - started;
-    assert.ok(error instanceof VoiceProviderError && error.retryable, 'wie ohne Strom: 503 voice_provider_failed, retryable (Routen in server.ts)');
+    assert.ok(error instanceof VoiceProviderError && error.retryable && error.message === 'TTS-Timeout',
+      'Frist abgelaufen, wie ohne Strom: 503 voice_provider_failed, retryable (Routen in server.ts)');
     assert.ok(elapsed < BUDGET_MS + MIN_MS + 1_000, `Antwort nach ${Math.round(elapsed)} ms, erwartet innerhalb des Budgets (${BUDGET_MS} ms), nicht erst nach der Grenze je Aufruf (${PER_CALL_MS} ms)`);
-    assert.equal(asked.length, 1, 'nach dem Ausfall wird nichts mehr vertont');
-    assert.ok(asked[0] !== undefined && asked[0] <= BUDGET_MS, 'der erste Absatz bekommt den Rest des Budgets');
     await assert.rejects(speaker.finish());
     assert.equal(speaker.stream.ok, false);
+    assert.equal(requests, 1, 'nach dem Ausfall wird nichts mehr vertont');
   } finally {
     for (const pending of timers) clearTimeout(pending);
+    hanging.closeAllConnections();
+    await new Promise<void>((resolve) => hanging.close(() => resolve()));
   }
+});
+
+test('server.ts baut den Sprecher des Ton-Stroms mit streamSynthesizer(voice, timer)', () => {
+  // Das Budget von 120 s ist fest im Code; ein Test über HTTP am echten Server bräuchte Minuten. Darum prüft
+  // dieser Test die Verdrahtung im Quelltext: Ein Sprecher ohne streamSynthesizer oder mit einer eigenen
+  // Funktion um `voice` verlöre die Frist des ersten Absatzes unbemerkt (Befund 1 der Prüfung von PR #127).
+  const source = readFileSync(new URL('../server.ts', import.meta.url), 'utf8');
+  assert.deepEqual(source.match(/new StreamingSpeaker\([^;]*;/g), ['new StreamingSpeaker(streamSynthesizer(voice, timer), config.audioSampleRate);']);
+  assert.match(source, /\bconst voice = new VoicePipeline\(config\);/, '`voice` ist die VoicePipeline');
 });
 
 test('Ton-Strom: ein später Absatz bekommt nicht nur den Rest des Budgets (Befund 4 der Prüfung von PR #111)', async () => {
@@ -139,7 +165,7 @@ test('Ton-Strom: ein später Absatz bekommt nicht nur den Rest des Budgets (Befu
     if (text === 'Absatz 4') now = 1_000 + 118_000;
     return tone(160);
   };
-  const speaker = new StreamingSpeaker(streamSynthesizer(slow, timer), RATE);
+  const speaker = new StreamingSpeaker(streamSynthesizer({ synthesize: slow }, timer), RATE);
   for (let i = 0; i <= 5; i++) speaker.say(`Absatz ${i}`);
   await speaker.firstAudio;
   await speaker.finish();
@@ -154,7 +180,7 @@ test('Ton-Strom: die Frist des ersten Absatzes zählt ab dem Beginn seiner Verto
   let now = 0;
   const timer = new TurnTimer(() => now, 'c9d0e1f2');
   const asked: Array<number | undefined> = [];
-  const synth = streamSynthesizer(async (_text, timeoutMs) => { asked.push(timeoutMs); return tone(16); }, timer);
+  const synth = streamSynthesizer({ synthesize: async (_text, timeoutMs) => { asked.push(timeoutMs); return tone(16); } }, timer);
   now = 60_000;
   await synth('früh', 0);
   now = 117_000;

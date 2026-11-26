@@ -288,8 +288,9 @@ async function respondTurn(
   let resumed = false;
   const said: string[] = [];
   // Der erste Absatz bekommt höchstens den Rest des Zeitbudgets (die Antwort wartet auf ihn), spätere
-  // nur die Grenze je Aufruf (N1124-1153-b, streamSynthesizer).
-  const speaker = new StreamingSpeaker(streamSynthesizer((text, timeoutMs) => voice.synthesize(text, timeoutMs), timer), config.audioSampleRate);
+  // nur die Grenze je Aufruf (N1124-1153-b, streamSynthesizer). Genau so lassen: `voice` direkt, ohne
+  // eigene Funktion darum, sonst geht die Frist verloren (server-api/audio-stream.test.ts prüft die Zeile).
+  const speaker = new StreamingSpeaker(streamSynthesizer(voice, timer), config.audioSampleRate);
   const sink: StorySink = {
     begin: (info) => { done = info.done; resumed = Boolean(info.resumed); },
     say: (text) => { said.push(text); speaker.say(text); },

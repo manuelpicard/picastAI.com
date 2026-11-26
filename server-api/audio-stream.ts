@@ -88,13 +88,17 @@ export type Synthesize = (text: string, index: number) => Promise<Buffer>;
  * 140 s des Geräts. Spätere Absätze entstehen erst nach der Antwort, während das Gerät schon spielt. Für
  * sie gilt nur die Grenze je Aufruf (PICASTAI_VOICE_TIMEOUT_MS): Mit dem Rest des Budgets bräche sonst ein
  * später Absatz ab, nur weil der Teil lang ist (Befund 4 der Prüfung von PR #111).
+ * `voice` ist die Sprachausgabe selbst (in server.ts `voice`, die VoicePipeline), keine eigene Funktion
+ * darum: Eine Funktion dazwischen könnte die Frist unbemerkt verlieren (Befund 1 der Prüfung von PR #127).
  */
-export function streamSynthesizer(
-  synthesize: (text: string, timeoutMs?: number) => Promise<Buffer>,
-  timer: StageTimer,
-  minTtsMs = MIN_TTS_MS
-): Synthesize {
-  return (text, index) => timer.time('sprachausgabe', () => synthesize(text, index === 0 ? ttsTimeoutMs(timer, minTtsMs) : undefined));
+export function streamSynthesizer(voice: StreamVoice, timer: StageTimer, minTtsMs = MIN_TTS_MS): Synthesize {
+  return (text, index) => timer.time('sprachausgabe', () => voice.synthesize(text, index === 0 ? ttsTimeoutMs(timer, minTtsMs) : undefined));
+}
+
+/** Was der Ton-Strom von der Sprachausgabe braucht (`VoicePipeline` in server-api/voice.ts). */
+export interface StreamVoice {
+  /** timeoutMs: Frist aus dem Zeitbudget; die eigene Grenze je Aufruf gilt zusätzlich. */
+  synthesize(text: string, timeoutMs?: number): Promise<Buffer>;
 }
 
 /**
