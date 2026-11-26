@@ -2,7 +2,7 @@
 # Verhaltenstest für install_raspberry_pi.sh (Punkt N1117-2214-b der Arbeitsliste).
 # Führt den Installer als root in einer frischen Debian-Umgebung aus und prüft: Dienstkonto,
 # Ordner, kunibert.env (Werte, Rechte, Besitzer), Dienstdatei (auch mit systemd-analyze verify),
-# Zeitgrenze 140 s, zweiten Lauf, Lauf ohne Token, Änderungen von Hand, wer das Token lesen darf,
+# Zeitgrenze 140 s, zweiten Lauf, Lauf ohne Token, Änderungen von Hand (auch „NAME = wert“), wer das Token lesen darf,
 # den Health-Aufruf aus pi-client/README.md („Manuell starten“), die verdeckte Abfrage an einem
 # Pseudo-Terminal und dass das Token nie in einer Ausgabe oder einer anderen Datei steht.
 #
@@ -294,6 +294,57 @@ run "$work/lauf5b.txt" --non-interactive
 eq "Lauf 5b: Rückgabe 0" "$rc" 0
 has "Lauf 5b: warnt vor weiteren Mitgliedern" "$work/lauf5b.txt" "weitere Konten (fremd)"
 userdel fremd
+
+echo "== Lauf 5c: Leerzeichen um das Gleichheitszeichen (wie mit sudoedit geschrieben; systemd liest das auch)"
+printf 'KUNIBERT_PIPELINE_TIMEOUT = 60\n' >> "$env_file"
+sed -i 's/^KUNIBERT_REQUEST_TIMEOUT=.*/KUNIBERT_REQUEST_TIMEOUT\t=  75/' "$env_file"
+sed -i 's/^KUNIBERT_AUDIO_STREAM=1$/KUNIBERT_AUDIO_STREAM = 1/' "$env_file"
+sed -i 's/^PICASTAI_DEVICE_ID=/PICASTAI_DEVICE_ID =/' "$env_file"
+sed -i 's/^PICASTAI_DEVICE_TOKEN=/PICASTAI_DEVICE_TOKEN = /' "$env_file"
+run "$work/lauf5c-probe.txt" --dry-run --non-interactive
+eq "Lauf 5c Probelauf: Rückgabe 0" "$rc" 0
+has "Lauf 5c Probelauf: Token mit Leerzeichen erkannt" "$work/lauf5c-probe.txt" "Token: bisheriges bleibt"
+has "Lauf 5c Probelauf: Geräte-ID mit Leerzeichen erkannt" "$work/lauf5c-probe.txt" "Gerät: bleibt wie in kunibert.env"
+no_token "Lauf 5c Probelauf: Token nicht in der Ausgabe" "$work/lauf5c-probe.txt"
+run "$work/lauf5c.txt" --non-interactive
+eq "Lauf 5c: Rückgabe 0" "$rc" 0
+no_token "Lauf 5c: Token nicht in der Ausgabe" "$work/lauf5c.txt"
+# Wert wie systemd: die letzte Zeile des Namens, Leerzeichen um „=“ zählen nicht (val sähe nur NAME=).
+eq "Lauf 5c: Zeitkette wieder 140 s (letzte Zeile des Namens, wie systemd)" \
+  "$(grep -E '^[[:space:]]*KUNIBERT_PIPELINE_TIMEOUT[[:blank:]]*=' "$env_file" | tail -n 1 | sed -E 's/^[^=]*=[[:blank:]]*//')" 140
+has "Lauf 5c: warnt wegen der Zeitkette" "$work/lauf5c.txt" "KUNIBERT_PIPELINE_TIMEOUT stand in"
+eq "Lauf 5c: genau eine Zeile für KUNIBERT_PIPELINE_TIMEOUT" \
+  "$(grep -cE '^[[:space:]]*KUNIBERT_PIPELINE_TIMEOUT[[:blank:]]*=' "$env_file")" 1
+eq "Lauf 5c: von Hand geänderter Wert bleibt, als NAME=wert" \
+  "$(grep -E '^[[:space:]]*KUNIBERT_REQUEST_TIMEOUT[[:blank:]]*=' "$env_file")" "KUNIBERT_REQUEST_TIMEOUT=75"
+eq "Lauf 5c: von Hand ergänzte Zeile bleibt, als NAME=wert" \
+  "$(grep -E '^[[:space:]]*KUNIBERT_AUDIO_STREAM[[:blank:]]*=' "$env_file")" "KUNIBERT_AUDIO_STREAM=1"
+eq "Lauf 5c: Geräte-ID bleibt" "$(val PICASTAI_DEVICE_ID)" '"test-geraet-1"'
+token_is "Lauf 5c: Token mit Leerzeichen um das Gleichheitszeichen erkannt und behalten" "$token"
+hasnt "Lauf 5c: keine Warnung zum Token" "$work/lauf5c.txt" "Kein API-Token gesetzt"
+eq "Lauf 5c: keine Zeile mit Leerzeichen vor dem Gleichheitszeichen mehr" \
+  "$(grep -cE '^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*[[:blank:]]+=' "$env_file")" 0
+eq "Lauf 5c: jeder Schlüssel genau einmal" "$(grep -E '^[A-Z_]+=' "$env_file" | cut -d= -f1 | sort | uniq -d)" ""
+eq "Lauf 5c: Shell liest die Datei ohne Fehler" \
+  "$(bash -c "set -a; . '$env_file' 2>&1 >/dev/null; printf '%s' \"\$KUNIBERT_PIPELINE_TIMEOUT\"")" 140
+snapshot > "$work/stand5c.txt"
+run "$work/lauf5d.txt" --non-interactive
+if snapshot | cmp -s - "$work/stand5c.txt"; then ok "Lauf 5d ändert nichts (nach dem Angleichen)"; else bad "Lauf 5d hat etwas geändert: $(snapshot | diff "$work/stand5c.txt" - | tail -n 6)"; fi
+hasnt "Lauf 5d: keine Warnung zur Zeitkette mehr" "$work/lauf5d.txt" "KUNIBERT_PIPELINE_TIMEOUT stand in"
+
+echo "== Lauf 5e: U+3000 vor dem Gleichheitszeichen macht keinen Namen (wie bei systemd), auch in UTF-8"
+u3000=$'\xe3\x80\x80'
+sed -i "s/^PICASTAI_DEVICE_TOKEN=/PICASTAI_DEVICE_TOKEN${u3000}= /" "$env_file"
+LC_ALL=C.UTF-8 run "$work/lauf5e.txt" --non-interactive
+eq "Lauf 5e: Rückgabe 0" "$rc" 0
+has "Lauf 5e: warnt, dass kein Token gesetzt ist" "$work/lauf5e.txt" "Kein API-Token gesetzt"
+hasnt "Lauf 5e: meldet nicht, das Token bleibe" "$work/lauf5e.txt" "Das Token in $env_file bleibt."
+no_token "Lauf 5e: Token nicht in der Ausgabe" "$work/lauf5e.txt"
+eq "Lauf 5e: Token in kunibert.env leer, wie systemd es läse" "$(val PICASTAI_DEVICE_TOKEN)" '""'
+sed -i "/^PICASTAI_DEVICE_TOKEN${u3000}=/d" "$env_file"
+run "$work/lauf5f.txt" --non-interactive --api-token-file "$work/token"
+eq "Lauf 5f: Rückgabe 0" "$rc" 0
+token_is "Lauf 5f: Token wieder gesetzt" "$token"
 
 echo "== Token nie auf der Befehlszeile"
 snapshot > "$work/stand5.txt"
