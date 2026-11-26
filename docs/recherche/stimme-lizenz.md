@@ -1,20 +1,20 @@
 # Lizenz der Stimme stuart_bell und von Pocket TTS
 
-Stand: 22.11.2026 · Punkt H5 der Arbeitsliste · Wochen-Autopilot, Rolle Recherche.
+Stand: 22.11.2026, ergänzt am 26.11.2026 (Abschnitt „Herkunft von `stuart_bell`“, Punkt N1122-1825-c, Teil 1) · Punkt H5 der Arbeitsliste · Wochen-Autopilot, Rolle Recherche.
 
 **Keine Rechtsberatung.** Ein Anwalt war bewusst nicht beteiligt. Das ist als Restrisiko festgehalten.
 
-Die Quellen Q1 bis Q13 stehen am Ende, mit Abrufdatum und einem kurzen Zitat. „Einschätzung“ heißt: meine Bewertung, kein Satz aus einer Quelle. Namen von Sprechern stehen hier nur so, wie Kyutai sie veröffentlicht (`stuart_bell`). Über Privatpersonen wurde nichts weiter gesucht.
+Die Quellen Q1 bis Q21 stehen am Ende, mit Abrufdatum und einem kurzen Zitat. „Einschätzung“ heißt: meine Bewertung, kein Satz aus einer Quelle. Namen von Sprechern stehen hier nur so, wie Kyutai sie veröffentlicht (`stuart_bell`). Über Privatpersonen wurde nichts weiter gesucht.
 
 ## Kurzfassung
 
 **Frage:** Darf Kunibert die Pocket-Stimme `stuart_bell` und das Modell Pocket TTS in einem verkauften Produkt nutzen?
 
-**Antwort (Einschätzung):** Ja, nach den Quellen, die ich lesen konnte. Es gelten drei Pflichten. Bei der Stimme bleibt ein Restrisiko.
+**Antwort (Einschätzung):** Ja, nach den Quellen, die ich lesen konnte. Es gelten drei Pflichten. Bei der Stimme bleibt ein Restrisiko (R1). Wie groß es ist, ist offen (Stand 26.11.2026).
 
 - **Programm** `pocket-tts` 4.0.1: MIT-Lizenz. Verkauf erlaubt.
 - **Gewichte** des Modells (auch das deutsche): CC BY 4.0. Der Lizenztext kennt keine Beschränkung auf nicht-kommerzielle Nutzung. Dazu kommt eine Verbotsliste („Prohibited use“) von Kyutai.
-- **Stimme** `stuart_bell`: Kyutai führt sie im Ordner `voice-zero` unter CC0. Die Aufnahmen stammen von LibriVox. CC0 erlaubt jede Nutzung, auch geschäftlich, aber nur für die Rechte, die der Erklärende selbst hält. Rechte anderer Personen, zum Beispiel des Sprechers, klärt CC0 nicht (Q10).
+- **Stimme** `stuart_bell`: Kyutai führt sie im Ordner `voice-zero` unter CC0. Die Aufnahmen stammen laut Kyutai von LibriVox (Q4). CC0 erlaubt jede Nutzung, auch geschäftlich, aber nur für die Rechte, die der Erklärende selbst hält. Rechte anderer Personen, zum Beispiel des Sprechers, klärt CC0 nicht (Q10).
 
 **Die drei Pflichten:**
 
@@ -22,7 +22,7 @@ Die Quellen Q1 bis Q13 stehen am Ende, mit Abrufdatum und einem kurzen Zitat. �
 2. Kyutai nennen (Doku, Elterninformation). Nach dem Lizenztext nötig, sobald die Gewichte (oder die damit gerechneten Stimm-Vektoren, Q3) auf Geräte oder zu Kunden gehen. Beim reinen Server-Betrieb wahrscheinlich nicht, aber es kostet wenig.
 3. Die Bedingungen auf Hugging Face akzeptieren. Das ist Sache des Betreibers (Kontoinhaber).
 
-**Das Restrisiko:** Die Kette hinter dem CC0-Etikett (Sprecher bei LibriVox, dann Voice-Zero, dann Kyutai) konnte ich nicht bis zum Ursprung lesen. Die Seite von Voice-Zero war für mich gesperrt. Keine gelesene Quelle sagt, dass der Sprecher einer KI-Stimme zugestimmt hat. Die Stimme ist nur eine Einstellung. Sie lässt sich tauschen (Abschnitt „Alternativen im Katalog“).
+**Das Restrisiko (R1, offen):** Die Kette hinter dem CC0-Etikett (Sprecher bei LibriVox, dann Voice-Zero, dann Kyutai) konnte ich auch am 26.11.2026 nicht bis zum Ursprung lesen. Die Hauptseite von Voice-Zero und die Seiten von Kyutai habe ich gelesen. Wer der Sprecher ist und welche Aufnahme es war, steht laut Voice-Zero nur in einer Unterseite, die ich nicht lesen konnte. Keine gelesene Quelle sagt, dass der Sprecher einer KI-Stimme zugestimmt hat. Die Stimme ist nur eine Einstellung. Sie lässt sich tauschen (Abschnitt „Alternativen im Katalog“). Einzelheiten: Abschnitt „Herkunft von `stuart_bell`“.
 
 **Nicht verwenden:** die Katalogstimmen `cosette` und `jean` (nicht-kommerzielle Lizenz) sowie `juergen`, `giovanni`, `lola` und `rafael` (Lizenz nicht angegeben).
 
@@ -53,7 +53,7 @@ Die Quellen Q1 bis Q13 stehen am Ende, mit Abrufdatum und einem kurzen Zitat. �
 - CC BY 4.0 lizenziert Persönlichkeitsrechte nicht (Q11, Abschnitt 2(b)(1)). Einschätzung: Rechte von Menschen an ihrer Stimme gibt diese Lizenz also nicht frei.
 - Das Repository ist „gated“: Die Karte verlangt, die Bedingungen zu akzeptieren, bevor man Dateien erhält. Die Bedingung ist die Verbotsliste (Q1).
 - Die Verbotsliste (Q1, gleicher Wortlaut im README des Pakets, Q3): Die Nutzung muss die Gesetze einhalten. Sie darf nichts Rechtswidriges, Schädliches, Täuschendes, Betrügerisches oder Unbefugtes bewirken oder erleichtern. Verboten ist unter anderem, Stimmen ohne ausdrückliche und rechtmäßige Einwilligung nachzuahmen oder zu klonen. Verboten sind auch Falschmeldungen und Täuschung, zum Beispiel Erzeugtes als echte Aufnahme echter Menschen auszugeben. Verboten sind rechtswidrige, beleidigende, belästigende, diskriminierende, hasserfüllte und private Rechte verletzende Inhalte. Kyutai schließt die Haftung für Verstöße aus.
-- Einschätzung: Kunibert erzeugt Geschichten aus Claude-Text. Er ahmt keine echten Menschen nach. Die Verbotsliste ist erfüllt, solange keine Aufnahme einer echten Person ohne Einwilligung als Stimme dient und die Stimme als KI-Stimme kenntlich ist (Punkt H3).
+- Einschätzung: Kunibert erzeugt Geschichten aus Claude-Text. Er klont selbst keine Stimme: `stuart_bell` liefert Kyutai als fertige Stimme aus. Ob für die Aufnahme dahinter eine Einwilligung des Sprechers vorliegt, ist nicht belegt (R1, Abschnitt „Herkunft von `stuart_bell`“). Ob die Verbotsliste damit eingehalten ist, ist offen. Dass die Stimme als KI-Stimme kenntlich sein muss, klärt Punkt H3.
 
 ### Stimme `stuart_bell`
 
@@ -69,16 +69,67 @@ Was die Quellen sagen:
 Was die gelesenen Quellen **nicht** sagen:
 
 - ob der Sprecher selbst CC0 erklärt hat oder nur die Gemeinfreiheit von LibriVox gilt;
-- ob der Sprecher einer KI-Stimme zugestimmt hat. Q8 nennt KI-Training als bekannte Nutzung, aber weder Stimmklonen noch Sprachsynthese. Q9 sagt dazu nichts;
+- ob der Sprecher einer KI-Stimme zugestimmt hat. Q8 nennt KI-Training als bekannte Nutzung, aber weder Stimmklonen noch Sprachsynthese. Q9 sagt dazu nichts. Auch die Quellen vom 26.11.2026 (Q14 bis Q21) sagen es nicht;
 - ob der Sprecher seine Freigabe zurücknehmen kann. LibriVox warnt Leser eher, dass sie die Kontrolle über ihre Aufnahmen abgeben (Q8);
 - ob die Freigabe der Aufnahmen auch nach deutschem Recht wirkt;
-- wer der Sprecher ist, welches Buch er las und wie Voice-Zero die Aufnahme ausgewählt hat. Die Seite von Voice-Zero konnte ich nicht lesen.
+- wer der Sprecher ist, welches Buch er las und wie Voice-Zero die Aufnahme ausgewählt hat. Die Hauptseite von Voice-Zero habe ich am 26.11.2026 gelesen (Q17). Die Angabe je Stimme steht laut Q17 in der README eines Unterordners. Diese Seite konnte ich nicht lesen.
 
 Einschätzung:
 
 - Das Lizenz-Etikett ist eindeutig (CC0). Kyutai liefert die Stimme selbst als eingebaute Stimme aus.
-- Die Kette dahinter ist dünn belegt. Für Tests und Vorführungen mit Erwachsenen reicht sie nach meiner Einschätzung. Für den Verkauf bleibt ein Restrisiko: Rechte des Sprechers an seiner Stimme. Es ist wahrscheinlich klein, denn er liest als Laie, das deutsche Modell klingt anders, und Kunibert nennt keinen Namen.
+- Die Kette dahinter ist dünn belegt. Für Tests und Vorführungen mit Erwachsenen reicht sie nach meiner Einschätzung. Für den Verkauf bleibt ein Restrisiko: Rechte des Sprechers an seiner Stimme (R1). Wie groß es ist, kann ich nicht sagen. Dafür fehlt jeder Beleg zur Einwilligung des Sprechers. Die Bewertung steht im Abschnitt „Herkunft von `stuart_bell`“ (neu gefasst am 26.11.2026).
 - Trifft das Risiko ein, wäre die mögliche Folge eine Unterlassungsforderung. Das Gegenmittel ist, die Stimme zu tauschen. Dafür sollten Alternativen vorab gehört sein.
+
+### Herkunft von `stuart_bell` (Stand 26.11.2026)
+
+Punkt N1122-1825-c, Teil 1 von 2. Ich bin der Kette von Kyutai bis zu Voice-Zero gefolgt. Jede Adresse kam aus der Websuche. Quellen: Q4 und Q14 bis Q21, abgerufen am 26.11.2026.
+
+Die Kette, so weit sie belegt ist:
+
+1. Die Datei `voice-zero/stuart_bell.wav` liegt im Stimmenkatalog von Kyutai. Der Ordner `voice-zero` enthält vier Dateien, aber keine README und keine Lizenzdatei (Q14). Die Seite der Datei zeigt die Größe (746 kB), die Prüfsumme (SHA256) und den letzten Commit. Eine Quelle oder eine Lizenz zeigt sie nicht (Q16).
+2. Alle vier Dateien kamen mit einem einzigen Commit in den Katalog. Seine Nachricht nennt Voice-Zero als Quelle (Wortlaut in Q15). Die Commit-Seite nennt den 9. März, aber kein Jahr. Die Seiten des Ordners und der Datei geben das Alter mit etwa 9 Monaten an (Q14, Q16). Das passt zu März 2026 (Einschätzung).
+3. Im selben Commit hat Kyutai die README des Katalogs ergänzt. Sie beschreibt den Ordner als Auswahl von Stimmen von LibriVox und stellt ihn unter CC0. Kyutai übernimmt nur Stimmen aus der Standardauswahl von Pocket TTS. Für alle anderen verweist die README auf Voice-Zero (Q15, Q4). Sprecher, Buch und Einwilligung nennt sie nicht.
+4. Voice-Zero ist ein Sammelprojekt auf GitHub. Es beschreibt sich als Sammlung von Stimmproben für Zero-Shot-Sprachausgabe und nennt Chatterbox und Pocket TTS als Programme dafür (Q17). Einschätzung: Zero-Shot heißt hier, dass das Programm eine Stimme nach einer kurzen Probe nachbildet. Das ist das Nachbilden, das die Verbotsliste von Kyutai ohne Einwilligung untersagt (Q1).
+5. Der Ordner `voices` von Voice-Zero enthält laut Q17 Proben von LibriVox.org und Archive.org. Sie sind rauschgemindert und auf etwa 7 bis 12 Sekunden gekürzt. Die README beschreibt die Aufbereitung in zehn Schritten. Im Abschnitt zur Lizenz nennt sie auch freesound.org als Quelle. Der Name `stuart_bell` steht auf der Hauptseite nicht. Ob die Datei zu `voices` gehört, sagt sie nicht.
+6. Zur Lizenz sagt Q17 zweierlei. Erstens: Die Proben stammen überwiegend aus gemeinfreien Werken und aus Werken unter Creative-Commons-Lizenz. Zweitens: Alle Dateien stehen unter CC0, wenn nichts anderes vermerkt ist. Beides passt nicht ganz zusammen. Ob die Aufnahme zu `stuart_bell` gemeinfrei war oder unter einer anderen Creative-Commons-Lizenz stand, sagt die Hauptseite nicht. Wer Stimmen vorschlägt, soll nur gemeinfreie vorschlagen (Q17).
+7. Sprecher und Link zum Original sollen laut Q17 in der README des jeweiligen Unterordners stehen. Diese README habe ich nicht gelesen. Vier Suchen mit verschiedenen Wörtern lieferten ihre Adresse nicht (siehe „Nicht geprüft“).
+8. Eine Begründung, warum CC0 für die Stimme des Sprechers gilt, steht auf der Hauptseite nicht. Auch zu Einwilligung, Rücknahme, Löschung und Beschwerden steht dort nichts. Der Kontakt ist ein Issue auf GitHub (Q17). Bei Kyutai sind Diskussionen im Katalog abgeschaltet (Q4).
+
+Was LibriVox und sein Umfeld sagen (Q8 und Q9 wie oben, neu Q18 bis Q21):
+
+- Q18: Ein Mitglied des Hugging-Face-Forums fragte im Juli 2023 nach der Regel für LibriVox-Aufnahmen. Es äußerte Bedenken, weil jemandes Stimme ohne Einwilligung genutzt werde. Antworten stehen nicht im gelesenen Text. Das Forum ist keine Quelle von LibriVox.
+- Q19: Ein Thread im LibriVox-Forum. Ein Unternehmen sucht Sprecher für Aufnahmen, mit denen es ein Sprachsynthese-Modell trainieren will. Der Thread betrifft dieses eine Projekt. Eine Regel von LibriVox zu KI-Training, zur Zustimmung der Leser oder zur Rücknahme steht dort nicht. Ein zitierter Beitrag darin ist auf den 10.5.2024 datiert. Das Datum des Threads nennt der Text nicht.
+- Q20: Ein Thread im LibriVox-Forum. Er sagt: Man soll keine Sprachsynthese-Dateien (TTS) bei LibriVox einreichen. Zu KI-Training, Stimmklonen oder Zustimmung der Leser sagt er nichts. Ein Datum steht nicht im Text. Nach dem Inhalt ist er von etwa 2020/21 (Einschätzung).
+- Q21: Ein Paper über einen Datensatz aus LibriVox-Hörbüchern. Es nennt die Sprecher Freiwillige. Eine Lizenz oder Zustimmung der Sprecher steht im gelesenen Teil nicht. Ein Bezug zu Voice-Zero ist nicht erkennbar.
+
+Was neu ist (gegenüber dem 22.11.):
+
+- Der Weg der Datei in den Katalog ist belegt: Kyutai nennt Voice-Zero als Quelle und hat sie am 9. März zusammen mit drei weiteren eingestellt (Q15).
+- Voice-Zero hat CC0 als Grundlizenz und bittet darum, nur gemeinfreie Stimmen vorzuschlagen. Die Proben wurden bearbeitet (Q17).
+- Die Hauptseite von Voice-Zero und die Karte von Kyutai sagen nichts zu Einwilligung, Rücknahme oder Löschung (Q4, Q17).
+
+Was weiter fehlt (offen):
+
+- Wer der Sprecher ist und welche Aufnahme es war. Das steht laut Q17 in der README eines Unterordners. Nicht gelesen.
+- Ob für diese Aufnahme CC0 gilt oder eine andere Lizenz. Das Etikett CC0 kommt von Kyutai und Voice-Zero. Die Aufnahme selbst habe ich nicht gesehen.
+- Ob der Sprecher einer KI-Stimme zugestimmt hat und ob er die Freigabe zurücknehmen kann. Keine gelesene Quelle sagt etwas dazu (Q4, Q14 bis Q21).
+- Was die Aufbereitungsschritte mit der Stimme tun, zum Beispiel der Schritt mit dem Werkzeug Kanade. Q17 nennt sie. Ich habe es nicht geprüft.
+
+Einschätzung zu R1 (neu bewertet am 26.11.2026, 15:21 Uhr, vorläufig):
+
+- R1 ist **offen**. Gestrichen ist meine Annahme vom 22.11., das Risiko sei „wahrscheinlich klein“. Sie stützte sich auf nichts Gelesenes. Ich kann das Risiko weder als klein noch als groß einstufen.
+- Für die Aufnahme als Datei sprechen drei Dinge: LibriVox gibt Aufnahmen gemeinfrei (Q8, Q9). Voice-Zero bittet darum, nur gemeinfreie Stimmen vorzuschlagen (Q17). Kyutai führt den Ordner unter CC0 (Q4). Danach darf die Aufnahme kopiert und bearbeitet werden. Das gilt nur, wenn die Angaben zur einzelnen Aufnahme stimmen. Die habe ich nicht gesehen.
+- Das Recht des Sprechers an seiner Stimme ist damit nicht geklärt. CC0 klärt keine Rechte anderer (Q10). Voice-Zero sammelt die Proben für Programme, die Stimmen nachbilden (Q17). Keine gelesene Quelle sagt, dass die Leser davon wussten oder zugestimmt haben. Ein Forenmitglied hat 2023 genau diese Sorge geäußert (Q18).
+- Die Verbotsliste von Kyutai (Q1) untersagt, Stimmen ohne ausdrückliche und rechtmäßige Einwilligung nachzuahmen oder zu klonen. Kunibert klont nicht selbst: Kyutai liefert die Stimme fertig aus. Ob für die Aufnahme dahinter eine Einwilligung vorliegt, ist nicht belegt. Damit ist auch offen, ob die Verbotsliste hier eingehalten ist.
+- Für Tests und Vorführungen mit Erwachsenen bleibt es bei der Einschätzung oben. Für den Verkauf ist R1 nicht ausgeräumt.
+- Die Spender-Stimmen `javert` und `marius` sind klarer belegt: Die Spender stimmen nach den Bedingungen zu, dass ihre Stimme für Sprache genutzt wird, die sie nicht selbst gesprochen haben (Q6). Offen sind dort die Rücknahme, die Policy und der Hörtest (siehe „Alternativen im Katalog“).
+
+Möglichkeiten für den Betreiber (Entscheidung offen, nichts davon ist beschlossen):
+
+- (a) `stuart_bell` bleibt vorerst für Tests mit Erwachsenen. Vor einem Verkauf wird Teil 2 erledigt.
+- (b) Teil 2 selbst im Browser lesen (Anleitung unter „Nächste Schritte“).
+- (c) Hörtest mit `javert` und `marius`. Taugen sie, ist der Wechsel eine Einstellung (`PICASTAI_POCKET_TTS_VOICE`).
+- (d) Den Eigentümer des Voice-Zero-Repositories über ein Issue auf GitHub fragen, woher die Aufnahme stammt. Das wäre eine Nachricht an Dritte. Dafür braucht es das Okay des Betreibers im Chat. Claude sendet nichts.
 
 ### Alternativen im Katalog
 
@@ -86,7 +137,7 @@ Lizenz je Ordner laut Karte des Stimmenkatalogs (Q4). Die Zuordnung der Pocket-N
 
 | Ordner | Lizenz laut Karte | Pocket-Stimmen | Für ein verkauftes Produkt |
 | --- | --- | --- | --- |
-| `voice-zero` | CC0 | `stuart_bell` und drei weitere | ja, mit dem Restrisiko oben |
+| `voice-zero` | CC0 | `stuart_bell` und drei weitere | für Tests mit Erwachsenen ja; für den Verkauf ist R1 offen (siehe „Herkunft von `stuart_bell`“) |
 | `voice-donations` | CC0 | `javert`, `marius` | ja, mit Vorbehalt (Policy ungelesen, Löschung möglich); Einwilligung der Spender klarer belegt (siehe unten) |
 | `vctk` | CC BY 4.0 | `anna`, `azelma`, `charles`, `eponine`, `eve`, `fantine`, `george`, `jane`, `mary`, `michael`, `paul`, `vera` | ja, mit Namensnennung der Quelle |
 | `alba-mackenna` | CC BY 4.0 | `alba` | ja, mit Namensnennung |
@@ -120,7 +171,7 @@ Eine Suche nach der Lizenz von Pocket TTS lieferte die Kennung arXiv 2603.25551.
 3. **Hugging-Face-Bedingungen akzeptiert haben.** Wer das Konto hat, hat zugestimmt. Wer, wann und mit welchem Konto, steht nirgends im Repo. Das weiß nur der Betreiber. Kein Token ins Repo oder in den Chat.
 4. **Nur freie Stimmen wählen.** Nicht `cosette` und `jean` (nicht-kommerziell), nicht `juergen`, `giovanni`, `lola` und `rafael` (Lizenz nicht angegeben). Nur Stimmen aus der Tabelle mit „ja“.
 5. **KI-Stimme kenntlich machen** (KI-Verordnung, Art. 50). Das klärt Punkt H3.
-6. **Nachweis sichern.** Version `pocket-tts@4.0.1`, Stand der Karten (22.11.2026), Dateiname der Stimme (`voice-zero/stuart_bell.wav`). Dieses Dokument ist der Nachweis.
+6. **Nachweis sichern.** Version `pocket-tts@4.0.1`, Stand der Karten (22.11.2026, die Karte des Stimmenkatalogs noch einmal am 26.11.2026), Dateiname der Stimme (`voice-zero/stuart_bell.wav`), Commit `323332d` und SHA256 der Datei laut Seite von Hugging Face (`00c7baeb2fb7a8c1c6198e045b5e853a7ccc04002a51a09b4be3dd7c96994f73`, Q16; ich habe die Datei nicht geladen und die Summe nicht selbst gerechnet). Dieses Dokument ist der Nachweis.
 
 ### Textvorschlag für die Nennung (Entwurf, nichts veröffentlichen)
 
@@ -132,7 +183,7 @@ Den Namen des Sprechers nennen wir dabei nicht. CC0 und LibriVox verlangen keine
 
 Diese Punkte gehören in die Liste der Restrisiken:
 
-- **R1:** Einwilligung des Sprechers von `stuart_bell` zur KI-Stimme nicht belegt (siehe oben).
+- **R1 (offen, Stand 26.11.2026):** Einwilligung des Sprechers von `stuart_bell` zur KI-Stimme nicht belegt. Auch die Herkunft der einzelnen Aufnahme ist nicht bis zur Quelle gelesen. Die Verbotsliste von Kyutai untersagt, Stimmen ohne Einwilligung nachzuahmen oder zu klonen (Q1). Ob für diese Aufnahme eine Einwilligung vorliegt, ist offen (Abschnitt „Herkunft von `stuart_bell`“).
 - **R2:** Eine falsch gesetzte Stimme (`cosette`, `jean`) wäre ein Lizenzverstoß. Der Server prüft nur die Form.
 - **R3:** Die Zustimmung zur Verbotsliste ist an ein Konto gebunden und nirgends festgehalten.
 - **R4:** Die Lizenzen der Trainingsdaten sind ungeprüft.
@@ -142,7 +193,7 @@ Diese Punkte gehören in die Liste der Restrisiken:
 
 - **N1122-1825-a** (Bauen, Prio 2): Lizenz-Hinweise für Pocket TTS in die Doku, mit dem Textvorschlag oben. Nur Doku.
 - **N1122-1825-b** (Bauen, Prio 3, ändert, was Kinder hören): Der Server warnt bei nicht freier Stimme und schaltet die Sprachausgabe im Betrieb ab. Heute heißt „aus“: eine leere Audiodatei, das Kind hört nichts (`server.ts`, `server-api/voice.ts`). Darum ist es ein eigener PR mit „(ändert, was Kinder hören)“. Das schließt R2 und R5.
-- **N1122-1825-c** (Recherche, Prio 2): Herkunft von `stuart_bell` bis zum Ursprung (Voice-Zero, LibriVox). Das schließt die Lücke bei R1.
+- **N1122-1825-c** (Recherche, Prio 2): Herkunft von `stuart_bell` bis zum Ursprung (Voice-Zero, LibriVox). Teil 1 ist am 26.11.2026 erledigt (Abschnitt „Herkunft von `stuart_bell`“). Teil 2 fehlt noch: die README im Unterordner von Voice-Zero. Erst er kann die Lücke bei R1 schließen.
 - **N1122-1825-d** (Recherche, Prio 3): Lizenzen der acht Trainings-Datensätze und Trainingsdaten der deutschen Gewichte. Das schließt R4.
 - **N1122-1825-e** (Recherche, Prio 2): Lizenzen der übrigen Sprachbausteine (Spracherkennung, Rückfall-Stimme Piper, Speaches). H5 deckt sie nicht ab.
 
@@ -152,7 +203,11 @@ Das README von Pocket TTS nennt für andere Sprachen größere Varianten mit 24 
 
 ## Nicht geprüft
 
-- Das Repository **Voice-Zero** auf GitHub. Der Abruf war gesperrt (die Genehmigung blieb unbeantwortet). Damit fehlen Sprecher, Buch, Auswahl und die Begründung für CC0.
+- Das Repository **Voice-Zero** auf GitHub. Am 22.11.2026 war der Abruf gesperrt. Am 26.11.2026 habe ich die Hauptseite gelesen (Q17). Nicht gelesen: die README-Dateien der Unterordner `voices` und `voices-emotion` (dort stehen laut Q17 Sprecher und Links zu den Originalen), `LICENSE.md`, die Commit-Liste und die Audiodateien. Damit fehlen Sprecher, Buch und die Aufnahme zu `stuart_bell`. Eine eigene Begründung für CC0 gibt die Hauptseite nicht.
+- Die Seite der Aufnahme bei LibriVox. Ihre Adresse ist unbekannt, weil Sprecher und Buch nicht gelesen sind. Ich habe nur nach Seiten des Katalogs und von Voice-Zero gesucht, nicht nach der Person hinter der Stimme (Regel des Punkts N1122-1825-c: nichts über Privatpersonen suchen).
+- Der Blogbeitrag von Kyutai zu Pocket TTS (auf der Karte des Stimmenkatalogs verlinkt, Q4). Seine Adresse kam nicht aus einer Suche.
+- Eine Kopie (Fork) von Voice-Zero unter anderem Namen habe ich auch gelesen. Sie ist inhaltlich gleich. Ihre Adresse führe ich nicht auf, weil sie ein privates Konto nennt.
+- Q18 bis Q21 nur in Teilen: Q18 ohne die Antworten im Thread, Q19 und Q20 je ein einzelner Thread, Q21 nur bis zur Referenzliste wörtlich (siehe Quellentabelle).
 - Der **technische Bericht** von Pocket TTS (leere Seite), `training/README.md` und die LICENSE-Seite auf GitHub (gesperrt). Den Lizenztext habe ich stattdessen aus dem PyPI-Paket 4.0.1 gelesen. Er gilt für diese Version.
 - Die GitHub-Seite von Pocket TTS nur zu etwa drei Vierteln wörtlich. Der Rest kam als Zusammenfassung.
 - Die **Lizenzen der Datensätze** hinter dem Training (AMI, EARNINGS22, GigaSpeech, SPGISpeech, TED-LIUM, VoxPopuli, LibriHeavy, Emilia).
@@ -161,28 +216,28 @@ Das README von Pocket TTS nennt für andere Sprachen größere Varianten mit 24 
 - Ob der Download der Gewichte auf dem Server ein Hugging-Face-Konto braucht. Die Karte sagt: Zustimmung nötig.
 - Recht: Stimm- und Persönlichkeitsrechte nach deutschem und EU-Recht, Wirkung von CC0 und „public domain“ in Deutschland. Hier steht keine Quelle dazu.
 - Nicht Teil von H5: Piper-Stimme `thorsten`, Whisper-Modell, Speaches und die Google-Stimme (Punkt N1122-1825-e).
-- Die Quellen habe ich über den Abruf-Dienst dieser Sitzung gelesen (Unteragenten mit Claude Sonnet). Ich gebe ihren Wortlaut gekürzt wieder.
+- Die Quellen habe ich über den Abruf-Dienst dieser Sitzung gelesen (Unteragenten mit Claude Sonnet). Ich gebe ihren Wortlaut gekürzt wieder. Auch Q14 bis Q21 (26.11.2026) kenne ich nur aus den Berichten solcher Unteragenten, nicht aus den Rohseiten.
 
 ## Nächste Schritte
 
 | Wer | Was | Wo |
 | --- | --- | --- |
 | Betreiber | Prüfen, ob sein Hugging-Face-Konto die Bedingungen von `kyutai/pocket-tts` akzeptiert hat, und ob der Server-Download dieses Konto braucht. Datum notieren. Kein Token in Repo oder Chat. | im Browser auf huggingface.co |
-| Betreiber | Optional: das Voice-Zero-Repository lesen (Link auf der Karte des Stimmenkatalogs, Q4) und Claude sagen, woher `stuart_bell` kommt und wie CC0 begründet wird. | im Browser |
+| Betreiber | Optional, wenn die Herkunft geklärt werden soll: im Voice-Zero-Repository (Adresse in Q17) den Ordner `voices` öffnen und dort die README.md lesen. Die Zeile zu `stuart_bell` suchen. Claude im Chat sagen, welcher Sprecher und welche Aufnahme dort stehen. Claude liest dann die Seite der Aufnahme bei LibriVox. | im Browser auf github.com |
 | Betreiber | Entscheiden: bleibt `stuart_bell` für den Verkauf, oder Hörtest mit `javert` und `marius`? | im Chat |
-| Claude | Punkte N1122-1825-a bis -e abarbeiten. | Repo, `docs/autopilot/backlog.md` |
+| Claude | Punkte N1122-1825-a bis -e abarbeiten. Bei -c fehlt nur Teil 2 (README im Unterordner von Voice-Zero). | Repo, `docs/autopilot/backlog.md` |
 | Claude | Ergebnis und Risiken R1 bis R5 in `claude/aufgaben.md` und ins Doc „Datenschutz-Folgenabschätzung“ vorschlagen (der Lauf „Planen & Bericht“). | Claude-Projekt |
 
 ## Quellen
 
-Alle Seiten abgerufen am 22.11.2026. Ein Zitat je Quelle, höchstens 15 Wörter.
+Q1 bis Q13 abgerufen am 22.11.2026, Q14 bis Q21 am 26.11.2026 (Q4 zusätzlich am 26.11.2026). Ein Zitat je Quelle, höchstens 15 Wörter.
 
 | Nr. | Quelle | Gelesen | Zitat |
 | --- | --- | --- | --- |
 | Q1 | Modellkarte Pocket TTS, https://huggingface.co/kyutai/pocket-tts | ganz | „voice impersonation or cloning without explicit and lawful consent“ (Abschnitt „Prohibited use“) |
 | Q2 | GitHub-Seite, https://github.com/kyutai-labs/pocket-tts | zu etwa drei Vierteln wörtlich | – (zeigt „MIT license“) |
 | Q3 | Paket `pocket-tts` 4.0.1, Wheel von PyPI (https://pypi.org/project/pocket-tts/) mit `pip download pocket-tts==4.0.1 --no-deps` geladen, nichts ausgeführt | Lizenzdatei ganz; README in den Teilen zu Sprachen, Stimmen, Modellen und Verbotsliste | „The pre-made voices listed above are embeddings precomputed with our released weights“ |
-| Q4 | Karte des Stimmenkatalogs, https://huggingface.co/kyutai/tts-voices | nur die Karte (Dateiliste gesperrt) | „A couple of voices from Voice-Zero, a curated selection of voices from LibriVox.“ |
+| Q4 | Karte des Stimmenkatalogs, https://huggingface.co/kyutai/tts-voices | 22.11.2026: nur die Karte (Dateiliste gesperrt). 26.11.2026: die Karte ganz (11 397 Zeichen, Wortlaut) | „A couple of voices from Voice-Zero, a curated selection of voices from LibriVox.“ |
 | Q5 | Kyutai, Seite zu TTS, https://kyutai.org/tts/ | ganz | – (Eintrag „Stuart Bell (m, reading)“) |
 | Q6 | Bedingungen „Unmute Voice Donation Project“, Fassung vom 26.6.2025, https://kyutai.org/legal/Terms%20of%20Use%20-%20Unmute%20Voice%20Donation%20Project%20v1.pdf | ganz | „generate speech or content that you did not personally create or authorize“ |
 | Q7 | Modellkarte „ohne Stimmklonen“, https://huggingface.co/kyutai/pocket-tts-without-voice-cloning | ganz | – (Kopfzeile `cc-by-4.0`) |
@@ -192,3 +247,11 @@ Alle Seiten abgerufen am 22.11.2026. Ein Zitat je Quelle, höchstens 15 Wörter.
 | Q11 | CC BY 4.0, Rechtstext, https://creativecommons.org/licenses/by/4.0/legalcode | ganz | „nor are publicity, privacy, and/or other similar personality rights“ (Abschnitt 2(b)(1)) |
 | Q12 | Paper „Continuous Audio Language Models“, arXiv 2509.06926, Fassung 3 vom 13.1.2026, https://arxiv.org/abs/2509.06926 (HTML: https://arxiv.org/html/2509.06926v3) | ganz | „a mix of public datasets totalizing to 88k hours of speech“ |
 | Q13 | Paper „Voxtral TTS“ (Mistral), arXiv 2603.25551, Fassung 2 vom 6.4.2026, https://arxiv.org/abs/2603.25551 | zu etwa vier Fünfteln wörtlich | „We release the model weights under a CC BY-NC license.“ |
+| Q14 | Stimmenkatalog, Ordner `voice-zero`, https://huggingface.co/kyutai/tts-voices/tree/main/voice-zero | Wortlaut (5 177 Zeichen) | – (vier WAV-Dateien, 2,97 MB, keine README, keine Lizenzdatei) |
+| Q15 | Stimmenkatalog, Commit `323332d`, https://huggingface.co/kyutai/tts-voices/commit/323332d33f997de8394f24a193e1a76df720e01a | Wortlaut (20 201 Zeichen); nur die Änderungen dieses Commits, nicht die heutige README | „Add a few voices from Voice-Zero“ (Commit-Nachricht) |
+| Q16 | Stimmenkatalog, Datei `voice-zero/stuart_bell.wav`, https://huggingface.co/kyutai/tts-voices/blob/main/voice-zero/stuart_bell.wav | Wortlaut (4 725 Zeichen); die Datei selbst nicht geladen | – (zeigt Größe, SHA256 und letzten Commit; keine Quelle, keine Lizenz) |
+| Q17 | Voice-Zero, GitHub-Seite (Hauptverzeichnis), https://github.com/OwenTyme/voice-zero | Wortlaut (21 485 Zeichen); Unterordner nicht | „Unless otherwise noted, all files in this repository are under the CC0 license.“ (Abschnitt „License“) |
+| Q18 | Hugging-Face-Forum, Beitrag „Policy for LibriVox audio data“ vom 13.7.2023, https://discuss.huggingface.co/t/policy-for-librivox-audio-data/46707 | Wortlaut des ersten Beitrags; Antworten nicht enthalten | „I am concerned as this involves using someone's voice without expressed consent.“ |
+| Q19 | LibriVox-Forum, Thread eines Unternehmens, das Sprecher für KI-Training sucht, https://forum.librivox.org/viewtopic.php?p=2328172 | weitgehend Wortlaut (6 824 Zeichen); Forum, keine Richtlinie | – (kein Satz von LibriVox zu KI-Training, Zustimmung oder Rücknahme) |
+| Q20 | LibriVox-Forum, Thread zu TTS-Dateien, https://forum.librivox.org/viewtopic.php?p=1940025 | Wortlaut (3 231 Zeichen) | „LibriVox is not a platform for creating and sharing TTS audiobooks“ |
+| Q21 | Paper „LibriQuote“ (Datensatz aus LibriVox-Hörbüchern), arXiv 2509.04072, Fassung 1, https://arxiv.org/pdf/2509.04072v1 | 39 956 von 71 364 Zeichen wörtlich (bis zur Referenzliste); Anhang nur als Zusammenfassung | „read by volunteered speakers“ |
