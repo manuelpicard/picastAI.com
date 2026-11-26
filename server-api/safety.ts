@@ -1024,7 +1024,7 @@ const PATTERNS_WORD_ORDER: RegExp[] = [
   new RegExp(`${L}(kein|keinen|keine) (bock|lust|kraft) mehr (zu leben|auf (mein|das) leben|aufs leben|zum leben|am leben zu sein)${R}`),
   new RegExp(`${L}(denke|denk|dachte) (${FILL2} ){0,3}((daran|dran|darüber|drüber) (${FILL2} ){0,2}(zu sterben|mich umzubringen|tot zu sein|nicht mehr zu leben|mich zu töten|mich aufzuhängen)|(ans|an das|übers|über das) sterben)${R}`),
   new RegExp(`${L}(damit|sodass|so dass) ich (${FILL2} ){0,2}(sterbe|tot bin|tot umfalle|nicht mehr lebe|nie mehr aufwache|nie wieder aufwache|nicht mehr aufwache|nimmer aufwache)${R}`),
-  new RegExp(`${L}wenn ich (${FILL2} ){0,2}(tot|nicht mehr (da|hier|auf der welt)|nie geboren) (wäre|wär|bin|sein würde) (${WORD} ){0,2}(wäre|wär|wären|ist|sind|würde|würden|hätten|hätte) (${WORD} ){0,3}(besser|leichter|schöner|einfacher|egal|froh|glücklich|ruhe)${R}`),
+  new RegExp(`${L}wenn ich (${FILL2} ){0,2}(tot|nicht mehr (da|hier|auf der welt)|nie geboren) (wäre|wär|bin|sein würde) (${WORD} ){0,2}((wäre|wär|wären|ist|sind|würde|würden|hätten|hätte) )?(${WORD} ){0,3}(besser|leichter|schöner|einfacher|egal|froh|glücklich|ruhe)${R}`),
   new RegExp(`${L}((besser|schöner|leichter|einfacher) (wäre|wär|ist) (es|das)|es (wäre|wär|ist) (${FILL2} )?(besser|schöner|leichter|einfacher)|es (${FILL2} )?(besser|schöner|leichter|einfacher) (wäre|wär|ist))( für (alle|alle anderen|${WORD}))? (wenn|falls) ich (${FILL2} ){0,2}(nicht|nich) mehr (leben würde|leben täte|lebe|leben)${R}`),
   new RegExp(`${L}((will|möchte|möcht|wollte|wollt) ich|ich (will|möchte|möcht|wollte|wollt)) (${FILL2} ){0,2}für immer (weg|einschlafen|schlafen)${R}`),
   new RegExp(`${L}ich (bring|bringe) mich (${FILL} ){1,2}(selbst |selber )?um${R}${UM_NOT_TIME}${NOT_BEFORE_LAUGH}`),
@@ -1154,10 +1154,13 @@ export function screenReadings(transcript: string): string[] {
   // „€“ zusätzlich als Satzzeichen lesen, wie vor PR #115: Als Wort trennt es Wortketten („Ich möchte € sterben“).
   // Beide Lesarten zählen, damit weder „zehn € gegeben“ noch „€ sterben“ still wird (Prüfung von PR #115 und #122).
   if (transcript.includes('€')) readings.push(normalize(transcript.replace(/€+/g, ' ')));
-  // Zusätzlich ohne „äh“, „ähm“ und Wortwiederholungen. Nur weitere Lesarten: Sie können Treffer hinzufügen, keinen wegnehmen.
+  // Zusätzlich ohne „äh“ und „ähm“ und dann auch ohne Wortwiederholungen (zwei Stufen, damit „äh, Feuer, Feuer“ seine
+  // Wiederholung behält). Nur weitere Lesarten: Sie können Treffer hinzufügen, keinen wegnehmen.
   for (const reading of [...readings]) {
-    const tidy = reading.replace(HESITATION, '').replace(REPEAT, '$1 ');
-    if (tidy.trim() && !readings.includes(tidy)) readings.push(tidy);
+    const calm = reading.replace(HESITATION, '');
+    for (const tidy of [calm, calm.replace(REPEAT, '$1 ')]) {
+      if (tidy.trim() && !readings.includes(tidy)) readings.push(tidy);
+    }
   }
   return readings;
 }
