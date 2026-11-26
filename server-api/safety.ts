@@ -717,7 +717,141 @@ const PATTERNS_REVIEW: RegExp[] = [
   new RegExp(`${L}(ich (habe|hab)|(habe|hab) ich) mich ((?!(nicht|nie)${R})${WORD} )?(selbst|selber) (${WORD} )?gebissen${R}`),
 ];
 
-const ALL_PATTERNS: RegExp[] = [...PATTERNS, ...PATTERNS_EXTRA, ...PATTERNS_2026_11, ...PATTERNS_2026_11_B, ...PATTERNS_2026_11_C, ...PATTERNS_2026_11_D, ...PATTERNS_REVIEW];
+// V15 Punkt N1122-2323-a, Teil 1 (26.11.2026): andere Wortstellung. Das Verb steht vor dem Subjekt, weil ein Satzglied
+// vorn steht („Manchmal will ich nicht mehr leben“, „Abends ritze ich mich“, „Wenn Papa trinkt, schlägt er mich“), das
+// Verb steht im Nebensatz am Ende („…, weil ich sterben will“, „…, dass ich es niemandem sagen darf“, „…, ob ich noch
+// leben will“), oder nach „und“ fehlt das Subjekt („Ich bin traurig und will sterben“). Bereiche: nicht mehr leben wollen,
+// sich selbst verletzen (mit Tabletten), Gewalt gegen das Kind, Geheimhaltung und Übergriff. Nur zusätzliche Schablonen;
+// keine ältere wird enger. Ausnahmen (Spiele, „aus Versehen“, Verneinung) gelten nur in diesen neuen Schablonen und wie bei
+// den älteren derselben Zeitform. Beispiele in beiden Listen von safety.test.ts und in docs/Sicherheitsweiche-Pruefung.md,
+// Abschnitt 14.
+const WANT = '(will|möchte|möcht|mag|wollte|mochte)';
+const LIFE_CORE =
+  '(sterben|tot sein|(gar |überhaupt )?nicht mehr leben|(gar |überhaupt )?nicht (mehr )?(weiterleben|weiter leben)|' +
+  'nicht mehr (da|hier|auf der welt|am leben) sein|(nie mehr|nie wieder|nicht mehr) aufwachen)';
+// Wie bei „ich wäre lieber tot“ (ältere Schablone): „nicht da“ auch ohne „mehr“
+const NOT_DEAD_WISH = '(tot|nie geboren|nicht (mehr )?(da|hier|auf der welt))';
+// Wie bei „ich wünschte, ich wäre tot“ (ältere Schablone): „nicht mehr da“, nicht „nicht hier, sondern am Strand“
+const WISH_CORE = '(tot|nie geboren|nicht mehr (da|hier|auf der welt))';
+// Satzglieder, nach denen „will ich nicht mehr“ am Satzende anschlägt, wie „ich will nicht mehr“.
+// Nicht nach einem Gegenstand („Den Brei will ich nicht mehr“).
+const OPENER =
+  '(gestern|heute|dann|irgendwie|da|manchmal|abends|morgens|nachts|immer|jetzt|wieder|oft|eigentlich|einfach|echt|ehrlich gesagt|langsam|bald)';
+const NEG_WORD = '(nie|nicht|niemals|kein|keine|keinen|keiner)';
+const POISON =
+  '(tabletten|tablette|medikamente|pillen|putzmittel|reiniger|spülmittel|waschmittel|chlor|gift|giftiges|rattengift|batterie|batterien|knopfbatterie|benzin|spiritus)';
+const SWALLOWED = '(genommen|getrunken|gegessen|geschluckt|verschluckt)';
+const HIT_PRESENT = '(schlägt|schlagen|haut|hauen|tritt|treten|würgt|würgen|verprügelt|verprügeln|verhaut|verhauen|misshandelt|misshandeln|boxt|ohrfeigt)';
+const HIT_PAST = '(gehauen|gehaut|gehaun|getreten|gewürgt|verhauen|verprügelt|geohrfeigt|eingesperrt|misshandelt|verdroschen|verkloppt|vermöbelt|geboxt)';
+// „geschlagen“ heißt auch „im Spiel besiegt“: dieselbe enge Ausnahme wie im Perfekt („…, dass er mich beim Memory geschlagen hat“)
+const NOT_GAME_WORD = `(?!((beim|im|bei|in) ${GAME}|knapp|haushoch|zu ${NUM}|noch nie|${NEG_WORD})${R})`;
+const NOT_ACCIDENT_WORD = `(?!(aus versehen|ausversehen|noch nie|${NEG_WORD})${R})`;
+// Wie bei „Papa hat mir wehgetan“ (ältere Schablone)
+const NOT_ACCIDENT_SENTENCE = `(?!.*${L}(aus versehen|ausversehen|beim spielen|beim spiel|im spiel|beim schach|beim rennen|beim wettrennen|beim fußball|beim sport)${R})`;
+const PASSIVE_PART = '(gehauen|verhauen|verprügelt|getreten|gewürgt|eingesperrt|angefasst|missbraucht|misshandelt|geohrfeigt)';
+const SLAP = '(ohrfeige|ohrfeigen|backpfeife|backpfeifen|watsche|watschen)';
+const SECRET_VERB = '(sagen|erzählen|verraten|weitersagen|weitererzählen|weiter sagen|weiter erzählen)';
+const TOUCH_PART = '(angefasst|an gefasst|begrapscht|begrabscht|befummelt|angegrapscht|angegrabscht|betatscht|angetatscht)';
+const TOUCH_PRESENT_FINAL = '(anfasst|an fasst|anfasste|angrapscht|angrabscht|begrapscht|begrabscht|befummelt|betatscht)';
+const INTIMATE =
+  `(zwischen die beine|in die hose|in die unterhose|unter (das|den|die|mein|meinen|meine) (${WORD} )?(t shirt|tshirt|shirt|hemd|pulli|rock|kleid|unterhose|hose)|` +
+  `(an|in) (den|die|das|mein|meinen|meine) (${KID_BODY}|mumu|puller|vulva|po|popo|brust|busen|unterhose|hose))`;
+const CLAUSE = '(dass|weil|wenn|ob|obwohl|als|da|nachdem|damit)';
+// Was man in Holz oder Seife ritzt („Ich habe mir ein Herz geritzt“)
+const SCRATCH_OBJECT = '(herz|herzen|namen|name|muster|bild|bilder|zeichen|buchstaben|initialen)';
+const SELF_HURT_VERB = '(verletze|verletz|schneide|schneid|ritze|ritz|schlage|schlag|haue|hau|kratze|kratz|verbrenne|verbrenn|beiße|beiß|beisse|beiss)';
+const NOT_TRIM = '(haare|nägel|fingernägel|fußnägel|pony|bart|brot|apfel|papier|nicht|nie)';
+
+const PATTERNS_WORD_ORDER: RegExp[] = [
+  // Nicht mehr leben wollen: Verb vor „ich“, Verb am Ende, „ob ich noch leben will“, „und will sterben“, Wünsche, Wert
+  new RegExp(`${L}${WANT} ich (${FILL} ){0,4}${LIFE_CORE}${R}`),
+  new RegExp(`${L}ich (${FILL} ){0,4}${LIFE_CORE} ${WANT}${R}`),
+  new RegExp(`${L}ich (wollte|mochte) (${FILL} ){0,4}(sterben|tot sein)${R}`),
+  // „Würde ich sterben, wenn …?“ ist eine Sachfrage: „würde“ nur mit Füllwort, wie bei „ich würde einfach sterben“
+  new RegExp(`${L}würde ich (${FILL} ){1,4}(sterben|tot sein|nicht mehr leben)${R}`),
+  new RegExp(`${L}(am liebsten|am besten|lieber) würde ich (${FILL} ){0,3}(sterben|tot sein|nicht mehr leben)${R}`),
+  new RegExp(`${L}ob ich (${FILL} ){0,3}(noch|überhaupt noch|überhaupt|weiter) (leben|weiterleben|weiter leben) (will|möchte|mag|wollte|soll|kann)${R}`),
+  new RegExp(`^(?=.*${L}ich${R}).*${L}(und|aber) (${FILL} ){0,2}${WANT} (${FILL} ){0,4}(sterben|tot sein|(nie mehr|nie wieder|nicht mehr) aufwachen)${R}`),
+  new RegExp(`${L}(wäre|wär) ich (${FILL} ){0,2}(lieber|besser|am liebsten) (${FILL} ){0,2}${NOT_DEAD_WISH}${R}`),
+  new RegExp(`${L}ich (${FILL} ){0,2}(lieber|besser|am liebsten) (${FILL} ){0,2}${NOT_DEAD_WISH} (wäre|wär|sein will|sein möchte)${R}`),
+  new RegExp(`${L}((wünschte|wünsche|wünsch) ich|ich (wünschte|wünsche|wünsch)) (mir )?(${FILL} ){0,2}(ich wäre|ich wär|wäre ich|wär ich|dass ich) (${FILL} ){0,2}${WISH_CORE}${R}`),
+  new RegExp(`${L}(wünschte|wünsche|wünsch) (ich )?(mir )?(${FILL} ){0,2}(dass )?es (würde )?mich (gar )?(nicht|nie) (mehr )?(gäbe|gibt|geben würde|gegeben hätte)${R}`),
+  new RegExp(`${L}ich (will|wollte) (${FILL} ){1,3}nicht mehr(?= *$)`),
+  new RegExp(`${L}${OPENER} (${FILL} ){0,2}(will|wollte) ich (${FILL} ){0,3}nicht mehr(?= *$)`),
+  new RegExp(`${L}ich mich (${FILL} ){0,2}(selbst |selber )?(umbringe|umbring|töte|tot mache|totmache)${R}`),
+  new RegExp(`${L}(bring|bringe) ich mich (${FILL} ){0,2}(selbst |selber )?um${R}${UM_NOT_TIME}`),
+  new RegExp(`${L}(töte|töt) ich mich${R}(?! (nicht|nie)${R})`),
+  new RegExp(`${L}(hasse|hass) ich (mich|(mein|das) (${WORD} )?leben)${R}`),
+  new RegExp(`${L}mich (würde|wird) (${FILL} ){0,2}(keiner|niemand) (${FILL} ){0,2}(vermissen|brauchen)${R}`),
+  new RegExp(`${L}(mich (${FILL} ){0,2}(keiner|niemand)|(keiner|niemand) mich) (${FILL} ){0,2}(vermissen|brauchen) (würde|wird)${R}`),
+  new RegExp(`${L}bin ich (${WORD} ){0,2}((nichts|gar nichts|überhaupt nichts|nix) wert|wertlos|nutzlos)${R}`),
+  new RegExp(`${L}ich (${WORD} ){0,2}((nichts|gar nichts|überhaupt nichts|nix) wert|wertlos|nutzlos) (bin|war)${R}`),
+  new RegExp(`${L}(besser|schöner|leichter) (wäre|wär) es( für alle)? wenn (es )?(mich|ich) (${WORD} )?(nicht|nie)( mehr)? (gäbe|geben würde|geboren wäre|da wäre|hier wäre|existieren würde)${R}`),
+  // Sich selbst verletzen: „Abends ritze ich mich“, „…, dass ich mich ritze“, „Ich bin traurig und ritze mich“,
+  // „Meine Schwester ritzt sich“, „Manchmal verletze ich mich selbst“, „…, weil ich mich mit Absicht geschnitten habe“
+  new RegExp(`^(?=.*${L}ich${R}).*${L}(ritze|ritz) (ich )?(mich|mir)${R}`),
+  new RegExp(`${L}(ritzt|ritzen|ritzte|ritzten) sich${R}`),
+  new RegExp(`${L}ich mich (${WORD} ){0,2}(ritze|ritz)${R}`),
+  new RegExp(`${L}ich mir (${WORD} ){0,2}(in )?(den|die|das|meinen|meine|mein) ${SELF_BODY} (${WORD} )?(ritze|ritz|aufritze|aufritz)${R}`),
+  new RegExp(`${L}((habe|hab|hatte) ich|ich (habe|hab|hatte)) (mich|mir) ((?!${SCRATCH_OBJECT}${R})${WORD} ){0,4}(geritzt|aufgeritzt)${R}`),
+  new RegExp(`${L}ich (mich|mir) ((?!${SCRATCH_OBJECT}${R})${WORD} ){0,4}(geritzt|aufgeritzt) (habe|hab|hatte)${R}`),
+  new RegExp(`${L}${SELF_HURT_VERB} ich mich (${WORD} )?(selbst|selber|absichtlich|extra)${R}(?! (nicht|nie)${R})`),
+  new RegExp(`^(?=.*${L}(mit absicht|absichtlich|extra)${R}).*${L}${SELF_HURT_VERB} ich mich${R}(?! (nicht|nie)${R})`),
+  new RegExp(`${L}(tue|tu) ich mir (${WORD} )?(selbst|selber) weh${R}`),
+  new RegExp(`^(?=.*${L}(mit absicht|absichtlich|extra)${R}).*${L}(tue|tu|mache|mach) ich mir ((?!${NOT_TRIM}${R})${WORD} ){0,4}weh${R}`),
+  new RegExp(`${L}ich mich (${WORD} )?(selbst|selber|absichtlich|extra) ${SELF_HURT_VERB}${R}`),
+  new RegExp(`${L}ich mir (${WORD} )?(selbst|selber) (weh tue|wehtue|weh tu|wehtu|weh mache|wehmache)${R}`),
+  new RegExp(`^(?=.*${L}(mit absicht|absichtlich|extra)${R}).*${L}ich mich ((?!(nicht|nie)${R})${WORD} ){0,3}${SELF_HURT_VERB}${R}`),
+  new RegExp(`^(?=.*${L}(mit absicht|absichtlich|extra)${R}).*${L}ich mir ((?!(nicht|nie)${R})${WORD} ){0,3}(weh tue|wehtue|weh tu|wehtu|weh mache|wehmache)${R}`),
+  new RegExp(`^(?=.*${L}(mit absicht|absichtlich|extra)${R}).*${L}ich (mich|mir) ((?!${NOT_TRIM}${R})${WORD} ){0,6}(geschnitten|geritzt|verletzt|wehgetan|weh getan|verbrannt|gekratzt|gebissen) (habe|hab|hatte)${R}`),
+  new RegExp(`^(?=.*${L}ich${R})(?=.*${L}(mit absicht|absichtlich|extra)${R}).*${L}(und|aber|dann) (${WORD} )?${SELF_HURT_VERB} mich${R}(?! (nicht|nie)${R})`),
+  // Tabletten und Gift: „Heute hab ich ganz viele Tabletten geschluckt“, „…, weil ich Tabletten geschluckt habe“,
+  // „… und hab Tabletten geschluckt“ (wie die älteren Schablonen auch bei „ich habe meine Tabletten genommen“)
+  new RegExp(`${L}(habe|hab|hat|hatte) ${SMALL_PERSON} (${WORD} ){0,3}${POISON} (${WORD} ){0,2}${SWALLOWED}${R}`),
+  new RegExp(`${L}${SMALL_PERSON} (${WORD} ){0,3}${POISON} (${WORD} ){0,2}${SWALLOWED} (habe|hab|hat|hatte)${R}`),
+  new RegExp(`^(?=.*${L}ich${R}).*${L}(und|aber|dann) (dann |jetzt |da )?(habe|hab) (${WORD} ){0,3}${POISON} (${WORD} ){0,2}${SWALLOWED}${R}`),
+  // Gewalt gegen das Kind: „Wenn Papa trinkt, schlägt er mich“, „…, weil Papa mich geschlagen hat“, „Zu Hause werde ich
+  // geschlagen“, „Zu Hause krieg ich Schläge“, „Manchmal tut Papa mir weh“, „Vor Papa hab ich Angst“, „Papa sperrt mich ein“
+  new RegExp(`${L}${HIT_PRESENT} (${SUBJ}|${PERP}) ${VADV}(mich|uns)${R}(?! (um|vom|aus den)${R})`),
+  new RegExp(`${L}(${SUBJ}|${PERP}) (mich|uns) (${NOT_GAME_WORD}${WORD} ){0,6}geschlagen (hat|hatte|haben|hatten)${R}`),
+  new RegExp(`${L}(${SUBJ}|${PERP}) (mich|uns) (${NOT_ACCIDENT_WORD}${WORD} ){0,6}${HIT_PAST} (hat|hatte|haben|hatten)${R}`),
+  new RegExp(`${L}(?<!${L}(beim|im|bei|in) ${GAME} )(werde|werd|wurde|werden|wurden) (ich|wir) (${NOT_GAME_WORD}${WORD} ){0,3}geschlagen${R}`),
+  new RegExp(`${L}(werde|werd|wurde|werden|wurden) (ich|wir) ((?!${NEG_WORD}${R})${WORD} ){0,3}${PASSIVE_PART}${R}`),
+  new RegExp(`${L}(ich|wir) (${NOT_GAME_WORD}${WORD} ){0,3}geschlagen (werde|werd|wurde|werden|wurden)${R}`),
+  new RegExp(`${L}(ich|wir) ((?!${NEG_WORD}${R})${WORD} ){0,3}${PASSIVE_PART} (werde|werd|wurde|werden|wurden)${R}`),
+  new RegExp(`${L}(kriege|krieg|kriegen|bekomme|bekomm|bekommen|kriegte|bekam) (ich|wir) ((?!${NEG_WORD}${R})${WORD} ){0,2}(schläge|prügel|haue|dresche)${R}`),
+  new RegExp(`${L}(ich|wir) ((?!${NEG_WORD}${R})${WORD} ){0,2}(schläge|prügel|haue|dresche) (kriege|krieg|kriegen|bekomme|bekomm|bekommen|kriegte|bekam|gekriegt)${R}`),
+  new RegExp(`${L}(habe|hab|hatte|kriege|krieg|bekomme|bekomm|kriegte|bekam) ich ((?!${NEG_WORD}${R})${WORD} ){0,2}${SLAP}${R}`),
+  new RegExp(`${L}ich ((?!${NEG_WORD}${R})${WORD} ){0,2}${SLAP} (gekriegt|bekommen|kriege|krieg|bekomme|bekomm|kriegte|bekam)${R}`),
+  new RegExp(`${L}mir ((?!${NEG_WORD}${R})${WORD} ){0,2}${SLAP} (gegeben|verpasst|gehauen|gibt|gab|geben)${R}`),
+  new RegExp(`${L}(tut|tat) ${WHO} mir (${WORD} ){0,2}weh${R}`),
+  new RegExp(`${L}(tut|tat) mir ${WHO} (${WORD} ){0,2}weh${R}`),
+  new RegExp(`^${NOT_ACCIDENT_SENTENCE}.*${L}(hat|hatte) ${WHO} mir (${WORD} ){0,3}(weh getan|wehgetan)${R}`),
+  new RegExp(`^${NOT_ACCIDENT_SENTENCE}.*${L}${WHO} mir ((?!${NEG_WORD}${R})${WORD} ){0,3}(weh getan|wehgetan) (hat|hatte)${R}`),
+  new RegExp(`^${NOT_ACCIDENT_SENTENCE}.*${L}${CLAUSE} ${WHO} mir ((?!${NEG_WORD}${R})${WORD} ){0,2}(weh tut|wehtut)${R}`),
+  new RegExp(`${L}vor ${POSS}${PERSON_WIDE} (habe|hab|hatte) ich ((?!${NEG_WORD}${R})${WORD} ){0,2}angst${R}`),
+  new RegExp(`${L}(habe|hab|hatte) ich ((?!${NEG_WORD}${R})${WORD} ){0,2}angst vor ${POSS}${PERSON_WIDE}${R}`),
+  new RegExp(`${L}ich ((?!${NEG_WORD}${R})${WORD} ){0,2}vor ${POSS}${PERSON_WIDE} ((?!${NEG_WORD}${R})${WORD} ){0,2}angst (habe|hab|hatte)${R}`),
+  new RegExp(`${L}(sperrt|sperren|sperrte|sperrten) ((${SUBJ}|${PERP}) )?(mich|uns) ((?!(nicht|nie|aus)${R})${WORD} ){0,4}ein(?= *$| (und|aber|weil|wenn|dann|wo|damit|bis|ich|da)${R})`),
+  new RegExp(`${L}(${SUBJ}|${PERP}) (mich|uns) ((?!${NEG_WORD}${R})${WORD} ){0,4}(einsperrt|einsperren|einsperrte|einsperrten|eingesperrt hat|eingesperrt hatte|eingesperrt haben)${R}`),
+  // Geheimhaltung: „…, dass ich es niemandem sagen darf“, „Niemandem darf ich das sagen“ (wie die ältere Schablone
+  // „ich darf es niemandem sagen“ auch bei einer Überraschung)
+  new RegExp(`${L}(niemandem|niemand|keinem|keiner) ((menschen|erwachsenen) )?(was |etwas |davon |das |es )?${SECRET_VERB} (darf|soll|dürfen|sollen|durfte|sollte|durften|sollten)${R}`),
+  new RegExp(`${L}(niemandem|niemand|keinem|keiner) (darf|soll|dürfen|sollen|durfte|sollte) (ich|wir) (es |das |davon |was |etwas )?${SECRET_VERB}${R}`),
+  // Übergriff: „Da fasst er mich immer an“, „Gestern hat er mich angefasst“, „…, weil er mich anfasst“, „Dann fasst er mir
+  // an den Po“, „Dann zeigt er mir seinen Pimmel“, „Manchmal küsst er mich, obwohl ich das nicht will“. Täter wie bei V14
+  // (Figuren, Tiere und Berufe wie Arzt ausgenommen)
+  new RegExp(`${L}(fasst|fassen|fasste|fassten|grapscht|grabscht|grapschte|grabschte|tatscht|tatschte) ${TOUCH_SUBJ_WIDE} mich (${WORD} ){0,3}an${R}`),
+  new RegExp(`${L}(hat|haben|hatte|hatten) ${TOUCH_SUBJ_WIDE} mich (${WORD} ){0,3}${TOUCH_PART}${R}`),
+  new RegExp(`${L}${CLAUSE} ${TOUCH_SUBJ_WIDE} mich (${WORD} ){0,3}${TOUCH_PART} (hat|hatte|haben|hatten)${R}`),
+  new RegExp(`${L}${CLAUSE} ${TOUCH_SUBJ_WIDE} mich ((?!(nicht|nie)${R})${WORD} ){0,3}${TOUCH_PRESENT_FINAL}${R}`),
+  new RegExp(`${L}(fasst|fassen|fasste|greift|greifen|griff|langt|langen|langte) ${TOUCH_SUBJ_WIDE} mir (${WORD} ){0,2}${INTIMATE}${R}`),
+  new RegExp(`${L}${CLAUSE} ${TOUCH_SUBJ_WIDE} mir (${WORD} ){0,2}${INTIMATE} ((gefasst|gegriffen|gelangt|gefummelt|gegrapscht|gegrabscht) (hat|hatte)|fasst|greift|langt|grapscht|grabscht|fummelt)${R}`),
+  new RegExp(`${L}(zeigt|zeigte) ${TOUCH_SUBJ_WIDE} mir (${WORD} )?(seinen|sein|seine|ihren|ihr|ihre) ${KID_BODY}${R}`),
+  new RegExp(`${L}(küsst|küsste|küssen|streichelt|streichelte|streicheln|berührt|berührte|berühren|fasst|fasste|fassen) ${TOUCH_SUBJ_WIDE} mich( ${WORD}){0,4} ${UNWANTED}${R}`),
+];
+
+const ALL_PATTERNS: RegExp[] = [...PATTERNS, ...PATTERNS_EXTRA, ...PATTERNS_2026_11, ...PATTERNS_2026_11_B, ...PATTERNS_2026_11_C, ...PATTERNS_2026_11_D, ...PATTERNS_REVIEW, ...PATTERNS_WORD_ORDER];
 
 export function screen(transcript: string): boolean {
   if (!transcript) return false;
