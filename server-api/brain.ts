@@ -37,6 +37,48 @@ export const FALLBACK_ANSWER_DE =
   'Frag am besten deine Eltern oder eine Lehrerin, die wissen darüber oft ganz Erstaunliches. ' +
   'Wenn du eine Geschichte hören willst, drück die Erzähltaste.';
 
+// Ohne Claude: feste Antworten auf Angst (Punkt N1120-1610-d). Nur Beruhigung und der Rat, mit einem
+// Erwachsenen zu sprechen; keine Deutung. In den Geschichten bleibt der Drache böse (Erzählregeln vom
+// 14.11.2026); hier geht es nur darum, dass er nicht zum Kind kommt. Notlagen fängt vorher die
+// Sicherheitsweiche ab („Ich habe Angst vor Papa“, `screen` in `handle`).
+/** Angst ohne den Drachen, zum Beispiel „Ich habe Angst im Dunkeln“. */
+export const FEAR_COMFORT_DE =
+  'Angst haben ist ganz in Ordnung. Jeder Mensch hat manchmal Angst, sogar Ritter Kunibert. ' +
+  'Sag es am besten einem Erwachsenen, den du lieb hast, oder nimm ein Kuscheltier in den Arm.';
+
+/** Angst vor dem Drachen, oder die Frage, ob er kommt oder ob es ihn wirklich gibt. */
+export const DRAGON_COMFORT_DE =
+  'Den Drachen gibt es nur in den Geschichten von Ritter Kunibert. ' +
+  'Zu dir kommt er nicht, auch nicht in der Nacht. ' +
+  'Angst haben ist trotzdem ganz in Ordnung. Wenn du Angst hast, sag es einem Erwachsenen, den du lieb hast.';
+
+const FEAR_WORDS = new Set([
+  'angst', 'ängste', 'ängstlich', 'fürchte', 'fürchten', 'fürchtest', 'fürchtet', 'gruselig', 'gruselt', 'grusle',
+  'grusel', 'unheimlich', 'albtraum', 'albträume', 'alptraum', 'alpträume', 'bammel', 'schiss',
+]);
+const FEAR_NEGATIONS = new Set(['kein', 'keine', 'keinen', 'nicht', 'nie', 'ohne']);
+const FIRST_PERSON = ['ich', 'mir', 'mich', 'mein', 'meine', 'meinem', 'meinen', 'meiner', 'wir', 'uns'];
+// „Hat Kunibert Angst?“, „Hast du Angst?“: eine Frage nach der Angst von jemand anderem, nicht die des Kindes.
+const OTHER_FEAR_VERBS = ['hast', 'hat', 'hatte', 'hattest', 'habt', 'fürchtest', 'fürchtet'];
+const DRAGON_WORDS = ['drache', 'drachen', 'drachens'];
+const DRAGON_COMES = ['kommt', 'kommen', 'komme', 'holt', 'holen', 'frisst', 'fressen', 'beißt', 'findet', 'fliegt', 'fliegen'];
+const DRAGON_TARGETS = ['mir', 'mich', 'uns', 'zimmer', 'haus', 'bett', 'fenster', 'kinder', 'kind'];
+const DRAGON_REAL = ['echt', 'wirklich', 'real', 'wahr'];
+
+/**
+ * Feste Beruhigung ohne Claude, oder '' (Punkt N1120-1610-d). Ganze Wörter wie in `fallbackQuestion`.
+ * „keine Angst“ zählt nicht als Angst; eine Frage nach der Angst von Kunibert oder „du“ auch nicht.
+ */
+export function fearComfortFor(transcript: string): string {
+  const list = transcript.toLowerCase().split(/[^a-zäöüß]+/).filter(Boolean);
+  const words = new Set(list);
+  const has = (candidates: string[]) => candidates.some((word) => words.has(word));
+  const fearWord = list.some((word, i) => FEAR_WORDS.has(word) && !FEAR_NEGATIONS.has(list[i - 1] ?? ''));
+  const afraid = fearWord && !(has(OTHER_FEAR_VERBS) && !has(FIRST_PERSON));
+  if (has(DRAGON_WORDS) && (afraid || (has(DRAGON_COMES) && has(DRAGON_TARGETS)) || has(DRAGON_REAL))) return DRAGON_COMFORT_DE;
+  return afraid ? FEAR_COMFORT_DE : '';
+}
+
 export interface StoryState {
   v: number;
   ep: number;
@@ -971,6 +1013,14 @@ export class Brain {
     const words = new Set(transcript.toLowerCase().split(/[^a-zäöüß]+/).filter(Boolean));
     const has = (...candidates: string[]) => candidates.some((word) => words.has(word));
 
+    // Angst zuerst (Punkt N1120-1610-d): vor „Geschichte“ und vor „Kunibert“, weil Kinder Kunibert mit Namen
+    // ansprechen („Kunibert, ich hab Angst“) und „Die Geschichte ist so gruselig“ sonst eine neue Folge mit dem
+    // Drachen beginnt. Nur eine ausdrückliche Bitte um Erzählen oder „weiter“ geht vor.
+    const comfort = fearComfortFor(transcript);
+    if (comfort && !has('erzähl', 'erzähle', 'erzählst', 'erzählen', 'weiter', 'weitererzählen', 'nochmal')) {
+      return { kind: 'frage', speech: comfort, story_state: state, fixed: 'ersatz', wav: this.synthesizeWav(comfort, 'frage') };
+    }
+
     if (has('geschichte', 'geschichten', 'märchen', 'erzähl', 'erzähle', 'erzählst', 'erzählen')) {
       return this.fallbackStory(true, state, transcript);
     }
@@ -996,7 +1046,8 @@ export class Brain {
         'rotes Licht, deshalb sehen wir den Himmel blau leuchten.';
     } else if (has('traurig', 'weine', 'weinen', 'geweint', 'allein', 'alleine', 'einsam')) {
       speech =
-        'Es ist ganz in Ordnung, manchmal traurig zu sein. Jeder von uns fühlt sich ab und zu so, ' +
+        // „Jeder Mensch“, nicht „Jeder von uns“: Das Gerät spricht nicht als Mensch (Kanon, Abschnitt 2).
+        'Es ist ganz in Ordnung, manchmal traurig zu sein. Jeder Mensch fühlt sich ab und zu so, ' +
         'sogar Ritter Kunibert, wenn er vom Drachenberg zurückkehrt. ' +
         'Sprich am besten mit einem Erwachsenen, den du lieb hast, oder nimm ein Kuscheltier in den Arm.';
     } else if (has('drache', 'drachen')) {
