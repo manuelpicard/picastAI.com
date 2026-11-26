@@ -113,6 +113,21 @@ export function heardUpTo(part: SpokenPart, heardSeconds: number): HeardResult {
   return { heard: heard.join(' '), complete: !stopped, sentences: heard.length, total };
 }
 
+/**
+ * Sekunden je Absatz eines Ton-Stroms, dessen Vertonung nach einem Stopp endete (N1126-1338-f): für die
+ * vertonten Absätze die echten Sekunden, für die übrigen eine Schätzung nach der Länge des Texts (im Tempo
+ * der vertonten Absätze). Die übrigen hat das Kind nie gehört; sie liegen hinter der gemeldeten Stelle,
+ * die Schätzung ändert also nur, dass der Teil nicht „ganz gehört“ ist. null, wenn mehr Sekunden als
+ * Absätze da sind (dann passt etwas nicht zusammen, und es zählt wie sonst die Länge des Texts).
+ */
+export function withEstimatedRest(seconds: number[], paragraphs: string[]): number[] | null {
+  if (seconds.length > paragraphs.length) return null;
+  const voicedChars = paragraphs.slice(0, seconds.length).reduce((sum, paragraph) => sum + paragraph.length, 0);
+  const voicedSeconds = seconds.reduce((sum, value) => sum + Math.max(0, value), 0);
+  const perChar = voicedChars > 0 && voicedSeconds > 0 ? voicedSeconds / voicedChars : 0.06;
+  return [...seconds, ...paragraphs.slice(seconds.length).map((paragraph) => Math.max(0.1, paragraph.length * perChar))];
+}
+
 /** Hängt neu Gehörtes an den schon gehörten Anfang eines Teils an (höchstens MAX_HEARD_CHARS, vom Ende her). */
 export function joinHeard(prefix: string, heard: string): string {
   const joined = [prefix, heard].map((text) => text.trim()).filter(Boolean).join(' ');

@@ -85,6 +85,59 @@ test('StreamingSpeaker: anderes Format als der Strom wird abgelehnt', async () =
   await assert.rejects(speaker.firstAudio);
 });
 
+/** Sprachausgabe, die „zwei“ festhält, bis `release` kommt; merkt sich, was sie vertonen sollte. */
+function holdingSecond() {
+  const asked: string[] = [];
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  let arrived!: () => void;
+  const waiting = new Promise<void>((resolve) => { arrived = resolve; });
+  const synthesize = async (text: string) => {
+    asked.push(text);
+    if (text === 'zwei') {
+      arrived();
+      await gate;
+    }
+    return tone(100);
+  };
+  return { asked, synthesize, waiting, release: () => release() };
+}
+
+test('StreamingSpeaker.stop: der Rest wird nicht vertont, finish endet sofort, der Strom schließt sauber (N1126-1338-f)', async () => {
+  const voice = holdingSecond();
+  const speaker = new StreamingSpeaker(voice.synthesize, RATE);
+  for (const text of ['eins', 'zwei', 'drei']) speaker.say(text);
+  await speaker.firstAudio;
+  await voice.waiting;
+  speaker.stop();
+  assert.equal(speaker.stopped, true);
+  await speaker.finish();
+  assert.equal(speaker.stream.ok, true, 'kein Abbruch: der Teil gilt mit dem Gesprochenen');
+  assert.deepEqual(speaker.segments, [100 / RATE], 'nur der vertonte Absatz zählt');
+  assert.equal((await collect(speaker.stream)).length, 200, 'im Strom steht nur der erste Absatz');
+  voice.release();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(voice.asked, ['eins', 'zwei'], '„drei“ wird nie vertont');
+  assert.equal(speaker.segments.length, 1, 'der festgehaltene Absatz kommt nicht mehr dazu');
+  speaker.say('vier');
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(voice.asked, ['eins', 'zwei'], 'auch spätere Absätze von Claude nicht');
+});
+
+test('StreamingSpeaker.abort: finish wartet nicht auf einen Aufruf, der noch läuft', async () => {
+  const voice = holdingSecond();
+  const speaker = new StreamingSpeaker(voice.synthesize, RATE);
+  speaker.say('eins');
+  speaker.say('zwei');
+  await voice.waiting;
+  speaker.abort();
+  await assert.rejects(speaker.finish());
+  assert.equal(speaker.stream.ok, false);
+  voice.release();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(speaker.segments.length, 1, 'nach dem Abbruch zählt der späte Absatz nicht');
+});
+
 // Zeitbudget im Ton-Strom (Punkt N1124-1153-b). Die Attrappen der Sprachausgabe halten sich an die Frist
 // wie die echten Anbieter (server-api/voice.ts, withTimeout): Sie brechen nach der kleineren Grenze ab, der
 // eigenen je Aufruf oder der mitgegebenen, und werfen dann VoiceProviderError('TTS-Timeout', retryable).
