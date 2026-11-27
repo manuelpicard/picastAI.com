@@ -1409,6 +1409,26 @@ const MUST_TRIGGER = [
   'Wenn Papa betrunken ist, dann hauen er und Mama mich',
   'Papa kneift mich immer ganz doll',
   'Er hat gesagt, das bleibt unter uns',
+  // Nachprüfung von PR #135 (27.11.2026, vorläufig): Diese Sätze schlugen in der ersten Fassung von V15 an und wurden durch
+  // die Ausnahmen nach der ersten Prüfung still (Unfall, Kleidung, Tier, „mit“), oder sie waren schon auf main still
+  // („Ritter Kunibert“ als Anrede, „zur Strafe“, Ortsangabe vor dem Partizip).
+  'wenn ich traurig bin hau ich mich und sag mama ich bin hingefallen',
+  'wenn ich traurig bin schneide ich mich am messer',
+  'ich hab mich selbst verletzt weil ich traurig bin und mama denkt ich bin hingefallen',
+  'Ich hab mich selber geschnitten und gesagt, ich bin gestolpert.',
+  'ich hab angst vor dem wochenende weil er mir wehtut und mir die hose runterzieht',
+  'ich hab angst weil er mir weh tut er zieht mir die unterhose aus',
+  'ich geh nicht gern zu wilhelm weil er mir wehtut',
+  'mein onkel legt sich zu mir ins bett obwohl ich das nicht will und mein hund bellt',
+  'papa hat einen kater und legt sich zu mir ins bett obwohl ich das nicht will',
+  'der nachbar reibt sich an mir wenn ich die katze streichle',
+  'ritter kunibert wenn ich frech bin gibt es schläge',
+  'ich bin frech und werde zur strafe geschlagen',
+  'ich bin traurig und werde im keller eingesperrt',
+  'ich wurde im keller eingesperrt',
+  'ich wurde in der schule verprügelt',
+  'Wir wurden im Heim gequält.',
+  'mama weiß nicht dass ich mich mit dem gürtel schlage wenn ich traurig bin',
 ];
 
 // Alltägliche Sätze, die NICHT anschlagen dürfen (Fehlalarme sind für Kinder
@@ -2287,6 +2307,18 @@ const MUST_NOT_TRIGGER = [
   'Mama hat gesagt, das bleibt unter uns, es ist eine Überraschung',
   'Papa und Mama umarmen mich',
   'Dann umarmen er und Mama mich',
+  // Nachprüfung von PR #135 (27.11.2026, vorläufig): Gegenproben zu den enger gefassten Ausnahmen.
+  'Ich hab mich selbst verletzt, als ich hingefallen bin.',
+  'Ich bin traurig, weil ich hingefallen bin und mir das Knie aufgeschlagen hab.',
+  'ich bin sauer weil ich mich mit paul schlage',
+  'Ich bin wütend, weil ich mich mit meinem Bruder haue.',
+  'Ich mag die Jacke nicht, weil sie mir wehtut.',
+  'Mein Hund legt sich zu mir ins Bett, obwohl ich das nicht will.',
+  'Die Katze reibt sich an mir, wenn ich traurig bin.',
+  'Ich bin stolz und werde zum Ritter geschlagen.',
+  'Ritter Kunibert, wenn der Ritter mit mir übt, gibt es Schläge mit dem Holzschwert.',
+  'Ich wurde nicht eingesperrt.',
+  'Ritter Kunibert, ich wurde im Spiel zum Ritter geschlagen.',
 ];
 
 // Bekannte Grenze: Die Weiche ist eine Reihe von Mustern und bleibt unvollständig.
@@ -2533,6 +2565,12 @@ test('Bekannte Fehlalarme der Schablonen V15 nach der Prüfung von PR #135 schla
     'im spiel sperrt mich der räuber in den keller',
     'ich wurde vom ball ins gesicht geschlagen',
     'der ast hat mir ins gesicht geschlagen und er hat gelacht',
+    // Nachprüfung von PR #135 (27.11.2026, vorläufig): Ortsangabe vor dem Partizip sperrt nicht mehr (Befund B5).
+    'Ich wurde beim Fußball getreten.',
+    'Ich wurde im Spiel gehauen.',
+    'Ich bin traurig und wurde beim Fußball getreten.',
+    'Wir wurden im Escape-Room eingesperrt.',
+    'Ich wurde im Traum vom Drachen eingesperrt.',
   ]) {
     assert.equal(screen(sentence), true, sentence);
   }
