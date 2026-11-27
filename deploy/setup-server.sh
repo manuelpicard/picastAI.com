@@ -442,6 +442,17 @@ piper_warning() { # Modell
   note "  Deren Aufnahmen sind nur für nicht kommerzielle Forschung freigegeben. Nicht für ein verkauftes Gerät."
 }
 
+# Ohne --piper-fallback oder --tts-model eine früher eingetragene Stimme im Sprachserver austragen
+# (Risiko L1). main ruft das erst, wenn feststeht, wer spricht: nach dem Start von Pocket TTS oder mit
+# --skip-pocket. Scheitert Pocket TTS, bricht das Skript vorher ab, und die bisherige Stimme bleibt eingestellt.
+clear_speaches_voice() {
+  [[ -z "$TTS_MODEL" ]] || return 0
+  [[ -n "$(env_get "$ENV_FILE" PICASTAI_TTS_MODEL)$(env_get "$ENV_FILE" PICASTAI_TTS_VOICE)" ]] || return 0
+  env_set "$ENV_FILE" PICASTAI_TTS_MODEL ""
+  env_set "$ENV_FILE" PICASTAI_TTS_VOICE ""
+  note "Stimme im Sprachserver ausgetragen (PICASTAI_TTS_MODEL, PICASTAI_TTS_VOICE): nur noch mit --piper-fallback."
+}
+
 write_env() {
   say "Konfiguration: $ENV_FILE"
   if [[ ! -f "$ENV_FILE" ]]; then
@@ -455,10 +466,12 @@ write_env() {
   # Caddy auf demselben Rechner (Punkt D2): echte Adressen der Eltern beim Koppeln. Ein eigener Wert bleibt.
   env_set_if_empty "$ENV_FILE" PICASTAI_TRUST_PROXY loopback || true
   env_set "$ENV_FILE" PICASTAI_STT_MODEL "$STT_MODEL"
-  # Stimme im Sprachserver: ohne --piper-fallback oder --tts-model leer, auch wenn ein früherer Lauf
-  # die Piper-Stimme eingetragen hat (Risiko L1). Pocket TTS braucht die beiden Zeilen nicht.
-  env_set "$ENV_FILE" PICASTAI_TTS_MODEL "$TTS_MODEL"
-  env_set "$ENV_FILE" PICASTAI_TTS_VOICE "$TTS_VOICE"
+  # Stimme im Sprachserver nur mit --piper-fallback oder --tts-model. Eine früher eingetragene Stimme trägt
+  # erst clear_speaches_voice aus, wenn feststeht, wer spricht (Risiko L1). Pocket TTS braucht die Zeilen nicht.
+  if [[ -n "$TTS_MODEL" ]]; then
+    env_set "$ENV_FILE" PICASTAI_TTS_MODEL "$TTS_MODEL"
+    env_set "$ENV_FILE" PICASTAI_TTS_VOICE "$TTS_VOICE"
+  fi
   # Die drei Zeilen für Kuniberts Stimme setzt erst setup_pocket, wenn der Dienst antwortet. Rückfall von Hand
   # (EINRICHTUNG.md, Abschnitt 4): Zeile PICASTAI_TTS_PROVIDER löschen, Skript mit --piper-fallback --skip-pocket.
   if env_set_if_empty "$ENV_FILE" PICASTAI_ADMIN_TOKEN "$(openssl rand -hex 32)"; then note "Admin-Token erzeugt (steht nur in der Datei)"; fi
@@ -669,6 +682,7 @@ main() {
   write_env
   if [[ "$SKIP_SPEACHES" == 0 ]]; then setup_speaches; fi
   if [[ "$SKIP_POCKET" == 0 ]]; then setup_pocket; fi
+  clear_speaches_voice   # erst hier: Pocket TTS antwortet, oder --skip-pocket
   start_service
   if [[ "$SKIP_CADDY" == 0 ]]; then setup_caddy; fi
   summary

@@ -479,6 +479,11 @@ main_check=$(grep -n -m1 '^  check_tts_options$' <<<"$main_body" | cut -d: -f1)
 main_root=$(grep -n -m1 'EUID' <<<"$main_body" | cut -d: -f1)
 yes "main: erst Optionen, dann Prüfung"        vor "$main_args" "$main_check"
 yes "main: Stimme geprüft, bevor etwas passiert" vor "$main_check" "$main_root"
+main_pocket=$(grep -n -m1 'setup_pocket; fi' <<<"$main_body" | cut -d: -f1)
+main_clear=$(grep -n -m1 '^  clear_speaches_voice' <<<"$main_body" | cut -d: -f1)
+main_start=$(grep -n -m1 '^  start_service' <<<"$main_body" | cut -d: -f1)
+yes "main: Austragen erst nach Pocket TTS"     vor "$main_pocket" "$main_clear"
+yes "main: Austragen vor dem Start des Dienstes" vor "$main_clear" "$main_start"
 yes "Warnung: Piper nennt das Risiko"          grep -qF 'Risiko L1' <<<"$(piper_warning "$PIPER_MODEL")"
 yes "Warnung: Piper nennt die Recherche"       grep -qF 'docs/recherche/lizenzen-sprachbausteine.md' <<<"$(piper_warning "$PIPER_MODEL")"
 yes "Warnung: nicht für ein verkauftes Gerät"  grep -qF 'Nicht für ein verkauftes Gerät' <<<"$(piper_warning "$PIPER_MODEL")"
@@ -500,14 +505,23 @@ vorher=$fails
   env_set "$ENV_FILE" PICASTAI_TTS_MODEL "$PIPER_MODEL"
   env_set "$ENV_FILE" PICASTAI_TTS_VOICE "$PIPER_VOICE"
   write_env >/dev/null
-  eq  "write_env: ohne Schalter kein Stimmenmodell" "$(env_get "$ENV_FILE" PICASTAI_TTS_MODEL)" ""
-  eq  "write_env: ohne Schalter keine Stimme"  "$(env_get "$ENV_FILE" PICASTAI_TTS_VOICE)" ""
-  eq  "write_env: genau eine Zeile PICASTAI_TTS_MODEL" "$(grep -c '^PICASTAI_TTS_MODEL=' "$ENV_FILE")" 1
+  # Austragen erst, wenn feststeht, wer spricht (sonst wäre ein alter Server nach einem Fehler stumm).
+  eq  "write_env: ohne Schalter alte Zeile noch da" "$(env_get "$ENV_FILE" PICASTAI_TTS_MODEL)" "$PIPER_MODEL"
   eq  "write_env: Adresse des Sprachservers bleibt" "$(env_get "$ENV_FILE" PICASTAI_TTS_URL)" "http://127.0.0.1:8000/v1"
+  ausgabe=$(clear_speaches_voice)
+  eq  "Austragen: kein Stimmenmodell mehr"     "$(env_get "$ENV_FILE" PICASTAI_TTS_MODEL)" ""
+  eq  "Austragen: keine Stimme mehr"           "$(env_get "$ENV_FILE" PICASTAI_TTS_VOICE)" ""
+  eq  "Austragen: genau eine Zeile PICASTAI_TTS_MODEL" "$(grep -c '^PICASTAI_TTS_MODEL=' "$ENV_FILE")" 1
+  yes "Austragen: sagt es"                     grep -qF 'Stimme im Sprachserver ausgetragen' <<<"$ausgabe"
+  no  "Austragen: nennt keine Werte"           grep -qE 'thorsten|speaches-ai/' <<<"$ausgabe"
+  eq  "Austragen: zweiter Lauf still"          "$(clear_speaches_voice)" ""
+  eq  "Austragen: Rechte bleiben 600"          "$(stat -c %a "$ENV_FILE")" 600
   TTS_MODEL=$PIPER_MODEL; TTS_VOICE=$PIPER_VOICE
   write_env >/dev/null
   eq  "write_env: mit Schalter Piper eingetragen" "$(env_get "$ENV_FILE" PICASTAI_TTS_MODEL)" "$PIPER_MODEL"
   eq  "write_env: mit Schalter Stimme thorsten" "$(env_get "$ENV_FILE" PICASTAI_TTS_VOICE)" "$PIPER_VOICE"
+  eq  "Austragen: mit Schalter nichts"         "$(clear_speaches_voice)" ""
+  eq  "Austragen: mit Schalter bleibt Piper"   "$(env_get "$ENV_FILE" PICASTAI_TTS_MODEL)" "$PIPER_MODEL"
 
   aufrufe="$tmp/speaches.log"
   docker() {
