@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { screenOutput } from './safety.js';
 import test from 'node:test';
-import { Brain, remainingWords, likelyStoryTurn, storyCallFor, buildStoryPrompt, FALLBACK_VARIANTS, formatMetrics, hintFromPlan, usesHint, isBedtime, germanNumber, spellOutForSpeech, storyMetrics, cleanState, cleanText, extractWishKeyword, FALLBACK_ANSWER_DE, FEAR_COMFORT_DE, DRAGON_COMFORT_DE, explicitStoryRequest, fearComfortFor, isLikelySttArtifact, lastSentences, MAX_UTTERANCE_CHARS, prepareStoryText, rememberMotif, storyPhase, trimWords } from './brain.js';
+import { appendSummary, Brain, remainingWords, likelyStoryTurn, storyCallFor, buildStoryPrompt, FALLBACK_VARIANTS, formatMetrics, hintFromPlan, usesHint, isBedtime, germanNumber, spellOutForSpeech, storyMetrics, cleanState, cleanText, extractWishKeyword, FALLBACK_ANSWER_DE, FEAR_COMFORT_DE, DRAGON_COMFORT_DE, explicitStoryRequest, fearComfortFor, isLikelySttArtifact, lastSentences, MAX_UTTERANCE_CHARS, prepareStoryText, rememberMotif, storyPhase, trimWords } from './brain.js';
 import type { LlmJsonRequest, LlmProvider } from './llm.js';
 import { BEDTIME_HINT, EPISODE_CLOSING, IDEA_HINT, PHASE_HINTS, RESUME_HINT, STORYTELLER_SYSTEM, EPISODE_SEEDS_BY_SEASON, seasonOf, STORY_CLOSING, STORY_CLOSING_FIRST, STORY_PAUSE_TEXT } from './prompts.js';
 import { SAFETY_RESPONSE_DE, UNCLEAR_RESPONSE_DE } from './safety.js';
@@ -1034,6 +1034,12 @@ test('Nur Teil 1 endet mit dem Hinweis auf die Sprechtaste, spätere Teile mit d
 test('hintFromPlan und usesHint: Hinweis der Hexe aus dem Plan und im Text wiederfinden', () => {
   assert.equal(hintFromPlan('Glocke fehlt. Hexe sagt: „Was klingt, will gefunden werden.“ Lösung: Nest.'), 'Was klingt, will gefunden werden.');
   assert.equal(hintFromPlan('ohne Zitat'), '');
+  // Punkt N1120-1610-e: Ein Name in „…“ vor dem Hinweis ist kein Hinweis (mindestens drei Wörter).
+  assert.equal(hintFromPlan('Kunibert hilft der Eule „Hupsi“. Die Hexe sagt: „Wer leise singt, weckt keinen Drachen.“'), 'Wer leise singt, weckt keinen Drachen.');
+  assert.equal(hintFromPlan('Nebenfigur: die Eule „Hupsi Federkiel“.'), '');
+  // Gerade Anführungszeichen paarweise: nach "Max" gilt nicht der Text bis zum nächsten Zeichen als Zitat.
+  assert.equal(hintFromPlan('Nebenfigur "Max". Die Hexe sagt: "Wer leise singt, weckt keinen Drachen." Lösung: Lied.'), 'Wer leise singt, weckt keinen Drachen.');
+  assert.equal(hintFromPlan('Nebenfigur „Max“. Die Hexe sagt: „Wer leise singt, weckt keinen Drachen.“'), 'Wer leise singt, weckt keinen Drachen.');
   assert.equal(usesHint('Da fiel ihm ein: Was klingt, will gefunden werden!', 'Was klingt, will gefunden werden.'), true);
   assert.equal(usesHint('Er ging nach Hause.', 'Was klingt, will gefunden werden.'), false);
 });
@@ -1854,4 +1860,201 @@ test('B2: buildStoryPrompt nimmt die gehörte Stelle nur, wenn es eine gibt, und
   const line = long.split('\n').find((l) => l.startsWith('Von diesem Teil')) ?? '';
   assert.ok(line.length < 4300, 'höchstens etwa 4000 Zeichen gehörter Text');
   assert.ok(!line.slice(0, line.indexOf('Dann hat es angehalten')).includes('«E'), 'Anführungszeichen des Auftrags sind entschärft');
+});
+
+// Punkt N1120-1610-e: Fällt Claude mitten in einer Folge mit Plan von Claude aus, erzählt die Ersatzfolge
+// keine eigene Handlung (Erzählregel vom 14.11.2026: Ideen springen nicht). Nur Brücken: kein eigenes
+// Geschenk, keine Worte der festen Varianten, der Ausgang der List im letzten Teil.
+const CLAUDE_PLAN =
+  'Kunibert will heute die Glocke des Dorfes zurückholen. Die Hexe sagt: „Wer leise singt, weckt keinen Drachen.“ Mit einem Lied lenkt er den Drachen ab.';
+const claudeEpisode = (part: number, extra: Record<string, unknown> = {}) => ({
+  ...cleanState({}),
+  ep: 3,
+  part,
+  target: 5,
+  plan: CLAUDE_PLAN,
+  summary: 'Kunibert brach auf, um die Glocke des Dorfes zurückzuholen. Die Hexe gab ihm eine Feder.',
+  threads: 'Die Feder der Hexe benutzen.',
+  hook: 'Kunibert steigt auf den Berg.',
+  last: 'Er steckte die Feder ein.',
+  ...extra,
+});
+const failingLlm = () => {
+  const llm = new FakeLlm([]);
+  llm.generateJson = async () => { throw new Error('HTTP 529'); };
+  return llm;
+};
+/** Stücke der festen Varianten (Geschenk, Gegenstand, Worte der Hexe, List), die im Text vorkommen. */
+function variantPiecesIn(text: string): string[] {
+  const lower = text.toLowerCase();
+  const pieces = FALLBACK_VARIANTS.flatMap((variant) => [
+    variant.gift, variant.item, variant.hint, ...variant.hint.split('. '), variant.trick.slice(0, 40),
+  ]).concat(['flasche', 'glöckchen', 'runden stein', 'runde stein', 'loch in der mitte']);
+  return pieces.filter((piece) => piece.length > 3 && lower.includes(piece.toLowerCase().replace(/\.$/, '')));
+}
+
+test('Ersatz übernimmt Teil 3 einer Claude-Folge: Brücke ohne eigenes Geschenk, Stand von Claude bleibt', silent(async () => {
+  for (const brain of [new Brain(failingLlm()), new Brain(null)]) {
+    const result = await brain.handle('weiter', '', claudeEpisode(2, { miss: 1 }));
+    assert.notEqual(result.speech, STORY_PAUSE_TEXT);
+    assert.equal(result.story_state.part, 3);
+    assert.equal(result.story_state.miss, 0);
+    assert.deepEqual(variantPiecesIn(result.speech), [], result.speech);
+    assert.equal(screenOutput(result.speech, 'story'), false, result.speech);
+    assert.match(result.speech, /Er brauchte eine List\./);
+    assert.equal(result.story_state.plan, CLAUDE_PLAN, 'Plan von Claude bleibt');
+    assert.equal(result.story_state.threads, 'Die Feder der Hexe benutzen.', 'Fäden von Claude bleiben');
+    assert.ok(result.story_state.summary.startsWith('Kunibert brach auf, um die Glocke'), result.story_state.summary);
+    assert.match(result.story_state.summary, /eine List braucht\.$/);
+    assert.deepEqual(variantPiecesIn(result.story_state.summary), []);
+    assert.match(result.story_state.last, /Er brauchte eine List\./);
+  }
+}));
+
+test('Ersatz übernimmt Teil 5 einer Claude-Folge: zuerst der Ausgang der List, dann Heimweg und Schlaf', silent(async () => {
+  for (const brain of [new Brain(failingLlm()), new Brain(null)]) {
+    const result = await brain.handle('weiter', '', claudeEpisode(4, { miss: 1 }));
+    assert.equal(result.story_state.part, 5);
+    assert.equal(result.story_state.done, true);
+    assert.ok(result.speech.startsWith('Kuniberts List gelang für heute.'), result.speech);
+    assert.match(result.speech, /Besiegt war der Drache nicht\./);
+    assert.ok(!/brüllte|schlief der Drache|zog sich/.test(result.speech.split('\n\n')[0]), 'der Ausgang legt nicht fest, was der Drache tut');
+    assert.match(result.speech, /Bald schlief er tief und fest\./);
+    assert.ok(result.speech.endsWith(EPISODE_CLOSING), 'Ende ohne Nachfrage');
+    assert.deepEqual(variantPiecesIn(result.speech), [], result.speech);
+    assert.equal(screenOutput(result.speech, 'story'), false, result.speech);
+    assert.ok(!DRAGON_DEFEATED_OR_TAME.test(result.speech.replace(EPISODE_CLOSING, '')), result.speech);
+    assert.equal(result.story_state.plan, '');
+    assert.equal(result.story_state.summary, '');
+    assert.ok(result.story_state.recent.startsWith('Kunibert will heute die Glocke'), 'Kernidee gemerkt wie bei Claude');
+    assert.ok(!result.story_state.recent.includes('Geändert'), 'ohne den Vermerk der Brücke');
+  }
+}));
+
+test('Ersatz übernimmt den vorletzten Teil einer Claude-Folge: Idee ohne Worte der Hexe und ohne Ausgang', silent(async () => {
+  const result = await new Brain(failingLlm()).handle('weiter', '', claudeEpisode(3, { miss: 1 }));
+  assert.equal(result.story_state.part, 4);
+  assert.ok(!result.speech.includes('Wer leise singt'), 'keine Worte, die das Kind vielleicht nie gehört hat');
+  assert.ok(!/gelang/.test(result.speech), 'der Ausgang kommt im letzten Teil');
+  assert.match(result.speech, /Jetzt oder nie, dachte Kunibert\./);
+  assert.deepEqual(variantPiecesIn(result.speech), [], result.speech);
+  assert.equal(screenOutput(result.speech, 'story'), false, result.speech);
+  assert.match(result.story_state.summary, /Wie sie ausgeht, ist noch nicht erzählt\.$/);
+  assert.equal(result.story_state.hook, 'Kunibert führt seine List aus.');
+}));
+
+test('Ersatz übernimmt Teil 2 einer Claude-Folge: Hexe sagt den Hinweis aus dem Plan, ohne Geschenk', silent(async () => {
+  const start = { summary: 'Kunibert brach auf, um die Glocke des Dorfes zurückzuholen.', threads: 'Die Glocke finden.', miss: 1 };
+  const result = await new Brain(failingLlm()).handle('weiter', '', claudeEpisode(1, start));
+  assert.equal(result.story_state.part, 2);
+  assert.match(result.speech, /Dann flüsterte sie: „Wer leise singt, weckt keinen Drachen\.“\n/);
+  assert.deepEqual(variantPiecesIn(result.speech), [], result.speech);
+  assert.equal(screenOutput(result.speech, 'story'), false, result.speech);
+  assert.match(result.story_state.summary, /^Kunibert brach auf.*„Wer leise singt, weckt keinen Drachen\.“ Sie gab ihm nichts mit/);
+  assert.equal(result.story_state.threads, 'Die Glocke finden.');
+  assert.match(result.speech, /„Habt Dank“, sagte Kunibert und verbeugte sich\. Dann ging er weiter\. Bald wurde der Weg steiler\./);
+  assert.ok(result.story_state.plan.startsWith(CLAUDE_PLAN), 'Plan von Claude bleibt, mit Hinweis');
+  assert.match(result.story_state.plan, /nichts mitgegeben\. Die Lösung kommt ohne Geschenk aus\.$/);
+
+  // Besteht der Hinweis den Ausgabe-Check nicht, sagt die Hexe nichts.
+  const unsafe = claudeEpisode(1, { ...start, plan: 'Die Hexe sagt: „Trink das Gift, dann bist du tot.“' });
+  const quiet = await new Brain(null).handle('weiter', '', unsafe);
+  assert.ok(!/gift|tot\b/i.test(quiet.speech), quiet.speech);
+  assert.match(quiet.speech, /nickte ihm zu, als wüsste sie schon, wohin er wollte\.\n\nKunibert verbeugte sich und ging weiter\. Bald/);
+  assert.equal(screenOutput(quiet.speech, 'story'), false, quiet.speech);
+  assert.ok(!/gift/i.test(quiet.story_state.summary), quiet.story_state.summary);
+  assert.ok(!/gift/i.test(quiet.story_state.plan), quiet.story_state.plan);
+  assert.equal(hintFromPlan(quiet.story_state.plan), '', 'Worte, die das Kind nicht gehört hat, fliegen aus dem Plan');
+  assert.match(quiet.story_state.plan, /nur zugenickt/);
+  // Erzählt Claude danach den vorletzten Teil, erinnert sich Kunibert nicht an Worte, die nie gefallen sind,
+  // auch nicht an ein anderes Zitat des Plans, das nachrücken würde (ein Lied in der Lösung).
+  const song = claudeEpisode(1, { ...start, plan: 'Die Hexe sagt: „Trink das Gift, dann bist du tot.“ Lösung: Er singt „La le lu, der Mond ist da“.' });
+  const silentWitch = await new Brain(null).handle('weiter', '', song);
+  assert.match(silentWitch.speech, /nickte ihm zu/);
+  assert.equal(hintFromPlan(silentWitch.story_state.plan), '');
+  const trickPrompt = buildStoryPrompt({ ...silentWitch.story_state, part: 3 }, 4, { storyMinWords: 170, storyMaxWords: 230 });
+  assert.ok(!trickPrompt.includes('Die Worte der Hexe lauteten'), trickPrompt);
+  assert.match(trickPrompt, /nur zugenickt/);
+  assert.ok(!/gift/i.test(trickPrompt), 'das abgelehnte Zitat steht nicht im Auftrag');
+
+  // Geprüft und gesprochen wird der geglättete Hinweis: Ziffern als Wörter, kein Gedankenstrich.
+  const digits = claudeEpisode(1, { ...start, plan: 'Die Hexe sagt: „Zähl bis 3 und sing – ganz leise.“' });
+  const spoken = await new Brain(null).handle('weiter', '', digits);
+  assert.match(spoken.speech, /Dann flüsterte sie: „Zähl bis drei und sing, ganz leise\.“\n/);
+  assert.match(spoken.story_state.summary, /„Zähl bis drei und sing, ganz leise\.“/);
+
+  // Ohne Satzzeichen am Ende im Plan: Der zitierte Satz endet trotzdem mit Punkt.
+  for (const quoted of ['Folge dem Mond', 'Folge dem Mond,', 'Folge dem Mond -']) {
+    const bare = await new Brain(null).handle('weiter', '', claudeEpisode(1, { ...start, plan: `Hinweis der Hexe: „${quoted}“` }));
+    assert.match(bare.speech, /Dann flüsterte sie: „Folge dem Mond\.“\n/, quoted);
+    assert.match(bare.story_state.summary, /„Folge dem Mond\.“ Sie gab ihm nichts mit/, quoted);
+  }
+}));
+
+test('Ersatz nach einer Mitte von Claude (Folge mit 7 Teilen): kein zweiter Auftritt des Drachen, sondern Warten', silent(async () => {
+  const result = await new Brain(failingLlm()).handle('weiter', '', claudeEpisode(3, { target: 7, miss: 1 }));
+  assert.equal(result.story_state.part, 4);
+  assert.ok(!result.speech.includes('Der Weg am Berg war steil'), result.speech);
+  assert.ok(!result.speech.includes('blieb ganz still'), 'der zweite Warte-Text setzt das Versteck voraus');
+  assert.match(result.speech, /Er brauchte eine List\./);
+  assert.deepEqual(variantPiecesIn(result.speech), [], result.speech);
+  assert.equal(screenOutput(result.speech, 'story'), false, result.speech);
+  assert.match(result.story_state.summary, /dachte über eine List nach\.$/);
+  assert.equal(result.story_state.threads, 'Die Feder der Hexe benutzen.');
+}));
+
+test('Brücken einer Claude-Folge bis zum Ende (3, 5, 7 und 12 Teile): Ausgabe-Check, Erzählregeln, Vergangenheit', async () => {
+  for (const target of [3, 5, 7, 12]) {
+    const brain = new Brain(null);
+    let state: unknown = claudeEpisode(1, { target });
+    let all = '';
+    let parts = 1;
+    let previous = '';
+    for (let i = 0; i < target && !(state as { done?: boolean }).done; i++) {
+      const result = await brain.handle('weiter', '', state);
+      assert.equal(screenOutput(result.speech, 'story'), false, result.speech);
+      assert.deepEqual(variantPiecesIn(result.speech), [], result.speech);
+      const text = result.speech.replace(EPISODE_CLOSING, '');
+      assert.ok(!DRAGON_DEFEATED_OR_TAME.test(text), text);
+      assert.ok(!/wirklich will|wollte nur/i.test(text), text);
+      assert.notEqual(text, previous, `Teil ${result.story_state.part} gleicht wörtlich dem Teil davor`);
+      previous = text;
+      const sentences = result.story_state.summary.split(/(?<=[.!?…][“”"]?)\s+/).filter(Boolean);
+      assert.equal(new Set(sentences).size, sentences.length, `kein Satz doppelt in der Zusammenfassung: ${result.story_state.summary}`);
+      all += result.speech + '\n';
+      parts = result.story_state.part;
+      state = result.story_state;
+    }
+    assert.equal(parts, target, `${target} Teile`);
+    assert.equal((state as { done: boolean }).done, true);
+    const recent = (state as { recent: string }).recent;
+    assert.ok(recent.startsWith('Kunibert will heute die Glocke') && !recent.includes('Geändert'), `Kernidee ohne Vermerk: ${recent}`);
+    assert.ok(!/erwacht er|geht er|ist er/.test(all), all);
+    assert.ok(!/ – /.test(all), 'keine Gedankenstriche');
+    assert.equal(all.match(/Kuniberts List gelang für heute\./g)?.length, 1, 'Ausgang genau einmal, im letzten Teil');
+  }
+});
+
+test('Ersatz ohne Plan von Claude (eigene Ersatzfolge) erzählt weiter mit den festen Varianten', async () => {
+  const brain = new Brain(null);
+  let state: unknown = {};
+  let all = '';
+  for (let i = 0; i < 5; i++) {
+    const result = await brain.handle('weiter', '', state);
+    all += result.speech + '\n';
+    state = result.story_state;
+  }
+  assert.ok(variantPiecesIn(all).length > 0, 'Geschenk und List der Variante kommen vor');
+  assert.ok(!all.includes('Kuniberts List gelang für heute.'));
+});
+
+test('appendSummary: Neues kommt ans Ende, vorn fallen ganze Sätze weg', () => {
+  assert.equal(appendSummary('Eins. Zwei.', 'Drei.'), 'Eins. Zwei. Drei.');
+  assert.equal(appendSummary('', 'Drei.'), 'Drei.');
+  const long = Array.from({ length: 60 }, (_, i) => `Satz Nummer ${i} war da.`).join(' ');
+  const joined = appendSummary(long, 'Am Berg zeigte sich der Drache.');
+  assert.ok(joined.length <= 900, String(joined.length));
+  assert.ok(joined.endsWith('Am Berg zeigte sich der Drache.'));
+  assert.match(joined, /^Satz Nummer \d+ war da\./, 'beginnt mit einem ganzen Satz');
+  assert.ok(joined.includes('Satz Nummer 59 war da.'), 'das Letzte bleibt');
 });
