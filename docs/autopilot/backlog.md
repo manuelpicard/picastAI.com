@@ -285,6 +285,7 @@ Angelegt am 17.11.2026, 20:15, von Claude (Chat). Gepflegt von den Läufen des W
 - Fertig, wenn: Tests für die Übernahme in Teil 3 und in Teil 5; Ausgabe-Check grün. Eigener PR mit „(ändert, was Kinder hören)“.
 - Gefunden bei der Prüfung von PR #66 (20.11.2026).
 - Ergebnis (27.11.2026, 00:05, PR #147, vorläufig): Hat die Folge einen Plan von Claude, erzählt die Ersatzfolge nur Brücken (`fallbackBridge` in `server-api/brain.ts`): kein eigenes Geschenk, keine Worte der festen Varianten; die Hexe sagt höchstens den Hinweis aus Claudes Plan (nach Ausgabe-Check); vorletzter Teil: die Idee; letzter Teil: zuerst der Ausgang. Zusammenfassung, Fäden und Plan von Claude bleiben. Tests für die Übernahme in Teil 2, 3, 4 und 5 und für ganze Brückenfolgen mit 3, 5 und 7 Teilen.
+- Nachtrag (27.11.2026, 19:55, PR #147, vorläufig): Der Hinweis wird erst geglättet (`prepareStoryText`), dann geprüft und gesprochen („Dann flüsterte sie: „…““, mit Satzzeichen am Ende). Weitere Mitten (mehr als fünf Teile) erzählen abwechselnd zwei Texte zum Warten, mit je eigener Zeile in der Zusammenfassung. Der vorletzte Teil beginnt versteckt hinter einem Felsen (vorher: der Drache sah Kunibert, und trotzdem trat er „hinter dem Felsen hervor“). Der Ausgang sagt nicht mehr „ließ er das Dorf in Ruhe“ (nicht jede Folge handelt vom Dorf), sondern „Aber Kunibert hatte geschafft, was er sich für diesen Tag vorgenommen hatte.“
 
 ### N1120-1610-f · Ersatzfolge: Wunsch aufgreifen, Variante wechseln, kurze Sätze (Kinder)
 - Rolle: Bauen · Prio: 3 · Status: offen · Bezug: B4, Maßnahme M9

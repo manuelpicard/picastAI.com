@@ -605,15 +605,35 @@ const MIDDLE_APPROACH =
   `und seine goldenen Augen funkelten. Er brüllte so laut, dass die Steine bebten, und eine Feuerzunge sengte das Gras am Weg an. ` +
   `Kunibert sprang schnell hinter einen Felsen und hielt den Atem an.\n\n` +
   `Hinter dem Felsen atmete er tief durch. „Mit Kraft geht das heute nicht“, murmelte er.`;
+// Weitere Mitten (Folgen mit mehr als fünf Teilen): warten und beobachten, abwechselnd, damit kein Teil
+// wörtlich dem vorigen gleicht. Auch nach einer Mitte von Claude passend: Der Drache ist schon da.
+const BRIDGE_WAIT = [
+  {
+    text:
+      'Kunibert suchte sich ein Versteck zwischen den Felsen und beobachtete den Drachen genau. ' +
+      'Der Drache stapfte vor seiner Höhle hin und her. Manchmal schnaubte er, und kleine Funken stoben über die Steine.\n\n' +
+      'Kunibert wartete geduldig und dachte nach.',
+    summary: 'Kunibert beobachtete den Drachen aus einem Versteck zwischen den Felsen und dachte über eine List nach.',
+  },
+  {
+    text:
+      'Die Sonne wanderte langsam über den Himmel. Kunibert blieb ganz still zwischen den Felsen sitzen. ' +
+      'Einmal hob der Drache den Kopf und schnupperte, und Kunibert hielt den Atem an. ' +
+      'Dann ließ der Drache den Kopf wieder sinken.\n\n' +
+      'Kunibert atmete leise aus.',
+    summary: 'Kunibert wartete still zwischen den Felsen. Der Drache schnupperte, entdeckte ihn aber nicht.',
+  },
+] as const;
 const BRIDGE_TRICK =
-  'Am späten Nachmittag stand Kunibert vor der Drachenhöhle. Der Drache lag im Eingang und ließ ihn nicht aus den Augen. ' +
+  'Am späten Nachmittag kauerte Kunibert hinter einem Felsen nahe der Drachenhöhle. Der Drache lag im Eingang. ' +
   'Schwarzer Rauch stieg aus seinen Nüstern, und sein Schwanz peitschte über die Steine.\n\n' +
   'Kuniberts Herz klopfte laut. Er dachte an alles, was er an diesem Tag gesehen und gehört hatte. ' +
   'Und plötzlich wusste er, was zu tun war.\n\n' +
   'Leise trat er hinter dem Felsen hervor. Jetzt oder nie, dachte Kunibert.';
 const BRIDGE_OUTCOME =
   'Kuniberts List gelang für heute. Der Drache brüllte vor Wut, dass die Steine bebten, ' +
-  'und zog sich tief in seine Höhle zurück. Besiegt war er nicht. Aber für heute ließ er das Dorf in Ruhe.';
+  'und zog sich tief in seine Höhle zurück. Besiegt war er nicht. ' +
+  'Aber Kunibert hatte geschafft, was er sich für diesen Tag vorgenommen hatte.';
 const FINALE_HOMEWARD =
   `Mit leichten Schritten stieg Kunibert den Berg hinab. Im Wald winkte ihm die Hexe aus ihrem Fenster zu. ` +
   `An der Brücke wartete wieder der Kutscher und nahm ihn mit zurück ins Dorf.\n\n` +
@@ -625,15 +645,19 @@ const FINALE_HOMEWARD =
 /**
  * Brückentext für einen Teil der Ersatzfolge, wenn die Folge einen Plan von Claude hat. Fäden und Plan
  * von Claude bleiben; die Zusammenfassung bekommt nur dazu, was die Brücke erzählt. Die Hexe sagt
- * höchstens den Hinweis aus Claudes Plan (so, wie Claude ihn sagen soll), und nur, wenn er den
- * Ausgabe-Check besteht. Exportiert für Tests.
+ * höchstens den Hinweis aus Claudes Plan (so, wie Claude ihn sagen soll), vorlesefertig geglättet und
+ * nur, wenn er so den Ausgabe-Check besteht. `part` ist die Nummer des Teils, den die Brücke erzählt.
+ * Exportiert für Tests.
  */
-export function fallbackBridge(phase: StoryPhase, state: StoryState): { text: string; summary: string; threads: string; hook: string } {
-  const planHint = hintFromPlan(state.plan);
+export function fallbackBridge(phase: Exclude<StoryPhase, 'start'>, state: StoryState, part: number): { text: string; summary: string; threads: string; hook: string } {
+  // Geprüft wird, was das Kind hört: erst glätten (Ziffern als Wörter, keine Striche), dann der Ausgabe-Check.
+  const prepared = prepareStoryText(hintFromPlan(state.plan)).replace(/\s+/g, ' ').trim();
+  // Satzzeichen am Ende, damit „…“ in Text und Zusammenfassung einen ganzen Satz zitiert.
+  const planHint = prepared && !/[.!?…]$/.test(prepared) ? `${prepared}.` : prepared;
   const hint = planHint && !screenOutput(planHint, 'story') ? planHint : '';
   if (phase === 'weg') {
     const witch = hint
-      ? `Die Hexe stand an ihrem Topf und rührte. „Du gehst zum Drachen“, sagte sie, ohne aufzusehen. „${hint}“, flüsterte sie.`
+      ? `Die Hexe stand an ihrem Topf und rührte. „Du gehst zum Drachen“, sagte sie, ohne aufzusehen. Dann flüsterte sie: „${hint}“`
       : 'Die Hexe stand an ihrem Topf und rührte. Sie sah kurz auf und nickte ihm zu, als wüsste sie schon, wohin er wollte.';
     return {
       text: `${BRIDGE_FOREST}\n\n${witch}\n\n${BRIDGE_ONWARD}`,
@@ -648,9 +672,20 @@ export function fallbackBridge(phase: StoryPhase, state: StoryState): { text: st
     };
   }
   if (phase === 'middle') {
+    // Erste Mitte: der Weg am Berg und der Drache. War schon der Teil davor eine Mitte (von Claude oder
+    // als Brücke), ist der Drache schon da: dann warten und beobachten.
+    if (storyPhase(part - 1, state.target) !== 'middle') {
+      return {
+        text: `${MIDDLE_APPROACH} Er brauchte eine List.`,
+        summary: appendSummary(state.summary, 'Am Berg zeigte sich der Drache. Kunibert versteckte sich hinter einem Felsen und merkte, dass er eine List braucht.'),
+        threads: state.threads,
+        hook: 'Kunibert überlegt sich eine List.',
+      };
+    }
+    const wait = BRIDGE_WAIT[part % BRIDGE_WAIT.length];
     return {
-      text: `${MIDDLE_APPROACH} Er brauchte eine List.`,
-      summary: appendSummary(state.summary, 'Am Berg zeigte sich der Drache. Kunibert versteckte sich hinter einem Felsen und merkte, dass er eine List braucht.'),
+      text: `${wait.text} Er brauchte eine List.`,
+      summary: appendSummary(state.summary, wait.summary),
       threads: state.threads,
       hook: 'Kunibert überlegt sich eine List.',
     };
@@ -1528,7 +1563,7 @@ export class Brain {
 
     if (!newEpisode && current.plan && phase !== 'start') {
       // Die Folge hat einen Plan von Claude: Das Kind hat Claudes Handlung gehört (Punkt N1120-1610-e).
-      ({ text, summary, threads, hook } = fallbackBridge(phase, current));
+      ({ text, summary, threads, hook } = fallbackBridge(phase, current, part));
     } else if (phase === 'start') {
       text =
         `Kunibert erwachte im Dachzimmer des Gasthauses. ${mood}\n\n` +
