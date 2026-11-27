@@ -6,7 +6,7 @@
 # Caddy-Dateien ist es Vorsorge.
 # Darum speichert und checkt Git sie immer mit LF aus, auch unter Windows (core.autocrlf=true).
 # Neue Dateiarten, die auf Pi oder Server laufen, hier eintragen. Keine Regel für alle Dateien
-# ("* eol=lf" oder "* text"): Sie würde Binärdateien wie die Hörproben verändern.
+# ("* eol=lf" oder "* text"): Sie würde Binärdateien wie Bilder oder Audiodateien verändern.
 # Test: server-api/zeilenenden.test.ts (prüft auch jede Datei mit "#!" in der ersten Zeile).
 
 *.sh            text eol=lf

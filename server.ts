@@ -2,7 +2,6 @@ import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import multer from 'multer';
 import path from 'path';
-import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { DeviceRegistry, DeviceStoreError, RateLimiter, AudioStore } from './server-api/devices.js';
 import { Brain, FALLBACK_ANSWER_DE, StoryState, type StorySink, type TurnResult } from './server-api/brain.js';
@@ -164,12 +163,6 @@ app.use(cors({
   origin: (origin, callback) => callback(null, Boolean(origin && corsOrigins.includes(origin))),
 }));
 app.use(express.json());
-
-// Audio-Hörproben statisch bereitstellen
-const hoerprobenDir = path.join(__dirname, 'hoerproben');
-if (fs.existsSync(hoerprobenDir)) {
-  app.use('/hoerproben', express.static(hoerprobenDir));
-}
 
 // ------------------------------------------------------------
 // Offizielle Pi-Client Schnittstelle (API-Vertrag)
