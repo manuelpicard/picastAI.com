@@ -634,7 +634,8 @@ summary() {
   if [[ -n "${SPEACHES_LOG_DRIVER+x}" ]]; then speaches_log_hint "$SPEACHES_LOG_DRIVER" || true; fi
 }
 
-main() {
+# Optionen lesen (eigene Funktion, damit deploy/setup-server.test.sh sie ohne Einrichtung prüfen kann).
+parse_args() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --hostname) HOSTNAME_ARG=${2:-}; shift 2 ;;
@@ -651,6 +652,10 @@ main() {
       *) usage >&2; die "Unbekannte Option: $1" ;;
     esac
   done
+}
+
+main() {
+  parse_args "$@"
   [[ -n "$HOSTNAME_ARG" ]] || { usage >&2; die "--hostname fehlt"; }
   valid_hostname "$HOSTNAME_ARG" || die "Kein gültiger Hostname: $HOSTNAME_ARG"
   check_tts_options
