@@ -18,7 +18,7 @@ demo/.token
 # Große Modelldateien (werden per Anleitung heruntergeladen)
 server/voices/
 
-# Rohaudio und Demo-Zwischenstände (die fertigen MP3s liegen in hoerproben/)
+# Rohaudio und Demo-Zwischenstände
 *.wav
 demo/out/
 demo/run-geschichte/
