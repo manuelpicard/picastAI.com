@@ -1037,6 +1037,9 @@ test('hintFromPlan und usesHint: Hinweis der Hexe aus dem Plan und im Text wiede
   // Punkt N1120-1610-e: Ein Name in „…“ vor dem Hinweis ist kein Hinweis (mindestens drei Wörter).
   assert.equal(hintFromPlan('Kunibert hilft der Eule „Hupsi“. Die Hexe sagt: „Wer leise singt, weckt keinen Drachen.“'), 'Wer leise singt, weckt keinen Drachen.');
   assert.equal(hintFromPlan('Nebenfigur: die Eule „Hupsi Federkiel“.'), '');
+  // Gerade Anführungszeichen paarweise: nach "Max" gilt nicht der Text bis zum nächsten Zeichen als Zitat.
+  assert.equal(hintFromPlan('Nebenfigur "Max". Die Hexe sagt: "Wer leise singt, weckt keinen Drachen." Lösung: Lied.'), 'Wer leise singt, weckt keinen Drachen.');
+  assert.equal(hintFromPlan('Nebenfigur „Max“. Die Hexe sagt: „Wer leise singt, weckt keinen Drachen.“'), 'Wer leise singt, weckt keinen Drachen.');
   assert.equal(usesHint('Da fiel ihm ein: Was klingt, will gefunden werden!', 'Was klingt, will gefunden werden.'), true);
   assert.equal(usesHint('Er ging nach Hause.', 'Was klingt, will gefunden werden.'), false);
 });
@@ -1924,6 +1927,7 @@ test('Ersatz übernimmt Teil 5 einer Claude-Folge: zuerst der Ausgang der List, 
     assert.equal(result.story_state.plan, '');
     assert.equal(result.story_state.summary, '');
     assert.ok(result.story_state.recent.startsWith('Kunibert will heute die Glocke'), 'Kernidee gemerkt wie bei Claude');
+    assert.ok(!result.story_state.recent.includes('Geändert'), 'ohne den Vermerk der Brücke');
   }
 }));
 
@@ -1962,10 +1966,16 @@ test('Ersatz übernimmt Teil 2 einer Claude-Folge: Hexe sagt den Hinweis aus dem
   assert.ok(!/gift/i.test(quiet.story_state.plan), quiet.story_state.plan);
   assert.equal(hintFromPlan(quiet.story_state.plan), '', 'Worte, die das Kind nicht gehört hat, fliegen aus dem Plan');
   assert.match(quiet.story_state.plan, /nur zugenickt/);
-  // Erzählt Claude danach den vorletzten Teil, erinnert sich Kunibert nicht an Worte, die nie gefallen sind.
-  const trickPrompt = buildStoryPrompt({ ...quiet.story_state, part: 3 }, 4, { storyMinWords: 170, storyMaxWords: 230 });
+  // Erzählt Claude danach den vorletzten Teil, erinnert sich Kunibert nicht an Worte, die nie gefallen sind,
+  // auch nicht an ein anderes Zitat des Plans, das nachrücken würde (ein Lied in der Lösung).
+  const song = claudeEpisode(1, { ...start, plan: 'Die Hexe sagt: „Trink das Gift, dann bist du tot.“ Lösung: Er singt „La le lu, der Mond ist da“.' });
+  const silentWitch = await new Brain(null).handle('weiter', '', song);
+  assert.match(silentWitch.speech, /nickte ihm zu/);
+  assert.equal(hintFromPlan(silentWitch.story_state.plan), '');
+  const trickPrompt = buildStoryPrompt({ ...silentWitch.story_state, part: 3 }, 4, { storyMinWords: 170, storyMaxWords: 230 });
   assert.ok(!trickPrompt.includes('Die Worte der Hexe lauteten'), trickPrompt);
   assert.match(trickPrompt, /nur zugenickt/);
+  assert.ok(!/gift/i.test(trickPrompt), 'das abgelehnte Zitat steht nicht im Auftrag');
 
   // Geprüft und gesprochen wird der geglättete Hinweis: Ziffern als Wörter, kein Gedankenstrich.
   const digits = claudeEpisode(1, { ...start, plan: 'Die Hexe sagt: „Zähl bis 3 und sing – ganz leise.“' });
@@ -2017,6 +2027,8 @@ test('Brücken einer Claude-Folge bis zum Ende (3, 5, 7 und 12 Teile): Ausgabe-C
     }
     assert.equal(parts, target, `${target} Teile`);
     assert.equal((state as { done: boolean }).done, true);
+    const recent = (state as { recent: string }).recent;
+    assert.ok(recent.startsWith('Kunibert will heute die Glocke') && !recent.includes('Geändert'), `Kernidee ohne Vermerk: ${recent}`);
     assert.ok(!/erwacht er|geht er|ist er/.test(all), all);
     assert.ok(!/ – /.test(all), 'keine Gedankenstriche');
     assert.equal(all.match(/Kuniberts List gelang für heute\./g)?.length, 1, 'Ausgang genau einmal, im letzten Teil');

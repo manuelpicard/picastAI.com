@@ -569,19 +569,25 @@ export function isBedtime(date: Date): boolean {
 }
 
 /**
- * Das Zitat des Hinweises der Hexe im Plan: der erste Text in „…“ (oder "…") mit mindestens drei Wörtern.
- * Kürzere Zitate sind meist Namen (die Nebenfigur steht im Plan vor dem Hinweis) und kein Hinweis.
+ * Das Zitat des Hinweises der Hexe im Plan: der erste Text in „…“ (oder "…") mit mindestens drei Wörtern,
+ * der mit einem Buchstaben beginnt. Kürzere Zitate sind meist Namen (die Nebenfigur steht im Plan vor dem
+ * Hinweis). Gerade Anführungszeichen zählen paarweise, damit nach "Max" nicht der Text bis zum nächsten
+ * Zeichen als Zitat gilt.
  */
 function hintQuoteInPlan(plan: string): { quote: string; hint: string } | undefined {
-  for (const match of (plan || '').matchAll(/[„"]([^“”"]{4,200})[“”"]/g)) {
-    const hint = match[1].trim();
-    if (hint.split(/\s+/).length >= 3) return { quote: match[0], hint };
+  for (const match of (plan || '').matchAll(/„([^„“”"]{1,200})[“”"]|"([^"„“”]{1,200})"/g)) {
+    const hint = (match[1] ?? match[2] ?? '').trim();
+    if (/^\p{L}/u.test(hint) && hint.split(/\s+/).length >= 3) return { quote: match[0], hint };
   }
   return undefined;
 }
 
-/** Der Hinweis der Hexe aus dem Plan (siehe `hintQuoteInPlan`), sonst leer. */
+/**
+ * Der Hinweis der Hexe aus dem Plan (siehe `hintQuoteInPlan`), sonst leer. Leer auch, wenn die Hexe in der
+ * Brücke nichts gesagt hat (`PLAN_NOTE_SILENT`): Dann rückte sonst ein anderes Zitat des Plans nach.
+ */
 export function hintFromPlan(plan: string): string {
+  if ((plan || '').includes(PLAN_NOTE_SILENT)) return '';
   return hintQuoteInPlan(plan)?.hint ?? '';
 }
 
@@ -652,7 +658,7 @@ const PLAN_NOTE_HINT =
 const PLAN_NOTE_SILENT =
   'Geändert: Im Wald hat die Hexe Kunibert nur zugenickt. Sie hat ihm nichts gesagt und nichts mitgegeben. Die Lösung kommt ohne ihren Hinweis und ohne Geschenk aus.';
 
-/** Hängt einen Vermerk an den Plan; wird er zu lang, wird vorn am Plan gekürzt, nie am Vermerk. */
+/** Hängt einen Vermerk an den Plan; wird es zu lang, fällt das Ende des Plans weg, nie der Vermerk. */
 function notePlan(plan: string, note: string): string {
   const room = STATE_LIMITS.plan - note.length - 1;
   return `${cleanText(plan, Math.max(0, room))} ${note}`.trim();
@@ -1658,7 +1664,9 @@ export class Brain {
       wish: done ? '' : current.wish,
       // Endet eine Folge von Claude mit der Brücke, merkt sich der Stand ihre Kernidee wie bei Claude
       // (dort: episode_motif oder Plan), damit die nächste Folge etwas anderes erfindet.
-      recent: done && current.plan ? rememberMotif(current.recent, current.plan) : current.recent,
+      recent: done && current.plan
+        ? rememberMotif(current.recent, current.plan.replace(PLAN_NOTE_HINT, '').replace(PLAN_NOTE_SILENT, ''))
+        : current.recent,
       miss: 0,
       at: this.now().getTime(),
     };
