@@ -655,6 +655,49 @@ vorher=$fails
   [[ $fails -eq $vorher ]]
 ) || fails=$((fails + 1))
 
+# deploy/stt-messung.sh (Punkt N1126-1600-a): Testsätze von Kuniberts Stimme (Pocket TTS), Piper nur
+# ausdrücklich. Eine Attrappe für curl im PATH schreibt jeden Aufruf mit; es geht nichts hinaus.
+mkdir -p "$tmp/fakebin"
+cat > "$tmp/fakebin/curl" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$STT_LOG"
+out=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -o|--output) out=$2; shift 2 ;;
+    -w) printf '0.5'; shift 2 ;;
+    *) shift ;;
+  esac
+done
+if [[ -n "$out" && "$out" != /dev/null ]]; then printf '{"text":"Hallo Kunibert"}' > "$out"; fi
+EOF
+chmod +x "$tmp/fakebin/curl"
+stt_messung() { # Umgebung … (dann misst das Skript ein Modell mit einem Lauf je Satz)
+  : > "$tmp/stt.log"
+  env -u PICASTAI_TTS_MODEL -u PICASTAI_TTS_VOICE -u PICASTAI_POCKET_TTS_URL -u PICASTAI_POCKET_TTS_VOICE \
+    PATH="$tmp/fakebin:$PATH" STT_LOG="$tmp/stt.log" RUNS=1 "$@" bash "$here/stt-messung.sh" Systran/faster-whisper-small
+}
+ausgabe=$(stt_messung 2>&1); rc=$?
+eq  "Messung: läuft ohne Piper"                "$rc" 0
+eq  "Messung: drei Sätze von Kuniberts Stimme" "$(grep -c '^-fsS http://127.0.0.1:8001/tts ' "$tmp/stt.log")" 3
+yes "Messung: mit der Stimme stuart_bell"      grep -qF 'voice_url=stuart_bell' "$tmp/stt.log"
+no  "Messung: lädt kein Piper"                 grep -qi piper "$tmp/stt.log"
+no  "Messung: keine Stimme im Sprachserver"    grep -qF '/v1/audio/speech' "$tmp/stt.log"
+yes "Messung: misst die Erkennung"             grep -qF '/v1/audio/transcriptions' "$tmp/stt.log"
+no  "Messung: keine Warnung ohne Piper"        grep -qF 'Risiko L1' <<<"$ausgabe"
+ausgabe=$(stt_messung PICASTAI_TTS_MODEL="$PIPER_MODEL" PICASTAI_TTS_VOICE="$PIPER_VOICE" 2>&1); rc=$?
+eq  "Messung: Piper ausdrücklich geht"         "$rc" 0
+yes "Messung: Piper ausdrücklich mit Warnung"  grep -qF 'Risiko L1' <<<"$ausgabe"
+yes "Messung: Piper ausdrücklich geladen"      grep -qF "/v1/models/$PIPER_MODEL" "$tmp/stt.log"
+no  "Messung: dann nicht Pocket"               grep -qF '8001' "$tmp/stt.log"
+ausgabe=$(stt_messung PICASTAI_TTS_MODEL=hexgrad/Kokoro-82M PICASTAI_TTS_VOICE=af_heart 2>&1)
+no  "Messung: andere Stimme ohne Warnung"      grep -qF 'Risiko L1' <<<"$ausgabe"
+stt_messung PICASTAI_TTS_MODEL=m >/dev/null 2>&1; rc=$?
+eq  "Messung: Modell ohne Stimme bricht ab"    "$rc" 2
+eq  "Messung: dann kein Aufruf"                "$(wc -l < "$tmp/stt.log")" 0
+stt_messung PICASTAI_POCKET_TTS_URL=http://127.0.0.1:9001 PICASTAI_POCKET_TTS_VOICE=anna >/dev/null 2>&1
+eq  "Messung: Adresse und Stimme aus der Umgebung" "$(grep -c '^-fsS http://127.0.0.1:9001/tts .*voice_url=anna' "$tmp/stt.log")" 3
+
 # Aufruf ohne Hostname bricht ab, bevor etwas geändert wird.
 no  "ohne --hostname: Abbruch"     quiet bash "$here/setup-server.sh"
 no  "ungültiger Hostname: Abbruch" quiet bash "$here/setup-server.sh" --hostname 'x;y'
