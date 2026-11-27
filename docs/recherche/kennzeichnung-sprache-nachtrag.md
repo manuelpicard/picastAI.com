@@ -10,7 +10,7 @@
 
 **Gegengelesen am 27.11.2026.** Der Lauf, der diesen Nachtrag fertig gemacht hat, ließ die wichtigsten Quellen noch einmal lesen, mit anderem Auftrag und durch andere Agenten (Claude Sonnet): die SoK-Arbeit (Q1) ganz, dazu die Seiten zu Lizenz, Abtastrate und Nutzlast von AudioSeal (Paketseite, Q5), WavMark (Paketseite Q6, Dateiliste auf Hugging Face Q26), Timbre (Q9) und SilentCipher (Q11, Q12). Die Adressen kamen aus Websuchen vom selben Tag. Alle Abrufe gingen durch. Die Zeichenzahlen der erneut gelesenen Seiten sind dieselben wie am 26.11. Die Seiten haben sich in der Zwischenzeit also wohl nicht geändert (Einschätzung). Auch dabei habe ich nur Berichte gesehen. Sie bestätigen die Zahlen der SoK-Arbeit und die Lizenzangaben. Sie ändern einzelne Stellen: Die Zahlen der SoK-Arbeit stehen als Text vor. Die Zähleinheit von Tabelle VI ist offen. SilentCipher trägt laut Projektseiten 40 Bit. Die WavMark-Gewichte liegen als Pickle-Dateien vor.
 
-„Einschätzung“ heißt: meine Bewertung, kein Satz aus einer Quelle. Im Text stehen keine Zitate, nur in der Quellentabelle (ein Zitat je Quelle, höchstens 15 Wörter, so wie der Agent es wiedergegeben hat, nicht am Original gegengelesen). Sätze aus `kennzeichnung-sprache.md` gebe ich sinngemäß wieder.
+„Einschätzung“ heißt: meine Bewertung, kein Satz aus einer Quelle. Im Text stehen keine Zitate, nur in der Quellentabelle (ein Zitat je Quelle, höchstens 15 Wörter, so wie der Agent es wiedergegeben hat, nicht am Original gegengelesen). Sätze aus `kennzeichnung-sprache.md` gebe ich sinngemäß wieder. Namen von Feldern, Abschnitten, Dateien und Schaltflächen der Seiten stehen in Anführungszeichen; das sind Namen, keine Zitate.
 
 ## 1. Kurzfassung
 
