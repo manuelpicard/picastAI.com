@@ -568,10 +568,21 @@ export function isBedtime(date: Date): boolean {
   return hour >= 19 || hour < 6;
 }
 
-/** Der Hinweis der Hexe aus dem Plan: der erste Text in „…“ (oder "…"), sonst leer. */
+/**
+ * Das Zitat des Hinweises der Hexe im Plan: der erste Text in „…“ (oder "…") mit mindestens drei Wörtern.
+ * Kürzere Zitate sind meist Namen (die Nebenfigur steht im Plan vor dem Hinweis) und kein Hinweis.
+ */
+function hintQuoteInPlan(plan: string): { quote: string; hint: string } | undefined {
+  for (const match of (plan || '').matchAll(/[„"]([^“”"]{4,200})[“”"]/g)) {
+    const hint = match[1].trim();
+    if (hint.split(/\s+/).length >= 3) return { quote: match[0], hint };
+  }
+  return undefined;
+}
+
+/** Der Hinweis der Hexe aus dem Plan (siehe `hintQuoteInPlan`), sonst leer. */
 export function hintFromPlan(plan: string): string {
-  const match = /[„"]([^“”"]{4,200})[“”"]/.exec(plan || '');
-  return match ? match[1].trim() : '';
+  return hintQuoteInPlan(plan)?.hint ?? '';
 }
 
 /**
@@ -581,6 +592,8 @@ export function hintFromPlan(plan: string): string {
 export function appendSummary(summary: string, note: string): string {
   let sentences = cleanText(summary, 5000).split(/(?<=[.!?…][“”"]?)\s+/).filter(Boolean);
   const tail = cleanText(note, STATE_LIMITS.summary);
+  // Steht es schon drin (lange Folgen mit mehreren gleichen Brücken), kommt es nicht noch einmal dazu.
+  if (tail && sentences.join(' ').includes(tail)) return sentences.join(' ').slice(0, STATE_LIMITS.summary);
   let joined = [...sentences, tail].filter(Boolean).join(' ');
   while (joined.length > STATE_LIMITS.summary && sentences.length) {
     sentences = sentences.slice(1);
@@ -595,9 +608,7 @@ export function appendSummary(summary: string, note: string): string {
 const BRIDGE_FOREST =
   'Kunibert ging vorsichtig in den düsteren Wald hinein. Tropfen perlten von den Farnen, und ' +
   'im Dickicht knackte ein Zweig. Dann sah er die Hütte der Hexe. Aus dem Schornstein stieg blauer Rauch.';
-const BRIDGE_ONWARD =
-  'Kunibert verbeugte sich und ging weiter. Bald wurde der Weg steiler. ' +
-  'Die Bäume wurden weniger, und die Felsen des Berges kamen näher.';
+const BRIDGE_ONWARD = 'Bald wurde der Weg steiler. Die Bäume wurden weniger, und die Felsen des Berges kamen näher.';
 const MIDDLE_APPROACH =
   `Der Weg am Berg war steil und steinig. Kleine Kiesel rollten unter Kuniberts Stiefeln ins Tal. ` +
   `Je näher er der Höhle kam, desto wärmer wurde die Luft.\n\n` +
@@ -605,12 +616,13 @@ const MIDDLE_APPROACH =
   `und seine goldenen Augen funkelten. Er brüllte so laut, dass die Steine bebten, und eine Feuerzunge sengte das Gras am Weg an. ` +
   `Kunibert sprang schnell hinter einen Felsen und hielt den Atem an.\n\n` +
   `Hinter dem Felsen atmete er tief durch. „Mit Kraft geht das heute nicht“, murmelte er.`;
-// Weitere Mitten (Folgen mit mehr als fünf Teilen): warten und beobachten, abwechselnd, damit kein Teil
-// wörtlich dem vorigen gleicht. Auch nach einer Mitte von Claude passend: Der Drache ist schon da.
+// Weitere Mitten (Folgen mit mehr als fünf Teilen): warten und beobachten, damit kein Teil wörtlich dem
+// vorigen gleicht. Der erste Text passt auch nach einer Mitte von Claude (der Drache ist schon da), der
+// zweite nur direkt nach dem ersten (er setzt das Versteck voraus); danach wieder der erste.
 const BRIDGE_WAIT = [
   {
     text:
-      'Kunibert suchte sich ein Versteck zwischen den Felsen und beobachtete den Drachen genau. ' +
+      'Kunibert duckte sich tief zwischen die Felsen und beobachtete den Drachen genau. ' +
       'Der Drache stapfte vor seiner Höhle hin und her. Manchmal schnaubte er, und kleine Funken stoben über die Steine.\n\n' +
       'Kunibert wartete geduldig und dachte nach.',
     summary: 'Kunibert beobachtete den Drachen aus einem Versteck zwischen den Felsen und dachte über eine List nach.',
@@ -630,10 +642,21 @@ const BRIDGE_TRICK =
   'Kuniberts Herz klopfte laut. Er dachte an alles, was er an diesem Tag gesehen und gehört hatte. ' +
   'Und plötzlich wusste er, was zu tun war.\n\n' +
   'Leise trat er hinter dem Felsen hervor. Jetzt oder nie, dachte Kunibert.';
+// Der Ausgang legt nicht fest, was der Drache tut (bei Claude kann er zum Beispiel schon eingeschlafen sein).
 const BRIDGE_OUTCOME =
-  'Kuniberts List gelang für heute. Der Drache brüllte vor Wut, dass die Steine bebten, ' +
-  'und zog sich tief in seine Höhle zurück. Besiegt war er nicht. ' +
-  'Aber Kunibert hatte geschafft, was er sich für diesen Tag vorgenommen hatte.';
+  'Kuniberts List gelang für heute. Als er sich auf den Rückweg machte, grollte es hinter ihm tief im Berg. ' +
+  'Besiegt war der Drache nicht. Aber Kunibert hatte geschafft, was er sich für diesen Tag vorgenommen hatte.';
+/** Vermerk im Plan, wenn die Brücke mit der Hexe erzählt hat (für Claude, falls es weitererzählt). */
+const PLAN_NOTE_HINT =
+  'Geändert: Im Wald hat die Hexe Kunibert nur ihren Hinweis gesagt und ihm nichts mitgegeben. Die Lösung kommt ohne Geschenk aus.';
+const PLAN_NOTE_SILENT =
+  'Geändert: Im Wald hat die Hexe Kunibert nur zugenickt. Sie hat ihm nichts gesagt und nichts mitgegeben. Die Lösung kommt ohne ihren Hinweis und ohne Geschenk aus.';
+
+/** Hängt einen Vermerk an den Plan; wird er zu lang, wird vorn am Plan gekürzt, nie am Vermerk. */
+function notePlan(plan: string, note: string): string {
+  const room = STATE_LIMITS.plan - note.length - 1;
+  return `${cleanText(plan, Math.max(0, room))} ${note}`.trim();
+}
 const FINALE_HOMEWARD =
   `Mit leichten Schritten stieg Kunibert den Berg hinab. Im Wald winkte ihm die Hexe aus ihrem Fenster zu. ` +
   `An der Brücke wartete wieder der Kutscher und nahm ihn mit zurück ins Dorf.\n\n` +
@@ -649,18 +672,29 @@ const FINALE_HOMEWARD =
  * nur, wenn er so den Ausgabe-Check besteht. `part` ist die Nummer des Teils, den die Brücke erzählt.
  * Exportiert für Tests.
  */
-export function fallbackBridge(phase: Exclude<StoryPhase, 'start'>, state: StoryState, part: number): { text: string; summary: string; threads: string; hook: string } {
-  // Geprüft wird, was das Kind hört: erst glätten (Ziffern als Wörter, keine Striche), dann der Ausgabe-Check.
-  const prepared = prepareStoryText(hintFromPlan(state.plan)).replace(/\s+/g, ' ').trim();
-  // Satzzeichen am Ende, damit „…“ in Text und Zusammenfassung einen ganzen Satz zitiert.
-  const planHint = prepared && !/[.!?…]$/.test(prepared) ? `${prepared}.` : prepared;
-  const hint = planHint && !screenOutput(planHint, 'story') ? planHint : '';
+export function fallbackBridge(
+  phase: Exclude<StoryPhase, 'start'>,
+  state: StoryState,
+  part: number
+): { text: string; summary: string; threads: string; hook: string; plan: string } {
   if (phase === 'weg') {
+    // Geprüft wird, was das Kind hört: erst glätten (Ziffern als Wörter, keine Striche), dann der Ausgabe-Check.
+    const found = hintQuoteInPlan(state.plan);
+    const prepared = prepareStoryText(found?.hint ?? '').replace(/\s+/g, ' ').replace(/[\s,;:–—-]+$/, '').trim();
+    // Satzzeichen am Ende, damit „…“ in Text und Zusammenfassung einen ganzen Satz zitiert.
+    const planHint = prepared && !/[.!?…]$/.test(prepared) ? `${prepared}.` : prepared;
+    const hint = planHint && !screenOutput(planHint, 'story') ? planHint : '';
     const witch = hint
       ? `Die Hexe stand an ihrem Topf und rührte. „Du gehst zum Drachen“, sagte sie, ohne aufzusehen. Dann flüsterte sie: „${hint}“`
       : 'Die Hexe stand an ihrem Topf und rührte. Sie sah kurz auf und nickte ihm zu, als wüsste sie schon, wohin er wollte.';
+    // Hat das Kind den Hinweis nicht gehört, verschwindet er aus dem Plan: Sonst erinnerte sich Kunibert bei
+    // Claude später an Worte, die nie gefallen sind (`buildStoryPrompt`, vorletzter Teil).
+    const plan = hint
+      ? notePlan(state.plan, PLAN_NOTE_HINT)
+      : notePlan(found ? state.plan.replace(found.quote, '(nicht gesagt)') : state.plan, PLAN_NOTE_SILENT);
     return {
-      text: `${BRIDGE_FOREST}\n\n${witch}\n\n${BRIDGE_ONWARD}`,
+      text: `${BRIDGE_FOREST}\n\n${witch}\n\n${hint ? '„Habt Dank“, sagte Kunibert und verbeugte sich. Dann ging er weiter.' : 'Kunibert verbeugte sich und ging weiter.'} ${BRIDGE_ONWARD}`,
+      plan,
       summary: appendSummary(
         state.summary,
         hint
@@ -680,14 +714,17 @@ export function fallbackBridge(phase: Exclude<StoryPhase, 'start'>, state: Story
         summary: appendSummary(state.summary, 'Am Berg zeigte sich der Drache. Kunibert versteckte sich hinter einem Felsen und merkte, dass er eine List braucht.'),
         threads: state.threads,
         hook: 'Kunibert überlegt sich eine List.',
+        plan: state.plan,
       };
     }
-    const wait = BRIDGE_WAIT[part % BRIDGE_WAIT.length];
+    const afterFirstWait = state.last === lastSentences(`${BRIDGE_WAIT[0].text} Er brauchte eine List.`);
+    const wait = BRIDGE_WAIT[afterFirstWait ? 1 : 0];
     return {
       text: `${wait.text} Er brauchte eine List.`,
       summary: appendSummary(state.summary, wait.summary),
       threads: state.threads,
       hook: 'Kunibert überlegt sich eine List.',
+      plan: state.plan,
     };
   }
   if (phase === 'trick') {
@@ -696,9 +733,10 @@ export function fallbackBridge(phase: Exclude<StoryPhase, 'start'>, state: Story
       summary: appendSummary(state.summary, 'Vor der Höhle bekam Kunibert eine Idee und begann, sie auszuführen. Wie sie ausgeht, ist noch nicht erzählt.'),
       threads: state.threads,
       hook: 'Kunibert führt seine List aus.',
+      plan: state.plan,
     };
   }
-  return { text: `${BRIDGE_OUTCOME}\n\n${FINALE_HOMEWARD}`, summary: '', threads: '', hook: '' };
+  return { text: `${BRIDGE_OUTCOME}\n\n${FINALE_HOMEWARD}`, summary: '', threads: '', hook: '', plan: '' };
 }
 
 /** Kommt der Hinweis im Text vor? Mindestens die Hälfte seiner längeren Wörter (ab vier Buchstaben). */
@@ -1560,10 +1598,11 @@ export class Brain {
     let summary = '';
     let threads = '';
     let hook = '';
+    let plan = current.plan;
 
     if (!newEpisode && current.plan && phase !== 'start') {
       // Die Folge hat einen Plan von Claude: Das Kind hat Claudes Handlung gehört (Punkt N1120-1610-e).
-      ({ text, summary, threads, hook } = fallbackBridge(phase, current, part));
+      ({ text, summary, threads, hook, plan } = fallbackBridge(phase, current, part));
     } else if (phase === 'start') {
       text =
         `Kunibert erwachte im Dachzimmer des Gasthauses. ${mood}\n\n` +
@@ -1615,8 +1654,11 @@ export class Brain {
       threads: done ? '' : threads,
       hook: done ? '' : hook,
       last: done ? '' : lastSentences(text),
-      plan: done ? '' : current.plan,
+      plan: done ? '' : plan,
       wish: done ? '' : current.wish,
+      // Endet eine Folge von Claude mit der Brücke, merkt sich der Stand ihre Kernidee wie bei Claude
+      // (dort: episode_motif oder Plan), damit die nächste Folge etwas anderes erfindet.
+      recent: done && current.plan ? rememberMotif(current.recent, current.plan) : current.recent,
       miss: 0,
       at: this.now().getTime(),
     };
