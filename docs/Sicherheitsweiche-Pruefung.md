@@ -4,7 +4,7 @@ Für eine Fachkraft ohne Programmierkenntnisse (zum Beispiel Kinderschutz, Päda
 
 **Stand:** 6. November 2026, Code-Stand `main` nach PR #14. **Quellen:** nur der Programmcode (`server-api/safety.ts`, `server-api/brain.ts`, `server-api/prompts.ts`) und die Tests (`server-api/safety.test.ts`, `server-api/brain.test.ts`). Was in den Tests steht, ist als **(Test)** gekennzeichnet. Sätze ohne diesen Vermerk wurden zusätzlich am 6. November 2026 mit dem Code ausprobiert; sie stehen nicht in den Tests.
 
-**Nachtrag 26. November 2026, abends:** Abschnitt 14 beschreibt Teil 1 der Prüfung auf andere Wortstellung und Nebensätze (211 Sätze mehr erkannt, neue Fehlalarme in Abschnitt 7.3, neue Fragen 26 und 27).
+**Nachtrag 26. November 2026, abends:** Abschnitt 14 beschreibt Teil 1 der Prüfung auf andere Wortstellung und Nebensätze (538 Sätze mehr erkannt, neue Fehlalarme in Abschnitt 7.3, neue Fragen 26 und 27).
 
 **Nachtrag 25. November 2026:** Abschnitt 12 beschreibt die Prüfung von Abschnitt 11 nach dem Merge (65 Sätze mehr erkannt, neue Fehlalarme in Abschnitt 7.3, Fragen 21 und 22 ergänzt).
 
