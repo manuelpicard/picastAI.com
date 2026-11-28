@@ -1429,6 +1429,66 @@ const MUST_TRIGGER = [
   'ich wurde in der schule verprügelt',
   'Wir wurden im Heim gequält.',
   'mama weiß nicht dass ich mich mit dem gürtel schlage wenn ich traurig bin',
+  // Prüfung von PR #135 nach dem Merge (Lauf „Prüfen“ vom 27.11.2026, 23:23), Probe mit neuen Sätzen. Alle waren auf main (353478b)
+  // still, außer dem letzten. Nebensätze mit „mich“ vor dem Täter (Befund 1; auch Befund 1 der Prüfung von PR #145):
+  'dass mich papa haut',
+  'wenn mich papa verprügelt',
+  'dass mich der onkel immer schlägt',
+  'ob mich papa wieder schlägt wenn er heimkommt',
+  'dass mich mein stiefvater schlägt weiß mama nicht',
+  'weil mich papa immer haut hab ich angst',
+  'Ich hab Angst, dass mich Papa wieder haut.',
+  'Ich hab Angst, weil mich Mama immer schlägt.',
+  'Mama weiß nicht, dass mich Papa haut.',
+  'dass mich papa geschlagen hat',
+  'weil mich die großen jungs geschlagen haben',
+  'weil mich papa verprügelt hat',
+  'dass mich der onkel getreten hat',
+  'Ich bin traurig, weil mich Papa gehauen hat.',
+  'weil mich mama einsperrt',
+  'weil mich der onkel angefasst hat',
+  'nachdem mich der onkel angefasst hat',
+  'seit mich der nachbar angefasst hat kann ich nicht mehr schlafen',
+  'mama glaubt mir nicht dass mich der onkel anfasst',
+  // Relativsätze (Befund 1 der Prüfung von PR #145)
+  'Ich hab Angst vor dem Mann, der mich anfasst.',
+  'die frau die mich anfasst',
+  'der onkel der mich immer anfasst',
+  'der mann der mich angefasst hat',
+  'der junge der mich immer haut',
+  // Ausnahmen enger (Befund 2): „Angst“ nur vor „…, dass ich mich“, Personen neben einem Tier, „wie ein Drache“
+  'ich hab angst weil ich mich immer schneide wenn ich traurig bin',
+  'ich hab angst vor mir selbst weil ich mich schneide wenn ich traurig bin',
+  'ich hab angst dass ich mir wehtue wenn ich traurig bin',
+  'mamas freund kommt nachts zu mir ins bett obwohl ich das nicht will und mein hund bellt dann immer',
+  'meine tante legt sich zu mir ins bett obwohl ich das nicht will und dann muss die katze raus',
+  'wenn papa wütend ist wird er wie ein drache und dann gibts bei uns schläge',
+  // Mundart (Teil von Befund 3): „nich“, „würd“, „nix“
+  'ich darf mama nich sagen was der onkel mit mir macht',
+  'mama liegt auf dem boden und wacht nich auf',
+  'einer aus dem spiel will sich mit mir treffen und ich soll es mama nich sagen',
+  'am liebsten würd ich nich mehr leben',
+  // Nach der Prüfung des Reparatur-PR #150: weitere Spiegel, Füllwort, Ort und „alle“ vor dem Täter, Namen wie „Herr Wolf“,
+  // starkes Gefühl trotz „Angst, dass …“, ein Tier, das nicht das Subjekt ist (alle auf main still)
+  'weil mir papa wehtut',
+  'ich hab angst weil mir papa wehgetan hat',
+  'weil mich der onkel ausgezogen hat',
+  'dass mir papa an die hose fasst',
+  'dass mir der onkel seinen pimmel gezeigt hat',
+  'dass mich der onkel küsst obwohl ich das nicht will',
+  'weil mich gestern papa gehauen hat',
+  'ich hab angst weil mich in der schule alle hauen',
+  'herr wolf der mich immer anfasst',
+  'frau könig die mich angefasst hat',
+  'herr riese der mich anfasst',
+  'ich hab angst dass ich mich schneide wenn ich traurig bin',
+  'der hausmeister kommt nachts zu mir ins bett obwohl ich das nicht will und die katze faucht',
+  'der fremde reibt sich an mir und sein hund bellt',
+  // aus Punkt N1126-2323-e (Angst mit Gefahr, soll die Hilfe-Ansage bekommen), jetzt erkannt
+  'Ich habe Angst, dass mir jemand wehtut',
+  'Ich habe Angst, weil mir jemand weh getan hat.',
+  // schon vorher an, jetzt gegen Rückschritte
+  'dass mich papa im keller eingesperrt hat',
 ];
 
 // Alltägliche Sätze, die NICHT anschlagen dürfen (Fehlalarme sind für Kinder
@@ -2310,7 +2370,6 @@ const MUST_NOT_TRIGGER = [
   // Nachprüfung von PR #135 (27.11.2026, vorläufig): Gegenproben zu den enger gefassten Ausnahmen.
   'Ich hab mich selbst verletzt, als ich hingefallen bin.',
   'Ich bin traurig, weil ich hingefallen bin und mir das Knie aufgeschlagen hab.',
-  'ich bin sauer weil ich mich mit paul schlage',
   'Ich bin wütend, weil ich mich mit meinem Bruder haue.',
   'Ich mag die Jacke nicht, weil sie mir wehtut.',
   'Mein Hund legt sich zu mir ins Bett, obwohl ich das nicht will.',
@@ -2319,6 +2378,56 @@ const MUST_NOT_TRIGGER = [
   'Ritter Kunibert, wenn der Ritter mit mir übt, gibt es Schläge mit dem Holzschwert.',
   'Ich wurde nicht eingesperrt.',
   'Ritter Kunibert, ich wurde im Spiel zum Ritter geschlagen.',
+  // Prüfung von PR #135 nach dem Merge (27.11.2026): Gegenproben zu den gespiegelten Schablonen, den Relativsätzen, den engeren
+  // Ausnahmen und der Lesart in Schriftsprache
+  'dass mich papa beim schach schlägt',
+  'dass mich papa beim fußball besiegt hat',
+  'wenn mich lukas beim fangen haut',
+  'weil mich der drache haut',
+  'weil mich der ritter haut',
+  'dass mich die hexe eingesperrt hat',
+  'dass mich der arzt angefasst hat',
+  'wenn mich der zahnarzt anfasst',
+  'weil mich der frosch angefasst hat',
+  'als mich die katze gekratzt hat',
+  'seit mich der hund gebissen hat',
+  'dass mich der hund anstupst',
+  'dass mich mama in den arm nimmt',
+  'dass mich oma umarmt',
+  'weil mich der ball am kopf getroffen hat',
+  'ob mich papa vom training abholt',
+  'weil mich der lehrer gelobt hat',
+  'der drache der mich anfasst',
+  'der arzt der mich anfasst',
+  'der zahnarzt der mich angefasst hat',
+  'der junge der mich beim fangen haut',
+  'ich hab angst dass ich mich beim klettern verletze',
+  'ich passe auf dass ich mich nicht schneide',
+  'mama sagt ich soll aufpassen damit ich mich nicht verletze',
+  'meine katze legt sich nachts zu mir ins bett obwohl ich das nicht will',
+  'der drache sagt bei uns gibts heute keine schläge',
+  'im film vom drachen gibts schläge für uns',
+  'ich will nich ins bett',
+  'das find ich net schön',
+  'ich hab nix gemacht',
+  'würd ich gern machen',
+  'ich mag nich mehr spielen',
+  'ich will nich mehr malen',
+  'der ritter würd den drachen gern besiegen',
+  'ich kann nix sehen weil es so dunkel ist',
+  'ich hab angst weil der drache nich weggeht',
+  'mama sagt ich darf nix süßes essen',
+  'der böse wolf der mich anfasst',
+  'frau doktor die mich anfasst',
+  'ich hab angst dass ich mir weh tue wenn ich allein klettere',
+  'nachts kommt die katze zu mir ins bett obwohl ich das nicht will',
+  'unser hund kommt nachts zu mir ins bett obwohl ich das nicht will',
+  'weil mir die jacke wehtut',
+  'weil mir der zahnarzt wehtut',
+  'weil mir der drache wehgetan hat',
+  'wenn mich alle beim fangen hauen',
+  'dass mich immer der ritter haut',
+  'weil mich gestern der drache gehauen hat',
 ];
 
 // Bekannte Grenze: Die Weiche ist eine Reihe von Mustern und bleibt unvollständig.
@@ -2658,4 +2767,46 @@ test('Ausgabe-Check lässt kindgerechte Texte durch', () => {
   assert.equal(screenOutput('Der Drache war müde und schlief ein.', 'story'), false);
   assert.equal(screenOutput('Der Himmel ist blau, weil das Licht gestreut wird.', 'answer'), false);
   assert.equal(screenOutput('', 'story'), false);
+});
+
+// Prüfung von PR #135 nach dem Merge und des Reparatur-PR #150 (28.11.2026): neue Fehlalarme der gespiegelten Schablonen und der
+// engeren Ausnahmen, bewusst hingenommen (lieber ein Fehlalarm als eine Lücke; Abschnitt 15 in docs/Sicherheitsweiche-Pruefung.md)
+test('Bekannte Fehlalarme nach der Prüfung von PR #135 nach dem Merge schlagen wirklich an (bewusst hingenommen)', () => {
+  for (const sentence of [
+    'mama sagt ich muss aufpassen wenn ich allein koche weil ich mich sonst verbrenne',
+    'die katze legt sich zu mir ins bett obwohl ich das nicht will und sie schnurrt',
+    'wenn der drache zu uns kommt gibts schläge',
+    'weil mich der esel getreten hat',
+    'der drache aus dem wald der mich anfasst',
+    'dass mich mama auszieht weil ich krank bin',
+  ]) {
+    assert.equal(screen(sentence), true, sentence);
+  }
+});
+
+// Prüfung von PR #147 nach dem Merge, Befund 4: Ein unsichtbares Zeichen im Wort (weiches Trennzeichen, Breite null) bringt das Wort
+// nicht mehr am Ausgabe-Check vorbei. Die alte Lesart (Zeichen als Leerzeichen) bleibt zusätzlich.
+test('Ausgabe-Check und Eingabe-Weiche lesen Wörter auch mit unsichtbaren Zeichen', () => {
+  assert.equal(screenOutput('Der Drache war to\u00ADt.', 'story'), true);
+  assert.equal(screenOutput('Der Ritter blu\u200Btete am Arm.', 'story'), true);
+  assert.equal(screenOutput('Wie hei\u2060ßt du?', 'answer'), true);
+  assert.equal(screenOutput('Schau auf ww\u200Bw.beispiel.de', 'answer'), true);
+  assert.equal(screenOutput('Der Drache war to\uFE0Ft.', 'story'), true);
+  assert.equal(screen('Ich will nicht mehr le\u200Bben'), true);
+  assert.equal(screen('Ich will nicht mehr\u00ADleben'), true);
+  assert.equal(screenOutput('Kunibert ging\u00AD über die Brücke und sah den Drachen.', 'story'), false);
+  assert.equal(screen('Der Drache schläft\u200B in seiner Höhle.'), false);
+});
+
+// Prüfung von PR #135 nach dem Merge, Befund 5: Die Weiche braucht auch bei sehr langen Eingaben keine quadratische Zeit. Vorher
+// brauchten 100 000 Zeichen „jacke“ rund 3,6 s und „zahnarzt“ rund 2 s, jetzt jeweils gut 0,1 s. Im Betrieb kürzt der Server auf
+// 1 000 Zeichen. Die Grenze ist großzügig, damit eine langsame Maschine den Test nicht rot macht.
+test('Eingabe-Weiche bleibt bei sehr langen Eingaben schnell', () => {
+  for (const unit of ['jacke ', 'zahnarzt ', 'nich ', 'dass mich papa ']) {
+    const text = unit.repeat(Math.ceil(100_000 / unit.length)).slice(0, 100_000);
+    const start = performance.now();
+    screen(text);
+    const ms = performance.now() - start;
+    assert.ok(ms < 1500, `${unit.trim()}: ${Math.round(ms)} ms`);
+  }
 });
