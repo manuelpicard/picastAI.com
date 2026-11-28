@@ -2,6 +2,8 @@
 
 **Zuletzt geprüft: Boards 25.11.2026, Zubehör 26.11.2026** (Boards: Abrufe zwischen 11:56 und 12:23 Uhr, nach den Zeitstempeln der Abruf-Läufe; Zubehör: Abrufe zwischen 12:00 und 12:18 Uhr, nach Start und Bericht der Abruf-Läufe; die Seiten nennen selbst keinen Zeitpunkt) · Punkte H1 und N1122-1941-a der Arbeitsliste · Wochen-Autopilot, Rolle Recherche. Der Stand vom 22.11.2026 steht im Vergleich unten. Der Autopilot prüft neu, sobald der Stand der Boards älter als 3 Tage ist (also ab 28.11.2026). Das Zubehör gehört seit dem 26.11.2026 zu dieser Prüfung.
 
+**Neuprüfung am 28.11.2026 läuft** (Punkt H1, Lauf Recherche, Start 11:53). Bis sie fertig ist, gelten die Werte unten vom 25.11. und 26.11.2026.
+
 **Berichtigt am 26.11.2026** (Punkt N1125-2323-c, PR #141; Anlass: Prüfung von PR #118). Es wurde nichts neu abgerufen. Geändert sind: der Vorbehalt zu den Werten vom 22.11. und zu Seiten mit mehr als 40.000 Zeichen (Abschnitt „So wurde gelesen“), Farnell (jetzt unklar), die Zitate im Text, Botland (MwSt. wieder offen) und fehlende Quellenangaben bei Eckstein, beim CoreS3 SE und bei Pollin. Die Seiten selbst werden ab 28.11.2026 neu geprüft.
 
 Es wurde nichts bestellt, nichts angefragt, kein Konto angelegt und kein Formular benutzt (auch keine Benachrichtigungsfelder). Preise und Bestand ändern sich. Die Angaben gelten nur für den Abruf. Preise sind Endpreise mit MwSt. (brutto), wenn nichts anderes dabeisteht. Ausnahmen: RS zeigt beide Preise; Farnell siehe Tabelle; Schukat nennt nur netto und im Text keinen Betrag; bei buyzero und Soldered nennt die Seite die MwSt. nicht; bei Botland steht der Preis nur in den Meta-Angaben (ob er die MwSt. enthält, ist offen). Der Versand kommt meist dazu.
