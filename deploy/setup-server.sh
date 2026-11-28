@@ -215,7 +215,7 @@ env_set() { # Datei Schlüssel Wert
 # liest systemd danach dieselben Werte wie vorher. Meldungen nennen nur Zeilennummern und gültige Namen, nie
 # Inhalte. Rückgabe 0 = geändert, 1 = war schon so.
 env_normalize() { # Datei
-  local file=$1 tmp meldungen art nr name ungueltig="" offen="" wort
+  local file=$1 tmp meldungen meldung art nr name ungueltig=0 offen="" ohne_namen=0 wort
   tmp=$(mktemp "${file}.XXXXXX") || die "env-Datei: keine Zwischendatei neben $file (sie ist unverändert)"
   # Die Meldungen schreibt awk nach stderr (nur Art, Zeilennummer, gültiger Name); die Datei geht nach $tmp.
   if ! meldungen=$(LC_ALL=C awk '
@@ -241,7 +241,6 @@ env_normalize() { # Datei
       n = split($0, teile, "\r")
       if (n == 0) { n = 1; teile[1] = "" }
       for (i = 1; i <= n; i++) {
-        zeile++   # Nummer in der neuen Datei
         out = teile[i]
         line = out; sub(/^[ \t]+/, "", line)
         valid = (line ~ /^[A-Za-z_][A-Za-z0-9_]*[ \t]*=/)
@@ -261,7 +260,7 @@ env_normalize() { # Datei
           value = substr(line, index(line, "=") + 1); sub(/^[ \t]+/, "", value)
           out = name "=" value
         } else if (line !~ /^[#;]/ && index(line, "=") > 0) {
-          print "ungueltig", zeile > "/dev/stderr"
+          print "ungueltig" > "/dev/stderr"
           # Ohne \ am Ende: systemd vor Version 254 läse einen Kommentar sonst in der nächsten Zeile weiter.
           sub(/\\+$/, "", line)
           out = "# Ungültig, von systemd ignoriert: " line
@@ -275,22 +274,29 @@ env_normalize() { # Datei
   fi
   while read -r art nr name; do
     case $art in
-      ungueltig) ungueltig+="${ungueltig:+, }$nr" ;;
-      offen) offen+="${offen:+, }$nr${name:+ ($name)}" ;;
+      ungueltig) ungueltig=$((ungueltig + 1)) ;;
+      offen) offen+="${offen:+, }$nr${name:+ ($name)}"; if [[ -z "$name" ]]; then ohne_namen=1; fi ;;
     esac
   done <<<"$meldungen"
   if [[ -n "$offen" ]]; then
     rm -f "$tmp"
     if [[ "$offen" == *,* ]]; then wort=Zeilen; else wort=Zeile; fi
-    die "env-Datei $file, $wort $offen: Ein Anführungszeichen wird vor dem Zeilenende nicht geschlossen, oder die Zeile endet mit \\. systemd liest dann die nächsten Zeilen als Teil dieser Zeile, und das Skript weiß nicht sicher, welche Werte gelten. Bitte berichtigen (sudoedit $file; jeder Wert auf einer Zeile) und das Skript noch einmal starten. Die env-Datei ist unverändert; Werte nicht angezeigt."
+    meldung="env-Datei $file, $wort $offen: Ein Anführungszeichen wird vor dem Zeilenende nicht geschlossen, oder die Zeile endet mit \\. systemd liest dann die nächsten Zeilen als Teil dieser Zeile, und das Skript weiß nicht sicher, welche Werte gelten. Bitte berichtigen (sudoedit $file; jeder Wert auf einer Zeile) und das Skript noch einmal starten. Die env-Datei ist unverändert; Werte nicht angezeigt."
+    # Ohne gültigen Namen schreibt systemd die Zeile samt den mitgelesenen Zeilen bei jedem Start ins Journal.
+    if [[ "$ohne_namen" == 1 ]]; then
+      meldung+=" Eine Zeile ohne gültigen Namen davor (zum Beispiel mit export) schreibt systemd mit den mitgelesenen Zeilen bei jedem Start ins Journal. Lief der Dienst schon damit, ein Token oder einen Schlüssel darin tauschen (EINRICHTUNG.md, Abschnitt Betrieb, Punkt Schlüssel tauschen)."
+    fi
+    die "$meldung"
   fi
   if cmp -s "$tmp" "$file"; then rm -f "$tmp"; return 1; fi
   env_replace "$tmp" "$file"
-  if [[ -n "$ungueltig" ]]; then
-    if [[ "$ungueltig" == *,* ]]; then wort=Zeilen; else wort=Zeile; fi
-    note "Achtung: $wort $ungueltig in $file: ein = ohne gültigen Namen davor (zum Beispiel mit export davor"
+  # Die Anzahl, keine Nummern: write_env löscht danach doppelte Zeilen eines Namens (env_set), dann
+  # stimmten Nummern nicht mehr (Prüfung von PR #154).
+  if (( ungueltig > 0 )); then
+    if (( ungueltig > 1 )); then wort="$ungueltig Zeilen"; else wort="1 Zeile"; fi
+    note "Achtung: $wort in $file mit = ohne gültigen Namen davor (zum Beispiel mit export davor"
     note "  oder einem geschützten Leerzeichen vor dem =). systemd ignoriert solche Zeilen und schreibt sie bei jedem"
-    note "  Start ganz ins Journal. Sie stehen jetzt als Kommentar in der Datei (# Ungültig, von systemd ignoriert: …)."
+    note "  Start ganz ins Journal. Sie stehen jetzt als Kommentar in der Datei; dort nach # Ungültig suchen."
     note "  Inhalt hier nicht angezeigt. Lief der Dienst schon mit so einer Zeile, steht sie im Journal (etwa"
     note "  $JOURNAL_RETENTION_TEXT): Stand darin ein Token oder Schlüssel, ihn tauschen (EINRICHTUNG.md, Abschnitt"
     note "  Betrieb, Punkt Schlüssel tauschen). Bitte prüfen: sudoedit $file"

@@ -220,7 +220,7 @@ existing_value() {
 # den Wert. Vor jeder Änderung und vor der Abfrage des Tokens aufrufen.
 check_continued_lines() {
   [[ -f "$CONFIG_FILE" ]] || return 0
-  local problems word
+  local problems word message
   problems="$(LC_ALL=C awk '
     function state_after(v,   i, c, s) {
       s = "vor"
@@ -238,7 +238,7 @@ check_continued_lines() {
       return s
     }
     {
-      sub(/\r$/, "")
+      cr = sub(/\r$/, "")
       parts = split($0, part, "\r")
       for (p = 1; p <= parts; p++) {
         line = part[p]
@@ -251,13 +251,21 @@ check_continued_lines() {
         if (s != "esc" && s != "sq" && s != "dq" && s != "dqesc") continue
         name = ""
         if (line ~ /^[A-Za-z_][A-Za-z0-9_]*[[:blank:]]*=/) { name = substr(line, 1, index(line, "=") - 1); sub(/[[:blank:]]+$/, "", name) }
+        # Ohne gültigen Namen wird die Zeile ein Kommentar (ohne \ am Ende). Vor einem Windows-Zeilenende
+        # verschluckt ein \ für systemd nur das CR: Dann geht auch bisher nichts weiter.
+        if (name == "" && s == "esc" && cr && p == parts) continue
         printf "%s%d%s", (found++ ? ", " : ""), NR, (name != "" ? " (" name ")" : "")
       }
     }
   ' "$CONFIG_FILE")" || die "$CONFIG_FILE ließ sich nicht lesen. Nichts geändert."
   [[ -z "$problems" ]] && return 0
   if [[ "$problems" == *,* ]]; then word="Zeilen"; else word="Zeile"; fi
-  die "$CONFIG_FILE, $word $problems: Ein Anführungszeichen wird vor dem Zeilenende nicht geschlossen, oder die Zeile endet mit \\. systemd liest dann die nächsten Zeilen als Teil dieser Zeile, und der Installer weiß nicht sicher, welche Werte gelten (auch KUNIBERT_PIPELINE_TIMEOUT=140). Wert nicht angezeigt. Abhilfe: die Zeile mit sudoedit $CONFIG_FILE berichtigen (jeder Wert auf einer Zeile) und den Installer noch einmal starten. Nichts geändert."
+  message="$CONFIG_FILE, $word $problems: Ein Anführungszeichen wird vor dem Zeilenende nicht geschlossen, oder die Zeile endet mit \\. systemd liest dann die nächsten Zeilen als Teil dieser Zeile, und der Installer weiß nicht sicher, welche Werte gelten (auch KUNIBERT_PIPELINE_TIMEOUT=140). Wert nicht angezeigt. Abhilfe: die Zeile mit sudoedit $CONFIG_FILE berichtigen (jeder Wert auf einer Zeile) und den Installer noch einmal starten. Nichts geändert."
+  # Eine Nummer ohne Namen: Zeile ohne gültigen Namen. systemd schreibt sie samt den mitgelesenen Zeilen ins Journal.
+  if [[ ", $problems," =~ ,\ [0-9]+, ]]; then
+    message+=" Eine Zeile ohne gültigen Namen davor (zum Beispiel mit export) schreibt systemd mit den mitgelesenen Zeilen bei jedem Start ins Journal. Lief der Dienst schon damit und stand darin ein Token, ein neues nehmen (neues Geräte-Token auf dem Server, am Pi mit --ask-token)."
+  fi
+  die "$message"
 }
 
 usage() {

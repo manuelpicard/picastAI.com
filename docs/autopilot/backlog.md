@@ -1148,10 +1148,10 @@ Angelegt am 17.11.2026, 20:15, von Claude (Chat). Gepflegt von den Läufen des W
 - Rolle: Bauen · Prio: 3 · Status: offen · Bezug: N1127-2323-e (PR #154), Prüfung von PR #154 (Befund 7)
 - Ziel: Bis systemd 253 liest systemd nach einem Kommentar, der mit `\` endet, auch die nächste Zeile als Kommentar (seit 254 nicht mehr; so steht es in `src/basic/env-file.c` von systemd 255). Debian 12 und Raspberry Pi OS „Bookworm“ haben systemd 252. Beispiel: `# Notiz C:\` und darunter `PICASTAI_DEVICE_TOKEN=alt`: systemd 252 liest kein Token, `deploy/setup-server.sh` sieht `alt` und erzeugt keines. Es entsteht kein Leck, aber Skript und systemd lesen Verschiedenes. `deploy/setup-server.sh` (`env_normalize`) behält Kommentare an ihrem Platz; `pi-client/install_raspberry_pi.sh` behält nur Zeilen mit `;` am Anfang und seine eigenen Kommentare. Vorschlag: einen solchen Kommentar als Fortsetzung werten (Abbruch mit Zeilennummer) oder das `\` am Ende mit Hinweis entfernen. Erst nachprüfen, ob systemd 252 sich wirklich so verhält.
 - Fertig, wenn: gemergt oder mit Grund verworfen; Verhalten von systemd 252 belegt (Quelltext mit Version und Link); Tests in `deploy/setup-server.test.sh` und `pi-client/install_raspberry_pi.test.sh`.
-- Angelegt (28.11.2026, 14:50, Lauf „Bauen“, vorläufig): Prio 3, kein Leck.
+- Angelegt (28.11.2026, 14:47, Lauf „Bauen“, vorläufig): Prio 3, kein Leck.
 
 ### N1128-1337-c · Test gegen das echte systemd: liest es nach dem Aufräumen dieselben Werte?
 - Rolle: Prüfen · Prio: 3 · Status: offen · Bezug: N1127-2323-e (PR #154), Prüfung von PR #154 (Befund 8)
 - Ziel: Die unabhängige Prüfung von PR #154 hat env-Dateien mit dem echten systemd 255 gelesen (`load_env_file` und `strv_env_clean_with_callback` aus `libsystemd-shared-255.so`, ein kleines C-Programm). So fand sie Fälle, in denen systemd nach dem Aufräumen andere Werte las. Mit PR #154 lasen 3000 Zufallsdateien je awk (mawk, gawk) beim Server und 1500 beim Pi danach dieselben Werte (nur lokal geprüft). Vorschlag: so einen Vergleich als Test in die CI (Ubuntu-Runner mit systemd 255), mit festen und zufälligen Dateien; fehlt die Bibliothek, sagt der Test „OFFEN“. Die Bibliothek ist intern und hat keine feste Schnittstelle: Version im Test nennen.
 - Fertig, wenn: gemergt; der Test läuft in der CI und prüft `env_normalize` und `merge_config` mit `check_continued_lines`; er findet den Fehler aus Befund 1 der Prüfung von PR #154, wenn man ihn wieder einbaut.
-- Angelegt (28.11.2026, 14:50, Lauf „Bauen“, vorläufig).
+- Angelegt (28.11.2026, 14:47, Lauf „Bauen“, vorläufig).

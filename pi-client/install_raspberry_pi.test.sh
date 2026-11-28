@@ -361,6 +361,8 @@ printf 'export PICASTAI_DEVICE_TOKEN=%s\n' "$token2" >> "$env_file"
 printf 'KUNIBERT_NOTIZ%s=%s\\\\\n' "$nbsp" "$token3" >> "$env_file"
 printf '=%s\n' "$token3" >> "$env_file"          # leerer Name
 printf '\vKUNIBERT_SENKRECHT=1\n' >> "$env_file"   # \v vor dem Namen: für systemd ungültig
+# \ vor einem Windows-Zeilenende: systemd verschluckt nur das CR, die Zeile geht nicht weiter. Kein Abbruch.
+printf 'export KUNIBERT_PFAD=C:\\\r\n' >> "$env_file"
 printf '; KUNIBERT_KOMMENTAR=1\n' >> "$env_file"
 run "$work/lauf5g.txt" --non-interactive
 eq "Lauf 5g: Rückgabe 0" "$rc" 0
@@ -377,6 +379,7 @@ eq "Lauf 5g: export-Zeile als Kommentar" \
 eq "Lauf 5g: geschütztes Leerzeichen vor dem =: Kommentar ohne \\ am Ende" \
   "$(grep -cxF "# Ungültig, von systemd ignoriert: KUNIBERT_NOTIZ${nbsp}=${token3}" "$env_file")" 1
 eq "Lauf 5g: leerer Name: Kommentar" "$(grep -cxF "# Ungültig, von systemd ignoriert: =${token3}" "$env_file")" 1
+eq "Lauf 5g: \\ vor Windows-Zeilenende: Kommentar ohne \\" "$(grep -cxF "# Ungültig, von systemd ignoriert: export KUNIBERT_PFAD=C:" "$env_file")" 1
 eq "Lauf 5g: \\v vor dem Namen: Kommentar, wie systemd kein Wert" \
   "$(grep -cxF "# Ungültig, von systemd ignoriert: "$'\v'"KUNIBERT_SENKRECHT=1" "$env_file")|$(val KUNIBERT_SENKRECHT)" "1|"
 eq "Lauf 5g: keine Zeile mehr mit = ohne gültigen Namen davor" \
@@ -443,6 +446,12 @@ for fall in fest neu ohne-namen; do
   no_token "Lauf 5k ($fall): Token nicht in der Ausgabe" "$work/lauf5k-$fall.txt"
   hasnt "Lauf 5k ($fall): kein ungültiger Name in der Ausgabe" "$work/lauf5k-$fall.txt" "KUNIBERT_GEHEIM"
   hasnt "Lauf 5k ($fall): keine Abfrage vor dem Abbruch" "$work/lauf5k-$fall.txt" "Gerätetoken"
+  # Ohne gültigen Namen stand die Zeile mit den mitgelesenen Zeilen schon im Journal: Hinweis aufs Tauschen.
+  if [[ -z "$name" ]]; then
+    has "Lauf 5k ($fall): Hinweis aufs Journal" "$work/lauf5k-$fall.txt" "mitgelesenen Zeilen bei jedem Start ins Journal"
+  else
+    hasnt "Lauf 5k ($fall): kein Hinweis aufs Journal" "$work/lauf5k-$fall.txt" "mitgelesenen Zeilen bei jedem Start ins Journal"
+  fi
   if snapshot | cmp -s - "$work/stand5k.txt"; then ok "Lauf 5k ($fall): Abbruch ändert nichts"; else bad "Lauf 5k ($fall): Abbruch hat etwas geändert"; fi
   cp "$work/vor-5k.env" "$env_file"
 done

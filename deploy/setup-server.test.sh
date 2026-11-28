@@ -159,8 +159,9 @@ yes "ungültige Zeilen: zweiter Teil als eigene Zeile, als Kommentar" grep -qx $
 yes "ungültige Zeilen: gültige Zeile als NAME=wert" grep -qx 'A=1' "$f"
 yes "ungültige Zeilen: ;-Kommentar mit = bleibt" grep -qx $'\t; J=kommentar=x' "$f"
 yes "ungültige Zeilen: Zeile ohne = bleibt"    grep -qx 'nur text' "$f"
-# Nummern der neuen Datei: Das CR in Zeile 7 macht aus einer Zeile zwei.
-yes "ungültige Zeilen: Meldung nennt die Zeilen der neuen Datei" grep -qF 'Zeilen 1, 2, 6, 8, 10 in' <<<"$ausgabe"
+# Die Meldung nennt die Anzahl (Nummern stimmten nach env_set in write_env nicht mehr). Das CR in Zeile 7 macht
+# aus einer Zeile zwei.
+yes "ungültige Zeilen: Meldung nennt die Anzahl" grep -qF 'Achtung: 5 Zeilen in' <<<"$ausgabe"
 eq  "ungültige Zeilen: dort stehen die Kommentare" "$(grep -n '^# Ungültig' "$f" | cut -d: -f1 | paste -sd,)" "1,2,6,8,10"
 yes "ungültige Zeilen: Meldung sagt, dass es schon im Journal stehen kann" grep -qF 'steht sie im Journal' <<<"$ausgabe"
 no  "ungültige Zeilen: kein Inhalt in der Meldung" grep -qE 'geheim|PICASTAI_DEVICE_TOKEN|ANTHROPIC|1X|export C' <<<"$ausgabe"
@@ -189,6 +190,12 @@ for fall in 'PORT="3000|lf|PORT' "ANTHROPIC_API_KEY='geheim-offen|lf|ANTHROPIC_A
   yes "offen ($zeile, $ende): nennt die Zeile" grep -qF "Zeile $nr${name:+ ($name)}: Ein Anführungszeichen" <<<"$meldung"
   no  "offen ($zeile, $ende): kein Wert und kein ungültiger Name in der Meldung" grep -qE 'geheim|GEHEIM|3000|1X|schluessel' <<<"$meldung"
   eq  "offen ($zeile, $ende): keine Zwischendatei bleibt" "$(compgen -G "$f.??????" || true)" ""
+  # Ohne gültigen Namen schreibt systemd die Zeile mit den mitgelesenen Zeilen ins Journal: Hinweis aufs Tauschen.
+  if [[ -z "$name" ]]; then
+    yes "offen ($zeile, $ende): Hinweis aufs Journal" grep -qF 'mitgelesenen Zeilen bei jedem Start ins Journal' <<<"$meldung"
+  else
+    no  "offen ($zeile, $ende): kein Hinweis aufs Journal" grep -qF 'mitgelesenen Zeilen bei jedem Start ins Journal' <<<"$meldung"
+  fi
 done
 # Diese Zeilen enden für systemd am Zeilenende. Ein \ vor einem Windows-Zeilenende verschluckt nur das CR.
 for fall in 'A="geschlossen"|lf' "A='a b'|lf" 'A=a\\|lf' 'A="a\\"|lf' 'A=a"b|lf' 'A="a"b"|lf' 'A=""|lf' \
