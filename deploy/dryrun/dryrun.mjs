@@ -1,6 +1,8 @@
 // Trockenlauf gegen einen lokal laufenden Server: /health, /v1/device/question, /v1/device/audio/:turn_id.
 // Erwartet Umgebungsvariablen: BASE_URL, DEVICE_ID, DEVICE_TOKEN, SPEACHES_URL, TTS_MODEL, TTS_VOICE.
-// Es werden keine Schlüssel gebraucht. Die Test-Frage ("Warum ist der Himmel blau?") wird mit Piper erzeugt.
+// Es werden keine Schlüssel gebraucht. Die Test-Frage ("Warum ist der Himmel blau?") spricht die Stimme aus TTS_MODEL
+// und TTS_VOICE im Sprachserver (am 11.11.2026 Piper; deren Lizenzkette ist offen, Risiko L1,
+// docs/recherche/lizenzen-sprachbausteine.md; Piper nur bewusst wählen).
 import { writeFileSync } from 'node:fs';
 
 const need = (n) => {
@@ -75,7 +77,7 @@ const check = (ok, text) => {
   if (!ok) failed++;
 };
 
-// 0. Test-WAV: gesprochene Frage von Piper, auf mono / 16 Bit / 16 kHz gebracht.
+// 0. Test-WAV: gesprochene Frage vom Sprachserver, auf mono / 16 Bit / 16 kHz gebracht.
 const tts = await fetch(`${speaches}/v1/audio/speech`, {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
@@ -86,7 +88,7 @@ const tts = await fetch(`${speaches}/v1/audio/speech`, {
     response_format: 'wav',
   }),
 });
-check(tts.ok, `Test-WAV von Piper erzeugt (HTTP ${tts.status})`);
+check(tts.ok, `Test-WAV vom Sprachserver erzeugt (HTTP ${tts.status})`);
 if (!tts.ok) process.exit(1);
 const testWav = toMono16k(Buffer.from(await tts.arrayBuffer()));
 writeFileSync(process.env.TEST_WAV_OUT || 'test-frage.wav', testWav);

@@ -69,8 +69,15 @@ SPEACHES_LOG_OPTS=(--log-driver journald --log-opt "tag=$SPEACHES_LOG_ID")
 HOSTNAME_ARG=""
 GIT_REF=main
 STT_MODEL=Systran/faster-whisper-small
-TTS_MODEL=speaches-ai/piper-de_DE-thorsten-medium
-TTS_VOICE=thorsten
+# Stimme im Sprachserver (Speaches): ohne --piper-fallback oder --tts-model keine (Punkt N1126-1600-a,
+# vorläufig seit 28.11.2026). Bis dahin lud jeder Lauf die Piper-Stimme unten, obwohl Pocket TTS spricht.
+# Diese Kopie ist wahrscheinlich aus der Stimme lessac feinabgestimmt; die Lizenzkette ist offen (Risiko L1,
+# docs/recherche/lizenzen-sprachbausteine.md).
+PIPER_MODEL=speaches-ai/piper-de_DE-thorsten-medium
+PIPER_VOICE=thorsten
+PIPER_FALLBACK=0
+TTS_MODEL=""
+TTS_VOICE=""
 SKIP_SPEACHES=0
 SKIP_POCKET=0
 SKIP_CADDY=0
@@ -86,14 +93,18 @@ Aufruf: sudo bash deploy/setup-server.sh --hostname <name> [Optionen]
   --hostname <name>   Öffentlicher Hostname, z. B. kunibert.example (Pflicht)
   --ref <ref>         Git-Stand (Standard: main)
   --stt-model <name>  Erkennungsmodell (Standard: Systran/faster-whisper-small)
-  --tts-model <name>  Stimmenmodell (Standard: speaches-ai/piper-de_DE-thorsten-medium)
-  --tts-voice <name>  Stimme (Standard: thorsten)
+  --piper-fallback    Rückfall-Stimme Piper im Sprachserver laden und eintragen (Modell
+                      speaches-ai/piper-de_DE-thorsten-medium, Stimme thorsten). Nicht mehr Standard:
+                      Die Lizenzkette ist offen (Risiko L1, docs/recherche/lizenzen-sprachbausteine.md)
+  --tts-model <name>  eigenes Stimmenmodell im Sprachserver, nur mit --tts-voice (Standard: keins)
+  --tts-voice <name>  Stimme zu --tts-model
   --speaches-image <name>  Image des Sprachservers (Standard: ghcr.io/speaches-ai/speaches:0.8.3-cpu)
   --skip-speaches     Sprachserver nicht einrichten
   --skip-pocket       Kuniberts Stimme (Pocket TTS) nicht einrichten. Dann setzt das Skript
                       PICASTAI_TTS_PROVIDER, PICASTAI_POCKET_TTS_URL und PICASTAI_POCKET_TTS_VOICE
                       nicht; so bleibt eine eigene Wahl (zum Beispiel Google) erhalten. Ohne die
-                      Option stellt jeder Lauf diese drei Zeilen auf Pocket TTS
+                      Option stellt jeder Lauf diese drei Zeilen auf Pocket TTS. Eine Stimme im
+                      Sprachserver bleibt nur mit --piper-fallback oder --tts-model eingetragen
   --skip-caddy        Caddy nicht einrichten
   -h, --help          Diese Hilfe
 EOF
@@ -419,6 +430,38 @@ EOF
   (cd "$APP_DIR" && npm ci --silent && npm run build --silent)
 }
 
+# Stimme im Sprachserver festlegen: --piper-fallback oder ein eigenes Modell, nie beides gemischt; Modell und
+# Stimme nur zusammen (die Sprachausgabe braucht beides).
+resolve_tts_options() {
+  if [[ "$PIPER_FALLBACK" == 1 ]]; then
+    [[ -z "$TTS_MODEL$TTS_VOICE" ]] || die "--piper-fallback nicht zusammen mit --tts-model oder --tts-voice"
+    TTS_MODEL=$PIPER_MODEL
+    TTS_VOICE=$PIPER_VOICE
+  fi
+  [[ -z "$TTS_MODEL" || -n "$TTS_VOICE" ]] || die "--tts-voice fehlt (zu --tts-model $TTS_MODEL)"
+  [[ -n "$TTS_MODEL" || -z "$TTS_VOICE" ]] || die "--tts-model fehlt (zu --tts-voice $TTS_VOICE)"
+}
+
+# Hinweis zur Lizenz bei einer Piper-Stimme (Risiko L1); bei anderen Modellen still.
+piper_warning() { # Modell
+  [[ "${1,,}" == *piper* ]] || return 0
+  note "Achtung: $1 ist eine Piper-Stimme mit offener Lizenzkette (Risiko L1, docs/recherche/lizenzen-sprachbausteine.md)."
+  note "  Viele Piper-Stimmen sind aus der Stimme lessac feinabgestimmt, wahrscheinlich auch die Kopie von thorsten bei"
+  note "  Speaches. Deren Aufnahmen sind nur für nicht kommerzielle Forschung freigegeben. Auch für Tests mit Erwachsenen"
+  note "  ist die Lage offen. Nicht für ein verkauftes Gerät."
+}
+
+# Ohne --piper-fallback oder --tts-model eine früher eingetragene Stimme im Sprachserver austragen
+# (Risiko L1). main ruft das erst, wenn feststeht, wer spricht: nach dem Start von Pocket TTS oder mit
+# --skip-pocket. Scheitert Pocket TTS, bricht das Skript vorher ab, und die bisherige Stimme bleibt eingestellt.
+clear_speaches_voice() {
+  [[ -z "$TTS_MODEL" ]] || return 0
+  if env_empty "$(env_get "$ENV_FILE" PICASTAI_TTS_MODEL)" && env_empty "$(env_get "$ENV_FILE" PICASTAI_TTS_VOICE)"; then return 0; fi
+  env_set "$ENV_FILE" PICASTAI_TTS_MODEL ""
+  env_set "$ENV_FILE" PICASTAI_TTS_VOICE ""
+  note "Stimme im Sprachserver ausgetragen (PICASTAI_TTS_MODEL, PICASTAI_TTS_VOICE): nur noch mit --piper-fallback oder --tts-model."
+}
+
 write_env() {
   say "Konfiguration: $ENV_FILE"
   if [[ ! -f "$ENV_FILE" ]]; then
@@ -432,10 +475,14 @@ write_env() {
   # Caddy auf demselben Rechner (Punkt D2): echte Adressen der Eltern beim Koppeln. Ein eigener Wert bleibt.
   env_set_if_empty "$ENV_FILE" PICASTAI_TRUST_PROXY loopback || true
   env_set "$ENV_FILE" PICASTAI_STT_MODEL "$STT_MODEL"
-  env_set "$ENV_FILE" PICASTAI_TTS_MODEL "$TTS_MODEL"
-  env_set "$ENV_FILE" PICASTAI_TTS_VOICE "$TTS_VOICE"
-  # Die drei Zeilen für Kuniberts Stimme setzt erst setup_pocket, wenn der Dienst antwortet. Die Piper-Zeilen
-  # darüber bleiben für einen Rückfall von Hand: Zeile PICASTAI_TTS_PROVIDER löschen, Skript nur mit --skip-pocket.
+  # Stimme im Sprachserver nur mit --piper-fallback oder --tts-model. Eine früher eingetragene Stimme trägt
+  # erst clear_speaches_voice aus, wenn feststeht, wer spricht (Risiko L1). Pocket TTS braucht die Zeilen nicht.
+  if [[ -n "$TTS_MODEL" ]]; then
+    env_set "$ENV_FILE" PICASTAI_TTS_MODEL "$TTS_MODEL"
+    env_set "$ENV_FILE" PICASTAI_TTS_VOICE "$TTS_VOICE"
+  fi
+  # Die drei Zeilen für Kuniberts Stimme setzt erst setup_pocket, wenn der Dienst antwortet. Rückfall von Hand
+  # (EINRICHTUNG.md, Abschnitt 4): Zeile PICASTAI_TTS_PROVIDER löschen, Skript mit --piper-fallback --skip-pocket.
   if env_set_if_empty "$ENV_FILE" PICASTAI_ADMIN_TOKEN "$(openssl rand -hex 32)"; then note "Admin-Token erzeugt (steht nur in der Datei)"; fi
   if env_set_if_empty "$ENV_FILE" PICASTAI_DEVICE_TOKEN "$(openssl rand -hex 32)"; then note "Geräte-Token erzeugt (steht nur in der Datei)"; fi
   # Eltern-Steuerung dauerhaft (Punkt E2). Einen vorhandenen Schlüssel nie überschreiben: Mit einem
@@ -469,6 +516,7 @@ setup_speaches() {
   done
   local model
   for model in "$STT_MODEL" "$TTS_MODEL"; do
+    [[ -n "$model" ]] || continue   # ohne --piper-fallback oder --tts-model keine Stimme
     note "lade Modell $model (kann einige Minuten dauern)"
     curl -fsS -X POST "$SPEACHES_URL/v1/models/$model" >/dev/null || die "Modell $model ließ sich nicht laden"
   done
@@ -570,6 +618,28 @@ setup_caddy() {
   fi
 }
 
+# Stimme im Sprachserver nennen (mit Hinweis zur Lizenz), ebenso eine fehlende Stimme. Den Anbieter liest es
+# wie der Server (server-api/config.ts, resolveTtsProvider): nur google und pocket, alles andere heißt Sprachserver.
+voice_summary() {
+  if [[ -n "$TTS_MODEL" ]]; then
+    note "Rückfall-Stimme im Sprachserver: $TTS_MODEL (Stimme $TTS_VOICE). Sie spricht nur, wenn die Zeile"
+    note "  PICASTAI_TTS_PROVIDER fehlt (Rückfall von Hand, EINRICHTUNG.md, Abschnitt 4)."
+    piper_warning "$TTS_MODEL"
+    return 0
+  fi
+  local provider
+  provider=$(env_get "$ENV_FILE" PICASTAI_TTS_PROVIDER)
+  if (( ${#provider} >= 2 )) && [[ ( "$provider" == \"*\" ) || ( "$provider" == \'*\' ) ]]; then
+    provider=${provider:1:${#provider}-2}
+  fi
+  provider=${provider#"${provider%%[![:space:]]*}"}   # wie trim() im Server: nur vorn und hinten
+  provider=${provider%"${provider##*[![:space:]]}"}
+  case "${provider,,}" in google|pocket) return 0 ;; esac
+  env_empty "$(env_get "$ENV_FILE" PICASTAI_TTS_MODEL)" || return 0
+  note "Achtung: keine Stimme eingerichtet. PICASTAI_TTS_PROVIDER ist weder pocket noch google, und im Sprachserver"
+  note "  ist keine Stimme eingetragen. Kunibert spricht dann nicht. Stimme wählen: EINRICHTUNG.md, Abschnitt 4."
+}
+
 summary() {
   say "Fertig. Was jetzt noch DU tust"
   if [[ -z "$(env_get "$ENV_FILE" ANTHROPIC_API_KEY)" ]]; then
@@ -591,11 +661,13 @@ summary() {
     note "Stimme: Dienst $POCKET_SERVICE (Pocket TTS $POCKET_VERSION, $POCKET_VOICE). Im Journal stehen von ihm nur Start und Ende,"
     note "  denn seine eigenen Meldungen könnten Teile der Antworttexte enthalten. Fehlersuche: EINRICHTUNG.md, Abschnitt 4."
   fi
+  voice_summary
   note "Protokolle bleiben etwa $JOURNAL_RETENTION_TEXT (vorläufig), wenn kein eigener Wert gesetzt ist. Prüfen: systemd-analyze cat-config systemd/journald.conf | grep -E '^(MaxRetentionSec|MaxFileSec)='"
   if [[ -n "${SPEACHES_LOG_DRIVER+x}" ]]; then speaches_log_hint "$SPEACHES_LOG_DRIVER" || true; fi
 }
 
-main() {
+# Optionen lesen (eigene Funktion, damit deploy/setup-server.test.sh sie ohne Einrichtung prüfen kann).
+parse_args() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --hostname) HOSTNAME_ARG=${2:-}; shift 2 ;;
@@ -603,6 +675,7 @@ main() {
       --stt-model) STT_MODEL=${2:-}; shift 2 ;;
       --tts-model) TTS_MODEL=${2:-}; shift 2 ;;
       --tts-voice) TTS_VOICE=${2:-}; shift 2 ;;
+      --piper-fallback) PIPER_FALLBACK=1; shift ;;
       --speaches-image) SPEACHES_IMAGE=${2:-}; shift 2 ;;
       --skip-speaches) SKIP_SPEACHES=1; shift ;;
       --skip-pocket) SKIP_POCKET=1; shift ;;
@@ -611,8 +684,13 @@ main() {
       *) usage >&2; die "Unbekannte Option: $1" ;;
     esac
   done
+}
+
+main() {
+  parse_args "$@"
   [[ -n "$HOSTNAME_ARG" ]] || { usage >&2; die "--hostname fehlt"; }
   valid_hostname "$HOSTNAME_ARG" || die "Kein gültiger Hostname: $HOSTNAME_ARG"
+  resolve_tts_options
   [[ $EUID -eq 0 ]] || die "Bitte mit sudo starten."
   command -v apt-get >/dev/null || die "Nur für Debian/Ubuntu (apt-get fehlt)."
 
@@ -623,6 +701,7 @@ main() {
   write_env
   if [[ "$SKIP_SPEACHES" == 0 ]]; then setup_speaches; fi
   if [[ "$SKIP_POCKET" == 0 ]]; then setup_pocket; fi
+  clear_speaches_voice   # erst hier: Pocket TTS antwortet, oder --skip-pocket
   start_service
   if [[ "$SKIP_CADDY" == 0 ]]; then setup_caddy; fi
   summary

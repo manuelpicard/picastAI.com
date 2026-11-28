@@ -65,6 +65,8 @@ Stand: ✓ stimmt, ✗ war falsch und ist korrigiert, „offen“ nicht prüfbar
 
 ## Selbst wiederholen
 
+Nachtrag 28.11.2026 (Punkt N1126-1600-a): Die Piper-Stimme unten hat eine offene Lizenzkette (Risiko L1, [`docs/recherche/lizenzen-sprachbausteine.md`](../../docs/recherche/lizenzen-sprachbausteine.md)). `setup-server.sh` lädt sie nur noch mit `--piper-fallback`. Kunibert spricht seit 13.11.2026 mit Pocket TTS (`deploy/EINRICHTUNG.md`, Abschnitt 4). Die Befehle unten sind der Stand vom 11.11.2026: Hier spricht Piper die Test-Frage und die Antworten. Wer sie wiederholt, wählt Piper damit bewusst; für den Server besser `PICASTAI_TTS_PROVIDER=pocket` und `PICASTAI_POCKET_TTS_URL` setzen. Die Test-Frage braucht weiter eine Stimme im Sprachserver (`TTS_MODEL`, `TTS_VOICE`).
+
 ```bash
 docker run -d --name speaches --publish 127.0.0.1:8000:8000 --volume hf-hub-cache:/home/ubuntu/.cache/huggingface/hub ghcr.io/speaches-ai/speaches:latest-cpu
 curl -X POST http://127.0.0.1:8000/v1/models/Systran/faster-whisper-small

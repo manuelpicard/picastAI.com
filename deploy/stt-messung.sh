@@ -6,16 +6,22 @@
 #   bash deploy/stt-messung.sh                 # tiny, base, small
 #   bash deploy/stt-messung.sh Systran/faster-whisper-small Systran/faster-whisper-medium
 #
-# Braucht den laufenden Sprachserver (Speaches) auf 127.0.0.1:8000 und ein geladenes
-# Stimmenmodell (Standard: Piper thorsten), um die Testsätze zu erzeugen. Es geht nichts
+# Braucht den laufenden Sprachserver (Speaches) auf 127.0.0.1:8000 und eine Stimme für die
+# Testsätze: Standard ist Kuniberts Stimme (Pocket TTS, Dienst kunibert-tts auf 127.0.0.1:8001).
+# Eine Stimme des Sprachservers nur ausdrücklich, mit PICASTAI_TTS_MODEL und PICASTAI_TTS_VOICE.
+# Bis 28.11.2026 lud das Skript dafür von selbst die Piper-Stimme thorsten; ihre Lizenzkette ist
+# offen (Risiko L1, docs/recherche/lizenzen-sprachbausteine.md, Punkt N1126-1600-a). Es geht nichts
 # nach außen außer dem Laden der Modelle durch Speaches. Keine Schlüssel nötig.
 #
 # Stand: nicht auf einem echten Server gelaufen (shellcheck und bash -n geprüft).
 set -euo pipefail
 
 URL=${SPEACHES_BASE_URL:-http://127.0.0.1:8000}
-TTS_MODEL=${PICASTAI_TTS_MODEL:-speaches-ai/piper-de_DE-thorsten-medium}
-TTS_VOICE=${PICASTAI_TTS_VOICE:-thorsten}
+TTS_MODEL=${PICASTAI_TTS_MODEL:-}
+TTS_VOICE=${PICASTAI_TTS_VOICE:-}
+POCKET_URL=${PICASTAI_POCKET_TTS_URL:-http://127.0.0.1:8001}
+POCKET_VOICE=${PICASTAI_POCKET_TTS_VOICE:-stuart_bell}
+while [[ "$POCKET_URL" == */ ]]; do POCKET_URL=${POCKET_URL%/}; done   # wie der Server (pocket-speech.ts)
 RUNS=${RUNS:-3}
 if [[ $# -gt 0 ]]; then MODELS=("$@"); else
   MODELS=(Systran/faster-whisper-tiny Systran/faster-whisper-base Systran/faster-whisper-small)
@@ -28,17 +34,34 @@ SAETZE=(
   "Ich habe Angst, weil mir jemand weh getan hat."
 )
 
+if [[ -n "$TTS_MODEL" && -z "$TTS_VOICE" ]]; then echo "PICASTAI_TTS_VOICE fehlt (zu PICASTAI_TTS_MODEL)" >&2; exit 2; fi
+if [[ -z "$TTS_MODEL" && -n "$TTS_VOICE" ]]; then echo "PICASTAI_TTS_MODEL fehlt (zu PICASTAI_TTS_VOICE)" >&2; exit 2; fi
+
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
 curl -fsS -o /dev/null "$URL/v1/models" || { echo "Sprachserver nicht erreichbar: $URL" >&2; exit 1; }
-curl -fsS -X POST "$URL/v1/models/$TTS_MODEL" >/dev/null
 
 json_string() { python3 -c 'import json,sys; print(json.dumps(sys.argv[1]))' "$1"; }
 
-echo "Testsätze erzeugen (Piper) ..."
-for i in "${!SAETZE[@]}"; do
-  curl -fsS "$URL/v1/audio/speech" -H 'Content-Type: application/json' --output "$tmp/satz$i.wav" \
-    --data "{\"model\":\"$TTS_MODEL\",\"voice\":\"$TTS_VOICE\",\"input\":$(json_string "${SAETZE[$i]}"),\"response_format\":\"wav\"}"
-done
+if [[ -n "$TTS_MODEL" ]]; then
+  if [[ "${TTS_MODEL,,}" == *piper* ]]; then
+    echo "Achtung: $TTS_MODEL ist eine Piper-Stimme mit offener Lizenzkette (Risiko L1, docs/recherche/lizenzen-sprachbausteine.md)." >&2
+  fi
+  curl -fsS -X POST "$URL/v1/models/$TTS_MODEL" >/dev/null
+  echo "Testsätze erzeugen ($TTS_MODEL) ..."
+  for i in "${!SAETZE[@]}"; do
+    curl -fsS "$URL/v1/audio/speech" -H 'Content-Type: application/json' --output "$tmp/satz$i.wav" \
+      --data "{\"model\":\"$TTS_MODEL\",\"voice\":\"$TTS_VOICE\",\"input\":$(json_string "${SAETZE[$i]}"),\"response_format\":\"wav\"}"
+  done
+else
+  curl -fsS --max-time 5 -o /dev/null "$POCKET_URL/health" \
+    || { echo "Kuniberts Stimme nicht erreichbar: $POCKET_URL (Dienst kunibert-tts, EINRICHTUNG.md, Abschnitt 4)" >&2; exit 1; }
+  echo "Testsätze erzeugen (Pocket TTS, Stimme $POCKET_VOICE) ..."
+  for i in "${!SAETZE[@]}"; do
+    # Wie der Server (server-api/voice.ts): POST /tts mit text und voice_url, Antwort ist ein PCM-WAV.
+    curl -fsS --max-time 120 "$POCKET_URL/tts" --data-urlencode "text=${SAETZE[$i]}" --data-urlencode "voice_url=$POCKET_VOICE" \
+      --output "$tmp/satz$i.wav"
+  done
+fi
 
 echo "Kerne: $(nproc), Läufe je Satz: $RUNS"
 printf '\n%-34s %-6s %-9s %s\n' "Modell" "Satz" "Sekunden" "Erkannt"
