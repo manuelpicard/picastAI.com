@@ -558,7 +558,7 @@ vorher=$fails
     env_set "$ENV_FILE" PICASTAI_TTS_PROVIDER "$wert"
     eq  "Zusammenfassung: Anbieter $wert still" "$(voice_summary)" ""
   done
-  for wert in "" '""' openai-compatible 'x;y' pocketx; do
+  for wert in "" '""' openai-compatible 'x;y' pocketx 'po cket'; do
     env_set "$ENV_FILE" PICASTAI_TTS_PROVIDER "$wert"
     yes "Zusammenfassung: Anbieter '$wert' ohne Stimme sagt es" grep -qF 'keine Stimme eingerichtet' <<<"$(voice_summary)"
   done

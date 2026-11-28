@@ -632,7 +632,8 @@ voice_summary() {
   if (( ${#provider} >= 2 )) && [[ ( "$provider" == \"*\" ) || ( "$provider" == \'*\' ) ]]; then
     provider=${provider:1:${#provider}-2}
   fi
-  provider=${provider//[$' \t']/}
+  provider=${provider#"${provider%%[![:space:]]*}"}   # wie trim() im Server: nur vorn und hinten
+  provider=${provider%"${provider##*[![:space:]]}"}
   case "${provider,,}" in google|pocket) return 0 ;; esac
   env_empty "$(env_get "$ENV_FILE" PICASTAI_TTS_MODEL)" || return 0
   note "Achtung: keine Stimme eingerichtet. PICASTAI_TTS_PROVIDER ist weder pocket noch google, und im Sprachserver"
