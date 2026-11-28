@@ -98,10 +98,11 @@ eq "env_set: der neue Wert gilt"                  "$(env_get "$f" PICASTAI_STT_M
 yes "env_set: Kommentarzeile bleibt"              grep -q '^# PICASTAI_TTS_PROVIDER=google' "$f"
 printf '  HOST = 0.0.0.0\nKEIN NAME = x\n' >> "$f"
 cp "$f" "$tmp/vor-normalize.env"
-yes "env_normalize: ändert Zeilen mit Leerzeichen" env_normalize "$f"
+yes "env_normalize: ändert Zeilen mit Leerzeichen" quiet env_normalize "$f"
 yes "env_normalize: als NAME=wert"                grep -qx 'HOST=0.0.0.0' "$f"
-yes "env_normalize: Zeile ohne gültigen Namen bleibt" grep -qx 'KEIN NAME = x' "$f"
-yes "env_normalize: U+3000-Zeile bleibt"          grep -qF $'KUNIBERT_PROBE_U3000\xe3\x80\x80= wert' "$f"
+# Zeilen mit „=“ ohne gültigen Namen ignoriert systemd und schreibt sie ganz ins Journal (Punkt N1127-2323-e).
+yes "env_normalize: Zeile ohne gültigen Namen wird Kommentar" grep -qx '# Ungültig, von systemd ignoriert: KEIN NAME = x' "$f"
+yes "env_normalize: U+3000-Zeile wird Kommentar"  grep -qxF $'# Ungültig, von systemd ignoriert: KUNIBERT_PROBE_U3000\xe3\x80\x80= wert' "$f"
 eq "env_normalize: Zeilenzahl gleich"             "$(wc -l < "$f")" "$(wc -l < "$tmp/vor-normalize.env")"
 eq "env_normalize: Rechte bleiben 600"            "$(stat -c %a "$f")" 600
 no "env_normalize: zweiter Lauf ändert nichts"    env_normalize "$f"
@@ -133,10 +134,57 @@ no  "env_set_if_empty: ein Anführungszeichen bleibt" env_set_if_empty "$f" K ne
 eq "env_set_if_empty: neuer Wert für E"    "$(env_get "$f" E)" neu-e
 eq "env_set_if_empty: eine Zeile für D, E und F" "$(grep -cE '^(D|E|F)[[:blank:]]*=' "$f")" 3
 eq "env_set_if_empty: H unverändert"       "$(env_get "$f" H)" '"x"'
+sed -i '/^K=/d' "$f"   # K=" hat ein offenes Anführungszeichen: env_normalize bräche ab (Test weiter unten)
 yes "env_normalize: mit CRLF"              env_normalize "$f"
 yes "env_normalize: CR am Ende bleibt"     grep -qx $'B=zwei \t\r' "$f"
 yes "env_normalize: = im Wert bleibt"      grep -qx $'C=ab = cd==\r' "$f"
 yes "env_normalize: Kommentare bleiben"    grep -qx $'  # I=kommentar\r' "$f"
+
+# Zeilen, die systemd anders läse (Punkt N1127-2323-e): Eine Zeile mit „=“, aber ohne gültigen Namen ignoriert
+# systemd und schreibt sie bei jedem Start ganz ins Journal, auch ein Token. Ein CR mitten in einer Zeile beendet
+# für systemd die Zeile. Die Meldung nennt nur Zeilennummern, nie Inhalte.
+nbsp=$'\xc2\xa0'
+{ printf 'export PICASTAI_DEVICE_TOKEN=geheim-export\n'; printf 'ANTHROPIC_API_KEY%s= geheim-nbsp\r\n' "$nbsp"
+  printf 'A = 1\n\t; J=kommentar=x\nnur text\n1X=geheim-ziffer\\\nB=2\rexport C=geheim-cr\r\nD="ok"\n'; } > "$f"
+chmod 600 "$f"
+ausgabe=$(env_normalize "$f" 2>&1); rc=$?
+eq  "ungültige Zeilen: env_normalize ändert die Datei"   "$rc" 0
+yes "ungültige Zeilen: export als Kommentar"   grep -qx '# Ungültig, von systemd ignoriert: export PICASTAI_DEVICE_TOKEN=geheim-export' "$f"
+yes "ungültige Zeilen: geschütztes Leerzeichen vor = als Kommentar, CR bleibt" \
+  grep -qxF "# Ungültig, von systemd ignoriert: ANTHROPIC_API_KEY${nbsp}= geheim-nbsp"$'\r' "$f"
+yes "ungültige Zeilen: Ziffer am Anfang, Kommentar ohne \\ am Ende" grep -qx '# Ungültig, von systemd ignoriert: 1X=geheim-ziffer' "$f"
+yes "ungültige Zeilen: CR mitten in der Zeile trennt (wie systemd)" grep -qx $'B=2\r' "$f"
+yes "ungültige Zeilen: zweiter Teil als eigene Zeile, als Kommentar" grep -qx $'# Ungültig, von systemd ignoriert: export C=geheim-cr\r' "$f"
+yes "ungültige Zeilen: gültige Zeile als NAME=wert" grep -qx 'A=1' "$f"
+yes "ungültige Zeilen: ;-Kommentar mit = bleibt" grep -qx $'\t; J=kommentar=x' "$f"
+yes "ungültige Zeilen: Zeile ohne = bleibt"    grep -qx 'nur text' "$f"
+yes "ungültige Zeilen: Meldung nennt die Zeilen" grep -qF 'Zeile 1, 2, 6, 7 in' <<<"$ausgabe"
+no  "ungültige Zeilen: kein Inhalt in der Meldung" grep -qE 'geheim|PICASTAI_DEVICE_TOKEN|ANTHROPIC|1X|export C' <<<"$ausgabe"
+eq  "ungültige Zeilen: env_get liest das Token nicht (wie systemd)" "$(env_get "$f" PICASTAI_DEVICE_TOKEN)" ""
+eq  "ungültige Zeilen: kein CR mehr mitten in einer Zeile" "$(grep -c $'\r.' "$f")" 0
+ausgabe=$(env_normalize "$f" 2>&1); rc=$?
+eq  "ungültige Zeilen: zweiter Lauf ändert nichts" "$rc" 1
+eq  "ungültige Zeilen: zweiter Lauf meldet nichts" "$ausgabe" ""
+
+# Ein Anführungszeichen, das vor dem Zeilenende nicht geschlossen wird, oder ein \ am Ende: systemd läse die
+# nächsten Zeilen als Teil des Werts. Das Skript bricht ab, die Datei bleibt Byte für Byte; nur Zeile und Name.
+for zeile in 'PORT="3000' "ANTHROPIC_API_KEY='geheim-offen" 'PICASTAI_STT_PROMPT=geheim-ritter\' \
+    '  PICASTAI_ADMIN_TOKEN = "geheim\"'; do
+  name=${zeile%%=*}; name=${name// /}
+  cp "$here/kunibert.env.example" "$f"; chmod 600 "$f"; printf '%s\n' "$zeile" >> "$f"
+  nr=$(wc -l < "$f"); cp "$f" "$tmp/vor-offen.env"
+  meldung=$( (env_normalize "$f"; echo weiter) 2>&1 )
+  yes "offen ($name): Datei unverändert"   cmp -s "$f" "$tmp/vor-offen.env"
+  no  "offen ($name): bricht ab"           grep -qx weiter <<<"$meldung"
+  yes "offen ($name): nennt Zeile und Namen" grep -qF "Zeile $nr ($name): Ein Anführungszeichen" <<<"$meldung"
+  no  "offen ($name): kein Wert in der Meldung" grep -qE 'geheim|3000' <<<"$meldung"
+  eq  "offen ($name): keine Zwischendatei bleibt" "$(compgen -G "$f.??????" || true)" ""
+done
+for zeile in 'A="geschlossen"' "A='a b'" 'A=a\\' 'A="a\\"' 'A=a"b' 'A="a"b"' 'A=""'; do
+  printf '%s\n' "$zeile" > "$f"
+  meldung=$( (env_normalize "$f"; echo weiter) 2>&1 )
+  yes "geschlossen: $zeile bricht nicht ab" grep -qx weiter <<<"$meldung"
+done
 
 # write_env mit Werten in der Schreibweise NAME = wert (mit umgelenkter Datei und Attrappen): Tokens und
 # Schlüssel bleiben, kein zweites Token wird angehängt, keines steht in der Ausgabe.
@@ -190,6 +238,48 @@ vorher=$fails
   [[ $fails -eq $vorher ]]
 ) || fails=$((fails + 1))
 
+# write_env mit einem CR mitten in der Token-Zeile und einer export-Zeile (Punkt N1127-2323-e): systemd liest
+# „PICASTAI_NOTIZ=1“ und das alte Token als zwei Zeilen. Das Skript auch: kein neues Token, die export-Zeile wird
+# ein Kommentar. Weder Token noch Schlüssel stehen in der Ausgabe.
+vorher=$fails
+(
+  ENV_FILE="$tmp/env-cr/kunibert.env"; mkdir -p "$tmp/env-cr"
+  APP_DIR="$here/.."; HOSTNAME_ARG=kunibert.picastai.com
+  install() { cp "${@: -2:1}" "${@: -1}"; chmod 600 "${@: -1}"; }
+  chown() { :; }
+  openssl() { printf 'neutoken%.0s' {1..8}; }
+  awk '/^PICASTAI_DEVICE_TOKEN=/ { printf "PICASTAI_NOTIZ=1\rPICASTAI_DEVICE_TOKEN=\"alt-geraete-token\"\n"; next } { print }' \
+    "$here/kunibert.env.example" > "$ENV_FILE"; chmod 600 "$ENV_FILE"
+  printf 'export KUNIBERT_ELTERN_SCHLUESSEL=alt-export-schluessel\n' >> "$ENV_FILE"
+  ausgabe=$(write_env 2>&1)
+  eq  "write_env (CR in der Zeile): genau eine Zeile für das Geräte-Token" "$(grep -cE '^[[:space:]]*PICASTAI_DEVICE_TOKEN[[:blank:]]*=' "$ENV_FILE")" 1
+  yes "write_env (CR in der Zeile): altes Token bleibt, in eigener Zeile" grep -qx 'PICASTAI_DEVICE_TOKEN="alt-geraete-token"' "$ENV_FILE"
+  yes "write_env (CR in der Zeile): Notiz in eigener Zeile" grep -qx 'PICASTAI_NOTIZ=1' "$ENV_FILE"
+  eq  "write_env (CR in der Zeile): kein CR mehr"           "$(grep -c $'\r' "$ENV_FILE")" 0
+  no  "write_env (CR in der Zeile): kein neues Geräte-Token" grep -qF 'Geräte-Token erzeugt' <<<"$ausgabe"
+  yes "write_env (export): Zeile als Kommentar" \
+    grep -qx '# Ungültig, von systemd ignoriert: export KUNIBERT_ELTERN_SCHLUESSEL=alt-export-schluessel' "$ENV_FILE"
+  yes "write_env (export): warnt"                           grep -qF 'ohne gültigen Namen davor' <<<"$ausgabe"
+  no  "write_env: weder Token noch Schlüssel in der Ausgabe" grep -qE 'alt-geraete-token|alt-export-schluessel|neutoken' <<<"$ausgabe"
+  [[ $fails -eq $vorher ]]
+) || fails=$((fails + 1))
+
+# Zusammenfassung: Ein Schlüssel "" oder '' ist leer wie beim Server (env_empty), nicht „gesetzt“.
+vorher=$fails
+(
+  ENV_FILE="$tmp/env-summary/kunibert.env"; mkdir -p "$tmp/env-summary"
+  HOSTNAME_ARG=kunibert.picastai.com; SKIP_CADDY=1; SKIP_POCKET=1
+  for wert in '' '""' "''" '" "' $'\t'; do
+    printf 'ANTHROPIC_API_KEY=%s\nPICASTAI_TTS_PROVIDER=pocket\n' "$wert" > "$ENV_FILE"
+    yes "Zusammenfassung: Schlüssel $(printf '%q' "$wert") ist leer" grep -qF 'Schlüssel eintragen' <<<"$(summary 2>&1)"
+  done
+  printf 'ANTHROPIC_API_KEY="sk-geheim"\nPICASTAI_TTS_PROVIDER=pocket\n' > "$ENV_FILE"
+  ausgabe=$(summary 2>&1)
+  yes "Zusammenfassung: gesetzter Schlüssel"           grep -qF 'ANTHROPIC_API_KEY ist gesetzt' <<<"$ausgabe"
+  no  "Zusammenfassung: Schlüssel nicht in der Ausgabe" grep -qF 'sk-geheim' <<<"$ausgabe"
+  [[ $fails -eq $vorher ]]
+) || fails=$((fails + 1))
+
 # Schreibfehler (Platte voll, keine Zwischendatei): Das Skript bricht ab, und die env-Datei bleibt Byte für
 # Byte, wie sie war, auch wenn die Funktion in einem if läuft (dort greift set -e nicht; Prüfung von
 # PR #132, Befund 1). „attrappe“: awk gibt eine halbe Zeile aus und scheitert, auch beim Lesen (dann darf
@@ -235,12 +325,12 @@ awk_probe() {
   local k
   for k in A B C D E F G H I K; do printf '%s|' "$(env_get "$d/e.env" "$k")"; done
   printf '\n'
-  env_normalize "$d/e.env" || true
+  env_normalize "$d/e.env" > /dev/null || true
   env_set "$d/e.env" B 4
   cat "$d/e.env"
 }
 awk_erwartet=$(printf '%s\n' '1|3|ab = cd==||""|||||ä ö ü ß|' 'A=1' 'B=4' 'C=ab = cd==' $'D=\r' 'E=""' '  # F=x' \
-  $'\t; G=x' $'H\xe3\x80\x80= u' $'\vI=x' 'K=ä ö ü ß')
+  $'\t; G=x' $'# Ungültig, von systemd ignoriert: H\xe3\x80\x80= u' $'# Ungültig, von systemd ignoriert: \vI=x' 'K=ä ö ü ß')
 utf8_c=C
 if locale -a 2>/dev/null | grep -qiE '^c\.utf-?8$'; then utf8_c=C.UTF-8; fi
 eq "awk-Vergleich: $(readlink -f "$(command -v awk)") ($utf8_c)" "$(LC_ALL=$utf8_c awk_probe)" "$awk_erwartet"

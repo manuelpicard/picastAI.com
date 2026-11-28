@@ -50,6 +50,9 @@ die() { printf '[kunibert-install] FEHLER: %s\n' "$*" >&2; exit 1; }
 env_quote() { local v="$1"; v="${v//\\/\\\\}"; v="${v//\"/\\\"}"; printf '"%s"' "$v"; }
 # Leerzeichen am Anfang und Ende entfernen (kopierte Tokens).
 trim() { local v="$1"; v="${v#"${v%%[![:space:]]*}"}"; v="${v%"${v##*[![:space:]]}"}"; printf '%s' "$v"; }
+# Die vorhandene kunibert.env mit einem \n statt jedem \r: Für systemd beendet auch ein \r eine Zeile,
+# auch mitten in einer Zeile (Punkt N1126-1338-b). Nur für grep; merge_config trennt selbst.
+config_lines() { tr '\r' '\n' < "$CONFIG_FILE"; }
 # 0, wenn die vorhandene kunibert.env ein nicht leeres Token enthält. Gibt den Wert nie aus.
 # Wie systemd: auch „PICASTAI_DEVICE_TOKEN = …“ (Leerzeichen um „=“, etwa mit sudoedit geschrieben).
 existing_token_set() {
@@ -57,7 +60,7 @@ existing_token_set() {
   local line value
   # LC_ALL=C: Nur Leerzeichen und Tab zählen als [[:blank:]], wie bei systemd und in merge_config.
   # In UTF-8 träfe grep sonst auch Zeichen wie U+3000, die mawk und systemd nicht so lesen.
-  line="$(LC_ALL=C grep -E '^[[:space:]]*PICASTAI_DEVICE_TOKEN[[:blank:]]*=' "$CONFIG_FILE" | tail -n 1)" || return 1
+  line="$(config_lines | LC_ALL=C grep -E '^[[:space:]]*PICASTAI_DEVICE_TOKEN[[:blank:]]*=' | tail -n 1)" || return 1
   # Bis zum ersten „=“: Der Name enthält keines, das Token vielleicht (Base64).
   value="${line#*=}"
   value="${value//\"/}"; value="${value//\'/}"; value="${value//[[:space:]]/}"
@@ -71,14 +74,21 @@ existing_token_set() {
 # Leerzeichen oder Tabs um „=“ fallen weg: Aus „NAME = wert“ wird „NAME=wert“. systemd liest
 # beide Schreibweisen gleich (die letzte Zeile eines Namens gilt), die Shell (set -a; . Datei)
 # nur „NAME=wert“. Ohne das stünde „KUNIBERT_PIPELINE_TIMEOUT = 60“ als fremde Zeile hinter der
-# festen Zeile und gälte. Namen behaltener Schlüssel, die von der Vorlage abweichen, schreibt awk
-# nach $3, Namen fester Schlüssel, die zurückgesetzt werden, nach $4 (nur Namen, nie Werte).
+# festen Zeile und gälte. Wie bei systemd beendet auch ein \r mitten in einer Zeile die Zeile
+# (Punkt N1126-1338-b). Eine Zeile mit „=“, aber ohne gültigen Namen (etwa „export NAME=…“ oder ein
+# geschütztes Leerzeichen vor „=“) ignoriert systemd und schreibt sie bei jedem Start ganz ins Journal,
+# auch ein Token. Sie kommt als Kommentar „# Ungültig, von systemd ignoriert: …“ ans Ende, und ein neuer
+# Lauf behält diesen Kommentar (Punkt N1127-2323-e). Namen behaltener Schlüssel, die von der Vorlage
+# abweichen, schreibt awk nach $3, Namen fester Schlüssel, die zurückgesetzt werden, nach $4, Nummern
+# der Zeilen ohne gültigen Namen nach $5 (nur Namen und Nummern, nie Werte).
+INVALID_PREFIX="# Ungültig, von systemd ignoriert: "
 merge_config() {
   local given=" " forced=" " key
   for key in "${!GIVEN[@]}"; do given+="$key "; done
   for key in "${FORCED_KEYS[@]}"; do forced+="$key "; done
   # LC_ALL=C: Zeichenklassen und -bereiche nur für ASCII, gleich in mawk und gawk (siehe oben).
-  LC_ALL=C awk -v oldfile="$2" -v given="$given" -v forced="$forced" -v keptfile="$3" -v resetfile="$4" '
+  LC_ALL=C awk -v oldfile="$2" -v given="$given" -v forced="$forced" -v keptfile="$3" -v resetfile="$4" \
+      -v invalidfile="$5" -v invalid="$INVALID_PREFIX" '
     function is_key(l) { return l ~ /^[A-Za-z_][A-Za-z0-9_]*[[:blank:]]*=/ }
     function key_of(l,   name) {
       name = substr(l, 1, index(l, "=") - 1)
@@ -92,16 +102,30 @@ merge_config() {
       return key_of(l) "=" value
     }
     BEGIN {
-      while ((getline line < oldfile) > 0) {
-        sub(/\r$/, "", line)
-        stripped = line
-        sub(/^[[:space:]]+/, "", stripped)
-        if (is_key(stripped)) {
-          k = key_of(stripped)
-          if (!(k in old)) order[++n] = k
-          old[k] = normalized(stripped)
-        } else if (stripped !~ /^(#|$)/) {
-          other[++m] = line
+      while ((getline physical < oldfile) > 0) {
+        nr++
+        sub(/\r$/, "", physical)
+        parts = split(physical, part, "\r")
+        for (p = 1; p <= parts; p++) {
+          line = part[p]
+          stripped = line
+          sub(/^[[:space:]]+/, "", stripped)
+          if (is_key(stripped)) {
+            k = key_of(stripped)
+            if (!(k in old)) order[++n] = k
+            old[k] = normalized(stripped)
+          } else if (index(stripped, invalid) == 1) {
+            other[++m] = stripped
+          } else if (stripped !~ /^(#|$)/) {
+            if (stripped !~ /^;/ && index(stripped, "=") > 0) {
+              # Ohne \ am Ende: systemd vor Version 254 läse einen Kommentar sonst in der nächsten Zeile weiter.
+              sub(/\\+$/, "", stripped)
+              other[++m] = invalid stripped
+              print nr > invalidfile
+            } else {
+              other[++m] = line
+            }
+          }
         }
       }
       close(oldfile)
@@ -173,12 +197,60 @@ existing_value() {
   [[ -f "$CONFIG_FILE" ]] || return 1
   local line value
   # LC_ALL=C wie in existing_token_set und merge_config: nur Leerzeichen und Tab um „=“.
-  line="$(LC_ALL=C grep -E "^[[:space:]]*$1[[:blank:]]*=" "$CONFIG_FILE" | tail -n 1)" || return 1
+  line="$(config_lines | LC_ALL=C grep -E "^[[:space:]]*$1[[:blank:]]*=" | tail -n 1)" || return 1
   value="$(trim "${line#*=}")"
   if [[ ${#value} -ge 2 && ( "$value" == \"*\" || "$value" == \'*\' ) ]]; then
     value="$(trim "${value:1:${#value}-2}")"
   fi
   printf '%s' "$value"
+}
+# Bricht ab, wenn eine Zeile, die der Installer aus kunibert.env behielte, ein Anführungszeichen hat, das
+# vor dem Zeilenende nicht geschlossen wird, oder mit \ endet: systemd läse dann die nächsten Zeilen als
+# Teil des Werts, auch die feste Zeile für 140 s (Punkt N1127-2323-e). Wie in merge_config gilt je Name die
+# letzte Zeile; Werte, die beim Aufruf neu kommen (GIVEN) oder fest sind (FORCED_KEYS), ersetzt der
+# Installer ohnehin. Die Zustände wie parse_env_file_internal in src/basic/env-file.c von systemd. Nennt
+# Zeilennummer und Namen, nie den Wert. Vor jeder Änderung aufrufen.
+check_kept_lines() {
+  [[ -f "$CONFIG_FILE" ]] || return 0
+  local skip=" " key problems
+  for key in "${!GIVEN[@]}" "${FORCED_KEYS[@]}"; do skip+="$key "; done
+  problems="$(LC_ALL=C awk -v skip="$skip" '
+    function continues(v,   i, c, s) {
+      s = "vor"
+      for (i = 1; i <= length(v); i++) {
+        c = substr(v, i, 1)
+        if (s == "esc") s = "wert"
+        else if (s == "dqesc") s = "dq"
+        else if (s == "sq") { if (c == "\047") s = "vor" }
+        else if (s == "dq") { if (c == "\"") s = "vor"; else if (c == "\\") s = "dqesc" }
+        else if (c == "\\") s = "esc"
+        else if (s == "vor" && c == "\047") s = "sq"
+        else if (s == "vor" && c == "\"") s = "dq"
+        else if (s == "vor" && c != " " && c != "\t") s = "wert"
+      }
+      return s == "esc" || s == "sq" || s == "dq" || s == "dqesc"
+    }
+    {
+      sub(/\r$/, "")
+      parts = split($0, part, "\r")
+      for (p = 1; p <= parts; p++) {
+        line = part[p]
+        sub(/^[[:space:]]+/, "", line)
+        if (line !~ /^[A-Za-z_][A-Za-z0-9_]*[[:blank:]]*=/) continue
+        k = substr(line, 1, index(line, "=") - 1); sub(/[[:blank:]]+$/, "", k)
+        value = substr(line, index(line, "=") + 1); sub(/^[[:blank:]]+/, "", value)
+        if (!(k in where)) order[++n] = k
+        where[k] = NR; offen[k] = continues(value)
+      }
+    }
+    END {
+      for (i = 1; i <= n; i++) {
+        k = order[i]
+        if (offen[k] && index(skip, " " k " ") == 0) printf "%s%d (%s)", (found++ ? ", " : ""), where[k], k
+      }
+    }
+  ' "$CONFIG_FILE")" || die "$CONFIG_FILE ließ sich nicht lesen. Nichts geändert."
+  [[ -z "$problems" ]] || die "$CONFIG_FILE, Zeile $problems: Ein Anführungszeichen wird vor dem Zeilenende nicht geschlossen, oder die Zeile endet mit \\. systemd läse die nächsten Zeilen als Teil des Werts, auch die feste Zeile KUNIBERT_PIPELINE_TIMEOUT=140. Wert nicht angezeigt. Abhilfe: die Zeile mit sudoedit $CONFIG_FILE berichtigen (jeder Wert auf einer Zeile) und den Installer noch einmal starten. Nichts geändert."
 }
 
 usage() {
@@ -352,13 +424,16 @@ else
   TOKEN_STATE="fehlt"
   warn "Kein API-Token gesetzt. Der Dienst wird installiert, kann aber erst nach Token-Konfiguration arbeiten."
 fi
+# Erst hier: GIVEN ist vollständig (auch ein neues Token). Auch der Probelauf bricht ab.
+check_kept_lines
 
 if ! [[ "$SAMPLE_RATE" =~ ^[0-9]+$ ]] || (( SAMPLE_RATE < 8000 || SAMPLE_RATE > 96000 )); then
   die "Ungültige Abtastrate: $SAMPLE_RATE"
 fi
 # Wert für den Probelauf: Fehlt die Angabe und steht der Schlüssel schon in kunibert.env, bleibt er.
+# grep ohne -q: Es liest alles, sonst bräche tr mit SIGPIPE ab, und pipefail meldete einen Fehler.
 shown() {
-  if [[ -z "${GIVEN[$1]:-}" && -f "$CONFIG_FILE" ]] && LC_ALL=C grep -qE "^[[:space:]]*$1[[:blank:]]*=" "$CONFIG_FILE"; then
+  if [[ -z "${GIVEN[$1]:-}" && -f "$CONFIG_FILE" ]] && config_lines | LC_ALL=C grep -E "^[[:space:]]*$1[[:blank:]]*=" > /dev/null; then
     printf 'bleibt wie in kunibert.env'
   else
     printf '%s' "$2"
@@ -482,7 +557,8 @@ NEW_CONFIG="$(mktemp "${CONFIG_DIR}/.kunibert.env.vorlage.XXXXXX")"
 MERGED_CONFIG="$(mktemp "${CONFIG_DIR}/.kunibert.env.neu.XXXXXX")"
 KEPT_KEYS="$(mktemp)"
 RESET_KEYS="$(mktemp)"
-TMP_FILES+=("$NEW_CONFIG" "$MERGED_CONFIG" "$KEPT_KEYS" "$RESET_KEYS")
+INVALID_LINES="$(mktemp)"
+TMP_FILES+=("$NEW_CONFIG" "$MERGED_CONFIG" "$KEPT_KEYS" "$RESET_KEYS" "$INVALID_LINES")
 cat > "$NEW_CONFIG" <<EOF
 # /etc/kunibert/kunibert.env – vom Installer erzeugt; Secrets nicht committen.
 # Ein neuer Lauf des Installers behält die Werte hier, außer er bekommt sie beim Aufruf neu.
@@ -513,13 +589,16 @@ KUNIBERT_INPUT_DEVICE=$(env_quote "$CAPTURE_DEVICE")
 KUNIBERT_OUTPUT_DEVICE=$(env_quote "$PLAYBACK_DEVICE")
 EOF
 if [[ -f "$CONFIG_FILE" ]]; then
-  merge_config "$NEW_CONFIG" "$CONFIG_FILE" "$KEPT_KEYS" "$RESET_KEYS" > "$MERGED_CONFIG"
+  merge_config "$NEW_CONFIG" "$CONFIG_FILE" "$KEPT_KEYS" "$RESET_KEYS" "$INVALID_LINES" > "$MERGED_CONFIG"
   if [[ -s "$KEPT_KEYS" ]]; then
     log "Aus $CONFIG_FILE behalten: $(paste -sd, "$KEPT_KEYS" | sed 's/,/, /g')"
   fi
   while IFS= read -r key; do
     warn "$key stand in $CONFIG_FILE anders. Der Installer setzt wieder den festen Wert $(grep -E "^${key}=" "$NEW_CONFIG" | cut -d= -f2-) (siehe pi-client/README.md, Abschnitt Ein zweiter Lauf)."
   done < "$RESET_KEYS"
+  if [[ -s "$INVALID_LINES" ]]; then
+    warn "Zeile $(paste -sd, "$INVALID_LINES" | sed 's/,/, /g') in $CONFIG_FILE : ein = ohne gültigen Namen davor (zum Beispiel mit export davor oder einem geschützten Leerzeichen vor dem =). systemd ignoriert solche Zeilen und schriebe sie bei jedem Start ganz ins Journal. Der Installer behält sie als Kommentar am Ende der Datei (${INVALID_PREFIX}…). Inhalt nicht angezeigt. Bitte prüfen: sudoedit $CONFIG_FILE"
+  fi
 else
   cat "$NEW_CONFIG" > "$MERGED_CONFIG"
 fi
@@ -530,7 +609,7 @@ else
   chmod 0640 "$MERGED_CONFIG"
   mv -f -- "$MERGED_CONFIG" "$CONFIG_FILE"
 fi
-rm -f -- "$NEW_CONFIG" "$MERGED_CONFIG" "$KEPT_KEYS" "$RESET_KEYS"
+rm -f -- "$NEW_CONFIG" "$MERGED_CONFIG" "$KEPT_KEYS" "$RESET_KEYS" "$INVALID_LINES"
 # Auch eine vorhandene Datei angleichen (ältere Fassungen: Gruppe audio).
 chown root:"$CONFIG_GROUP" "$CONFIG_FILE"
 chmod 0640 "$CONFIG_FILE"

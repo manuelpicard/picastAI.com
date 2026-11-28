@@ -6,7 +6,8 @@
 # nach einem erfolgreichen Start der Stimme auch die drei Zeilen für Pocket TTS (nicht mit --skip-pocket),
 # und die eigene Datei für die Frist der Protokolle (eigene Werte: EINRICHTUNG.md, Betrieb).
 # Zeilen der env-Datei liest es fast wie systemd (auch eingerückt, mit Leerzeichen um „=“ und mit
-# Windows-Zeilenenden) und schreibt sie als NAME=wert. Was es anders liest: bei env_get unten.
+# Windows-Zeilenenden) und schreibt sie als NAME=wert. Zeilen, die systemd ignorieren und ganz ins Journal
+# schreiben würde, macht es zu Kommentaren. Was es anders liest: bei env_get unten.
 #
 #   sudo bash setup-server.sh --hostname kunibert.example
 #
@@ -131,6 +132,15 @@ matches_c() ( LC_ALL=C; [[ "$1" =~ $2 ]] )
 # Zeichenklassen sind ausgeschrieben ([ \t]): Andere Leerzeichen wie U+3000, \v oder \f zählen für systemd
 # nicht und hier auch nicht.
 #
+# Was systemd sonst noch anders läse, räumt env_normalize zuerst auf (write_env ruft es vor allem anderen auf;
+# env_get und env_set verlassen sich darauf). Punkt N1127-2323-e:
+# - Ein CR mitten in einer Zeile beendet für systemd die Zeile. env_normalize schreibt die Teile als eigene Zeilen.
+# - Eine Zeile mit „=“, aber ohne gültigen Namen (etwa „export NAME=…“ oder ein geschütztes Leerzeichen vor „=“)
+#   ignoriert systemd und schreibt sie bei jedem Start ganz ins Journal, auch ein Token. env_normalize macht
+#   daraus einen Kommentar „# Ungültig, von systemd ignoriert: …“ und nennt nur die Zeilennummer.
+# - Hat eine Zeile mit gültigem Namen ein Anführungszeichen, das vor dem Zeilenende nicht geschlossen wird, oder
+#   ein \ am Ende, läse systemd die nächsten Zeilen als Teil des Werts. env_normalize bricht dann ab.
+#
 # Schreiben nur über eine Zwischendatei daneben. Scheitert ein Schritt (Platte voll, keine Rechte), bricht
 # das Skript ab, und die env-Datei bleibt, wie sie war. Das gilt auch, wenn die Funktion in einem if
 # aufgerufen wird; dort greift set -e nicht (Prüfung von PR #132, Befund 1).
@@ -198,28 +208,75 @@ env_set() { # Datei Schlüssel Wert
 # Zeilen bleiben, wie sie sind, auch ein CR am Ende. Für einfache Zeilen wie in der Vorlage liest systemd
 # danach dieselben Werte (nicht bei Fortsetzungen und mehrzeiligen Werten, siehe oben). Einfache Befehle wie
 # grep ^NAME= (summary, Doku) und die Shell (set -a; . Datei) verstehen nur „NAME=wert“. Fehlt nur das
-# Zeilenende der letzten Zeile, ergänzt awk es; auch das zählt als Änderung.
-# Rückgabe 0 = geändert, 1 = war schon so.
+# Zeilenende der letzten Zeile, ergänzt awk es; auch das zählt als Änderung. Dazu CR mitten in einer Zeile,
+# Zeilen ohne gültigen Namen und offene Anführungszeichen (siehe oben, Punkt N1127-2323-e). Meldungen nennen
+# nur Zeilennummern und gültige Namen, nie Inhalte. Rückgabe 0 = geändert, 1 = war schon so.
 env_normalize() { # Datei
-  local file=$1 tmp
+  local file=$1 tmp meldungen art nr name ungueltig="" offen=""
   tmp=$(mktemp "${file}.XXXXXX") || die "env-Datei: keine Zwischendatei neben $file (sie ist unverändert)"
-  if ! LC_ALL=C awk '
-    {
-      line = $0; sub(/^[ \t\r]+/, "", line)
-      if (line ~ /^[A-Za-z_][A-Za-z0-9_]*[ \t]*=/) {
-        name = substr(line, 1, index(line, "=") - 1); sub(/[ \t]+$/, "", name)
-        value = substr(line, index(line, "=") + 1); sub(/^[ \t]+/, "", value)
-        print name "=" value
-        next
+  # Die Meldungen schreibt awk nach stderr (nur Art, Zeilennummer, gültiger Name); die Datei geht nach $tmp.
+  if ! meldungen=$(LC_ALL=C awk '
+    # 1, wenn systemd nach dem Wert v noch die nächste Zeile liest: Anführungszeichen vor dem Zeilenende nicht
+    # geschlossen oder \ am Ende. Zustände wie parse_env_file_internal in src/basic/env-file.c von systemd.
+    function continues(v,   i, c, s) {
+      s = "vor"
+      for (i = 1; i <= length(v); i++) {
+        c = substr(v, i, 1)
+        if (s == "esc") s = "wert"
+        else if (s == "dqesc") s = "dq"
+        else if (s == "sq") { if (c == "\047") s = "vor" }
+        else if (s == "dq") { if (c == "\"") s = "vor"; else if (c == "\\") s = "dqesc" }
+        else if (c == "\\") s = "esc"
+        else if (s == "vor" && c == "\047") s = "sq"
+        else if (s == "vor" && c == "\"") s = "dq"
+        else if (s == "vor" && c != " " && c != "\t") s = "wert"
       }
-      print
+      return s == "esc" || s == "sq" || s == "dq" || s == "dqesc"
     }
-  ' "$file" > "$tmp"; then
+    {
+      cr = sub(/\r$/, "")   # Windows-Zeilenende bleibt
+      n = split($0, teile, "\r")
+      if (n == 0) { n = 1; teile[1] = "" }
+      for (i = 1; i <= n; i++) {
+        out = teile[i]
+        line = out; sub(/^[ \t]+/, "", line)
+        if (line ~ /^[A-Za-z_][A-Za-z0-9_]*[ \t]*=/) {
+          name = substr(line, 1, index(line, "=") - 1); sub(/[ \t]+$/, "", name)
+          value = substr(line, index(line, "=") + 1); sub(/^[ \t]+/, "", value)
+          if (continues(value)) print "offen", NR, name > "/dev/stderr"
+          out = name "=" value
+        } else if (line !~ /^[#;]/ && index(line, "=") > 0) {
+          print "ungueltig", NR > "/dev/stderr"
+          # Ohne \ am Ende: systemd vor Version 254 läse einen Kommentar sonst in der nächsten Zeile weiter.
+          sub(/\\+$/, "", line)
+          out = "# Ungültig, von systemd ignoriert: " line
+        }
+        printf "%s%s\n", out, (cr ? "\r" : "")
+      }
+    }
+  ' "$file" 2>&1 > "$tmp"); then
     rm -f "$tmp"
     die "env-Datei ließ sich nicht schreiben (Platte voll?): $file (sie ist unverändert)"
   fi
+  while read -r art nr name; do
+    case $art in
+      ungueltig) ungueltig+="${ungueltig:+, }$nr" ;;
+      offen) offen+="${offen:+, }$nr ($name)" ;;
+    esac
+  done <<<"$meldungen"
+  if [[ -n "$offen" ]]; then
+    rm -f "$tmp"
+    die "env-Datei $file, Zeile $offen: Ein Anführungszeichen wird vor dem Zeilenende nicht geschlossen, oder die Zeile endet mit \\. systemd läse die nächsten Zeilen als Teil des Werts. Bitte berichtigen (sudoedit $file; jeder Wert auf einer Zeile) und das Skript noch einmal starten. Die Datei ist unverändert; Werte nicht angezeigt."
+  fi
   if cmp -s "$tmp" "$file"; then rm -f "$tmp"; return 1; fi
   env_replace "$tmp" "$file"
+  if [[ -n "$ungueltig" ]]; then
+    note "Achtung: Zeile $ungueltig in $file: ein = ohne gültigen Namen davor (zum Beispiel mit export davor"
+    note "  oder einem geschützten Leerzeichen vor dem =). systemd ignoriert solche Zeilen und schriebe sie bei jedem"
+    note "  Start ganz ins Journal. Sie stehen jetzt als Kommentar in der Datei (# Ungültig, von systemd ignoriert: …)."
+    note "  Inhalt hier nicht angezeigt. Bitte prüfen: sudoedit $file"
+  fi
+  return 0
 }
 
 # Setzt KEY nur, wenn er fehlt oder leer ist (env_empty). Rückgabe 0 = gesetzt, 1 = war schon da.
@@ -642,7 +699,8 @@ voice_summary() {
 
 summary() {
   say "Fertig. Was jetzt noch DU tust"
-  if [[ -z "$(env_get "$ENV_FILE" ANTHROPIC_API_KEY)" ]]; then
+  # Leer wie beim Server: auch "" und '' (env_empty), sonst hieße es „gesetzt“ (Punkt N1127-2323-e).
+  if env_empty "$(env_get "$ENV_FILE" ANTHROPIC_API_KEY)"; then
     note "1. Schlüssel eintragen (nur hier, nie in Chat oder Git):"
     note "     sudoedit $ENV_FILE        # Zeile ANTHROPIC_API_KEY="
     note "     sudo systemctl restart kunibert-server"
