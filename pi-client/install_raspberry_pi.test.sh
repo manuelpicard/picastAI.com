@@ -346,10 +346,122 @@ has "Lauf 5e: warnt, dass kein Token gesetzt ist" "$work/lauf5e.txt" "Kein API-T
 hasnt "Lauf 5e: meldet nicht, das Token bleibe" "$work/lauf5e.txt" "Das Token in $env_file bleibt."
 no_token "Lauf 5e: Token nicht in der Ausgabe" "$work/lauf5e.txt"
 eq "Lauf 5e: Token in kunibert.env leer, wie systemd es läse" "$(val PICASTAI_DEVICE_TOKEN)" '""'
-sed -i "/^PICASTAI_DEVICE_TOKEN${u3000}=/d" "$env_file"
+# systemd ignoriert die Zeile und schriebe sie ganz ins Journal: Sie wird ein Kommentar (Punkt N1127-2323-e).
+eq "Lauf 5e: Zeile als Kommentar" "$(grep -c "^# Ungültig, von systemd ignoriert: PICASTAI_DEVICE_TOKEN${u3000}= " "$env_file")" 1
+has "Lauf 5e: warnt wegen der Zeile ohne gültigen Namen" "$work/lauf5e.txt" "ohne gültigen Namen davor"
+sed -i "/^# Ungültig, von systemd ignoriert: /d" "$env_file"
 run "$work/lauf5f.txt" --non-interactive --api-token-file "$work/token"
 eq "Lauf 5f: Rückgabe 0" "$rc" 0
 token_is "Lauf 5f: Token wieder gesetzt" "$token"
+
+echo "== Lauf 5g: Zeilen mit = ohne gültigen Namen davor (systemd schriebe sie ganz ins Journal; Punkt N1127-2323-e)"
+nbsp=$'\xc2\xa0'
+printf 'export PICASTAI_DEVICE_TOKEN=%s\n' "$token2" >> "$env_file"
+# \\ am Ende (ein maskiertes \): Die Zeile geht für systemd nicht weiter; der Kommentar endet ohne \.
+printf 'KUNIBERT_NOTIZ%s=%s\\\\\n' "$nbsp" "$token3" >> "$env_file"
+printf '=%s\n' "$token3" >> "$env_file"          # leerer Name
+printf '\vKUNIBERT_SENKRECHT=1\n' >> "$env_file"   # \v vor dem Namen: für systemd ungültig
+# \ vor einem Windows-Zeilenende: systemd verschluckt nur das CR, die Zeile geht nicht weiter. Kein Abbruch.
+printf 'export KUNIBERT_PFAD=C:\\\r\n' >> "$env_file"
+printf '; KUNIBERT_KOMMENTAR=1\n' >> "$env_file"
+run "$work/lauf5g.txt" --non-interactive
+eq "Lauf 5g: Rückgabe 0" "$rc" 0
+no_token "Lauf 5g: Token nicht in der Ausgabe" "$work/lauf5g.txt"
+has "Lauf 5g: warnt wegen der Zeilen ohne gültigen Namen" "$work/lauf5g.txt" "ohne gültigen Namen davor"
+hasnt "Lauf 5g: Warnung ohne Inhalt der Zeile" "$work/lauf5g.txt" "KUNIBERT_NOTIZ"
+has "Lauf 5g: Warnung sagt, dass es schon im Journal stehen kann" "$work/lauf5g.txt" "steht sie im Journal"
+# Die Warnung nennt die Nummern der neuen Datei, dort stehen die Kommentare.
+eq "Lauf 5g: Warnung nennt die Zeilen der neuen Datei" \
+  "$(grep -oE 'Zeilen [0-9, ]+ in' "$work/lauf5g.txt" | head -n 1)" \
+  "Zeilen $(grep -n '^# Ungültig, von systemd ignoriert: ' "$env_file" | cut -d: -f1 | paste -sd, | sed 's/,/, /g') in"
+eq "Lauf 5g: export-Zeile als Kommentar" \
+  "$(grep -c "^# Ungültig, von systemd ignoriert: export PICASTAI_DEVICE_TOKEN=${token2}\$" "$env_file")" 1
+eq "Lauf 5g: geschütztes Leerzeichen vor dem =: Kommentar ohne \\ am Ende" \
+  "$(grep -cxF "# Ungültig, von systemd ignoriert: KUNIBERT_NOTIZ${nbsp}=${token3}" "$env_file")" 1
+eq "Lauf 5g: leerer Name: Kommentar" "$(grep -cxF "# Ungültig, von systemd ignoriert: =${token3}" "$env_file")" 1
+eq "Lauf 5g: \\ vor Windows-Zeilenende: Kommentar ohne \\" "$(grep -cxF "# Ungültig, von systemd ignoriert: export KUNIBERT_PFAD=C:" "$env_file")" 1
+eq "Lauf 5g: \\v vor dem Namen: Kommentar, wie systemd kein Wert" \
+  "$(grep -cxF "# Ungültig, von systemd ignoriert: "$'\v'"KUNIBERT_SENKRECHT=1" "$env_file")|$(val KUNIBERT_SENKRECHT)" "1|"
+eq "Lauf 5g: keine Zeile mehr mit = ohne gültigen Namen davor" \
+  "$(grep -vE '^[[:space:]]*([#;]|$)' "$env_file" | grep -F '=' | grep -cvE '^[A-Za-z_][A-Za-z0-9_]*=')" 0
+has "Lauf 5g: ;-Kommentar bleibt, wie er war" "$env_file" "; KUNIBERT_KOMMENTAR=1"
+token_is "Lauf 5g: Token bleibt" "$token"
+snapshot > "$work/stand5g.txt"
+run "$work/lauf5h.txt" --non-interactive
+if snapshot | cmp -s - "$work/stand5g.txt"; then ok "Lauf 5h: zweiter Lauf ändert nichts, die Kommentare bleiben"; else bad "Lauf 5h hat etwas geändert: $(snapshot | diff "$work/stand5g.txt" - | tail -n 6)"; fi
+hasnt "Lauf 5h: keine Warnung mehr" "$work/lauf5h.txt" "ohne gültigen Namen davor"
+sed -i '/^# Ungültig, von systemd ignoriert: /d; /^; KUNIBERT_KOMMENTAR=1$/d' "$env_file"
+
+echo "== Lauf 5i: \\r mitten in einer Zeile beendet die Zeile, wie bei systemd (Punkt N1126-1338-b)"
+sed -i 's/^KUNIBERT_PIPELINE_TIMEOUT=.*/KUNIBERT_NOTIZ=1\rKUNIBERT_PIPELINE_TIMEOUT=60/' "$env_file"
+sed -i 's/^PICASTAI_DEVICE_TOKEN=\(.*\)$/KUNIBERT_NOTIZ2=1\rPICASTAI_DEVICE_TOKEN=\1/' "$env_file"
+eq "Lauf 5i: Vorbereitung, keine eigene Zeile für das Token" "$(val PICASTAI_DEVICE_TOKEN)" ""
+run "$work/lauf5i-probe.txt" --dry-run --non-interactive
+has "Lauf 5i Probelauf: Token hinter \\r erkannt" "$work/lauf5i-probe.txt" "Token: bisheriges bleibt"
+run "$work/lauf5i.txt" --non-interactive
+eq "Lauf 5i: Rückgabe 0" "$rc" 0
+no_token "Lauf 5i: Token nicht in der Ausgabe" "$work/lauf5i.txt"
+has "Lauf 5i: warnt wegen der Zeitkette" "$work/lauf5i.txt" "KUNIBERT_PIPELINE_TIMEOUT stand in"
+eq "Lauf 5i: Zeitkette wieder 140 s" "$(val KUNIBERT_PIPELINE_TIMEOUT)" 140
+eq "Lauf 5i: genau eine Zeile für KUNIBERT_PIPELINE_TIMEOUT" \
+  "$(tr '\r' '\n' < "$env_file" | grep -cE '^[[:space:]]*KUNIBERT_PIPELINE_TIMEOUT[[:blank:]]*=')" 1
+eq "Lauf 5i: kein \\r mehr" "$(grep -c $'\r' "$env_file")" 0
+token_is "Lauf 5i: Token hinter \\r erkannt und behalten" "$token"
+hasnt "Lauf 5i: keine Warnung zum Token" "$work/lauf5i.txt" "Kein API-Token gesetzt"
+eq "Lauf 5i: von Hand ergänzte Zeilen bleiben" "$(val KUNIBERT_NOTIZ)|$(val KUNIBERT_NOTIZ2)" "1|1"
+sed -i '/^KUNIBERT_NOTIZ2\?=/d' "$env_file"
+
+echo "== Lauf 5j: offenes Anführungszeichen in einer Zeile, die der Installer behielte (Punkt N1127-2323-e)"
+sed -i 's/^KUNIBERT_REQUEST_TIMEOUT=.*/KUNIBERT_REQUEST_TIMEOUT="7531/' "$env_file"
+snapshot > "$work/stand5j.txt"
+run "$work/lauf5j.txt" --non-interactive
+if [[ "$rc" -ne 0 ]] && grep -qF "(KUNIBERT_REQUEST_TIMEOUT): Ein Anführungszeichen wird vor dem Zeilenende nicht geschlossen" "$work/lauf5j.txt"; then
+  ok "Lauf 5j: Abbruch mit Meldung (Zeile und Name)"
+else
+  bad "Lauf 5j: offenes Anführungszeichen übernommen oder ohne Meldung (Rückgabe $rc)"
+fi
+hasnt "Lauf 5j: Wert nicht in der Ausgabe" "$work/lauf5j.txt" "7531"
+no_token "Lauf 5j: Token nicht in der Ausgabe" "$work/lauf5j.txt"
+run "$work/lauf5j-probe.txt" --dry-run --non-interactive
+if [[ "$rc" -ne 0 ]]; then ok "Lauf 5j: auch der Probelauf bricht ab"; else bad "Lauf 5j: Probelauf meldet Erfolg trotz offenem Anführungszeichen"; fi
+if snapshot | cmp -s - "$work/stand5j.txt"; then ok "Lauf 5j: Abbruch ändert nichts"; else bad "Lauf 5j: Abbruch hat etwas geändert"; fi
+# Auch feste Werte, Werte, die beim Aufruf neu kommen, und Zeilen ohne gültigen Namen: Sonst gälten nach dem
+# Neuschreiben die Zeilen, die systemd bisher mitlas (Prüfung von PR #154, Befund 1), etwa ein anderes Token.
+sed -i 's/^KUNIBERT_REQUEST_TIMEOUT=.*/KUNIBERT_REQUEST_TIMEOUT=75/' "$env_file"
+for fall in fest neu ohne-namen; do
+  cp "$env_file" "$work/vor-5k.env"
+  case $fall in
+    fest) sed -i 's/^KUNIBERT_PIPELINE_TIMEOUT=.*/KUNIBERT_PIPELINE_TIMEOUT="140/' "$env_file"; name=" (KUNIBERT_PIPELINE_TIMEOUT)"; args=() ;;
+    neu) sed -i 's/^PICASTAI_DEVICE_TOKEN=.*/PICASTAI_DEVICE_TOKEN="alt\\"/' "$env_file"; name=" (PICASTAI_DEVICE_TOKEN)"; args=(--api-token-file "$work/token") ;;
+    ohne-namen) printf 'export KUNIBERT_GEHEIM=1\\\nPICASTAI_DEVICE_TOKEN="%s"\n' "$token2" >> "$env_file"; name=""; args=() ;;
+  esac
+  nr="$(grep -nE '="140$|="alt\\"$|^export KUNIBERT_GEHEIM' "$env_file" | head -n 1 | cut -d: -f1)"
+  snapshot > "$work/stand5k.txt"
+  run "$work/lauf5k-$fall.txt" --non-interactive "${args[@]}"
+  if [[ "$rc" -ne 0 ]] && grep -qF "Zeile ${nr}${name}: Ein Anführungszeichen wird vor dem Zeilenende nicht geschlossen" "$work/lauf5k-$fall.txt"; then
+    ok "Lauf 5k ($fall): Abbruch mit Meldung (Zeile ${nr}${name})"
+  else
+    bad "Lauf 5k ($fall): kein Abbruch oder ohne Meldung (Rückgabe $rc)"
+  fi
+  no_token "Lauf 5k ($fall): Token nicht in der Ausgabe" "$work/lauf5k-$fall.txt"
+  hasnt "Lauf 5k ($fall): kein ungültiger Name in der Ausgabe" "$work/lauf5k-$fall.txt" "KUNIBERT_GEHEIM"
+  hasnt "Lauf 5k ($fall): keine Abfrage vor dem Abbruch" "$work/lauf5k-$fall.txt" "Gerätetoken"
+  # Ohne gültigen Namen stand die Zeile mit den mitgelesenen Zeilen schon im Journal: Hinweis aufs Tauschen.
+  if [[ -z "$name" ]]; then
+    has "Lauf 5k ($fall): Hinweis aufs Journal" "$work/lauf5k-$fall.txt" "mitgelesenen Zeilen bei jedem Start ins Journal"
+  else
+    hasnt "Lauf 5k ($fall): kein Hinweis aufs Journal" "$work/lauf5k-$fall.txt" "mitgelesenen Zeilen bei jedem Start ins Journal"
+  fi
+  if snapshot | cmp -s - "$work/stand5k.txt"; then ok "Lauf 5k ($fall): Abbruch ändert nichts"; else bad "Lauf 5k ($fall): Abbruch hat etwas geändert"; fi
+  cp "$work/vor-5k.env" "$env_file"
+done
+run "$work/lauf5l.txt" --non-interactive --api-token-file "$work/token"
+eq "Lauf 5l: berichtigt, Rückgabe 0" "$rc" 0
+eq "Lauf 5l: feste Zeile 140" "$(val KUNIBERT_PIPELINE_TIMEOUT)" 140
+token_is "Lauf 5l: Token" "$token"
+no_token "Lauf 5l: Token nicht in der Ausgabe" "$work/lauf5l.txt"
+eq "Lauf 5l: Shell liest die Datei ohne Fehler" \
+  "$(bash -c "set -a; . '$env_file' 2>&1 >/dev/null; printf '%s' \"\$KUNIBERT_PIPELINE_TIMEOUT\"")" 140
 
 echo "== Token nie auf der Befehlszeile"
 snapshot > "$work/stand5.txt"
