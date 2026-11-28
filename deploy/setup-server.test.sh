@@ -142,10 +142,10 @@ yes "env_normalize: Kommentare bleiben"    grep -qx $'  # I=kommentar\r' "$f"
 
 # Zeilen, die systemd anders läse (Punkt N1127-2323-e): Eine Zeile mit „=“, aber ohne gültigen Namen ignoriert
 # systemd und schreibt sie bei jedem Start ganz ins Journal, auch ein Token. Ein CR mitten in einer Zeile beendet
-# für systemd die Zeile. Die Meldung nennt nur Zeilennummern, nie Inhalte.
+# für systemd die Zeile. Die Meldung nennt nur Zeilennummern (der neuen Datei), nie Inhalte.
 nbsp=$'\xc2\xa0'
 { printf 'export PICASTAI_DEVICE_TOKEN=geheim-export\n'; printf 'ANTHROPIC_API_KEY%s= geheim-nbsp\r\n' "$nbsp"
-  printf 'A = 1\n\t; J=kommentar=x\nnur text\n1X=geheim-ziffer\\\nB=2\rexport C=geheim-cr\r\nD="ok"\n'; } > "$f"
+  printf 'A = 1\n\t; J=kommentar=x\nnur text\n1X=geheim-ziffer\\\\\nB=2\rexport C=geheim-cr\r\nD="ok"\n=geheim-ohne-name\n'; } > "$f"
 chmod 600 "$f"
 ausgabe=$(env_normalize "$f" 2>&1); rc=$?
 eq  "ungültige Zeilen: env_normalize ändert die Datei"   "$rc" 0
@@ -153,12 +153,16 @@ yes "ungültige Zeilen: export als Kommentar"   grep -qx '# Ungültig, von syste
 yes "ungültige Zeilen: geschütztes Leerzeichen vor = als Kommentar, CR bleibt" \
   grep -qxF "# Ungültig, von systemd ignoriert: ANTHROPIC_API_KEY${nbsp}= geheim-nbsp"$'\r' "$f"
 yes "ungültige Zeilen: Ziffer am Anfang, Kommentar ohne \\ am Ende" grep -qx '# Ungültig, von systemd ignoriert: 1X=geheim-ziffer' "$f"
+yes "ungültige Zeilen: leerer Name als Kommentar" grep -qx '# Ungültig, von systemd ignoriert: =geheim-ohne-name' "$f"
 yes "ungültige Zeilen: CR mitten in der Zeile trennt (wie systemd)" grep -qx $'B=2\r' "$f"
 yes "ungültige Zeilen: zweiter Teil als eigene Zeile, als Kommentar" grep -qx $'# Ungültig, von systemd ignoriert: export C=geheim-cr\r' "$f"
 yes "ungültige Zeilen: gültige Zeile als NAME=wert" grep -qx 'A=1' "$f"
 yes "ungültige Zeilen: ;-Kommentar mit = bleibt" grep -qx $'\t; J=kommentar=x' "$f"
 yes "ungültige Zeilen: Zeile ohne = bleibt"    grep -qx 'nur text' "$f"
-yes "ungültige Zeilen: Meldung nennt die Zeilen" grep -qF 'Zeile 1, 2, 6, 7 in' <<<"$ausgabe"
+# Nummern der neuen Datei: Das CR in Zeile 7 macht aus einer Zeile zwei.
+yes "ungültige Zeilen: Meldung nennt die Zeilen der neuen Datei" grep -qF 'Zeilen 1, 2, 6, 8, 10 in' <<<"$ausgabe"
+eq  "ungültige Zeilen: dort stehen die Kommentare" "$(grep -n '^# Ungültig' "$f" | cut -d: -f1 | paste -sd,)" "1,2,6,8,10"
+yes "ungültige Zeilen: Meldung sagt, dass es schon im Journal stehen kann" grep -qF 'steht sie im Journal' <<<"$ausgabe"
 no  "ungültige Zeilen: kein Inhalt in der Meldung" grep -qE 'geheim|PICASTAI_DEVICE_TOKEN|ANTHROPIC|1X|export C' <<<"$ausgabe"
 eq  "ungültige Zeilen: env_get liest das Token nicht (wie systemd)" "$(env_get "$f" PICASTAI_DEVICE_TOKEN)" ""
 eq  "ungültige Zeilen: kein CR mehr mitten in einer Zeile" "$(grep -c $'\r.' "$f")" 0
@@ -166,24 +170,33 @@ ausgabe=$(env_normalize "$f" 2>&1); rc=$?
 eq  "ungültige Zeilen: zweiter Lauf ändert nichts" "$rc" 1
 eq  "ungültige Zeilen: zweiter Lauf meldet nichts" "$ausgabe" ""
 
-# Ein Anführungszeichen, das vor dem Zeilenende nicht geschlossen wird, oder ein \ am Ende: systemd läse die
-# nächsten Zeilen als Teil des Werts. Das Skript bricht ab, die Datei bleibt Byte für Byte; nur Zeile und Name.
-for zeile in 'PORT="3000' "ANTHROPIC_API_KEY='geheim-offen" 'PICASTAI_STT_PROMPT=geheim-ritter\' \
-    '  PICASTAI_ADMIN_TOKEN = "geheim\"'; do
-  name=${zeile%%=*}; name=${name// /}
-  cp "$here/kunibert.env.example" "$f"; chmod 600 "$f"; printf '%s\n' "$zeile" >> "$f"
-  nr=$(wc -l < "$f"); cp "$f" "$tmp/vor-offen.env"
+# Geht eine Zeile mit „=“ für systemd in der nächsten weiter (Anführungszeichen vor dem Zeilenende nicht
+# geschlossen, \ am Ende), bricht das Skript ab, auch ohne gültigen Namen und mit Windows-Zeilenende: Sonst gälten
+# die mitgelesenen Zeilen danach für sich (Prüfung von PR #154, Befund 1). Die Datei bleibt Byte für Byte; die
+# Meldung nennt Zeile und gültigen Namen. Fälle: Zeile|Zeilenende|Name in der Meldung (leer: keiner).
+for fall in 'PORT="3000|lf|PORT' "ANTHROPIC_API_KEY='geheim-offen|lf|ANTHROPIC_API_KEY" \
+    'PICASTAI_STT_PROMPT=geheim-ritter\|lf|PICASTAI_STT_PROMPT' '  PICASTAI_ADMIN_TOKEN = "geheim\"|lf|PICASTAI_ADMIN_TOKEN' \
+    'PORT="3000|crlf|PORT' 'PICASTAI_ADMIN_TOKEN="geheim\|crlf|PICASTAI_ADMIN_TOKEN' \
+    'export GEHEIM_X=1\|lf|' 'export GEHEIM_Z="geheim-offen|crlf|' '1X=geheim\|lf|' '=x="geheim|lf|'; do
+  IFS='|' read -r zeile ende name <<<"$fall"
+  cp "$here/kunibert.env.example" "$f"; chmod 600 "$f"
+  if [[ $ende == crlf ]]; then printf '%s\r\n' "$zeile" >> "$f"; else printf '%s\n' "$zeile" >> "$f"; fi
+  printf 'KUNIBERT_ELTERN_SCHLUESSEL=anderer-schluessel\n' >> "$f"
+  nr=$(( $(wc -l < "$f") - 1 )); cp "$f" "$tmp/vor-offen.env"
   meldung=$( (env_normalize "$f"; echo weiter) 2>&1 )
-  yes "offen ($name): Datei unverändert"   cmp -s "$f" "$tmp/vor-offen.env"
-  no  "offen ($name): bricht ab"           grep -qx weiter <<<"$meldung"
-  yes "offen ($name): nennt Zeile und Namen" grep -qF "Zeile $nr ($name): Ein Anführungszeichen" <<<"$meldung"
-  no  "offen ($name): kein Wert in der Meldung" grep -qE 'geheim|3000' <<<"$meldung"
-  eq  "offen ($name): keine Zwischendatei bleibt" "$(compgen -G "$f.??????" || true)" ""
+  yes "offen ($zeile, $ende): Datei unverändert"   cmp -s "$f" "$tmp/vor-offen.env"
+  no  "offen ($zeile, $ende): bricht ab"           grep -qx weiter <<<"$meldung"
+  yes "offen ($zeile, $ende): nennt die Zeile" grep -qF "Zeile $nr${name:+ ($name)}: Ein Anführungszeichen" <<<"$meldung"
+  no  "offen ($zeile, $ende): kein Wert und kein ungültiger Name in der Meldung" grep -qE 'geheim|GEHEIM|3000|1X|schluessel' <<<"$meldung"
+  eq  "offen ($zeile, $ende): keine Zwischendatei bleibt" "$(compgen -G "$f.??????" || true)" ""
 done
-for zeile in 'A="geschlossen"' "A='a b'" 'A=a\\' 'A="a\\"' 'A=a"b' 'A="a"b"' 'A=""'; do
-  printf '%s\n' "$zeile" > "$f"
+# Diese Zeilen enden für systemd am Zeilenende. Ein \ vor einem Windows-Zeilenende verschluckt nur das CR.
+for fall in 'A="geschlossen"|lf' "A='a b'|lf" 'A=a\\|lf' 'A="a\\"|lf' 'A=a"b|lf' 'A="a"b"|lf' 'A=""|lf' \
+    'A=C:\pfad\|crlf' 'export B=C:\|crlf' '=x|lf' '="x|lf' '# kommentar "|lf' '; kommentar \|lf' 'nur "text|lf'; do
+  IFS='|' read -r zeile ende <<<"$fall"
+  if [[ $ende == crlf ]]; then printf '%s\r\nB=2\r\n' "$zeile" > "$f"; else printf '%s\nB=2\n' "$zeile" > "$f"; fi
   meldung=$( (env_normalize "$f"; echo weiter) 2>&1 )
-  yes "geschlossen: $zeile bricht nicht ab" grep -qx weiter <<<"$meldung"
+  yes "geschlossen ($zeile, $ende): bricht nicht ab" grep -qx weiter <<<"$meldung"
 done
 
 # write_env mit Werten in der Schreibweise NAME = wert (mit umgelenkter Datei und Attrappen): Tokens und
