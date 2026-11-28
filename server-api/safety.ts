@@ -210,9 +210,10 @@ const OUTPUT_PATTERNS_ANSWER: RegExp[] = [
 ];
 
 // Unsichtbare Zeichen (weiches Trennzeichen, Zeichen mit Breite null, Richtungszeichen). `normalize` macht aus ihnen ein
-// Leerzeichen und trennt so ein Wort („to­t“ wird „to t“), die Stimme liest es aber als ein Wort (Prüfung von PR #147 nach dem
-// Merge, Befund 4). Deshalb eine zusätzliche Lesart ohne sie; die alte Lesart bleibt.
-const INVISIBLE = /[­͏؜᠎​-‏‪-‮⁠-⁤⁦-⁩﻿]/g;
+// Leerzeichen und trennt so ein Wort („to(U+00AD)t“ wird „to t“), die Stimme liest es aber als ein Wort (Prüfung von PR #147 nach dem
+// Merge, Befund 4). Deshalb eine zusätzliche Lesart ohne sie; die alte Lesart bleibt. Alle Zeichen der Unicode-Eigenschaft
+// „Default_Ignorable_Code_Point“, auch Varianten-Wähler wie U+FE0F (Prüfung des Reparatur-PR #150).
+const INVISIBLE = /\p{Default_Ignorable_Code_Point}/gu;
 
 function withoutInvisible(text: string): string {
   return text.replace(INVISIBLE, '');
@@ -825,8 +826,10 @@ const UNDRESS = '(ausziehe|ausziehen|auszuziehen|nackt mache|nackt machen|nackt 
 const NOT_POOL = `(?!.*${L}(schwimmbad|freibad|hallenbad|sprungturm|sprungbrett|ins wasser|ins becken|beim schwimmen)${R})`;
 // „Ich hab Angst, dass ich mich verletze, wenn ich allein klettere“. Nur mit „…, dass ich mich“ direkt danach: „Angst“ irgendwo
 // im Satz machte echte Notlagen still („Ich hab Angst, weil ich mich immer schneide, wenn ich traurig bin“; Prüfung von PR #135
-// nach dem Merge, Befund 2)
-const NOT_CAREFUL = `(?!.*${L}(angst|aufpassen|pass auf|passe auf|vorsichtig|aufgepasst) ((habe|hab|hatte) )?(davor )?(dass|damit) ich mich${R})`;
+// nach dem Merge, Befund 2). Und nur, wenn kein starkes Gefühl im Satz steht („…, dass ich mich schneide, wenn ich traurig bin“
+// ist eine Notlage; „allein“ zählt hier nicht als starkes Gefühl; Prüfung des Reparatur-PR #150).
+const STRONG_EMOTION = '(traurig|wütend|sauer|einsam|verzweifelt|unglücklich|zornig|frustriert)';
+const NOT_CAREFUL = `(?!(?!.*${L}${STRONG_EMOTION}${R}).*${L}(angst|aufpassen|pass auf|passe auf|vorsichtig|aufgepasst) ((habe|hab|hatte) )?(davor )?(dass|damit) ich (mich|mir)${R})`;
 // „Ich hab mich selber am Ofen verbrannt“, „Ich hab mir selbst eine Scheibe Wurst geschnitten“
 const NOT_SELF_ACCIDENT_EMO = `(?!.*${L}(aus versehen|ausversehen|beim (spielen|spiel|kochen|backen|basteln|schnitzen|klettern|rennen|fußball|sport|turnen)|am (ofen|herd|grill|bügeleisen)|an der (heizung|kerze))${R})`;
 const NOT_SELF_ACCIDENT = `(?!.*${L}(aus versehen|ausversehen|beim (spielen|spiel|kochen|backen|basteln|schnitzen|klettern|rennen|fußball|sport|turnen)|am (ofen|herd|grill|bügeleisen|messer|papier)|an der (heizung|kerze|schere)|(?<!(sag|sage|sagt|sagte|gesagt|denkt|dachte|glaubt|glaubte|lüge|lüg|erzähl|erzähle|erzählt|erzählte|meint|meinte) (${WORD} ){0,3})(hingefallen|gestolpert|ausgerutscht|gestürzt|runtergefallen|umgefallen))${R})`;
@@ -866,8 +869,11 @@ const SELF_HIT_SPOT = '((gegen|auf|an|in) (den|meinen|das|mein|die|meine) (kopf|
 const SELF_HIT = '(haue|hau|schlage|schlag|schlug|boxe|box|knalle|knall)';
 // Tiere als Täter sind keine Notlage („Die Katze reibt sich an mir“). Steht eine Person im Satz, gilt die Ausnahme nicht. Als
 // Person zählen alle aus PERSON_WIDE, „sie“ und „Mamas Freund“ (vorher fehlten Tante, Freund, Frau und „sie“; Prüfung von
-// PR #135 nach dem Merge, Befund 2)
-const NOT_ANIMAL = `(?!(?!.*(?<![a-zäöüß])(er|sie|${PERSON_WIDE.slice(1, -1)}|mamas|papas|mann|frau|typ|junge|jemand|einer)(?![a-zäöüß])).*(?<![a-zäöüß])(hund|hunde|hündchen|welpe|katze|katzen|kater|kätzchen|pferd|pony|hase|meerschweinchen|tier|tiere|kuh|ziege|schaf|dackel)(?![a-zäöüß]))`;
+// PR #135 nach dem Merge, Befund 2). Und nur, wenn das Tier höchstens drei Wörter vor oder nach dem Verb steht („…, und mein
+// Hund bellt“ macht nichts mehr still; Prüfung des Reparatur-PR #150).
+const ANIMAL = '(hund|hunde|hündchen|welpe|katze|katzen|kater|kätzchen|pferd|pony|hase|meerschweinchen|tier|tiere|kuh|ziege|schaf|dackel)';
+const ANIMAL_VERB = '(legt|legte|kommt|kam|kriecht|kroch|steigt|stieg|reibt|rieb)';
+const NOT_ANIMAL = `(?!(?!.*(?<![a-zäöüß])(er|sie|${PERSON_WIDE.slice(1, -1)}|mamas|papas|mann|frau|typ|junge|jemand|einer)(?![a-zäöüß])).*(?<![a-zäöüß])(${ANIMAL}(?![a-zäöüß])( [a-zäöüß]+){0,3} ${ANIMAL_VERB}|${ANIMAL_VERB}( [a-zäöüß]+){0,3} ${ANIMAL})(?![a-zäöüß]))`;
 const WEAPON = '(stock|gürtel|kochlöffel|holzlöffel|schuh|hausschuh|lineal|kabel|stecken|rute|peitsche|besen|teppichklopfer|ledergürtel|riemen|ast|kleiderbügel)';
 
 // „…, weil er mir wehtut“ über den Zahnarzt, eine Spritze oder eine Jacke: still nur, wenn so ein Wort fällt und keine Person
@@ -883,8 +889,8 @@ const NOT_FIGHT_WITH = `(?<!(schlage|schlag|haue|hau) (ich )?mich(?= mit (${POSS
 
 // Wache nach einem Täter hinter „mich“ („…, dass mich der Drache haut“): keine Figur und kein Arzt in den zwei Wörtern danach
 const AFTER_PERP = `(?!(${WORD} )?[a-zäöüß]*(${FICTION}|${CARE})(e|en|er|ern|n|s|nen|innen)?${R})`;
-// Vor einem Relativsatz („…, der mich anfasst“) keine Figur und kein Arzt
-const BEFORE_REL = `(?<!(${FICTION}|${CARE})(e|en|er|ern|n|s|nen|innen)? )`;
+// Vor einem Relativsatz („…, der mich anfasst“) keine Figur und kein Arzt; ein Name wie „Herr Wolf“ zählt nicht als Figur
+const BEFORE_REL = `(?<!((?<!(herr|herrn|frau|onkel|tante|opa|oma) )${FICTION}|${CARE})(e|en|er|ern|n|s|nen|innen)? )`;
 const PATTERNS_WORD_ORDER: RegExp[] = [
   new RegExp(`${L}(ich|wir) (wurde|wurden|werde|werd|werden) ((?!${NEG_WORD}${R})${WORD} ){0,4}${PASSIVE_PART}${R}`),
   new RegExp(`^(?=.*${L}ich${R}).*${L}(und|aber) (${FILL2} ){0,2}(werde|werd|wurde) ((?!${NEG_WORD}${R})${WORD} ){0,3}${PASSIVE_PART}${R}`),
@@ -1168,12 +1174,19 @@ const PATTERNS_WORD_ORDER: RegExp[] = [
   // Nachbar angefasst hat, …“ (Prüfung von PR #135 nach dem Merge, Befund 1; dieselbe Lücke als Befund 1 der Prüfung von PR #145).
   // Gespiegelt aus den Schablonen mit „Täter mich“. Wache: Steht in den zwei Wörtern nach dem Täter eine Figur oder ein Arzt
   // („…, dass mich der Drache haut“, „…, wenn mich der Arzt anfasst“), schlägt die Schablone nicht an.
-  new RegExp(`${L}(${CLAUSE}|seit|und|sonst) (mich|uns) (${SUBJ}|${PERP}) ${AFTER_PERP}(${NOT_GAME_OR_ACCIDENT}${WORD} ){0,4}${HIT_FINAL}${R}`),
-  new RegExp(`${L}(${CLAUSE}|seit) (mich|uns) (${SUBJ}|${PERP}) ${AFTER_PERP}(${NOT_GAME_WORD}${WORD} ){0,6}geschlagen (hat|hatte|haben|hatten)${R}`),
-  new RegExp(`${L}(${CLAUSE}|seit) (mich|uns) (${SUBJ}|${PERP}) ${AFTER_PERP}(${NOT_ACCIDENT_WORD}${WORD} ){0,6}${HIT_PAST} (hat|hatte|haben|hatten)${R}`),
-  new RegExp(`${L}(${CLAUSE}|seit) (mich|uns) (${SUBJ}|${PERP}) ${AFTER_PERP}((?!${NEG_WORD}${R})${WORD} ){0,4}(einsperrt|einsperren|einsperrte|einsperrten|eingesperrt hat|eingesperrt hatte|eingesperrt haben)${R}`),
+  new RegExp(`${L}(${CLAUSE}|seit|und|sonst) (mich|uns) ${VADV}((in der schule|in der pause|auf dem schulhof|zu hause|daheim) )?(${SUBJ}|${PERP}|alle|die anderen|alle anderen) ${AFTER_PERP}(${NOT_GAME_OR_ACCIDENT}${WORD} ){0,4}${HIT_FINAL}${R}`),
+  new RegExp(`${L}(${CLAUSE}|seit) (mich|uns) ${VADV}((in der schule|in der pause|auf dem schulhof|zu hause|daheim) )?(${SUBJ}|${PERP}|alle|die anderen|alle anderen) ${AFTER_PERP}(${NOT_GAME_WORD}${WORD} ){0,6}geschlagen (hat|hatte|haben|hatten)${R}`),
+  new RegExp(`${L}(${CLAUSE}|seit) (mich|uns) ${VADV}((in der schule|in der pause|auf dem schulhof|zu hause|daheim) )?(${SUBJ}|${PERP}|alle|die anderen|alle anderen) ${AFTER_PERP}(${NOT_ACCIDENT_WORD}${WORD} ){0,6}${HIT_PAST} (hat|hatte|haben|hatten)${R}`),
+  new RegExp(`${L}(${CLAUSE}|seit) (mich|uns) ${VADV}((in der schule|in der pause|auf dem schulhof|zu hause|daheim) )?(${SUBJ}|${PERP}|alle|die anderen|alle anderen) ${AFTER_PERP}((?!${NEG_WORD}${R})${WORD} ){0,4}(einsperrt|einsperren|einsperrte|einsperrten|eingesperrt hat|eingesperrt hatte|eingesperrt haben)${R}`),
   new RegExp(`${L}(${CLAUSE}|seit) mich ${TOUCH_SUBJ_WIDE} ${AFTER_PERP}(${WORD} ){0,6}${TOUCH_PART} (hat|hatte|haben|hatten)${R}`),
   new RegExp(`${L}(${CLAUSE}|seit) mich ${TOUCH_SUBJ_WIDE} ${AFTER_PERP}((?!(nicht|nie)${R})${WORD} ){0,3}${TOUCH_PRESENT_FINAL}${R}`),
+  // Weitere Spiegel (Prüfung des Reparatur-PR #150): wehtun, an die Hose fassen, etwas zeigen, ausziehen, küssen gegen den Willen
+  new RegExp(`^${NOT_ACCIDENT_SENTENCE}.*${L}(${CLAUSE}|seit) mir ${WHO} ${AFTER_PERP}((?!${NEG_WORD}${R})${WORD} ){0,3}(weh getan|wehgetan) (hat|hatte)${R}`),
+  new RegExp(`^${NOT_ACCIDENT_SENTENCE}.*${L}(${CLAUSE}|seit) mir ${WHO} ${AFTER_PERP}((?!${NEG_WORD}${R})${WORD} ){0,2}(weh tut|wehtut)${R}`),
+  new RegExp(`${L}(${CLAUSE}|seit) mir ${TOUCH_SUBJ_WIDE} ${AFTER_PERP}(${WORD} ){0,2}${INTIMATE} ((gefasst|gegriffen|gelangt|gefummelt|gegrapscht|gegrabscht) (hat|hatte)|fasst|greift|langt|grapscht|grabscht|fummelt)${R}`),
+  new RegExp(`${L}(${CLAUSE}|seit) mir ${TOUCH_SUBJ_WIDE} ${AFTER_PERP}(${WORD} ){0,2}(seinen|sein|seine|ihren|ihr|ihre) ${KID_BODY2} (zeigt|zeigte|gezeigt hat|gezeigt hatte)${R}`),
+  new RegExp(`${L}(${CLAUSE}|seit) mich ${TOUCH_SUBJ_WIDE} ${AFTER_PERP}((?!${NEG_WORD}${R})${WORD} ){0,2}(auszieht|auszog|ausgezogen hat|ausgezogen hatte)${R}`),
+  new RegExp(`${L}(${CLAUSE}|seit) mich ${TOUCH_SUBJ_WIDE} ${AFTER_PERP}(${WORD} ){0,3}(küsst|küsste|streichelt|streichelte|berührt|berührte|anfasst|anfasste|auszieht) ${UNWANTED}${R}`),
   // Relativsätze: „Ich hab Angst vor dem Mann, der mich anfasst“, „der Junge, der mich immer haut“ (Prüfung von PR #145 nach dem
   // Merge, Befund 1). Nicht nach einer Figur oder einem Arzt („der Drache, der mich anfasst“).
   new RegExp(`${L}${BEFORE_REL}(der|die) mich ((?!(nicht|nie)${R})${WORD} ){0,3}${TOUCH_PRESENT_FINAL}${R}`),

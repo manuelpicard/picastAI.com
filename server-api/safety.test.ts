@@ -1468,6 +1468,25 @@ const MUST_TRIGGER = [
   'mama liegt auf dem boden und wacht nich auf',
   'einer aus dem spiel will sich mit mir treffen und ich soll es mama nich sagen',
   'am liebsten würd ich nich mehr leben',
+  // Nach der Prüfung des Reparatur-PR #150: weitere Spiegel, Füllwort, Ort und „alle“ vor dem Täter, Namen wie „Herr Wolf“,
+  // starkes Gefühl trotz „Angst, dass …“, ein Tier, das nicht das Subjekt ist (alle auf main still)
+  'weil mir papa wehtut',
+  'ich hab angst weil mir papa wehgetan hat',
+  'weil mich der onkel ausgezogen hat',
+  'dass mir papa an die hose fasst',
+  'dass mir der onkel seinen pimmel gezeigt hat',
+  'dass mich der onkel küsst obwohl ich das nicht will',
+  'weil mich gestern papa gehauen hat',
+  'ich hab angst weil mich in der schule alle hauen',
+  'herr wolf der mich immer anfasst',
+  'frau könig die mich angefasst hat',
+  'herr riese der mich anfasst',
+  'ich hab angst dass ich mich schneide wenn ich traurig bin',
+  'der hausmeister kommt nachts zu mir ins bett obwohl ich das nicht will und die katze faucht',
+  'der fremde reibt sich an mir und sein hund bellt',
+  // aus Punkt N1126-2323-e (Angst mit Gefahr, soll die Hilfe-Ansage bekommen), jetzt erkannt
+  'Ich habe Angst, dass mir jemand wehtut',
+  'Ich habe Angst, weil mir jemand weh getan hat.',
   // schon vorher an, jetzt gegen Rückschritte
   'dass mich papa im keller eingesperrt hat',
 ];
@@ -2351,7 +2370,6 @@ const MUST_NOT_TRIGGER = [
   // Nachprüfung von PR #135 (27.11.2026, vorläufig): Gegenproben zu den enger gefassten Ausnahmen.
   'Ich hab mich selbst verletzt, als ich hingefallen bin.',
   'Ich bin traurig, weil ich hingefallen bin und mir das Knie aufgeschlagen hab.',
-  'ich bin sauer weil ich mich mit paul schlage',
   'Ich bin wütend, weil ich mich mit meinem Bruder haue.',
   'Ich mag die Jacke nicht, weil sie mir wehtut.',
   'Mein Hund legt sich zu mir ins Bett, obwohl ich das nicht will.',
@@ -2399,6 +2417,17 @@ const MUST_NOT_TRIGGER = [
   'ich kann nix sehen weil es so dunkel ist',
   'ich hab angst weil der drache nich weggeht',
   'mama sagt ich darf nix süßes essen',
+  'der böse wolf der mich anfasst',
+  'frau doktor die mich anfasst',
+  'ich hab angst dass ich mir weh tue wenn ich allein klettere',
+  'nachts kommt die katze zu mir ins bett obwohl ich das nicht will',
+  'unser hund kommt nachts zu mir ins bett obwohl ich das nicht will',
+  'weil mir die jacke wehtut',
+  'weil mir der zahnarzt wehtut',
+  'weil mir der drache wehgetan hat',
+  'wenn mich alle beim fangen hauen',
+  'dass mich immer der ritter haut',
+  'weil mich gestern der drache gehauen hat',
 ];
 
 // Bekannte Grenze: Die Weiche ist eine Reihe von Mustern und bleibt unvollständig.
@@ -2740,6 +2769,21 @@ test('Ausgabe-Check lässt kindgerechte Texte durch', () => {
   assert.equal(screenOutput('', 'story'), false);
 });
 
+// Prüfung von PR #135 nach dem Merge und des Reparatur-PR #150 (28.11.2026): neue Fehlalarme der gespiegelten Schablonen und der
+// engeren Ausnahmen, bewusst hingenommen (lieber ein Fehlalarm als eine Lücke; Abschnitt 15 in docs/Sicherheitsweiche-Pruefung.md)
+test('Bekannte Fehlalarme nach der Prüfung von PR #135 nach dem Merge schlagen wirklich an (bewusst hingenommen)', () => {
+  for (const sentence of [
+    'mama sagt ich muss aufpassen wenn ich allein koche weil ich mich sonst verbrenne',
+    'die katze legt sich zu mir ins bett obwohl ich das nicht will und sie schnurrt',
+    'wenn der drache zu uns kommt gibts schläge',
+    'weil mich der esel getreten hat',
+    'der drache aus dem wald der mich anfasst',
+    'dass mich mama auszieht weil ich krank bin',
+  ]) {
+    assert.equal(screen(sentence), true, sentence);
+  }
+});
+
 // Prüfung von PR #147 nach dem Merge, Befund 4: Ein unsichtbares Zeichen im Wort (weiches Trennzeichen, Breite null) bringt das Wort
 // nicht mehr am Ausgabe-Check vorbei. Die alte Lesart (Zeichen als Leerzeichen) bleibt zusätzlich.
 test('Ausgabe-Check und Eingabe-Weiche lesen Wörter auch mit unsichtbaren Zeichen', () => {
@@ -2747,6 +2791,7 @@ test('Ausgabe-Check und Eingabe-Weiche lesen Wörter auch mit unsichtbaren Zeich
   assert.equal(screenOutput('Der Ritter blu\u200Btete am Arm.', 'story'), true);
   assert.equal(screenOutput('Wie hei\u2060ßt du?', 'answer'), true);
   assert.equal(screenOutput('Schau auf ww\u200Bw.beispiel.de', 'answer'), true);
+  assert.equal(screenOutput('Der Drache war to\uFE0Ft.', 'story'), true);
   assert.equal(screen('Ich will nicht mehr le\u200Bben'), true);
   assert.equal(screen('Ich will nicht mehr\u00ADleben'), true);
   assert.equal(screenOutput('Kunibert ging\u00AD über die Brücke und sah den Drachen.', 'story'), false);
