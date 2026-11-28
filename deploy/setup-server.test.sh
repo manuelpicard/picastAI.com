@@ -456,14 +456,17 @@ vorher=$fails
 
 # Rückfall-Stimme Piper (Punkt N1126-1600-a): ohne Schalter keine Stimme im Sprachserver (Risiko L1,
 # docs/recherche/lizenzen-sprachbausteine.md). Optionen ohne main: Als root würde main wirklich einrichten.
-optionen() { (parse_args "$@"; printf '%s|%s' "$TTS_MODEL" "$TTS_VOICE"); }
-tts_paar() { (TTS_MODEL=$1; TTS_VOICE=$2; check_tts_options); }
+optionen() { (parse_args "$@"; resolve_tts_options; printf '%s|%s' "$TTS_MODEL" "$TTS_VOICE"); }
+tts_paar() { (TTS_MODEL=$1; TTS_VOICE=$2; resolve_tts_options); }
 eq  "Rückfall: Standard ohne Stimme im Sprachserver" "$TTS_MODEL|$TTS_VOICE" "|"
 eq  "Rückfall: Piper-Modell wie bisher"        "$PIPER_MODEL|$PIPER_VOICE" "speaches-ai/piper-de_DE-thorsten-medium|thorsten"
 eq  "Optionen: ohne Schalter keine Stimme"     "$(optionen --hostname kunibert.picastai.com)" "|"
 eq  "Optionen: --piper-fallback lädt Piper"    "$(optionen --hostname kunibert.picastai.com --piper-fallback)" "$PIPER_MODEL|$PIPER_VOICE"
 eq  "Optionen: eigenes Modell"                 "$(optionen --tts-model hexgrad/Kokoro-82M --tts-voice af_heart)" "hexgrad/Kokoro-82M|af_heart"
-eq  "Optionen: das Letzte gilt"                "$(optionen --piper-fallback --tts-model m --tts-voice v)" "m|v"
+no  "Optionen: Piper und eigenes Modell bricht ab" quiet optionen --piper-fallback --tts-model m --tts-voice v
+no  "Optionen: Piper und eigene Stimme bricht ab" quiet optionen --tts-voice v --piper-fallback
+yes "Optionen: Meldung zu Piper mit eigenem Modell" grep -qF -- '--piper-fallback nicht zusammen mit --tts-model' <<<"$(optionen --piper-fallback --tts-model m 2>&1)"
+eq  "Optionen: Schalter allein ändert vor dem Prüfen nichts" "$( (parse_args --piper-fallback; printf '%s|%s|%s' "$PIPER_FALLBACK" "$TTS_MODEL" "$TTS_VOICE") )" "1||"
 eq  "Optionen: andere Optionen ändern nichts"  "$(optionen --skip-pocket --skip-caddy --stt-model x)" "|"
 yes "Optionen: Paar leer passt"                quiet tts_paar "" ""
 yes "Optionen: Piper-Paar passt"               quiet tts_paar "$PIPER_MODEL" "$PIPER_VOICE"
@@ -475,7 +478,7 @@ yes "Hilfe nennt --piper-fallback"             grep -qF -- '--piper-fallback' <<
 yes "Hilfe nennt die Lizenzlage"               grep -qF 'docs/recherche/lizenzen-sprachbausteine.md' <<<"$(usage)"
 yes "Recherche zur Lizenz liegt im Repo"       test -f "$here/../docs/recherche/lizenzen-sprachbausteine.md"
 main_args=$(grep -n -m1 'parse_args "\$@"' <<<"$main_body" | cut -d: -f1)
-main_check=$(grep -n -m1 '^  check_tts_options$' <<<"$main_body" | cut -d: -f1)
+main_check=$(grep -n -m1 '^  resolve_tts_options$' <<<"$main_body" | cut -d: -f1)
 main_root=$(grep -n -m1 'EUID' <<<"$main_body" | cut -d: -f1)
 yes "main: erst Optionen, dann Prüfung"        vor "$main_args" "$main_check"
 yes "main: Stimme geprüft, bevor etwas passiert" vor "$main_check" "$main_root"
@@ -487,6 +490,7 @@ yes "main: Austragen vor dem Start des Dienstes" vor "$main_clear" "$main_start"
 yes "Warnung: Piper nennt das Risiko"          grep -qF 'Risiko L1' <<<"$(piper_warning "$PIPER_MODEL")"
 yes "Warnung: Piper nennt die Recherche"       grep -qF 'docs/recherche/lizenzen-sprachbausteine.md' <<<"$(piper_warning "$PIPER_MODEL")"
 yes "Warnung: nicht für ein verkauftes Gerät"  grep -qF 'Nicht für ein verkauftes Gerät' <<<"$(piper_warning "$PIPER_MODEL")"
+yes "Warnung: auch Tests sind offen"           grep -qF 'Auch für Tests mit Erwachsenen' <<<"$(piper_warning "$PIPER_MODEL")"
 yes "Warnung: auch andere Piper-Stimmen"       grep -qF 'Risiko L1' <<<"$(piper_warning speaches-ai/piper-de_DE-kerstin-low)"
 yes "Warnung: Schreibweise egal"               grep -qF 'Risiko L1' <<<"$(piper_warning Speaches-AI/PIPER-de_DE-x)"
 eq  "Warnung: anderes Modell still"            "$(piper_warning hexgrad/Kokoro-82M)" ""
@@ -544,18 +548,26 @@ vorher=$fails
   yes "Sprachserver: mit Schalter lädt Piper"   grep -qx "$SPEACHES_URL/v1/models/$PIPER_MODEL" "$aufrufe"
   yes "Sprachserver: mit Schalter auch die Erkennung" grep -qx "$SPEACHES_URL/v1/models/$STT_MODEL" "$aufrufe"
 
-  # Zusammenfassung: Piper mit Warnung; ohne Pocket und ohne eigene Wahl der Hinweis auf keine Stimme.
-  SKIP_POCKET=0
+  # Zusammenfassung: Piper mit Warnung; ohne Stimme (Anbieter wie im Server gelesen) ein Hinweis.
   zusammen=$(voice_summary)
   yes "Zusammenfassung: nennt die Piper-Stimme" grep -qF "Rückfall-Stimme im Sprachserver: $PIPER_MODEL" <<<"$zusammen"
   yes "Zusammenfassung: mit Warnung"            grep -qF 'Risiko L1' <<<"$zusammen"
   TTS_MODEL=""; TTS_VOICE=""
-  eq  "Zusammenfassung: Pocket, keine Zeile"    "$(voice_summary)" ""
-  SKIP_POCKET=1
-  env_set "$ENV_FILE" PICASTAI_TTS_PROVIDER ""
-  yes "Zusammenfassung: ohne Stimme sagt es"    grep -qF 'keine Stimme eingerichtet' <<<"$(voice_summary)"
-  env_set "$ENV_FILE" PICASTAI_TTS_PROVIDER google
-  eq  "Zusammenfassung: eigene Wahl google still" "$(voice_summary)" ""
+  clear_speaches_voice >/dev/null
+  for wert in pocket '"pocket"' POCKET google " Google " "'google'"; do
+    env_set "$ENV_FILE" PICASTAI_TTS_PROVIDER "$wert"
+    eq  "Zusammenfassung: Anbieter $wert still" "$(voice_summary)" ""
+  done
+  for wert in "" '""' openai-compatible 'x;y' pocketx; do
+    env_set "$ENV_FILE" PICASTAI_TTS_PROVIDER "$wert"
+    yes "Zusammenfassung: Anbieter '$wert' ohne Stimme sagt es" grep -qF 'keine Stimme eingerichtet' <<<"$(voice_summary)"
+  done
+  no  "Zusammenfassung: nennt den Wert nicht"   grep -qF 'pocketx' <<<"$(voice_summary)"
+  env_set "$ENV_FILE" PICASTAI_TTS_MODEL hexgrad/Kokoro-82M
+  eq  "Zusammenfassung: Stimme von Hand eingetragen, still" "$(voice_summary)" ""
+  env_set "$ENV_FILE" PICASTAI_TTS_MODEL '""'
+  yes "Zusammenfassung: leere Anführungszeichen zählen als leer" grep -qF 'keine Stimme eingerichtet' <<<"$(voice_summary)"
+  eq  "Austragen: leere Anführungszeichen, nichts zu tun" "$(clear_speaches_voice)" ""
   [[ $fails -eq $vorher ]]
 ) || fails=$((fails + 1))
 
@@ -693,7 +705,7 @@ stt_messung() { # Umgebung … (dann misst das Skript ein Modell mit einem Lauf 
 }
 ausgabe=$(stt_messung 2>&1); rc=$?
 eq  "Messung: läuft ohne Piper"                "$rc" 0
-eq  "Messung: drei Sätze von Kuniberts Stimme" "$(grep -c '^-fsS http://127.0.0.1:8001/tts ' "$tmp/stt.log")" 3
+eq  "Messung: drei Sätze von Kuniberts Stimme" "$(grep -c '^-fsS --max-time 120 http://127.0.0.1:8001/tts ' "$tmp/stt.log")" 3
 yes "Messung: mit der Stimme stuart_bell"      grep -qF 'voice_url=stuart_bell' "$tmp/stt.log"
 no  "Messung: lädt kein Piper"                 grep -qi piper "$tmp/stt.log"
 no  "Messung: keine Stimme im Sprachserver"    grep -qF '/v1/audio/speech' "$tmp/stt.log"
@@ -709,8 +721,8 @@ no  "Messung: andere Stimme ohne Warnung"      grep -qF 'Risiko L1' <<<"$ausgabe
 stt_messung PICASTAI_TTS_MODEL=m >/dev/null 2>&1; rc=$?
 eq  "Messung: Modell ohne Stimme bricht ab"    "$rc" 2
 eq  "Messung: dann kein Aufruf"                "$(wc -l < "$tmp/stt.log")" 0
-stt_messung PICASTAI_POCKET_TTS_URL=http://127.0.0.1:9001 PICASTAI_POCKET_TTS_VOICE=anna >/dev/null 2>&1
-eq  "Messung: Adresse und Stimme aus der Umgebung" "$(grep -c '^-fsS http://127.0.0.1:9001/tts .*voice_url=anna' "$tmp/stt.log")" 3
+stt_messung PICASTAI_POCKET_TTS_URL=http://127.0.0.1:9001// PICASTAI_POCKET_TTS_VOICE=anna >/dev/null 2>&1
+eq  "Messung: Adresse und Stimme aus der Umgebung" "$(grep -c '^-fsS --max-time 120 http://127.0.0.1:9001/tts .*voice_url=anna' "$tmp/stt.log")" 3
 
 # Aufruf ohne Hostname bricht ab, bevor etwas geändert wird.
 no  "ohne --hostname: Abbruch"     quiet bash "$here/setup-server.sh"

@@ -21,6 +21,7 @@ TTS_MODEL=${PICASTAI_TTS_MODEL:-}
 TTS_VOICE=${PICASTAI_TTS_VOICE:-}
 POCKET_URL=${PICASTAI_POCKET_TTS_URL:-http://127.0.0.1:8001}
 POCKET_VOICE=${PICASTAI_POCKET_TTS_VOICE:-stuart_bell}
+while [[ "$POCKET_URL" == */ ]]; do POCKET_URL=${POCKET_URL%/}; done   # wie der Server (pocket-speech.ts)
 RUNS=${RUNS:-3}
 if [[ $# -gt 0 ]]; then MODELS=("$@"); else
   MODELS=(Systran/faster-whisper-tiny Systran/faster-whisper-base Systran/faster-whisper-small)
@@ -57,7 +58,7 @@ else
   echo "Testsätze erzeugen (Pocket TTS, Stimme $POCKET_VOICE) ..."
   for i in "${!SAETZE[@]}"; do
     # Wie der Server (server-api/voice.ts): POST /tts mit text und voice_url, Antwort ist ein PCM-WAV.
-    curl -fsS "$POCKET_URL/tts" --data-urlencode "text=${SAETZE[$i]}" --data-urlencode "voice_url=$POCKET_VOICE" \
+    curl -fsS --max-time 120 "$POCKET_URL/tts" --data-urlencode "text=${SAETZE[$i]}" --data-urlencode "voice_url=$POCKET_VOICE" \
       --output "$tmp/satz$i.wav"
   done
 fi

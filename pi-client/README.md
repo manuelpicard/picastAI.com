@@ -368,7 +368,7 @@ curl.exe -fsS -X POST http://127.0.0.1:8000/v1/models/Systran/faster-whisper-sma
 uvx --python 3.12 pocket-tts@4.0.1 serve --language german --default-voice stuart_bell --host 127.0.0.1 --port 8001
 ```
 
-Der erste Start lädt Programm und Modell (einige hundert MB). Bereit ist der Dienst, wenn `curl.exe -fsS http://127.0.0.1:8001/health` antwortet. Schritt 2 stellt den Server auf diesen Dienst ein (`PICASTAI_TTS_PROVIDER` und `PICASTAI_POCKET_TTS_URL`). Ohne ihn bleibt Kunibert stumm.
+Der erste Start lädt Programm und Modell (einige hundert MB). Bereit ist der Dienst, wenn `curl.exe -fsS http://127.0.0.1:8001/health` antwortet. Schritt 2 stellt den Server auf diesen Dienst ein (`PICASTAI_TTS_PROVIDER` und `PICASTAI_POCKET_TTS_URL`). Ohne ihn spricht Kunibert nicht.
 
 Tempo und Pausen lassen sich mit `PICASTAI_POCKET_TTS_TEMPO` (0.7 bis 1.3, Standard 0.92) und `PICASTAI_POCKET_TTS_PAUSE_MS` (0 bis 2000, Standard 450) einstellen.
 
@@ -444,7 +444,7 @@ $env:PICASTAI_DEVICE_ID = "prototype-001"
 $env:PICASTAI_DEVICE_TOKEN = [Net.NetworkCredential]::new('', (Read-Host -AsSecureString 'Geräte-Token')).Password
 $env:PICASTAI_ADMIN_TOKEN = [Net.NetworkCredential]::new('', (Read-Host -AsSecureString 'Betreiber-Token')).Password
 $env:ANTHROPIC_API_KEY = [Net.NetworkCredential]::new('', (Read-Host -AsSecureString 'Anthropic-Schlüssel')).Password
-# dazu dieselben Zeilen für Sprachserver und Stimme wie oben (PICASTAI_STT_…, PICASTAI_TTS_…, mit Pocket auch PICASTAI_POCKET_TTS_URL)
+# dazu dieselben Zeilen für Sprachserver und Stimme wie oben (PICASTAI_STT_…, PICASTAI_TTS_PROVIDER, PICASTAI_POCKET_TTS_URL)
 npm start
 ```
 
