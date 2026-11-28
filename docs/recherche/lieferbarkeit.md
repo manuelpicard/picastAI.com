@@ -54,7 +54,7 @@ Die Kurzfassung nennt die Quellen nicht jedes Mal. Preise, Status und Abrufdaten
 
 **Zubehör für den Pi-Aufbau (neu geprüft am 26.11.2026)**
 
-- **Bei BerryBase lieferbar** (Seite ganz oder im Anfang wörtlich gelesen): Netzteil 27 W (12,40 €), USB-Mikrofon (3,50 €) und die Kleinteile: Breadboard 1,60 €, Jumper-Set 4,90 €, Taster 0,13 €, LED 0,35 €, Widerstand 330 Ω 0,05 €. Der Active Cooler (5,90 €) steht nur in einer Liste (laut Bericht ganz gelesen, Umfang offen); seine Produktseite wurde nicht gelesen.
+- **Bei BerryBase lieferbar** (Seite ganz oder im Anfang wörtlich gelesen): Netzteil 27 W (12,40 €), USB-Mikrofon (3,50 €) und die Kleinteile: Breadboard 1,60 €, Jumper-Set 4,90 €, Taster 0,13 €, LED 0,35 €, Widerstand 330 Ω 0,05 €. Der Active Cooler (5,90 €) steht nur in einer Liste (laut Bericht ganz gelesen, Umfang offen); seine Produktseite wurde am 26.11. nicht gelesen (am 28.11. ja, siehe oben).
 - **USB-Lautsprecher:** Der Adafruit 3369 ist bei Opencircuit (Niederlande) lieferbar (20,25 €), aber erst in 10 bis 12 Tagen. Der Lautsprecher von BerryBase (6,80 €) ist nicht lieferbar. Die Werte von DigiKey Deutschland stammen nur aus der Zusammenfassung des Abrufwerkzeugs.
 - **microSD-Karte 32 GB (A2):** bei Welectron und buyzero ausverkauft. Bei BerryBase stehen Preis und Status der Karte selbst in keinem gelesenen Text (unklar).
 - **Summe** (eigene Rechnung, ohne Versand): Zubehör 59,81 €. Mit dem 8-GB-Pi bei BerryBase 248,81 €, mit dem 4-GB-Pi bei BerryBase (nicht lieferbar) 183,71 €, mit dem 4-GB-Pi von Galaxus.de 211,52 €. Am 7.11.2026 waren es 184,60 € und 249,70 €. Die microSD-Karte ist dabei mit einem nicht belegten Preis (10,20 €) gerechnet.
